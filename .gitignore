@@ -1,0 +1,55 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node/frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment & local secrets
+.env
+.env.*
+!.env.example
+frontend/.env
+backend/.env
+
+# Data/uploads/runtime artifacts
+backend/uploads/
+frontend/uploads/
+uploads/
+*.fit
+*.gpx
+*.tcx
+*.sqlite
+*.sqlite3
+
+# Docker/local infra state
+db_data/
+postgres_data/
+
+# Reports and temporary outputs
+TEST_REPORT_*.md
+*.log
+tmp/
+temp/

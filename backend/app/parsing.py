@@ -1,0 +1,534 @@
+import fitparse
+import fitdecode
+import gpxpy
+import math
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+def safe_float(val):
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    except (ValueError, TypeError):
+        return None
+
+def parse_activity_file(file_path: str, file_type: str):
+    if file_type == 'fit':
+        return parse_fit(file_path)
+    elif file_type == 'gpx':
+        return parse_gpx(file_path)
+    return None
+
+def calculate_curve(df, column):
+    if column not in df.columns or df[column].isnull().all():
+        return None
+        
+    series = df[column].fillna(0)
+    
+    curve = {}
+    windows = {
+        '1s': 1,
+        '5s': 5,
+        '30s': 30,
+        '1min': 60,
+        '5min': 300,
+        '10min': 600,
+        '20min': 1200,
+        '60min': 3600
+    }
+    
+    for label, seconds in windows.items():
+        if len(series) >= seconds:
+            val = series.rolling(window=seconds).mean().max()
+            # return float for better precision in speed, int for power
+            curve[label] = float(val) if not pd.isna(val) else 0
+        else:
+            curve[label] = 0
+            
+    return curve
+
+def calculate_power_curve(df):
+    curve = calculate_curve(df, 'power')
+    if curve:
+        # Cast to int for watts
+        return {k: int(v) for k, v in curve.items()}
+    return None
+
+def calculate_pace_curve(df):
+    # Returns Max Average Speed (m/s) curve
+    # Frontend handles conversion to Pace (min/km)
+    return calculate_curve(df, 'speed')
+
+def calculate_hr_zones(df, max_hr=190): # Default max_hr if not in profile, ideally pass user profile
+    if 'heart_rate' not in df.columns or df['heart_rate'].isnull().all():
+        return None
+        
+    hr = df['heart_rate'].dropna()
+    
+    # Simple 5 zone model based on Max HR
+    # Z1: <60%, Z2: 60-70%, Z3: 70-80%, Z4: 80-90%, Z5: >90%
+    zones = {
+        'Z1': len(hr[hr < max_hr * 0.6]),
+        'Z2': len(hr[(hr >= max_hr * 0.6) & (hr < max_hr * 0.7)]),
+        'Z3': len(hr[(hr >= max_hr * 0.7) & (hr < max_hr * 0.8)]),
+        'Z4': len(hr[(hr >= max_hr * 0.8) & (hr < max_hr * 0.9)]),
+        'Z5': len(hr[hr >= max_hr * 0.9])
+    }
+    
+    # Convert seconds (assuming 1hz) to minutes calculation could be more complex with timestamps
+    # but for 1hz recording, count = seconds.
+    # Normalize to percentage or raw seconds
+    return zones
+
+def clean_streams(df):
+    # Replace NaNs/Infs with None for JSON serialization
+    # Convert to object type first to ensure None is preserved and not converted back to NaN
+    df = df.astype(object)
+    df = df.replace([np.inf, -np.inf, np.nan], None)
+    return df.where(pd.notnull(df), None).to_dict(orient='records')
+
+def infer_sport(df):
+    # Heuristics to guess sport
+    if 'vertical_oscillation' in df.columns and df['vertical_oscillation'].notna().sum() > 10:
+        return 'running'
+    if 'stance_time' in df.columns and df['stance_time'].notna().sum() > 10:
+        return 'running'
+    
+    avg_speed_m_s = df['speed'].mean() if 'speed' in df.columns else 0
+    avg_cadence = df['cadence'].mean() if 'cadence' in df.columns else 0
+    
+    # Running: typically > 140 cadence, speed 2-6 m/s
+    # Cycling: < 100 cadence usually (though can be higher), speed > 6 m/s
+    
+    if avg_cadence > 130 and avg_speed_m_s < 7:
+        return 'running'
+    
+    if avg_speed_m_s > 8: # > 29 km/h, likely cycling or driving
+        return 'cycling'
+        
+    return 'unknown'
+
+def parse_fit(file_path):
+    # Try using fitdecode first as it handles Coros files and errors better
+    try:
+        return parse_fit_decode(file_path)
+    except Exception as e:
+        print(f"Fitdecode failed: {e}. Falling back to fitparse.")
+        pass
+
+    # check_crc=False allows reading files with bad checksums
+    try:
+        fitfile = fitparse.FitFile(file_path, check_crc=False)
+    except Exception as e:
+        print(f"Error opening FIT file: {e}")
+        return None
+    
+    data_points = []
+    sport = "unknown"
+    start_time = None
+    
+    try:
+        # Iterate over all messages once to catch sport/session even if errors occur later
+        messages = fitfile.get_messages()
+        
+        while True:
+            try:
+                msg = next(messages)
+                
+                if msg.name == 'session' or msg.name == 'sport':
+                    if msg.get_value('sport'):
+                        sport = str(msg.get_value('sport')).lower()
+                    if msg.name == 'session' and msg.get_value('start_time'):
+                         start_time = msg.get_value('start_time')
+                        
+                elif msg.name == 'record':
+                    r_data = {}
+                    for data in msg:
+                        if data.name == 'timestamp':
+                            r_data['timestamp'] = data.value
+                        elif data.name == 'position_lat':
+                            r_data['lat'] = data.value * (180 / 2**31) if data.value else None
+                        elif data.name == 'position_long':
+                            r_data['lon'] = data.value * (180 / 2**31) if data.value else None
+                        elif data.name == 'distance':
+                            r_data['distance'] = data.value
+                        elif data.name == 'enhanced_speed':
+                            r_data['speed'] = data.value
+                        elif data.name == 'heart_rate':
+                            r_data['heart_rate'] = data.value
+                        elif data.name == 'power':
+                            r_data['power'] = data.value
+                        elif data.name == 'cadence':
+                            r_data['cadence'] = data.value
+                        elif data.name == 'enhanced_altitude':
+                            r_data['altitude'] = data.value
+                        elif data.name == 'vertical_oscillation':
+                             r_data['vertical_oscillation'] = data.value
+                        elif data.name == 'stance_time':
+                             r_data['stance_time'] = data.value # Ground Contact Time
+                        elif data.name == 'step_length':
+                             r_data['step_length'] = data.value
+                        elif data.name == 'left_right_balance':
+                             r_data['left_right_balance'] = data.value
+                    
+                    if 'timestamp' in r_data:
+                        data_points.append(r_data)
+                        
+            except StopIteration:
+                break
+            except Exception as e:
+                # If a message is malformed, we might lose the stream if generator closes.
+                print(f"Error parsing message: {e}")
+                # Try to continue if the generator is still alive. 
+                # If next() failed, it's risky, but worth a try for partial recovery.
+                continue
+
+    except Exception as e:
+        print(f"Error in main loop: {e}")
+
+    if not data_points:
+        return None
+
+    df = pd.DataFrame(data_points)
+    
+    # Infer sport if unknown
+    if sport == 'unknown':
+        sport = infer_sport(df)
+    
+    # Calculate Summaries
+    # Prefer calculated summaries from full stream, or explicit session message if implemented
+    
+    # Calculate Elevation Gain for fallback parser
+    total_ascent = 0
+    if 'altitude' in df.columns:
+        deltas = df['altitude'].diff()
+        total_ascent = safe_float(deltas[deltas > 0].sum())
+
+    summary = {
+        "distance": safe_float(df['distance'].max()) if 'distance' in df else 0,
+        "duration": safe_float((df['timestamp'].iloc[-1] - df['timestamp'].iloc[0]).total_seconds()) if len(df) > 1 else 0,
+        "avg_speed": safe_float(df['speed'].mean()) if 'speed' in df else 0,
+        "average_hr": safe_float(df['heart_rate'].mean()) if 'heart_rate' in df else 0,
+        "average_watts": safe_float(df['power'].mean()) if 'power' in df else 0,
+        "max_hr": safe_float(df['heart_rate'].max()) if 'heart_rate' in df else 0,
+        "max_speed": safe_float(df['speed'].max()) if 'speed' in df else 0,
+        "max_watts": safe_float(df['power'].max()) if 'power' in df else 0,
+        "avg_cadence": safe_float(df['cadence'].mean()) if 'cadence' in df else 0,
+        "max_cadence": safe_float(df['cadence'].max()) if 'cadence' in df else 0,
+        "total_elevation_gain": total_ascent,
+        "total_calories": 0 # Calc not easy without weight
+    }
+    
+    # Advanced Stats
+    # Power curve for running might be unwanted if it's junk data.
+    # Check if power is mostly 0
+    power_curve = calculate_power_curve(df)
+    
+    if sport == 'running' and 'power' in df.columns:
+         p_mean = df['power'].fillna(0).mean()
+         if p_mean < 10: # If avg power is very low, it's likely noise or missing
+             power_curve = None
+             
+    hr_zones = calculate_hr_zones(df)
+    pace_curve = calculate_pace_curve(df)
+    
+    # Prepare streams for JSON
+    # Convert timestamps to string
+    if not start_time and not df.empty and 'timestamp' in df.columns:
+        start_time = df['timestamp'].iloc[0]
+
+    df['timestamp'] = df['timestamp'].astype(str)
+    
+    return {
+        "summary": summary,
+        "streams": clean_streams(df),
+        "sport": sport,
+        "start_time": start_time,
+        "power_curve": power_curve,
+        "hr_zones": hr_zones,
+        "pace_curve": pace_curve
+    }
+
+def calculate_metric_splits(df, interval=1000):
+    if df.empty or 'distance' not in df.columns:
+        return []
+
+    splits = []
+    
+    # Ensure distance is monotonic and handle restarts? 
+    # Usually distance from FIT is cumulative.
+    
+    # Group by integer division of distance
+    # Filter out points where distance is NaN
+    valid_df = df.dropna(subset=['distance']).copy()
+    if valid_df.empty:
+        return []
+
+    valid_df['split_idx'] = (valid_df['distance'] // interval).astype(int)
+    
+    grouped = valid_df.groupby('split_idx')
+    
+    for idx, group in grouped:
+        if idx < 0: continue
+        
+        # Calculate split stats
+        # Start time is first timestamp of group
+        # End time is last timestamp of group
+        # But wait, groups might be disjoint if recording stopped.
+        # Simple approach: delta between min and max timestamp in group
+        
+        t_start = group['timestamp'].min()
+        t_end = group['timestamp'].max()
+        
+        if pd.isnull(t_start) or pd.isnull(t_end):
+             continue
+             
+        duration = (t_end - t_start).total_seconds()
+        
+        if duration <= 0:
+            continue
+            
+        dist_start = group['distance'].min()
+        dist_end = group['distance'].max()
+        distance = dist_end - dist_start
+        
+        # If distance is too small (e.g. at end of run), maybe skip or include?
+        # Usually splits are fixed distance.
+        # But the last split might be partial.
+        
+        avg_hr = group['heart_rate'].mean() if 'heart_rate' in group else None
+        max_hr = group['heart_rate'].max() if 'heart_rate' in group else None
+        avg_pwr = group['power'].mean() if 'power' in group else None
+        
+        # Pace = time / distance (min/km)
+        # speed = dist/time
+        # pace_min_per_km = (duration / 60) / (distance / 1000)
+        
+        avg_speed = distance / duration if duration > 0 else 0
+        
+        splits.append({
+            "split": int(idx) + 1,
+            "dist_start": safe_float(dist_start),
+            "distance": safe_float(distance),
+            "duration": safe_float(duration),
+            "avg_speed": safe_float(avg_speed),
+            "avg_hr": safe_float(avg_hr),
+            "max_hr": safe_float(max_hr),
+            "avg_power": safe_float(avg_pwr)
+        })
+        
+    return splits
+
+def parse_fit_decode(file_path):
+    data_points = []
+    laps = []
+    sport = "unknown"
+    session_stats = {}
+    start_time = None
+    
+    with fitdecode.FitReader(file_path) as fit:
+        for frame in fit:
+            if isinstance(frame, fitdecode.FitDataMessage):
+                if frame.name == 'session':
+                   if frame.has_field('sport'):
+                       sport_val = frame.get_value('sport')
+                       if sport_val:
+                           sport = str(sport_val).lower()
+                   
+                   if frame.has_field('start_time'):
+                       start_time = frame.get_value('start_time')
+
+                   # Extract session stats
+                   session_stats['total_ascent'] = frame.get_value('total_ascent', fallback=0)
+                   session_stats['total_descent'] = frame.get_value('total_descent', fallback=0)
+                   session_stats['total_calories'] = frame.get_value('total_calories', fallback=0)
+                   session_stats['max_cadence'] = frame.get_value('max_cadence', fallback=0)
+                   session_stats['avg_cadence'] = frame.get_value('avg_cadence', fallback=0)
+                   session_stats['max_heart_rate'] = frame.get_value('max_heart_rate', fallback=0)
+                   session_stats['max_speed'] = frame.get_value('max_speed', fallback=0)
+                   session_stats['max_power'] = frame.get_value('max_power', fallback=0)
+                   session_stats['avg_speed'] = frame.get_value('avg_speed', fallback=0)
+                   session_stats['total_distance'] = frame.get_value('total_distance', fallback=0)
+                   session_stats['total_elapsed_time'] = frame.get_value('total_elapsed_time', fallback=0)
+                   session_stats['avg_power'] = frame.get_value('avg_power', fallback=0)
+                   session_stats['avg_heart_rate'] = frame.get_value('avg_heart_rate', fallback=0)
+                           
+                elif frame.name == 'lap':
+                    lap_data = {}
+                    # start_time, total_elapsed_time, total_distance, avg_speed
+                    lap_data['start_time'] = frame.get_value('start_time', fallback=None)
+                    lap_data['duration'] = frame.get_value('total_elapsed_time', fallback=None)
+                    lap_data['distance'] = frame.get_value('total_distance', fallback=None)
+                    lap_data['avg_speed'] = frame.get_value('avg_speed', fallback=None)
+                    lap_data['avg_hr'] = frame.get_value('avg_heart_rate', fallback=None)
+                    lap_data['max_hr'] = frame.get_value('max_heart_rate', fallback=None)
+                    lap_data['avg_power'] = frame.get_value('avg_power', fallback=None)
+                    lap_data['split'] = len(laps) + 1
+                    
+                    # Convert start_time to string if datetime
+                    if isinstance(lap_data['start_time'], datetime):
+                        lap_data['start_time'] = str(lap_data['start_time'])
+                    
+                    laps.append(lap_data)
+                           
+                elif frame.name == 'record':
+                    r_data = {}
+                    if frame.has_field('timestamp'):
+                         r_data['timestamp'] = frame.get_value('timestamp')
+                         
+                    # For performance, could check has_field before get_value, 
+                    # but get_value returns None if not present usually (or raises?)
+                    # fitdecode get_value returns None? No, it takes name or index. 
+                    # If field not in message, get_value raises KeyOrIndexError? No.
+                    # frame.get_value(name, fallback=None)
+                    
+                    r_data['lat'] = frame.get_value('position_lat', fallback=None)
+                    if r_data['lat']: r_data['lat'] *= (180 / 2**31)
+                    
+                    r_data['lon'] = frame.get_value('position_long', fallback=None)
+                    if r_data['lon']: r_data['lon'] *= (180 / 2**31)
+                    
+                    r_data['distance'] = frame.get_value('distance', fallback=None)
+                    r_data['speed'] = frame.get_value('enhanced_speed', fallback=None)
+                    r_data['heart_rate'] = frame.get_value('heart_rate', fallback=None)
+                    r_data['power'] = frame.get_value('power', fallback=None)
+                    r_data['cadence'] = frame.get_value('cadence', fallback=None)
+                    r_data['altitude'] = frame.get_value('enhanced_altitude', fallback=None)
+                    r_data['vertical_oscillation'] = frame.get_value('vertical_oscillation', fallback=None)
+                    r_data['stance_time'] = frame.get_value('stance_time', fallback=None)
+                    r_data['step_length'] = frame.get_value('step_length', fallback=None)
+                    r_data['left_right_balance'] = frame.get_value('left_right_balance', fallback=None)
+                    
+                    if 'timestamp' in r_data:
+                        data_points.append(r_data)
+
+    if not data_points:
+        return None
+
+    df = pd.DataFrame(data_points)
+    
+    if sport == 'unknown':
+        sport = infer_sport(df)
+        
+    # Stats Calculation Helpers
+    def get_max_stat(df, col, session_val):
+        val = session_val
+        if (not val or val == 0) and col in df.columns:
+            val = df[col].max()
+        return safe_float(val)
+        
+    def get_avg_stat(df, col, session_val):
+        val = session_val
+        if (not val or val == 0) and col in df.columns:
+            val = df[col].mean()
+        return safe_float(val)
+
+    # Cadence logic: 
+    # Just take raw values.
+    avg_cadence = get_avg_stat(df, 'cadence', session_stats.get('avg_cadence'))
+    max_cadence = get_max_stat(df, 'cadence', session_stats.get('max_cadence'))
+    
+    # Elevation Gain
+    total_ascent = safe_float(session_stats.get('total_ascent', 0))
+    if (total_ascent == 0 or total_ascent is None) and 'altitude' in df.columns:
+        # Calculate from stream: sum of positive deltas
+        deltas = df['altitude'].diff()
+        total_ascent = safe_float(deltas[deltas > 0].sum())
+
+    summary = {
+        "distance": get_max_stat(df, 'distance', session_stats.get('total_distance')),
+        "duration": get_max_stat(df, None, session_stats.get('total_elapsed_time')) if session_stats.get('total_elapsed_time') else safe_float((df['timestamp'].iloc[-1] - df['timestamp'].iloc[0]).total_seconds()) if len(df) > 1 else 0,
+        "avg_speed": get_avg_stat(df, 'speed', session_stats.get('avg_speed')),
+        "average_hr": get_avg_stat(df, 'heart_rate', session_stats.get('avg_heart_rate')),
+        "average_watts": get_avg_stat(df, 'power', session_stats.get('avg_power')),
+        "max_hr": get_max_stat(df, 'heart_rate', session_stats.get('max_heart_rate')),
+        "max_speed": get_max_stat(df, 'speed', session_stats.get('max_speed')),
+        "max_watts": get_max_stat(df, 'power', session_stats.get('max_power')),
+        "avg_cadence": avg_cadence,
+        "max_cadence": max_cadence,
+        "total_elevation_gain": total_ascent,
+        "total_calories": safe_float(session_stats.get('total_calories', 0))
+    }
+    
+    power_curve = calculate_power_curve(df)
+    if sport == 'running' and 'power' in df.columns:
+         p_mean = df['power'].fillna(0).mean()
+         if p_mean < 10: 
+             power_curve = None
+             
+    hr_zones = calculate_hr_zones(df)
+    pace_curve = calculate_pace_curve(df)
+    
+    splits_metric = calculate_metric_splits(df)
+    
+    if not start_time and not df.empty and 'timestamp' in df.columns:
+         start_time = df['timestamp'].iloc[0]
+
+    df['timestamp'] = df['timestamp'].astype(str)
+    
+    return {
+        "summary": summary,
+        "streams": clean_streams(df),
+        "sport": sport,
+        "power_curve": power_curve,
+        "hr_zones": hr_zones,
+        "pace_curve": pace_curve,
+        "laps": laps,
+        "splits_metric": splits_metric,
+        "start_time": start_time
+    }
+
+def parse_gpx(file_path):
+    # ... existing implementation adapted to dataframe ...
+    with open(file_path, 'r') as gpx_file:
+        gpx = gpxpy.parse(gpx_file)
+        
+    start_time = None
+    time_bounds = gpx.get_time_bounds()
+    if time_bounds:
+        start_time = time_bounds.start_time
+
+    data_points = []
+    for track in gpx.tracks:
+        for segment in track.segments:
+            for point in segment.points:
+                r_data = {
+                    'timestamp': point.time,
+                    'lat': point.latitude,
+                    'lon': point.longitude,
+                    'altitude': point.elevation
+                }
+                # Check extensions for HR/Cadence/Power if GPX 1.1 with extensions
+                # ... skipping complex XML parsing for extensions for MVP ...
+                data_points.append(r_data)
+
+    if not data_points:
+        return None
+        
+    df = pd.DataFrame(data_points)
+    
+    summary = {
+        "distance": safe_float(gpx.length_2d()),
+        "duration": safe_float(gpx.get_duration()),
+        "avg_speed": 0, # Calc properly
+        "average_hr": 0,
+        "average_watts": 0
+    }
+    
+    # Calculate simple speed if needed
+    
+    df['timestamp'] = df['timestamp'].astype(str)
+    
+    return {
+        "summary": summary,
+        "streams": clean_streams(df),
+        "sport": "other",
+        "power_curve": None,
+        "hr_zones": None,
+        "pace_curve": None,
+        "start_time": start_time
+    }
+

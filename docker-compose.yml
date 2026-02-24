@@ -1,0 +1,95 @@
+services:
+  db:
+    image: postgres:15
+    container_name: endurance_db
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: endurance
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d endurance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: endurance_backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app:app@db:5432/endurance
+      SECRET_KEY: change_me_in_production
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      FRONTEND_BASE_URL: http://localhost:3000
+      AUTO_SEED_DEMO: "true"
+      INTEGRATIONS_TOKEN_ENCRYPTION_KEY: change_me_in_production
+      ENABLE_STRAVA_INTEGRATION: ${ENABLE_STRAVA_INTEGRATION:-true}
+      ENABLE_POLAR_INTEGRATION: "false"
+      ENABLE_SUUNTO_INTEGRATION: "false"
+      ENABLE_WHOOP_INTEGRATION: "false"
+      ENABLE_GARMIN_INTEGRATION: "false"
+      ENABLE_COROS_INTEGRATION: "false"
+      ENABLE_GOOGLE_FIT_INTEGRATION: "false"
+      ENABLE_APPLE_HEALTH_INTEGRATION: "false"
+      STRAVA_CLIENT_ID: ${STRAVA_CLIENT_ID:-}
+      STRAVA_CLIENT_SECRET: ${STRAVA_CLIENT_SECRET:-}
+      STRAVA_REDIRECT_URI: ${STRAVA_REDIRECT_URI:-http://localhost:8000/integrations/strava/callback}
+      STRAVA_WEBHOOK_VERIFY_TOKEN: ${STRAVA_WEBHOOK_VERIFY_TOKEN:-}
+      STRAVA_SYNC_MAX_PAGES: ${STRAVA_SYNC_MAX_PAGES:-0}
+      STRAVA_SYNC_MAX_ACTIVITIES: ${STRAVA_SYNC_MAX_ACTIVITIES:-0}
+      STRAVA_DETAIL_DELAY_SECONDS: ${STRAVA_DETAIL_DELAY_SECONDS:-0.2}
+      STRAVA_FORCE_FULL_BACKFILL_ONCE: ${STRAVA_FORCE_FULL_BACKFILL_ONCE:-true}
+      POLAR_CLIENT_ID: ""
+      POLAR_CLIENT_SECRET: ""
+      POLAR_REDIRECT_URI: ""
+      SUUNTO_CLIENT_ID: ""
+      SUUNTO_CLIENT_SECRET: ""
+      SUUNTO_REDIRECT_URI: ""
+      WHOOP_CLIENT_ID: ""
+      WHOOP_CLIENT_SECRET: ""
+      WHOOP_REDIRECT_URI: ""
+      GARMIN_CLIENT_ID: ""
+      GARMIN_CLIENT_SECRET: ""
+      GARMIN_REDIRECT_URI: ""
+      COROS_CLIENT_ID: ""
+      COROS_CLIENT_SECRET: ""
+      COROS_REDIRECT_URI: ""
+      GOOGLE_FIT_CLIENT_ID: ""
+      GOOGLE_FIT_CLIENT_SECRET: ""
+      GOOGLE_FIT_REDIRECT_URI: ""
+      APPLE_HEALTH_CLIENT_ID: ""
+      APPLE_HEALTH_CLIENT_SECRET: ""
+      APPLE_HEALTH_REDIRECT_URI: ""
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/app:/app/app:cached
+      - ./backend/requirements.txt:/app/requirements.txt:ro
+      - ./backend/uploads:/app/uploads
+    command: sh -c "pip install --no-cache-dir -r /app/requirements.txt && python -m app.wait_for_db && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: endurance_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app:cached
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000
+      CHOKIDAR_USEPOLLING: "true"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+
+volumes:
+  db_data:
