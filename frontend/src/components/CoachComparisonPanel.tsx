@@ -3,6 +3,8 @@ import { Alert, Badge, Box, Group, MultiSelect, Paper, Progress, SegmentedContro
 import { useQuery } from '@tanstack/react-query';
 import { IconChartBar, IconInfoCircle } from '@tabler/icons-react';
 import api from '../api/client';
+import ZoneBars from './coachComparison/ZoneBars';
+import { compareValue, cyclingZoneFromPower, formatMinutes, formatName, formatPace, normalizeSport, parseMonthLabel, runningZoneFromHr, safeNum, toMonthKey } from './coachComparison/utils';
 
 type AthleteLike = {
   id: number;
@@ -45,122 +47,6 @@ type Aggregate = {
   estimatedLt2MinPerKm: number | null;
   runningZones: Record<string, number>;
   cyclingZones: Record<string, number>;
-};
-
-const zoneColors5 = [
-  'var(--mantine-color-blue-5)',
-  'var(--mantine-color-cyan-5)',
-  'var(--mantine-color-green-5)',
-  'var(--mantine-color-yellow-5)',
-  'var(--mantine-color-red-5)'
-];
-
-const zoneColors7 = [
-  'var(--mantine-color-indigo-5)',
-  'var(--mantine-color-blue-5)',
-  'var(--mantine-color-cyan-5)',
-  'var(--mantine-color-green-5)',
-  'var(--mantine-color-yellow-5)',
-  'var(--mantine-color-orange-5)',
-  'var(--mantine-color-red-5)'
-];
-
-const normalizeSport = (sport?: string | null) => {
-  const s = (sport || '').toLowerCase();
-  if (s.includes('run')) return 'running';
-  if (s.includes('cycl') || s.includes('bike')) return 'cycling';
-  return 'other';
-};
-
-const formatName = (athlete?: AthleteLike) => {
-  if (!athlete) return 'Unknown athlete';
-  if (athlete.profile?.first_name || athlete.profile?.last_name) {
-    return `${athlete.profile?.first_name || ''} ${athlete.profile?.last_name || ''}`.trim();
-  }
-  return athlete.email;
-};
-
-const toMonthKey = (isoDate: string) => {
-  const dt = new Date(isoDate);
-  const y = dt.getFullYear();
-  const m = `${dt.getMonth() + 1}`.padStart(2, '0');
-  return `${y}-${m}`;
-};
-
-const parseMonthLabel = (monthKey: string) => {
-  const [year, month] = monthKey.split('-').map(Number);
-  const dt = new Date(year, (month || 1) - 1, 1);
-  return dt.toLocaleDateString([], { month: 'long', year: 'numeric' });
-};
-
-const safeNum = (value: any) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);
-
-const runningZoneFromHr = (hr: number, maxHr: number) => {
-  const ratio = hr / maxHr;
-  if (ratio < 0.6) return 1;
-  if (ratio < 0.7) return 2;
-  if (ratio < 0.8) return 3;
-  if (ratio < 0.9) return 4;
-  return 5;
-};
-
-const cyclingZoneFromPower = (power: number, ftp: number) => {
-  const ratio = (power / ftp) * 100;
-  if (ratio <= 55) return 1;
-  if (ratio <= 75) return 2;
-  if (ratio <= 90) return 3;
-  if (ratio <= 105) return 4;
-  if (ratio <= 120) return 5;
-  if (ratio <= 150) return 6;
-  return 7;
-};
-
-const formatMinutes = (minutes: number) => {
-  const total = Math.max(0, Math.round(minutes));
-  const h = Math.floor(total / 60);
-  const m = total % 60;
-  return `${h}h ${m}m`;
-};
-
-const formatPace = (minPerKm: number | null) => {
-  if (!minPerKm || !Number.isFinite(minPerKm) || minPerKm <= 0) return '-';
-  const mins = Math.floor(minPerKm);
-  const secsRaw = Math.round((minPerKm - mins) * 60);
-  const carry = secsRaw === 60 ? 1 : 0;
-  const secs = secsRaw === 60 ? 0 : secsRaw;
-  return `${mins + carry}:${secs.toString().padStart(2, '0')}/km`;
-};
-
-const ZoneBars = ({ zones, zoneCount }: { zones: Record<string, number>; zoneCount: number }) => {
-  const colors = zoneCount === 5 ? zoneColors5 : zoneColors7;
-  const values = Array.from({ length: zoneCount }, (_, idx) => zones[`Z${idx + 1}`] || 0);
-  const total = values.reduce((sum, value) => sum + value, 0);
-
-  return (
-    <Stack gap={4}>
-      {values.map((seconds, idx) => {
-        const pct = total > 0 ? (seconds / total) * 100 : 0;
-        return (
-          <Group key={`zone-${zoneCount}-${idx + 1}`} gap={6} wrap="nowrap">
-            <Box w={24}>
-              <Text size="xs">Z{idx + 1}</Text>
-            </Box>
-            <Progress value={pct} color={colors[idx]} size={8} radius={4} flex={1} />
-            <Box w={38} ta="right">
-              <Text size="xs" c="dimmed">{Math.round(seconds / 60)}m</Text>
-            </Box>
-          </Group>
-        );
-      })}
-    </Stack>
-  );
-};
-
-const compareValue = (left: number | null, right: number | null, suffix = '') => {
-  if (left == null || right == null) return '-';
-  const delta = right - left;
-  const sign = delta > 0 ? '+' : '';
-  return `${sign}${delta.toFixed(1)}${suffix}`;
 };
 
 export const CoachComparisonPanel = ({ athletes, me }: { athletes: AthleteLike[]; me: AthleteLike }) => {

@@ -8,6 +8,7 @@ import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
 import { useEffect, useMemo, useState } from "react";
 import L from 'leaflet';
+import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -46,20 +47,6 @@ type ActivityDetail = {
     total_load_impact?: number;
     rpe?: number | null;
     notes?: string | null;
-};
-
-const formatDuration = (seconds: number) => {
-    const totalMinutes = Math.max(0, Math.round(seconds / 60));
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
-    return `${h}h ${m}m`;
-};
-
-const formatZoneDuration = (seconds: number) => {
-    const totalMinutes = Math.max(0, Math.round((seconds || 0) / 60));
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
-    return `${h}h ${m}m`;
 };
 
 export const ActivityDetailPage = () => {

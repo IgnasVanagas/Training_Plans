@@ -7,13 +7,18 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
-import { Alert, Modal, Button, Select, Group, Stack, Text, Badge, Paper, ActionIcon, Popover, Container, NumberInput, Divider, Box, Progress, SegmentedControl, useComputedColorScheme } from '@mantine/core';
+import { Alert, Modal, Button, Select, Group, Stack, Text, Badge, Paper, Container, NumberInput, Divider, Box, Progress, SegmentedControl, useComputedColorScheme } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { DatePickerInput, MonthPicker } from '@mantine/dates';
-import { Bike, Footprints, Activity, AlertCircle, CheckCircle, Check, Circle, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Download } from 'lucide-react';
+import { DatePickerInput } from '@mantine/dates';
+import { Activity, AlertCircle, CheckCircle, Check, Circle, Download } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { WorkoutEditor } from './builder/WorkoutEditor';
 import { WorkoutNode, ConcreteStep } from '../types/workout';
+import CalendarHeader from './calendar/CalendarHeader';
+import { parseDate, formatMinutesHm } from './calendar/dateUtils';
+import { resolveActivityAccentColor, resolveActivityBrandType, resolveActivityPillLabel, resolveWeekAccentColor } from './calendar/activityStyling';
+import { ORIGAMI_ACTIVITY_COLORS, ORIGAMI_THEME } from './calendar/theme';
+import SportIcon from './calendar/SportIcon';
 
 // Setup Localizer
 const locales = {
@@ -23,60 +28,6 @@ const locales = {
 // Localizer will be created dynamically inside the component
 // const localizer = ...
 
-
-const CalendarHeader = ({ date, onNavigate }: { date: Date, onNavigate: (date: Date) => void }) => {
-    const [opened, { open, close }] = useDisclosure(false);
-
-    const handleNext = () => {
-        onNavigate(new Date(date.getFullYear(), date.getMonth() + 1, 1));
-    };
-    const handlePrev = () => {
-         onNavigate(new Date(date.getFullYear(), date.getMonth() - 1, 1));
-    };
-    const handleToday = () => {
-        onNavigate(new Date());
-    };
-    
-    return (
-        <Group
-            justify="space-between"
-            mb={8}
-            align="center"
-            wrap="nowrap"
-            p="6px 8px"
-            style={{
-                borderRadius: 10,
-                border: '1px solid var(--mantine-color-default-border)',
-                background: 'var(--mantine-color-body)'
-            }}
-        >
-            <Group gap={6} wrap="nowrap">
-                <Button variant="default" size="compact-xs" onClick={handleToday}>Today</Button>
-                <ActionIcon variant="default" onClick={handlePrev} size="md"><ChevronLeft size={16} /></ActionIcon>
-                <ActionIcon variant="default" onClick={handleNext} size="md"><ChevronRight size={16} /></ActionIcon>
-            </Group>
-
-            <Popover opened={opened} onChange={close} trapFocus position="bottom" withArrow shadow="md">
-                <Popover.Target>
-                    <Button variant="subtle" size="compact-sm" fw={800} onClick={open} leftSection={<CalendarIcon size={15} />}>
-                        {format(date, 'MMMM yyyy')}
-                    </Button>
-                </Popover.Target>
-                <Popover.Dropdown>
-                    <MonthPicker
-                        value={date}
-                        onChange={(val) => {
-                            if (val) {
-                                onNavigate(val);
-                                close();
-                            }
-                        }}
-                    />
-                </Popover.Dropdown>
-            </Popover>
-        </Group>
-    );
-};
 
 const DnDCalendar = withDragAndDrop(Calendar);
 
@@ -156,133 +107,6 @@ interface AthletePermissionsResponse {
         allow_edit_workouts: boolean;
     };
 }
-
-// Helper to fix date shifting
-const parseDate = (dateStr: string) => {
-    // Append T00:00:00 to force local time construction if logic needs it, 
-    // or just use new Date(y, m, d)
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d);
-};
-
-const formatMinutesHm = (minutes?: number | null) => {
-    if (!minutes || minutes <= 0) return '-';
-    const total = Math.max(0, Math.round(minutes));
-    const hours = Math.floor(total / 60);
-    const mins = total % 60;
-    return `${hours}h ${mins}m`;
-};
-
-type ActivityBrandType = 'run' | 'cycling' | 'workout' | 'virtual' | 'default';
-
-type OrigamiPalette = {
-    background: string;
-    panelBg: string;
-    cardBg: string;
-    cardBorder: string;
-    textMain: string;
-    textDim: string;
-    dayCellBorder: string;
-    todayBg: string;
-    offRangeBg: string;
-    offRangeText: string;
-    headerBorder: string;
-    weekCellBg: string;
-};
-
-const ORIGAMI_THEME: Record<'dark' | 'light', OrigamiPalette> = {
-    dark: {
-        background: '#081226',
-        panelBg: 'rgba(8, 18, 38, 0.78)',
-        cardBg: 'rgba(22, 34, 58, 0.62)',
-        cardBorder: 'rgba(148, 163, 184, 0.28)',
-        textMain: '#F8FAFC',
-        textDim: '#94A3B8',
-        dayCellBorder: 'rgba(148, 163, 184, 0.16)',
-        todayBg: 'rgba(37, 99, 235, 0.18)',
-        offRangeBg: 'rgba(9, 18, 34, 0.54)',
-        offRangeText: 'rgba(148, 163, 184, 0.70)',
-        headerBorder: 'rgba(100, 116, 139, 0.28)',
-        weekCellBg: 'rgba(22, 34, 58, 0.72)'
-    },
-    light: {
-        background: '#F1F5F9',
-        panelBg: 'rgba(255, 255, 255, 0.82)',
-        cardBg: 'rgba(255, 255, 255, 0.80)',
-        cardBorder: 'rgba(15, 23, 42, 0.14)',
-        textMain: '#0B1426',
-        textDim: '#475569',
-        dayCellBorder: 'rgba(15, 23, 42, 0.10)',
-        todayBg: 'rgba(37, 99, 235, 0.12)',
-        offRangeBg: 'rgba(241, 245, 249, 0.75)',
-        offRangeText: 'rgba(71, 85, 105, 0.80)',
-        headerBorder: 'rgba(15, 23, 42, 0.14)',
-        weekCellBg: 'rgba(255, 255, 255, 0.88)'
-    }
-};
-
-const ORIGAMI_ACTIVITY_COLORS: Record<'dark' | 'light', Record<ActivityBrandType, string>> = {
-    dark: {
-        run: '#38BDF8',
-        cycling: '#2563EB',
-        workout: '#8B5CF6',
-        virtual: '#0EA5E9',
-        default: '#3B82F6'
-    },
-    light: {
-        run: '#0C4A6E',
-        cycling: '#1D4ED8',
-        workout: '#6D28D9',
-        virtual: '#0369A1',
-        default: '#1E40AF'
-    }
-};
-
-const resolveActivityBrandType = (sportType?: string, title?: string): ActivityBrandType => {
-    const token = `${sportType || ''} ${title || ''}`.toLowerCase();
-    if (token.includes('virtualride') || token.includes('virtual ride') || token.includes('virtual') || token.includes('indoor') || token.includes('trainer') || token.includes('zwift')) return 'virtual';
-    if (token.includes('gym') || token.includes('strength') || token.includes('workout')) return 'workout';
-    if (token.includes('run')) return 'run';
-    if (token.includes('cycl') || token.includes('bike') || token.includes('ride') || token.includes('gravel')) return 'cycling';
-    return 'default';
-};
-
-const resolveActivityAccentColor = (activityColors: Record<ActivityBrandType, string>, sportType?: string, title?: string) => {
-    return activityColors[resolveActivityBrandType(sportType, title)];
-};
-
-const resolveActivityPillLabel = (sportType?: string, title?: string) => {
-    const kind = resolveActivityBrandType(sportType, title);
-    if (kind === 'virtual') return 'Virtual Ride';
-    if (kind === 'workout') return 'Workout';
-    if (kind === 'run') return 'Run';
-    if (kind === 'cycling') return 'Ride';
-    return 'Session';
-};
-
-const resolveWeekAccentColor = (rows: CalendarEvent[], activityColors: Record<ActivityBrandType, string>) => {
-    if (!rows.length) return activityColors.default;
-    const counts: Record<ActivityBrandType, number> = {
-        run: 0,
-        cycling: 0,
-        workout: 0,
-        virtual: 0,
-        default: 0
-    };
-    rows.forEach((row) => {
-        const key = resolveActivityBrandType(row.sport_type, row.title);
-        counts[key] += 1;
-    });
-    const dominant = (Object.keys(counts) as ActivityBrandType[]).sort((a, b) => counts[b] - counts[a])[0] || 'default';
-    return activityColors[dominant];
-};
-
-const SportIcon = ({ sport, size=16 }: { sport: string, size?: number }) => {
-    const s = sport.toLowerCase();
-    if (s.includes('cycl') || s.includes('bike') || s.includes('ride')) return <Bike size={size} />;
-    if (s.includes('run')) return <Footprints size={size} />;
-    return <Activity size={size} />;
-};
 
 const StatusBadge = ({ status }: { status?: string }) => {
     if (!status || status === 'planned') return <Badge color="gray" variant="light" size="xs">Planned</Badge>;
