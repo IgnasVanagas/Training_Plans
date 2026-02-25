@@ -96,6 +96,7 @@ class Profile(Base):
     gender = Column(String(10), nullable=True)
     birth_date = Column(Date, nullable=True)
     weight = Column(Float, nullable=True)
+    hrv_ms = Column(Float, nullable=True)
     ftp = Column(Float, nullable=True)
     lt2 = Column(Float, nullable=True)  # Lactate Threshold 2
     max_hr = Column(Float, nullable=True)

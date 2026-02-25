@@ -16,13 +16,18 @@ import {
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
 import { IntegrationsPanel } from "../IntegrationsPanel";
-import type { ProviderStatus } from "../../api/integrations";
+import {
+  getStravaImportPreferences,
+  setStravaImportPreferences,
+  type ProviderStatus,
+  type StravaImportPreferences,
+} from "../../api/integrations";
 
 type Profile = {
   first_name?: string | null;
   last_name?: string | null;
   birth_date?: string | Date | null;
-  weight?: number | null;
+  hrv_ms?: number | null;
   ftp?: number | null;
   lt2?: number | null;
   max_hr?: number | null;
@@ -84,6 +89,9 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
   const [profile, setProfile] = useState<Profile>(initialProfile || {});
   const [zoneSport, setZoneSport] = useState<'running' | 'cycling'>('running');
   const [zoneMetric, setZoneMetric] = useState<'hr' | 'pace' | 'power'>('hr');
+  const [stravaImportPrefs, setStravaImportPrefs] = useState<StravaImportPreferences | null>(null);
+  const [stravaPrefsLoading, setStravaPrefsLoading] = useState(false);
+  const [stravaPrefsSaving, setStravaPrefsSaving] = useState(false);
 
   useEffect(() => {
     if (zoneSport === 'running' && zoneMetric === 'power') {
@@ -93,6 +101,36 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
       setZoneMetric('power');
     }
   }, [zoneSport, zoneMetric]);
+
+  const stravaProvider = (providers || []).find((provider) => provider.provider === 'strava');
+  const stravaConnected = stravaProvider?.connection_status === 'connected';
+
+  useEffect(() => {
+    let active = true;
+    if (!stravaConnected) {
+      setStravaImportPrefs(null);
+      return;
+    }
+
+    setStravaPrefsLoading(true);
+    void getStravaImportPreferences()
+      .then((prefs) => {
+        if (!active) return;
+        setStravaImportPrefs(prefs);
+      })
+      .catch(() => {
+        if (!active) return;
+        setStravaImportPrefs(null);
+      })
+      .finally(() => {
+        if (!active) return;
+        setStravaPrefsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [stravaConnected]);
   
   const handleChange = (field: keyof Profile, value: any) => {
     setProfile(p => ({ ...p, [field]: value }));
@@ -262,19 +300,14 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
                     />
                     <SimpleGrid cols={2}>
                         <NumberInput
-                            label="Weight (kg)"
-                            value={profile.weight ?? ''}
-                            onChange={(val) => handleChange('weight', val)}
+                        label="HRV (ms)"
+                        value={profile.hrv_ms ?? ''}
+                        onChange={(val) => handleChange('hrv_ms', val)}
                         />
                         <NumberInput
-                            label="Resting Heart Rate"
+                        label="RHR (bpm)"
                             value={profile.resting_hr ?? ''}
                             onChange={(val) => handleChange('resting_hr', val)}
-                        />
-                        <NumberInput
-                            label="Max Heart Rate"
-                            value={profile.max_hr ?? ''}
-                            onChange={(val) => handleChange('max_hr', val)}
                         />
                         <NumberInput
                             label="FTP (Watts)"
@@ -375,7 +408,7 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
         <Group justify="flex-end" mt="lg">
           <Button onClick={() => {
         const payload: Profile = { ...profile };
-        (['weight', 'ftp', 'lt2', 'max_hr', 'resting_hr'] as const).forEach(key => {
+        (['hrv_ms', 'ftp', 'lt2', 'max_hr', 'resting_hr'] as const).forEach(key => {
           if (payload[key] == null) {
                 (payload[key] as any) = null;
             }
@@ -445,6 +478,53 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
             checked={profile.auto_sync_integrations !== false}
             onChange={(event) => handleChange('auto_sync_integrations', event.currentTarget.checked)}
           />
+
+          <Paper withBorder p="sm" radius="sm" mb="md">
+            <Stack gap={6}>
+              <Switch
+                label="Strava detail backfill: import all-time history"
+                description={
+                  stravaImportPrefs
+                    ? `When off, full-detail backfill focuses on the last ${stravaImportPrefs.default_window_days} days. Runs in background with daily API cap ${stravaImportPrefs.daily_request_limit}.`
+                    : "Runs in background in small batches with request limits."
+                }
+                checked={Boolean(stravaImportPrefs?.import_all_time)}
+                disabled={!stravaConnected || stravaPrefsLoading || stravaPrefsSaving}
+                onChange={(event) => {
+                  const next = event.currentTarget.checked;
+                  setStravaPrefsSaving(true);
+                  void setStravaImportPreferences({ import_all_time: next })
+                    .then((prefs) => {
+                      setStravaImportPrefs(prefs);
+                      notifications.show({
+                        color: 'teal',
+                        title: 'Strava import preference saved',
+                        message: next
+                          ? 'All-time detail backfill enabled. Sync runs in background batches.'
+                          : `Detail backfill set to last ${prefs.default_window_days} days.`,
+                      });
+                      if (onSync) {
+                        onSync('strava');
+                      }
+                    })
+                    .catch(() => {
+                      notifications.show({
+                        color: 'red',
+                        title: 'Unable to save Strava preference',
+                        message: 'Please try again.',
+                      });
+                    })
+                    .finally(() => {
+                      setStravaPrefsSaving(false);
+                    });
+                }}
+              />
+              {!stravaConnected && (
+                <Text size="xs" c="dimmed">Connect Strava to configure detail backfill scope.</Text>
+              )}
+            </Stack>
+          </Paper>
+
           <IntegrationsPanel
             providers={providers || []}
             connectingProvider={connectingProvider}

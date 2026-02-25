@@ -32,6 +32,7 @@ class ProfileOut(BaseModel):
     birth_date: Optional[dt_date] = None
     gender: Optional[str] = None
     weight: Optional[float] = None
+    hrv_ms: Optional[float] = None
     ftp: Optional[float] = None
     lt2: Optional[float] = None
     max_hr: Optional[float] = None
@@ -80,6 +81,7 @@ class ProfileUpdate(BaseModel):
     last_name: Optional[str] = None
     birth_date: Optional[dt_date] = None
     weight: Optional[float] = None
+    hrv_ms: Optional[float] = None
     ftp: Optional[float] = None
     lt2: Optional[float] = None
     max_hr: Optional[float] = None
@@ -462,6 +464,22 @@ class BridgeSleepIn(BaseModel):
     start_time: datetime
     end_time: datetime
     quality_score: Optional[float] = None
+
+
+class ManualWellnessIn(BaseModel):
+    date: dt_date
+    hrv_ms: Optional[float] = None
+    resting_hr: Optional[float] = None
+
+
+class StravaImportPreferencesIn(BaseModel):
+    import_all_time: bool
+
+
+class StravaImportPreferencesOut(BaseModel):
+    import_all_time: bool
+    default_window_days: int
+    daily_request_limit: int
 
 
 class WellnessSummaryOut(BaseModel):

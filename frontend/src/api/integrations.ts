@@ -38,6 +38,18 @@ export type WellnessSummary = {
   stress?: { value: number; date: string; provider: string } | null;
 };
 
+export type ManualWellnessEntry = {
+  date: string;
+  hrv_ms?: number;
+  resting_hr?: number;
+};
+
+export type StravaImportPreferences = {
+  import_all_time: boolean;
+  default_window_days: number;
+  daily_request_limit: number;
+};
+
 export const listIntegrationProviders = async (): Promise<ProviderStatus[]> => {
   const response = await client.get<ProviderStatus[]>("/integrations/providers");
   return response.data;
@@ -65,5 +77,20 @@ export const getIntegrationSyncStatus = async (provider: string): Promise<Provid
 
 export const getWellnessSummary = async (): Promise<WellnessSummary> => {
   const response = await client.get<WellnessSummary>("/integrations/wellness/summary");
+  return response.data;
+};
+
+export const logManualWellness = async (payload: ManualWellnessEntry): Promise<{ updated: Record<string, number> }> => {
+  const response = await client.post<{ updated: Record<string, number> }>("/integrations/wellness/manual", payload);
+  return response.data;
+};
+
+export const getStravaImportPreferences = async (): Promise<StravaImportPreferences> => {
+  const response = await client.get<StravaImportPreferences>("/integrations/strava/import-preferences");
+  return response.data;
+};
+
+export const setStravaImportPreferences = async (payload: { import_all_time: boolean }): Promise<StravaImportPreferences> => {
+  const response = await client.post<StravaImportPreferences>("/integrations/strava/import-preferences", payload);
   return response.data;
 };

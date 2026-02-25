@@ -14,7 +14,8 @@ import {
 	Table,
 	Text,
 	TextInput,
-	Textarea
+	Textarea,
+	useComputedColorScheme
 } from '@mantine/core';
 import { ChevronDown, ChevronRight, Clock3, GripVertical, Info, Minus, Plus, Route, Rows3, Trash2, Zap } from 'lucide-react';
 import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
@@ -74,6 +75,13 @@ export const WorkoutEditor = ({
 	athleteName,
 	athleteProfile
 }: WorkoutEditorProps) => {
+	const isDark = useComputedColorScheme('light') === 'dark';
+	const panelBg = isDark ? 'rgba(8, 18, 38, 0.72)' : 'rgba(255, 255, 255, 0.9)';
+	const cardBg = isDark ? 'rgba(22, 34, 58, 0.62)' : 'rgba(255, 255, 255, 0.92)';
+	const cardBorder = isDark ? 'rgba(148, 163, 184, 0.26)' : 'rgba(15, 23, 42, 0.14)';
+	const accentPrimary = '#E95A12';
+	const accentSecondary = '#6E4BF3';
+	const textDim = isDark ? '#94A3B8' : '#475569';
 	const totals = useMemo(() => estimateTotals(structure), [structure]);
 	const blocks = useMemo(() => flattenBlocks(structure), [structure]);
 	const [zoneView, setZoneView] = useState<'power' | 'heart_rate_zone' | 'pace'>('power');
@@ -237,10 +245,10 @@ export const WorkoutEditor = ({
 				key={step.id}
 				withBorder
 				p="sm"
-				radius={4}
-				bg="var(--mantine-color-default)"
+				radius="md"
+				bg={cardBg}
 				onClick={() => setActiveStepId(step.id)}
-				style={{ border: '1px solid #0F172A', borderLeft: `8px solid ${edgeColorFromZone(zoneValue)}`, boxShadow: isActive ? '0 0 0 2px rgba(244, 63, 94, 0.2)' : undefined, transition: 'box-shadow 160ms ease, transform 120ms ease' }}
+				style={{ border: `1px solid ${cardBorder}`, borderLeft: `6px solid ${edgeColorFromZone(zoneValue)}`, boxShadow: isActive ? `0 0 0 2px ${isDark ? 'rgba(233, 90, 18, 0.35)' : 'rgba(233, 90, 18, 0.2)'}` : undefined, transition: 'box-shadow 160ms ease, transform 120ms ease' }}
 			>
 				<Stack gap="sm">
 					<Group justify="space-between" align="center">
@@ -249,11 +257,11 @@ export const WorkoutEditor = ({
 								ref={dragHandle?.setActivatorNodeRef}
 								{...(dragHandle?.attributes || {})}
 								{...(dragHandle?.listeners || {})}
-								style={{ width: 18, height: 24, borderRadius: 4, cursor: dragHandle ? 'grab' : 'default', border: '1px solid var(--mantine-color-gray-4)', background: 'repeating-linear-gradient(180deg, var(--mantine-color-gray-4), var(--mantine-color-gray-4) 2px, transparent 2px, transparent 4px)' }}
+								style={{ width: 18, height: 24, borderRadius: 4, cursor: dragHandle ? 'grab' : 'default', border: `1px solid ${cardBorder}`, background: isDark ? 'rgba(51,65,85,0.6)' : 'rgba(241,245,249,0.9)' }}
 							>
-								<GripVertical size={12} style={{ margin: 5, color: 'var(--mantine-color-gray-6)' }} />
+								<GripVertical size={12} style={{ margin: 5, color: textDim }} />
 							</Box>
-							<Rows3 size={14} color="var(--mantine-color-gray-6)" />
+							<Rows3 size={14} color={textDim} />
 							<Select
 								size="xs"
 								variant="unstyled"
@@ -316,7 +324,7 @@ export const WorkoutEditor = ({
 	const renderNode = (node: WorkoutNode, index: number, nodes: WorkoutNode[], onNodesChange: (nextNodes: WorkoutNode[]) => void, dragHandle?: DragHandleProps): React.ReactNode => {
 		if (node.type === 'repeat') {
 			return (
-				<Paper key={node.id} withBorder p="sm" radius={4} bg="var(--mantine-color-default)" style={{ border: '1px solid #0F172A', borderLeft: '8px solid var(--mantine-color-violet-5)' }}>
+				<Paper key={node.id} withBorder p="sm" radius="md" bg={cardBg} style={{ border: `1px solid ${cardBorder}`, borderLeft: `6px solid ${accentSecondary}` }}>
 					<Stack gap="sm">
 						<Group justify="space-between" align="center">
 							<Group gap="xs" align="center">
@@ -326,9 +334,9 @@ export const WorkoutEditor = ({
 								<Text size="sm" fw={600}>Repeat Block</Text>
 							</Group>
 							<Group gap="xs">
-								<ActionIcon variant="light" onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, repeats: Math.max(1, node.repeats - 1) }))}><Minus size={14} /></ActionIcon>
-								<Badge color="dark" variant="filled">{node.repeats}</Badge>
-								<ActionIcon variant="light" onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, repeats: node.repeats + 1 }))}><Plus size={14} /></ActionIcon>
+								<ActionIcon variant="subtle" onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, repeats: Math.max(1, node.repeats - 1) }))}><Minus size={14} /></ActionIcon>
+								<Badge variant="light" style={{ background: isDark ? 'rgba(110, 75, 243, 0.18)' : 'rgba(110, 75, 243, 0.10)', color: accentSecondary }}>{node.repeats}</Badge>
+								<ActionIcon variant="subtle" onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, repeats: node.repeats + 1 }))}><Plus size={14} /></ActionIcon>
 								<ActionIcon variant="subtle" color="red" onClick={() => onNodesChange(removeNodeAt(nodes, index))}><Trash2 size={16} /></ActionIcon>
 							</Group>
 						</Group>
@@ -336,7 +344,7 @@ export const WorkoutEditor = ({
 							{node.steps.map((nestedNode, nestedIndex) => renderNode(nestedNode, nestedIndex, node.steps, (nextNestedSteps) => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: nextNestedSteps }))))}
 						</Stack>
 						<Group justify="flex-end">
-							<Button size="xs" variant="subtle" leftSection={<Plus size={14} />} onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: [...node.steps, createDefaultBlock('work')] }))}>Add Step</Button>
+							<Button size="xs" variant="subtle" c={accentPrimary} leftSection={<Plus size={14} />} onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: [...node.steps, createDefaultBlock('work')] }))}>Add Step</Button>
 						</Group>
 					</Stack>
 				</Paper>
@@ -348,7 +356,7 @@ export const WorkoutEditor = ({
 	const sectionOrder: StepCategory[] = ['warmup', 'work', 'recovery', 'cooldown'];
 
 	return (
-		<Paper bg="var(--mantine-color-body)" p="md" radius={4} withBorder>
+		<Paper bg={panelBg} p="md" radius="md" withBorder style={{ borderColor: cardBorder, fontFamily: '"Inter", sans-serif' }}>
 			<Group align="flex-start" wrap="wrap" gap="md">
 				<Box style={{ flex: 1, minWidth: 0 }}>
 					<Stack gap="md">
@@ -365,9 +373,9 @@ export const WorkoutEditor = ({
 						</Group>
 
 						<Group justify="space-between" align="center" mt={4}>
-							<Group gap="xs"><Info size={14} color="var(--mantine-color-gray-6)" /><Text size="sm" c="dimmed">Select a block, then click a zone for instant fill.</Text></Group>
+							<Group gap="xs"><Info size={14} color={textDim} /><Text size="sm" c="dimmed">Select a block, then click a zone for instant fill.</Text></Group>
 							<Menu shadow="md" width={180}>
-								<Menu.Target><Button variant="light" size="xs" leftSection={<Plus size={14} />}>Add</Button></Menu.Target>
+								<Menu.Target><Button variant="subtle" size="xs" c={accentPrimary} leftSection={<Plus size={14} />}>Add</Button></Menu.Target>
 								<Menu.Dropdown>
 									<Menu.Item onClick={() => addNode(createDefaultBlock('warmup'))}>Warm Up</Menu.Item>
 									<Menu.Item onClick={() => addNode(createDefaultBlock('work'))}>Main Set</Menu.Item>
@@ -379,11 +387,11 @@ export const WorkoutEditor = ({
 						</Group>
 
 						{structure.length === 0 ? (
-							<Paper withBorder p="lg" bg="var(--mantine-color-default)" radius={4}>
+							<Paper withBorder p="lg" bg={cardBg} radius="md" style={{ borderColor: cardBorder }}>
 								<Stack align="center" gap="xs">
 									<Text c="dimmed" size="sm">No blocks yet</Text>
 									<Menu shadow="md" width={220}>
-										<Menu.Target><Button size="xs" variant="light">Create starter structure</Button></Menu.Target>
+										<Menu.Target><Button size="xs" variant="subtle" c={accentPrimary}>Create starter structure</Button></Menu.Target>
 										<Menu.Dropdown>
 											<Menu.Item onClick={() => onChange(createStarterPreset('endurance'))}>Endurance Base</Menu.Item>
 											<Menu.Item onClick={() => onChange(createStarterPreset('intervals'))}>5x3 min Intervals</Menu.Item>
@@ -400,7 +408,7 @@ export const WorkoutEditor = ({
 											const sectionNodes = structure.filter((node) => nodeCategory(node) === section);
 											if (!sectionNodes.length) return null;
 											return (
-												<Paper key={`section-${section}`} radius={4} p="xs" withBorder style={{ background: sectionHeaderTint[section] }}>
+													<Paper key={`section-${section}`} radius="md" p="xs" withBorder style={{ background: sectionHeaderTint[section], borderColor: cardBorder }}>
 													<Group justify="space-between" mb={6}>
 														<Group gap={6}>
 															<ActionIcon size="sm" variant="subtle" onClick={() => setCollapsedSections((prev) => ({ ...prev, [section]: !prev[section] }))}>
@@ -408,7 +416,7 @@ export const WorkoutEditor = ({
 															</ActionIcon>
 															<Text size="sm" fw={700}>{sectionHeaderText[section]}</Text>
 														</Group>
-														<Badge variant="light" radius={4}>{sectionNodes.length}</Badge>
+														<Badge variant="light" radius={4} style={{ color: isDark ? '#E2E8F0' : '#334155' }}>{sectionNodes.length}</Badge>
 													</Group>
 													{!collapsedSections[section] && (
 														<Stack gap="xs">
@@ -430,13 +438,13 @@ export const WorkoutEditor = ({
 							</DndContext>
 						)}
 
-						<Paper withBorder p="sm" bg="var(--mantine-color-default)" radius={4}>
+						<Paper withBorder p="sm" bg={cardBg} radius="md" style={{ borderColor: cardBorder }}>
 							<Group justify="space-between" mb={6}>
 								<Text size="sm">Estimate <Text span fw={700}>{formatSecondsHm(totals.totalSeconds)}</Text> <Text span fw={700}>{totals.totalDistanceKm.toFixed(2)} km</Text></Text>
 								<Text size="xs" fw={600}>Structured Workout Preview</Text>
 							</Group>
 							<svg width="100%" viewBox="0 0 600 90" preserveAspectRatio="none" aria-label="Structured Workout Preview">
-								<rect x="0" y="0" width="600" height="90" fill="var(--mantine-color-gray-0)" />
+								<rect x="0" y="0" width="600" height="90" fill={isDark ? 'rgba(15,23,42,0.65)' : 'rgba(241,245,249,0.9)'} />
 								{profileBars.map((bar, idx) => <rect key={`preview-${idx}`} x={bar.x} y={90 - bar.height} width={Math.max(2, bar.width - 1)} height={bar.height} fill={bar.color} rx="2" />)}
 							</svg>
 						</Paper>
@@ -444,13 +452,13 @@ export const WorkoutEditor = ({
 				</Box>
 
 				<Box style={{ flex: '1 1 320px', minWidth: 280, maxWidth: 360, width: '100%' }}>
-					<Card withBorder padding="sm" radius={4} bg="var(--mantine-color-default)" style={{ position: 'sticky', top: 12, boxShadow: '0 8px 20px rgba(15, 23, 42, 0.08)' }}>
+					<Card withBorder padding="sm" radius="md" bg={cardBg} style={{ position: 'sticky', top: 12, boxShadow: isDark ? '0 12px 24px -20px rgba(2,6,23,0.9)' : '0 8px 20px rgba(15, 23, 42, 0.08)', borderColor: cardBorder }}>
 						<Stack gap={8}>
 							<Group justify="space-between"><Text fw={700} size="sm">Athlete Statistics</Text><Text size="xs" c="dimmed">{athleteName || 'Selected athlete'}</Text></Group>
 							<Group gap="xs" wrap="wrap">
-								{normalizedSport === 'cycling' && <Badge variant="filled" radius={4} style={{ background: 'var(--mantine-color-pink-6)' }}>FTP: {athleteProfile?.ftp ?? '-'}</Badge>}
-								{normalizedSport === 'running' && <Badge variant="light" color="teal">LT2: {athleteProfile?.lt2 ? `${athleteProfile.lt2.toFixed(2)} min/km` : '-'}</Badge>}
-								<Badge variant="filled" radius={4} style={{ background: 'var(--mantine-color-orange-6)' }}>Max HR: {athleteProfile?.max_hr ?? '-'}</Badge>
+								{normalizedSport === 'cycling' && <Badge variant="light" radius={4} style={{ background: isDark ? 'rgba(110, 75, 243, 0.2)' : 'rgba(110, 75, 243, 0.1)', color: accentSecondary }}>FTP: {athleteProfile?.ftp ?? '-'}</Badge>}
+								{normalizedSport === 'running' && <Badge variant="light" style={{ background: isDark ? 'rgba(233, 90, 18, 0.2)' : 'rgba(233, 90, 18, 0.1)', color: accentPrimary }}>LT2: {athleteProfile?.lt2 ? `${athleteProfile.lt2.toFixed(2)} min/km` : '-'}</Badge>}
+								<Badge variant="light" radius={4} style={{ background: isDark ? 'rgba(233, 90, 18, 0.2)' : 'rgba(233, 90, 18, 0.1)', color: accentPrimary }}>Max HR: {athleteProfile?.max_hr ?? '-'}</Badge>
 								<Badge variant="light" color="gray">Weight: {athleteProfile?.weight ?? '-'} kg</Badge>
 							</Group>
 							<Group justify="space-between" align="center" mt={2}>
@@ -462,7 +470,7 @@ export const WorkoutEditor = ({
 								<Table withTableBorder withColumnBorders horizontalSpacing="xs" verticalSpacing={4}>
 									<Table.Tbody>
 										{(effectiveZoneView === 'power' ? pZones : effectiveZoneView === 'pace' ? paceZones : hZones).map((row) => (
-											<Table.Tr key={`${effectiveZoneView}-${row.zone}`} onClick={() => applyZoneToCurrentStep(row)} style={{ cursor: activeStepId ? 'pointer' : 'not-allowed', background: activeStepId ? 'rgba(244, 63, 94, 0.06)' : undefined }}>
+											<Table.Tr key={`${effectiveZoneView}-${row.zone}`} onClick={() => applyZoneToCurrentStep(row)} style={{ cursor: activeStepId ? 'pointer' : 'not-allowed', background: activeStepId ? (isDark ? 'rgba(233, 90, 18, 0.10)' : 'rgba(233, 90, 18, 0.06)') : undefined }}>
 												<Table.Td><Text size="10px" fw={700}>Z{row.zone}</Text></Table.Td>
 												<Table.Td><Text size="10px">{row.label}</Text></Table.Td>
 											</Table.Tr>

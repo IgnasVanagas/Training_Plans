@@ -55,6 +55,16 @@ export const ActivityDetailPage = () => {
     const location = useLocation();
     const queryClient = useQueryClient();
     const isDark = useComputedColorScheme('light') === 'dark';
+    const ui = useMemo(() => ({
+        pageBg: isDark ? '#081226' : '#F4F7FC',
+        headerBg: isDark ? '#0E1A30' : '#FFFFFF',
+        surface: isDark ? '#12223E' : '#FFFFFF',
+        surfaceAlt: isDark ? '#182B4B' : '#F8FAFF',
+        border: isDark ? 'rgba(148,163,184,0.28)' : '#DCE6F7',
+        textMain: isDark ? '#E2E8F0' : '#0F172A',
+        textDim: isDark ? '#9FB0C8' : '#52617A',
+        accent: '#E95A12'
+    }), [isDark]);
     const [graphMode, setGraphMode] = useState<'standard' | 'power_curve' | 'hr_zones' | 'pace_zones' | 'power_zones'>('standard');
     const [splitMode, setSplitMode] = useState<'metric' | 'laps'>('metric');
     const [focusMode, setFocusMode] = useState(false);
@@ -83,6 +93,7 @@ export const ActivityDetailPage = () => {
     const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { lactate_mmol_l: number | null; note: string }>>({});
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [showDangerZone, setShowDangerZone] = useState(false);
     const [zoneInfoOpen, setZoneInfoOpen] = useState(false);
     const [zoneInfoTitle, setZoneInfoTitle] = useState('');
     const [zoneInfoBody, setZoneInfoBody] = useState('');
@@ -656,85 +667,104 @@ export const ActivityDetailPage = () => {
 
     return (
         <AppShell header={{ height: 60 }} padding="md">
-            <AppShell.Header p="md">
+            <AppShell.Header
+                p="md"
+                style={{
+                    background: ui.headerBg,
+                    borderBottom: `1px solid ${ui.border}`
+                }}
+            >
                 <Group>
-                    <ActionIcon variant="light" onClick={handleBack}><IconArrowLeft /></ActionIcon>
-                    <Title order={4}>{activity.filename}</Title>
-                    <Badge color={activity.sport === 'running' ? 'green' : 'blue'}>{activity.sport || 'activity'}</Badge>
+                    <ActionIcon variant="subtle" onClick={handleBack} radius="md" color="gray"><IconArrowLeft size={18} /></ActionIcon>
+                    <Title order={4} c={ui.textMain}>{activity.filename}</Title>
+                    <Badge color={activity.sport === 'running' ? 'green' : 'blue'} variant="light">{activity.sport || 'activity'}</Badge>
                     {activity.is_deleted && <Badge color="red" variant="light">Deleted</Badge>}
-                    {canDeleteActivity && (
-                        <Button
-                            color="red"
-                            variant="light"
-                            size="xs"
-                            onClick={() => {
-                                setDeleteConfirmText('');
-                                setDeleteConfirmOpen(true);
-                            }}
-                        >
-                            Delete Activity
-                        </Button>
-                    )}
                 </Group>
             </AppShell.Header>
-            <AppShell.Main bg="var(--mantine-color-body)">
-                <Container size="xl">
+            <AppShell.Main bg={ui.pageBg}>
+                <Container size="xl" py="sm">
                     {completionPulse && (
-                        <Paper withBorder p="sm" mb="md" bg={isDark ? 'rgba(124,255,178,0.1)' : 'green.0'}>
+                        <Paper withBorder p="sm" mb="md" bg={isDark ? 'rgba(124,255,178,0.1)' : 'green.0'} style={{ borderColor: ui.border }} radius="lg">
                             <Group justify="space-between">
                                 <Text fw={600} size="sm">Workout complete</Text>
                                 <Text size="xs" c="dimmed">Planned vs actual is ready to review</Text>
                             </Group>
                         </Paper>
                     )}
-                    <SimpleGrid cols={{ base: 1, md: 4 }} mb="lg">
-                        <Card withBorder padding="lg">
+                    <SimpleGrid cols={{ base: 1, md: 4 }} mb="md" spacing="sm" verticalSpacing="sm">
+                        <Card
+                            withBorder
+                            padding="lg"
+                            radius="lg"
+                            bg={ui.surfaceAlt}
+                            style={{ borderColor: ui.border }}
+                        >
                             <ThemeIcon size="lg" radius="md" variant="light" color="blue" mb="xs">
                                 <IconMap size={20} />
                             </ThemeIcon>
                             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Distance</Text>
-                            <Text size="xl" fw={700}>
+                            <Text size="xl" fw={800} c={ui.textMain}>
                                 {me?.profile?.preferred_units === 'imperial' 
                                     ? <>{(activity.distance * 0.000621371).toFixed(2)} mi</>
                                     : <>{(activity.distance / 1000).toFixed(2)} km</>
                                 }
                             </Text>
                         </Card>
-                        <Card withBorder padding="lg">
+                        <Card
+                            withBorder
+                            padding="lg"
+                            radius="lg"
+                            bg={ui.surfaceAlt}
+                            style={{ borderColor: ui.border }}
+                        >
                             <ThemeIcon size="lg" radius="md" variant="light" color="yellow" mb="xs">
                                 <IconClock size={20} />
                             </ThemeIcon>
                             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Duration</Text>
-                            <Text size="xl" fw={700}>{formatDuration(activity.duration)}</Text>
+                            <Text size="xl" fw={800} c={ui.textMain}>{formatDuration(activity.duration)}</Text>
                         </Card>
-                         <Card withBorder padding="lg">
+                         <Card
+                            withBorder
+                            padding="lg"
+                            radius="lg"
+                            bg={ui.surfaceAlt}
+                            style={{ borderColor: ui.border }}
+                        >
                             <ThemeIcon size="lg" radius="md" variant="light" color={activity.sport === 'running' ? "cyan" : "orange"} mb="xs">
                                 {activity.sport === 'running' ? <IconActivity size={20} /> : <IconBolt size={20} />}
                             </ThemeIcon>
                             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>{activity.sport === 'running' ? 'Avg Pace' : 'Avg Power'}</Text>
-                            <Text size="xl" fw={700}>
+                            <Text size="xl" fw={800} c={ui.textMain}>
                                 {activity.sport === 'running' 
                                     ? formatPace(activity.avg_speed).replace('/km', '')
                                     : (activity.average_watts ? activity.average_watts.toFixed(0) + ' W' : '-')}
                             </Text>
                         </Card>
-                         <Card withBorder padding="lg">
+                         <Card
+                            withBorder
+                            padding="lg"
+                            radius="lg"
+                            bg={ui.surfaceAlt}
+                            style={{ borderColor: ui.border }}
+                        >
                             <ThemeIcon size="lg" radius="md" variant="light" color="red" mb="xs">
                                 <IconHeart size={20} />
                             </ThemeIcon>
                             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Avg HR</Text>
-                            <Text size="xl" fw={700}>{activity.average_hr?.toFixed(0) || '-'} bpm</Text>
+                            <Text size="xl" fw={800} c={ui.textMain}>{activity.average_hr?.toFixed(0) || '-'} bpm</Text>
                         </Card>
                     </SimpleGrid>
 
-                    <Paper withBorder p="md" radius="md" mb="lg">
+                    <Paper withBorder p="md" radius="lg" mb="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
                         <Group justify="space-between" align="flex-start" mb="sm">
                             <Stack gap={2}>
-                                <Title order={5}>Session Feedback</Title>
-                                <Text size="xs" c="dimmed">Keep it short: RPE and one note. Coaches can update this too.</Text>
+                                <Title order={5} c={ui.textMain}>Session Feedback</Title>
+                                <Text size="xs" c={ui.textDim}>Keep it short: RPE and one note. Coaches can update this too.</Text>
                             </Stack>
                             <Button
                                 size="xs"
+                                radius="md"
+                                style={{ background: ui.accent }}
                                 loading={updateActivityMutation.isPending}
                                 onClick={() => {
                                     updateActivityMutation.mutate({
@@ -766,15 +796,15 @@ export const ActivityDetailPage = () => {
                         </Group>
                     </Paper>
 
-                    <Grid gutter="lg">
+                    <Grid gutter="sm">
                         <Grid.Col span={{ base: 12, md: 8 }}>
-                             <Stack gap="lg">
+                             <Stack gap="sm">
                                 {/* Charts Section */}
-                                <Paper withBorder p="md" radius="md">
+                                <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
                                     <Group justify="space-between" mb="md">
                                         <Stack gap={4}>
-                                            <Title order={5}>Analysis</Title>
-                                            {focusMode && <Text size="xs" c="dimmed">Focus mode keeps only key signals for this review objective.</Text>}
+                                            <Title order={5} c={ui.textMain}>Analysis</Title>
+                                            {focusMode && <Text size="xs" c={ui.textDim}>Focus mode keeps only key signals for this review objective.</Text>}
                                         </Stack>
                                         <Group>
                                             <Select
@@ -795,7 +825,8 @@ export const ActivityDetailPage = () => {
                                                 label="Focus Mode"
                                             />
                                         </Group>
-                                        <SegmentedControl 
+                                        <SegmentedControl
+                                            radius="md"
                                             value={graphMode}
                                             onChange={(v: any) => setGraphMode(v)}
                                             data={[
@@ -808,7 +839,7 @@ export const ActivityDetailPage = () => {
                                         />
                                     </Group>
                                     
-                                    <Box w="100%" mih={300}>
+                                    <Box w="100%" mih={300} style={{ borderRadius: 12 }}>
                                         {graphMode === 'standard' && (
                                             <>
                                                 <Group mb="sm" gap="xs">
@@ -1027,11 +1058,12 @@ export const ActivityDetailPage = () => {
 
                                 {/* Splits Section */}
                                 {!focusMode && (activity.splits_metric?.length || activity.laps?.length) && (
-                                    <Paper withBorder p="md" radius="md">
+                                    <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
                                         <Group justify="space-between" mb="md">
-                                            <Title order={5}>Splits</Title>
+                                            <Title order={5} c={ui.textMain}>Splits</Title>
                                             <Group>
                                                 <SegmentedControl 
+                                                    radius="md"
                                                     value={splitMode}
                                                     onChange={(v: any) => setSplitMode(v)}
                                                     data={[
@@ -1045,7 +1077,7 @@ export const ActivityDetailPage = () => {
                                             </Group>
                                         </Group>
                                         <Group gap="xs" mb="sm" wrap="wrap">
-                                            <Text size="xs" c="dimmed" fw={600}>Visible stats:</Text>
+                                            <Text size="xs" c={ui.textDim} fw={700}>Visible stats:</Text>
                                             <Chip
                                                 size="xs"
                                                 checked={visibleSplitStats.distance}
@@ -1179,7 +1211,7 @@ export const ActivityDetailPage = () => {
                             <Stack>
                                 {/* Map */}
                                 {routePositions.length > 0 ? (
-                                    <Paper withBorder radius="md" style={{ overflow: "hidden" }} h={350}>
+                                    <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
                                         <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
                                             <TileLayer
                                                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -1192,24 +1224,25 @@ export const ActivityDetailPage = () => {
                                     <Paper
                                         withBorder
                                         p="xl"
-                                        radius="md"
+                                        radius="lg"
                                         h={200}
-                                        bg={isDark ? 'rgba(255, 255, 255, 0.04)' : 'gray.1'}
+                                        bg={ui.surface}
+                                        style={{ borderColor: ui.border }}
                                     >
                                         <Stack align="center" justify="center" h="100%">
                                             <IconMap size={40} color="gray" />
-                                            <Text c="dimmed">No map data available (Virtual Ride or Indoor)</Text>
+                                            <Text c={ui.textDim}>No map data available (Virtual Ride or Indoor)</Text>
                                         </Stack>
                                     </Paper>
                                 )}
                                 
                                 {/* Detailed Stats */}
-                                <Paper withBorder p="md" radius="md">
-                                    <Title order={5} mb="md">Detailed Stats</Title>
+                                <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                    <Title order={5} mb="md" c={ui.textMain}>Detailed Stats</Title>
                                     <Stack gap="xs">
                                          <Group justify="space-between">
-                                            <Text size="sm" c="dimmed">{activity.sport === 'running' ? 'Avg Pace' : 'Avg Speed'}</Text>
-                                            <Text size="sm" fw={500}>
+                                            <Text size="sm" c={ui.textDim}>{activity.sport === 'running' ? 'Avg Pace' : 'Avg Speed'}</Text>
+                                            <Text size="sm" fw={700} c={ui.textMain}>
                                                 {activity.sport === 'running' 
                                                     ? formatPace(activity.avg_speed)
                                                     : ((activity.avg_speed || 0) * 3.6).toFixed(1) + " km/h"}
@@ -1218,8 +1251,8 @@ export const ActivityDetailPage = () => {
                                          
                                          {activity.max_speed && (
                                             <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">{activity.sport === 'running' ? 'Max Pace' : 'Max Speed'}</Text>
-                                                <Text size="sm" fw={500}>
+                                                <Text size="sm" c={ui.textDim}>{activity.sport === 'running' ? 'Max Pace' : 'Max Speed'}</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>
                                                     {activity.sport === 'running' 
                                                         ? formatPace(activity.max_speed)
                                                         : (activity.max_speed * 3.6).toFixed(1) + " km/h"}
@@ -1229,50 +1262,50 @@ export const ActivityDetailPage = () => {
 
                                          {activity.average_hr && (
                                              <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Avg Heart Rate</Text>
-                                                <Text size="sm" fw={500}>{activity.average_hr.toFixed(0)} bpm</Text>
+                                                <Text size="sm" c={ui.textDim}>Avg Heart Rate</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.average_hr.toFixed(0)} bpm</Text>
                                              </Group>
                                          )}
                                           
                                          {activity.max_hr != null && (
                                              <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Max Heart Rate</Text>
-                                                <Text size="sm" fw={500}>{activity.max_hr.toFixed(0)} bpm</Text>
+                                                <Text size="sm" c={ui.textDim}>Max Heart Rate</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.max_hr.toFixed(0)} bpm</Text>
                                              </Group>
                                          )}
                                          
                                          {activity.total_elevation_gain != null && (
                                              <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Elevation Gain</Text>
-                                                <Text size="sm" fw={500}>{activity.total_elevation_gain.toFixed(0)} m</Text>
+                                                <Text size="sm" c={ui.textDim}>Elevation Gain</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.total_elevation_gain.toFixed(0)} m</Text>
                                              </Group>
                                          )}
                                          
                                          {activity.average_watts != null && activity.average_watts > 0 && (
                                              <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Avg Power</Text>
-                                                <Text size="sm" fw={500}>{activity.average_watts.toFixed(0)} W</Text>
+                                                <Text size="sm" c={ui.textDim}>Avg Power</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.average_watts.toFixed(0)} W</Text>
                                              </Group>
                                          )}
 
                                          {activity.max_watts != null && activity.max_watts > 0 && (
                                              <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Max Power</Text>
-                                                <Text size="sm" fw={500}>{activity.max_watts.toFixed(0)} W</Text>
+                                                <Text size="sm" c={ui.textDim}>Max Power</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.max_watts.toFixed(0)} W</Text>
                                              </Group>
                                          )}
 
                                          {isCyclingActivity && overallNormalizedPower != null && (
                                              <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Normalized Power</Text>
-                                                <Text size="sm" fw={500}>{overallNormalizedPower.toFixed(0)} W</Text>
+                                                <Text size="sm" c={ui.textDim}>Normalized Power</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{overallNormalizedPower.toFixed(0)} W</Text>
                                              </Group>
                                          )}
 
                                          {activity.avg_cadence != null && (
                                              <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Avg Cadence</Text>
-                                                <Text size="sm" fw={500}>
+                                                <Text size="sm" c={ui.textDim}>Avg Cadence</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>
                                                     {activity.sport === 'running' && activity.avg_cadence < 120 
                                                         ? (activity.avg_cadence * 2).toFixed(0) 
                                                         : activity.avg_cadence.toFixed(0)} {activity.sport === 'running' ? 'spm' : 'rpm'}
@@ -1282,8 +1315,8 @@ export const ActivityDetailPage = () => {
 
                                          {activity.max_cadence != null && (
                                              <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Max Cadence</Text>
-                                                <Text size="sm" fw={500}>
+                                                                <Text size="sm" c={ui.textDim}>Max Cadence</Text>
+                                                                <Text size="sm" fw={700} c={ui.textMain}>
                                                      {activity.sport === 'running' && activity.max_cadence < 120 
                                                         ? (activity.max_cadence * 2).toFixed(0) 
                                                         : activity.max_cadence.toFixed(0)} {activity.sport === 'running' ? 'spm' : 'rpm'}
@@ -1292,15 +1325,15 @@ export const ActivityDetailPage = () => {
                                          )}
 
                                           <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Calories</Text>
-                                                <Text size="sm" fw={500}>
+                                                <Text size="sm" c={ui.textDim}>Calories</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>
                                                     {activity.total_calories ? activity.total_calories.toFixed(0) : ((activity.average_watts || 0) * activity.duration / 1000 * 1.1).toFixed(0)} kcal (Est)
                                                 </Text>
                                           </Group>
 
                                          <Group justify="space-between">
-                                                <Text size="sm" c="dimmed">Load Impact</Text>
-                                                <Text size="sm" fw={500}>
+                                                <Text size="sm" c={ui.textDim}>Load Impact</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>
                                                     +{(activity.aerobic_load || 0).toFixed(1)} Aer · +{(activity.anaerobic_load || 0).toFixed(1)} Ana
                                                 </Text>
                                          </Group>
@@ -1309,6 +1342,39 @@ export const ActivityDetailPage = () => {
                             </Stack>
                         </Grid.Col>
                     </Grid>
+
+                    {canDeleteActivity && (
+                        <Paper withBorder p="sm" radius="lg" mt="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
+                            <Stack gap={6}>
+                                <Group justify="center">
+                                    <Button
+                                        variant="subtle"
+                                        size="compact-xs"
+                                        color="gray"
+                                        onClick={() => setShowDangerZone((prev) => !prev)}
+                                    >
+                                        {showDangerZone ? 'Hide Danger Zone' : 'Show Danger Zone'}
+                                    </Button>
+                                </Group>
+                                {showDangerZone && (
+                                    <Group justify="space-between" align="center" mt={4}>
+                                        <Text size="xs" c="dimmed">Delete this activity permanently.</Text>
+                                        <Button
+                                            color="red"
+                                            variant="light"
+                                            size="xs"
+                                            onClick={() => {
+                                                setDeleteConfirmText('');
+                                                setDeleteConfirmOpen(true);
+                                            }}
+                                        >
+                                            Delete Activity
+                                        </Button>
+                                    </Group>
+                                )}
+                            </Stack>
+                        </Paper>
+                    )}
                 </Container>
 
                 <Modal

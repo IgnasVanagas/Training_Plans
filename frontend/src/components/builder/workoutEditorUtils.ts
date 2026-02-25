@@ -70,10 +70,10 @@ export const metricMeta: Record<IntensityMetric, { targetType: TargetType; defau
 };
 
 export const sectionHeaderTint: Record<StepCategory, string> = {
-	warmup: 'rgba(99, 102, 241, 0.08)',
-	work: 'rgba(244, 63, 94, 0.08)',
-	recovery: 'rgba(56, 189, 248, 0.08)',
-	cooldown: 'rgba(167, 139, 250, 0.08)'
+	warmup: 'rgba(100, 116, 139, 0.10)',
+	work: 'rgba(233, 90, 18, 0.10)',
+	recovery: 'rgba(71, 85, 105, 0.09)',
+	cooldown: 'rgba(110, 75, 243, 0.10)'
 };
 
 export const sectionHeaderText: Record<StepCategory, string> = {
@@ -251,7 +251,7 @@ export const inferIntensityZone = (step: ConcreteStep) => {
 };
 
 export const edgeColorFromZone = (zone: number) => {
-	if (zone <= 1) return 'var(--mantine-color-blue-4)';
+	if (zone <= 1) return 'var(--mantine-color-gray-5)';
 	if (zone === 2) return 'var(--mantine-color-green-5)';
 	if (zone >= 6) return 'var(--mantine-color-violet-6)';
 	if (zone >= 4) return 'var(--mantine-color-orange-5)';

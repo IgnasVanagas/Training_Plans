@@ -19,6 +19,7 @@ from ..services.activity_dedupe import (
 )
 from datetime import datetime, timezone, date, timedelta
 from collections import defaultdict
+import math
 import os
 import uuid
 
@@ -38,36 +39,6 @@ def _normalize_sport_name(sport: str | None) -> str:
     if "cycl" in lowered or "bike" in lowered or "ride" in lowered:
         return "cycling"
     return "other"
-
-
-def _running_zone_index(hr_value: float, max_hr: float) -> int:
-    ratio = hr_value / max_hr
-    if ratio < 0.6:
-        return 1
-    if ratio < 0.7:
-        return 2
-    if ratio < 0.8:
-        return 3
-    if ratio < 0.9:
-        return 4
-    return 5
-
-
-def _cycling_zone_index(power_value: float, ftp: float) -> int:
-    ratio = (power_value / ftp) * 100
-    if ratio <= 55:
-        return 1
-    if ratio <= 75:
-        return 2
-    if ratio <= 90:
-        return 3
-    if ratio <= 105:
-        return 4
-    if ratio <= 120:
-        return 5
-    if ratio <= 150:
-        return 6
-    return 7
 
 
 def _empty_bucket() -> dict:
@@ -333,8 +304,9 @@ def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_
     sport_bucket["total_duration_minutes"] += duration_minutes
     sport_bucket["total_distance_km"] += distance_km
 
-    stored_streams = activity.streams if isinstance(activity.streams, dict) else {}
+    stored_streams = _as_stream_payload(activity.streams)
     data_points = stored_streams.get("data", []) if isinstance(stored_streams, dict) else []
+    laps = stored_streams.get("laps") if isinstance(stored_streams.get("laps"), list) else []
 
     if sport == "running":
         hr_samples = []
@@ -373,6 +345,22 @@ def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_
             if isinstance(hr_zones, dict):
                 for zone in range(1, 6):
                     sport_bucket["zone_seconds_by_metric"]["hr"][f"Z{zone}"] += _safe_number(hr_zones.get(f"Z{zone}"))
+            elif isinstance(laps, list) and max_hr > 0:
+                for lap in laps:
+                    if not isinstance(lap, dict):
+                        continue
+                    lap_avg_hr = _safe_number(
+                        lap.get("avg_hr") if lap.get("avg_hr") is not None else lap.get("average_heartrate"),
+                        default=0.0,
+                    )
+                    lap_duration = _safe_number(
+                        lap.get("duration") if lap.get("duration") is not None else lap.get("elapsed_time"),
+                        default=0.0,
+                    )
+                    if lap_avg_hr <= 0 or lap_duration <= 0:
+                        continue
+                    zone = _zone_index_from_upper_bounds(lap_avg_hr, running_hr_bounds)
+                    sport_bucket["zone_seconds_by_metric"]["hr"][f"Z{zone}"] += lap_duration
 
         if running_pace_bounds and speed_samples and duration_seconds > 0:
             seconds_per_sample = duration_seconds / len(speed_samples)
@@ -385,7 +373,6 @@ def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_
         return
 
     # Cycling (7 zones)
-    stored_streams = activity.streams if isinstance(activity.streams, dict) else {}
     power_curve = stored_streams.get("power_curve") if isinstance(stored_streams, dict) else None
 
     # If athlete profile FTP is missing, estimate from power curve only.
@@ -426,6 +413,22 @@ def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_
         for watts in power_samples:
             zone = _zone_index_from_upper_bounds(watts, cycling_power_bounds)
             sport_bucket["zone_seconds_by_metric"]["power"][f"Z{zone}"] += seconds_per_sample
+    elif cycling_power_bounds and isinstance(laps, list):
+        for lap in laps:
+            if not isinstance(lap, dict):
+                continue
+            lap_avg_power = _safe_number(
+                lap.get("avg_power") if lap.get("avg_power") is not None else lap.get("average_watts"),
+                default=0.0,
+            )
+            lap_duration = _safe_number(
+                lap.get("duration") if lap.get("duration") is not None else lap.get("elapsed_time"),
+                default=0.0,
+            )
+            if lap_avg_power < 0 or lap_duration <= 0:
+                continue
+            zone = _zone_index_from_upper_bounds(lap_avg_power, cycling_power_bounds)
+            sport_bucket["zone_seconds_by_metric"]["power"][f"Z{zone}"] += lap_duration
 
     if hr_samples and max_hr > 0 and duration_seconds > 0:
         seconds_per_sample = duration_seconds / len(hr_samples)
@@ -437,6 +440,22 @@ def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_
         if isinstance(hr_zones, dict):
             for zone in range(1, 6):
                 sport_bucket["zone_seconds_by_metric"]["hr"][f"Z{zone}"] += _safe_number(hr_zones.get(f"Z{zone}"))
+        elif isinstance(laps, list) and max_hr > 0:
+            for lap in laps:
+                if not isinstance(lap, dict):
+                    continue
+                lap_avg_hr = _safe_number(
+                    lap.get("avg_hr") if lap.get("avg_hr") is not None else lap.get("average_heartrate"),
+                    default=0.0,
+                )
+                lap_duration = _safe_number(
+                    lap.get("duration") if lap.get("duration") is not None else lap.get("elapsed_time"),
+                    default=0.0,
+                )
+                if lap_avg_hr <= 0 or lap_duration <= 0:
+                    continue
+                zone = _zone_index_from_upper_bounds(lap_avg_hr, cycling_hr_bounds)
+                sport_bucket["zone_seconds_by_metric"]["hr"][f"Z{zone}"] += lap_duration
 
     sport_bucket["zone_seconds"] = dict(sport_bucket["zone_seconds_by_metric"]["power"])
 
@@ -474,39 +493,23 @@ def _build_activity_zone_summary(activity: Activity, ftp: float, max_hr: float, 
     }
 
 
-def _activity_training_load(activity: Activity, ftp: float, max_hr: float) -> tuple[float, float]:
-    sport = _normalize_sport_name(activity.sport)
-    if sport not in ("running", "cycling"):
-        duration_min = _safe_number(activity.duration) / 60.0 if activity.duration else 0.0
-        # Generic fallback: light-moderate endurance load when no zone model is available.
-        return round(duration_min * 1.5, 1), 0.0
-
-    temp_bucket = _empty_bucket()
-    _apply_activity_to_bucket(temp_bucket, activity, ftp, max_hr)
-    zone_seconds = temp_bucket["sports"][sport]["zone_seconds"]
-
-    zone_minutes = {key: (value or 0) / 60.0 for key, value in zone_seconds.items()}
-
-    # Zone-based TRIMP split with fractional aerobic/anaerobic allocation.
-    # This keeps both pathways represented across all intensities while preserving
-    # higher anaerobic contribution at higher zones.
-    if sport == "running":
-        zone_weights = {"Z1": 1.0, "Z2": 2.0, "Z3": 3.0, "Z4": 4.0, "Z5": 5.0}
-        aerobic_fraction = {"Z1": 0.95, "Z2": 0.90, "Z3": 0.75, "Z4": 0.55, "Z5": 0.35}
-    else:
-        zone_weights = {"Z1": 1.0, "Z2": 2.0, "Z3": 3.0, "Z4": 4.0, "Z5": 6.0, "Z6": 8.0, "Z7": 10.0}
-        aerobic_fraction = {"Z1": 0.97, "Z2": 0.92, "Z3": 0.82, "Z4": 0.70, "Z5": 0.52, "Z6": 0.35, "Z7": 0.20}
-
-    total_minutes = 0.0
+def _compute_load_from_zone_minutes(
+    zone_minutes: dict[str, float],
+    *,
+    zone_weights: dict[str, float],
+    aerobic_fraction: dict[str, float],
+) -> tuple[float, float]:
     aerobic = 0.0
     anaerobic = 0.0
+    total_minutes = 0.0
+
     for zone_key, weight in zone_weights.items():
-        minutes = zone_minutes.get(zone_key, 0.0)
+        minutes = max(0.0, _safe_number(zone_minutes.get(zone_key), default=0.0))
         total_minutes += minutes
-        zone_trimp = minutes * weight
-        aero_share = aerobic_fraction.get(zone_key, 0.5)
-        aerobic += zone_trimp * aero_share
-        anaerobic += zone_trimp * (1.0 - aero_share)
+        weighted_minutes = minutes * weight
+        aerobic_share = min(1.0, max(0.0, _safe_number(aerobic_fraction.get(zone_key), default=0.5)))
+        aerobic += weighted_minutes * aerobic_share
+        anaerobic += weighted_minutes * (1.0 - aerobic_share)
 
     if total_minutes > 0:
         if aerobic <= 0:
@@ -514,12 +517,203 @@ def _activity_training_load(activity: Activity, ftp: float, max_hr: float) -> tu
         if anaerobic <= 0:
             anaerobic = 0.1
 
+    return aerobic, anaerobic
+
+
+def _estimate_load_from_activity_summary(
+    activity: Activity,
+    *,
+    sport: str,
+    ftp: float,
+    max_hr: float,
+    profile: Profile | None = None,
+) -> tuple[float, float] | None:
+    duration_minutes = max(0.0, _safe_number(getattr(activity, "duration", None), default=0.0) / 60.0)
+    if duration_minutes <= 0:
+        return None
+
+    resting_hr = _safe_number(getattr(profile, "resting_hr", None), default=60.0)
+    avg_hr = _safe_number(getattr(activity, "average_hr", None), default=0.0)
+    avg_watts = _safe_number(getattr(activity, "average_watts", None), default=0.0)
+
+    if avg_watts > 0 and ftp > 0:
+        intensity_factor = max(0.3, min(2.0, avg_watts / ftp))
+        total_load = (duration_minutes / 60.0) * 100.0 * (intensity_factor ** 2)
+        anaerobic_share = min(0.80, max(0.08, (intensity_factor - 0.75) / 0.65))
+        aerobic = total_load * (1.0 - anaerobic_share)
+        anaerobic = total_load * anaerobic_share
+        return round(aerobic, 1), round(anaerobic, 1)
+
+    if avg_hr > 0 and max_hr > 0 and max_hr > resting_hr:
+        heart_rate_reserve = (avg_hr - resting_hr) / (max_hr - resting_hr)
+        heart_rate_reserve = min(1.0, max(0.0, heart_rate_reserve))
+        trimp = duration_minutes * heart_rate_reserve * 0.64 * math.exp(1.92 * heart_rate_reserve)
+        anaerobic_share = min(0.70, max(0.05, (heart_rate_reserve - 0.70) / 0.30))
+        aerobic = trimp * (1.0 - anaerobic_share)
+        anaerobic = trimp * anaerobic_share
+        return round(aerobic, 1), round(anaerobic, 1)
+
+    base_rate_per_minute = 0.8 if sport == "running" else 0.9 if sport == "cycling" else 0.7
+    total_load = duration_minutes * base_rate_per_minute
+    aerobic = total_load * 0.92
+    anaerobic = total_load * 0.08
+    return round(aerobic, 1), round(anaerobic, 1)
+
+
+def _activity_training_load(
+    activity: Activity,
+    ftp: float,
+    max_hr: float,
+    profile: Profile | None = None,
+) -> tuple[float, float]:
+    sport = _normalize_sport_name(activity.sport)
+
+    # Zone-minute models grounded in commonly-used endurance physiology heuristics:
+    # - Running/HR: Edwards-style 5-zone weighting.
+    # - Cycling/Power: Coggan 7-zone weighting for intensity distribution.
+    # Each zone then contributes to aerobic/anaerobic pathways using intensity-based fractions.
+    running_hr_weights = {"Z1": 1.0, "Z2": 2.0, "Z3": 3.0, "Z4": 4.0, "Z5": 5.0}
+    running_hr_aerobic_fraction = {"Z1": 0.98, "Z2": 0.93, "Z3": 0.80, "Z4": 0.52, "Z5": 0.25}
+    running_pace_weights = {"Z1": 1.0, "Z2": 2.0, "Z3": 3.0, "Z4": 4.0, "Z5": 5.0, "Z6": 6.0, "Z7": 8.0}
+    running_pace_aerobic_fraction = {"Z1": 0.99, "Z2": 0.95, "Z3": 0.88, "Z4": 0.72, "Z5": 0.55, "Z6": 0.34, "Z7": 0.20}
+    cycling_weights = {"Z1": 1.0, "Z2": 2.0, "Z3": 3.0, "Z4": 4.0, "Z5": 6.0, "Z6": 8.0, "Z7": 10.0}
+    cycling_aerobic_fraction = {"Z1": 0.99, "Z2": 0.94, "Z3": 0.84, "Z4": 0.66, "Z5": 0.44, "Z6": 0.28, "Z7": 0.16}
+    cycling_hr_weights = {"Z1": 1.0, "Z2": 2.0, "Z3": 3.0, "Z4": 4.0, "Z5": 5.0}
+    cycling_hr_aerobic_fraction = {"Z1": 0.98, "Z2": 0.93, "Z3": 0.80, "Z4": 0.52, "Z5": 0.25}
+
+    temp_bucket = _empty_bucket()
+    _apply_activity_to_bucket(temp_bucket, activity, ftp, max_hr, profile)
+
+    if sport in ("running", "cycling"):
+        by_metric = temp_bucket["sports"][sport].get("zone_seconds_by_metric", {})
+
+        def _to_minutes(raw: dict | None) -> dict[str, float]:
+            if not isinstance(raw, dict):
+                return {}
+            return {key: (value or 0.0) / 60.0 for key, value in raw.items()}
+
+        def _total_seconds(raw: dict | None) -> float:
+            if not isinstance(raw, dict):
+                return 0.0
+            return sum(_safe_number(v, default=0.0) for v in raw.values())
+
+        if sport == "running":
+            hr_seconds = _total_seconds(by_metric.get("hr"))
+            pace_seconds = _total_seconds(by_metric.get("pace"))
+            # Prefer the richer signal when available (HR or pace), without falling back to activity averages.
+            if hr_seconds >= pace_seconds and hr_seconds > 0:
+                zone_minutes = _to_minutes(by_metric.get("hr"))
+                aerobic, anaerobic = _compute_load_from_zone_minutes(
+                    zone_minutes,
+                    zone_weights=running_hr_weights,
+                    aerobic_fraction=running_hr_aerobic_fraction,
+                )
+            elif pace_seconds > 0:
+                zone_minutes = _to_minutes(by_metric.get("pace"))
+                aerobic, anaerobic = _compute_load_from_zone_minutes(
+                    zone_minutes,
+                    zone_weights=running_pace_weights,
+                    aerobic_fraction=running_pace_aerobic_fraction,
+                )
+            else:
+                zone_minutes = {key: (value or 0) / 60.0 for key, value in temp_bucket["sports"][sport]["zone_seconds"].items()}
+                aerobic, anaerobic = _compute_load_from_zone_minutes(
+                    zone_minutes,
+                    zone_weights=running_hr_weights,
+                    aerobic_fraction=running_hr_aerobic_fraction,
+                )
+        else:
+            power_seconds = _total_seconds(by_metric.get("power"))
+            hr_seconds = _total_seconds(by_metric.get("hr"))
+            # Cycling: use power zones when present; otherwise use HR zones instead of returning zero.
+            if power_seconds > 0:
+                zone_minutes = _to_minutes(by_metric.get("power"))
+                aerobic, anaerobic = _compute_load_from_zone_minutes(
+                    zone_minutes,
+                    zone_weights=cycling_weights,
+                    aerobic_fraction=cycling_aerobic_fraction,
+                )
+            elif hr_seconds > 0:
+                zone_minutes = _to_minutes(by_metric.get("hr"))
+                aerobic, anaerobic = _compute_load_from_zone_minutes(
+                    zone_minutes,
+                    zone_weights=cycling_hr_weights,
+                    aerobic_fraction=cycling_hr_aerobic_fraction,
+                )
+            else:
+                zone_minutes = {key: (value or 0) / 60.0 for key, value in temp_bucket["sports"][sport]["zone_seconds"].items()}
+                aerobic, anaerobic = _compute_load_from_zone_minutes(
+                    zone_minutes,
+                    zone_weights=cycling_weights,
+                    aerobic_fraction=cycling_aerobic_fraction,
+                )
+
+        if aerobic <= 0 and anaerobic <= 0:
+            estimated = _estimate_load_from_activity_summary(
+                activity,
+                sport=sport,
+                ftp=ftp,
+                max_hr=max_hr,
+                profile=profile,
+            )
+            if estimated:
+                return estimated
+
+        return round(aerobic, 1), round(anaerobic, 1)
+
+    # Fallback for other sports: derive from HR zone-minutes if available (not averages).
+    payload = _as_stream_payload(activity.streams)
+    data_points = payload.get("data") if isinstance(payload, dict) else None
+    hr_zone_minutes: dict[str, float] = {f"Z{i}": 0.0 for i in range(1, 6)}
+
+    hr_samples: list[float] = []
+    duration_seconds = _safe_number(activity.duration)
+    if isinstance(data_points, list):
+        for point in data_points:
+            if not isinstance(point, dict):
+                continue
+            hr_value = _safe_number(point.get("heart_rate"), default=-1)
+            if hr_value > 0:
+                hr_samples.append(hr_value)
+
+    if hr_samples and max_hr > 0 and duration_seconds > 0:
+        seconds_per_sample = duration_seconds / len(hr_samples)
+        upper_bounds = [max_hr * 0.60, max_hr * 0.70, max_hr * 0.80, max_hr * 0.90]
+        for hr_value in hr_samples:
+            zone_idx = _zone_index_from_upper_bounds(hr_value, upper_bounds)
+            key = f"Z{zone_idx}"
+            hr_zone_minutes[key] = hr_zone_minutes.get(key, 0.0) + (seconds_per_sample / 60.0)
+    else:
+        hr_zones = payload.get("hr_zones") if isinstance(payload, dict) else None
+        if isinstance(hr_zones, dict):
+            for zone_idx in range(1, 6):
+                seconds = _safe_number(hr_zones.get(f"Z{zone_idx}"), default=0.0)
+                hr_zone_minutes[f"Z{zone_idx}"] = seconds / 60.0
+
+    aerobic, anaerobic = _compute_load_from_zone_minutes(
+        hr_zone_minutes,
+        zone_weights=running_hr_weights,
+        aerobic_fraction=running_hr_aerobic_fraction,
+    )
+
+    if aerobic <= 0 and anaerobic <= 0:
+        estimated = _estimate_load_from_activity_summary(
+            activity,
+            sport=sport,
+            ftp=ftp,
+            max_hr=max_hr,
+            profile=profile,
+        )
+        if estimated:
+            return estimated
+
     return round(aerobic, 1), round(anaerobic, 1)
 
 
 def _resolve_training_status(acute_load: float, chronic_load: float) -> str:
-    # ACWR-based status bands (acute: 7-day avg, chronic: 42-day avg).
-    if chronic_load < 12 and acute_load < 10:
+    # ACWR-based status bands from common applied-sport practice:
+    # acute = 7d average daily load, chronic = 42d average daily load.
+    if chronic_load < 5 and acute_load < 5:
         return "Detraining"
     if chronic_load <= 0:
         return "Maintaining"
@@ -527,7 +721,7 @@ def _resolve_training_status(acute_load: float, chronic_load: float) -> str:
     ratio = acute_load / chronic_load
     if ratio < 0.8:
         return "Recovering"
-    if ratio <= 1.30:
+    if ratio <= 1.20:
         return "Productive"
     if ratio <= 1.50:
         return "Overreaching"
@@ -863,7 +1057,7 @@ async def upload_activity(
     profile = await db.scalar(select(Profile).where(Profile.user_id == current_user.id))
     ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
     max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
-    aerobic_load, anaerobic_load = _activity_training_load(new_activity, ftp, max_hr)
+    aerobic_load, anaerobic_load = _activity_training_load(new_activity, ftp, max_hr, profile)
     
     return ActivityDetail(
         id=new_activity.id,
@@ -949,7 +1143,7 @@ async def get_training_status(
     daily_anaerobic: dict[date, float] = defaultdict(float)
 
     for activity in activities:
-        aerobic, anaerobic = _activity_training_load(activity, ftp, max_hr)
+        aerobic, anaerobic = _activity_training_load(activity, ftp, max_hr, profile)
         activity_day = activity.created_at.date()
         daily_aerobic[activity_day] += aerobic
         daily_anaerobic[activity_day] += anaerobic
@@ -1060,7 +1254,7 @@ async def get_activities(
         profile = profile_map.get(activity.athlete_id)
         ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
         max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
-        aerobic_load, anaerobic_load = _activity_training_load(activity, ftp, max_hr)
+        aerobic_load, anaerobic_load = _activity_training_load(activity, ftp, max_hr, profile)
         payload = _as_stream_payload(activity.streams)
         rpe, notes = _activity_feedback_from_payload(payload)
         out.append(
@@ -1133,7 +1327,9 @@ async def get_activity(
         splits_metric = stored_data.get("splits_metric")
         stats = stored_data.get("stats", {})
 
-    # Lazy-load deep provider data only when activity detail is opened.
+    # Lazy-load deep provider data only when explicitly enabled.
+    allow_lazy_provider_detail_fetch = os.getenv("STRAVA_ALLOW_LAZY_DETAIL_FETCH", "false").lower() in {"1", "true", "yes", "on"}
+
     if isinstance(stored_data, dict):
         meta = stored_data.get("_meta") if isinstance(stored_data.get("_meta"), dict) else {}
         source_provider = meta.get("source_provider")
@@ -1146,6 +1342,7 @@ async def get_activity(
             and source_provider == "strava"
             and source_activity_id
             and (needs_streams or needs_laps)
+            and allow_lazy_provider_detail_fetch
         ):
             try:
                 access_token = await _resolve_provider_access_token(
@@ -1195,7 +1392,7 @@ async def get_activity(
     profile = await db.scalar(select(Profile).where(Profile.user_id == activity.athlete_id))
     ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
     max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
-    aerobic_load, anaerobic_load = _activity_training_load(activity, ftp, max_hr)
+    aerobic_load, anaerobic_load = _activity_training_load(activity, ftp, max_hr, profile)
         
     activity_response = ActivityDetail(
         id=activity.id,

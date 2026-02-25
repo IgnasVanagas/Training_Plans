@@ -1,12 +1,13 @@
-import { Alert, Badge, Button, Group, List, Paper, SimpleGrid, Card, Stack, Text, TextInput, ThemeIcon, Title } from '@mantine/core';
+import { Badge, Group, List, Paper, SimpleGrid, Card, Stack, Text, Title, Box, useComputedColorScheme } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { Dropzone, FileWithPath } from '@mantine/dropzone';
 import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
-import { IconCalendar, IconCheck, IconFile, IconRocket, IconUpload, IconX } from '@tabler/icons-react';
+import { IconCalendar, IconUpload } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
-import { notifications } from '@mantine/notifications';
+import ActivityUploadPanel from './dashboard/ActivityUploadPanel';
+import { ORIGAMI_ACTIVITY_COLORS } from './calendar/theme';
+import { resolveActivityAccentColor, resolveActivityPillLabel } from './calendar/activityStyling';
 
 type Activity = {
     id: number;
@@ -27,13 +28,36 @@ type Activity = {
 
 import { useNavigate } from 'react-router-dom';
 
-export function ActivitiesView({ athleteId, currentUserRole, athletes }: { athleteId?: number | null, currentUserRole?: string, athletes?: any[] }) {
-  const queryClient = useQueryClient();
+export function ActivitiesView({
+    athleteId,
+    currentUserRole,
+    athletes,
+    showUploadSection = true,
+}: {
+    athleteId?: number | null,
+    currentUserRole?: string,
+    athletes?: any[],
+    showUploadSection?: boolean,
+}) {
   const navigate = useNavigate();
-  const [uploadError, setUploadError] = useState<string | null>(null);
-    const [showCompletionPulse, setShowCompletionPulse] = useState(false);
-    const [reflection, setReflection] = useState<string>('');
+    const isDark = useComputedColorScheme('light') === 'dark';
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
+        const ui = {
+                pageBg: isDark ? '#081226' : '#F4F7FC',
+                panelBg: isDark ? '#12223E' : '#FFFFFF',
+                cardBg: isDark ? '#182B4B' : '#FFFFFF',
+                cardSubtleBg: isDark ? '#142746' : '#F8FAFF',
+                border: isDark ? 'rgba(148,163,184,0.28)' : '#DCE6F7',
+                textMain: isDark ? '#E2E8F0' : '#0F172A',
+                textDim: isDark ? '#9FB0C8' : '#52617A',
+        } as const;
+            const activityColors = isDark ? ORIGAMI_ACTIVITY_COLORS.dark : ORIGAMI_ACTIVITY_COLORS.light;
+
+        const cardStyle = {
+                borderColor: ui.border,
+                background: ui.cardBg,
+                fontFamily: '"Inter", sans-serif'
+        } as const;
 
   const isCoach = currentUserRole === 'coach';
 
@@ -75,163 +99,23 @@ export function ActivitiesView({ athleteId, currentUserRole, athletes }: { athle
     }
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await api.post('/activities/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      return res.data;
-    },
-    onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['activities'] });
-        setUploadError(null);
-                setShowCompletionPulse(true);
-                notifications.show({
-                    color: 'teal',
-                    title: 'Workout captured',
-                    message: 'Session saved. Add a quick reflection so your coach can adapt tomorrow’s plan.',
-                    position: 'bottom-right'
-                });
-                window.setTimeout(() => setShowCompletionPulse(false), 1200);
-    },
-    onError: (err: any) => {
-                const detail = err.response?.data?.detail || 'Upload failed';
-                const lowered = String(detail).toLowerCase();
-                if (lowered.includes('garmin')) {
-                    setUploadError('Garmin is taking longer than usual. Your workout is safe and we’ll keep retrying in the background.');
-                    return;
-                }
-                if (lowered.includes('format') || lowered.includes('parse')) {
-                    setUploadError('We could not read this file format yet. Try a fresh FIT/GPX export and we’ll keep your progress intact.');
-                    return;
-                }
-                setUploadError('We hit a sync issue, but your momentum is not lost. Try again in a moment.');
-    }
-  });
-
-  const handleDrop = (files: FileWithPath[]) => {
-      if(files.length > 0) {
-          uploadMutation.mutate(files[0]);
-      }
-  };
-
   return (
-    <Stack>
-        {!isCoach && (
+        <Stack style={{ fontFamily: '"Inter", sans-serif' }} bg={ui.pageBg} p={6} gap="sm">
+        {!isCoach && showUploadSection && (
             <>
-                <Paper withBorder p="md" radius="md" shadow="sm">
-                    <Stack gap="sm">
-                        <Group justify="space-between" align="center">
-                            <Group gap="sm">
-                                <ThemeIcon color="cyan" variant="light" radius="xl" size="lg">
-                                    <IconUpload size={18} />
-                                </ThemeIcon>
-                                <Stack gap={0}>
-                                    <Title order={3}>Upload Activity</Title>
-                                    <Text size="sm" c="dimmed">Bring in your latest session from FIT or GPX in one step.</Text>
-                                </Stack>
-                            </Group>
-                            <Group gap={6}>
-                                <Badge variant="light" color="gray">FIT</Badge>
-                                <Badge variant="light" color="gray">GPX</Badge>
-                                <Badge variant="light" color="gray">10MB max</Badge>
-                            </Group>
-                        </Group>
-
-                        <Dropzone
-                            onDrop={handleDrop}
-                            onReject={() => setUploadError('File rejected. Please upload a valid FIT or GPX file under 10MB.')}
-                            maxSize={10 * 1024 * 1024}
-                            p="xl"
-                            radius="md"
-                            bg="var(--mantine-color-body)"
-                            style={{
-                                border: '1px dashed var(--mantine-color-cyan-4)',
-                                cursor: 'pointer',
-                                transition: 'all 180ms ease'
-                            }}
-                        >
-                            <Group justify="center" gap="lg" mih={170} style={{ pointerEvents: 'none' }}>
-                                <Dropzone.Accept>
-                                    <ThemeIcon size={54} radius="xl" color="teal" variant="light">
-                                        <IconCheck size={28} />
-                                    </ThemeIcon>
-                                </Dropzone.Accept>
-                                <Dropzone.Reject>
-                                    <ThemeIcon size={54} radius="xl" color="red" variant="light">
-                                        <IconX size={28} />
-                                    </ThemeIcon>
-                                </Dropzone.Reject>
-                                <Dropzone.Idle>
-                                    <ThemeIcon size={54} radius="xl" color="cyan" variant="light">
-                                        <IconFile size={28} />
-                                    </ThemeIcon>
-                                </Dropzone.Idle>
-
-                                <Stack gap={2} align="center">
-                                    <Text size="lg" fw={600} ta="center">Drop your activity file here</Text>
-                                    <Text size="sm" c="dimmed" ta="center">or click to browse files from your device</Text>
-                                </Stack>
-                            </Group>
-                        </Dropzone>
-                    </Stack>
-                </Paper>
-                
-                                {uploadError && (
-                                    <Alert color="orange" variant="light" title="Sync paused">
-                                        {uploadError}
-                                    </Alert>
-                                )}
-                {uploadMutation.isPending && <Text>Uploading and processing...</Text>}
-                                {showCompletionPulse && (
-                                    <Paper withBorder p="sm" radius="md" bg="teal.0" style={{ transition: 'all 220ms ease' }}>
-                                        <Group justify="space-between" align="center">
-                                            <Group gap="xs">
-                                                <IconCheck size={16} color="teal" />
-                                                <Text fw={600} size="sm">Workout completed and saved</Text>
-                                            </Group>
-                                            <IconRocket size={16} color="teal" />
-                                        </Group>
-                                    </Paper>
-                                )}
-                                {!uploadMutation.isPending && activitiesQuery.data && activitiesQuery.data.length > 0 && (
-                                    <Paper withBorder p="sm" radius="md">
-                                        <Text size="sm" fw={600}>Coach feedback loop</Text>
-                                        <Text size="xs" c="dimmed" mb={6}>How did this session feel? A short note helps your coach tune your next workout.</Text>
-                                        <Group>
-                                            <TextInput
-                                                value={reflection}
-                                                onChange={(e) => setReflection(e.currentTarget.value)}
-                                                placeholder="RPE, mood, soreness (optional)"
-                                                flex={1}
-                                            />
-                                            <Button
-                                                size="xs"
-                                                variant="light"
-                                                onClick={() => {
-                                                    notifications.show({
-                                                        color: 'blue',
-                                                        title: 'Coach notified',
-                                                        message: reflection.trim()
-                                                            ? 'Reflection sent. Your coach can respond with plan adjustments.'
-                                                            : 'Session sent to coach as On Plan. Add reflection anytime.',
-                                                        position: 'bottom-right'
-                                                    });
-                                                    setReflection('');
-                                                }}
-                                            >
-                                                Send
-                                            </Button>
-                                        </Group>
-                                    </Paper>
-                                )}
+                <ActivityUploadPanel />
             </>
         )}
 
-        <Group justify="space-between" mt="lg" align="center">
-             <Title order={3}>My Activities</Title>
+        <Paper
+            withBorder
+            radius="lg"
+            p="md"
+            bg={ui.panelBg}
+            style={{ borderColor: ui.border }}
+        >
+        <Group justify="space-between" align="center">
+             <Title order={3} c={ui.textMain}>My Activities</Title>
              <DatePickerInput
                 placeholder="Filter by Date Range"
                 type="range"
@@ -239,26 +123,60 @@ export function ActivitiesView({ athleteId, currentUserRole, athletes }: { athle
                 onChange={setDateRange}
                 leftSection={<IconCalendar size={16} />}
                 clearable
-                w={250}
+                w={270}
+                radius="md"
+                styles={{
+                    input: {
+                        borderColor: ui.border,
+                        background: ui.cardSubtleBg,
+                        color: ui.textMain,
+                    }
+                }}
              />
         </Group>
+        </Paper>
 
-        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
+        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" verticalSpacing="sm">
             {activitiesQuery.data?.map((act) => (
+                (() => {
+                    const accentColor = resolveActivityAccentColor(
+                        activityColors as any,
+                        act.sport || undefined,
+                        act.filename
+                    );
+                    const pillLabel = resolveActivityPillLabel(act.sport || undefined, act.filename);
+
+                    return (
                 <Card 
                     key={act.id} 
                     withBorder 
-                    shadow="sm" 
+                    shadow="xs"
                     padding="lg" 
-                    radius="md" 
-                    style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
+                    radius="lg"
+                    bg={ui.cardBg}
+                    style={{
+                        cursor: 'pointer',
+                        transition: 'transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
+                        ...cardStyle,
+                        borderLeft: `4px solid ${accentColor}`,
+                    }}
                     onClick={() => navigate(`/dashboard/activities/${act.id}`)}
+                    onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = isDark
+                            ? '0 8px 20px rgba(2, 6, 23, 0.35)'
+                            : '0 10px 22px rgba(15, 23, 42, 0.08)';
+                    }}
+                    onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = 'none';
+                    }}
                 > 
                     <Group justify="space-between" mb="xs">
                         <Stack gap={0} style={{ overflow: 'hidden' }}>
-                            <Text fw={500} truncate>{act.filename}</Text>
+                            <Text fw={700} c={ui.textMain} truncate>{act.filename}</Text>
                             {isCoach && athletes && (
-                                <Text size="xs" c="dimmed">
+                                <Text size="xs" c={ui.textDim}>
                                     {(() => {
                                         const athlete = athletes.find(a => a.id === act.athlete_id);
                                         if (!athlete) return 'Unknown Athlete';
@@ -271,49 +189,75 @@ export function ActivitiesView({ athleteId, currentUserRole, athletes }: { athle
                                 </Text>
                             )}
                             <Group gap={6}>
-                                {act.sport && <Badge size="sm" variant="light" color={act.sport === 'running' ? 'blue' : 'orange'}>{act.sport}</Badge>}
+                                {(act.sport || act.filename) && (
+                                    <Badge
+                                        size="sm"
+                                        variant="light"
+                                        style={{
+                                            background: `${accentColor}22`,
+                                            border: `1px solid ${accentColor}55`,
+                                            color: accentColor,
+                                            textTransform: 'uppercase',
+                                            letterSpacing: 0.2,
+                                            fontWeight: 700,
+                                        }}
+                                    >
+                                        {pillLabel}
+                                    </Badge>
+                                )}
                                 {act.is_deleted && <Badge size="sm" color="red" variant="light">Deleted</Badge>}
                             </Group>
                         </Stack>
-                        <Text size="xs" c="dimmed">{new Date(act.created_at).toLocaleString()}</Text>
+                        <Text size="xs" c={ui.textDim}>{new Date(act.created_at).toLocaleString()}</Text>
                     </Group>
                     
-                    <Stack gap="xs">
+                    <Box
+                        p="xs"
+                        style={{
+                            borderRadius: 10,
+                            background: ui.cardSubtleBg,
+                            border: `1px solid ${ui.border}`,
+                        }}
+                    >
+                    <Stack gap={6}>
                         <Group justify="apart">
-                             <Text size="sm" c="dimmed">Distance</Text>
-                             <Text size="sm" fw={500}>{act.distance ? formatDistance(act.distance) : '-'}</Text>
+                             <Text size="sm" c={ui.textDim}>Distance</Text>
+                             <Text size="sm" fw={700} c={ui.textMain}>{act.distance ? formatDistance(act.distance) : '-'}</Text>
                         </Group>
                         <Group justify="apart">
-                             <Text size="sm" c="dimmed">Duration</Text>
-                                <Text size="sm" fw={500}>{formatDurationHm(act.duration)}</Text>
+                             <Text size="sm" c={ui.textDim}>Duration</Text>
+                                <Text size="sm" fw={700} c={ui.textMain}>{formatDurationHm(act.duration)}</Text>
                         </Group>
                         {act.average_hr && (
                         <Group justify="apart">
-                             <Text size="sm" c="dimmed">Avg HR</Text>
-                             <Text size="sm" fw={500}>{act.average_hr.toFixed(0)} bpm</Text>
+                             <Text size="sm" c={ui.textDim}>Avg HR</Text>
+                             <Text size="sm" fw={700} c={ui.textMain}>{act.average_hr.toFixed(0)} bpm</Text>
                         </Group>
                         )}
                          {act.average_watts && (
                         <Group justify="apart">
-                             <Text size="sm" c="dimmed">Power</Text>
-                             <Text size="sm" fw={500}>{act.average_watts.toFixed(0)} W</Text>
+                             <Text size="sm" c={ui.textDim}>Power</Text>
+                             <Text size="sm" fw={700} c={ui.textMain}>{act.average_watts.toFixed(0)} W</Text>
                         </Group>
                         )}
                             <Group justify="apart">
-                                <Text size="sm" c="dimmed">Load Impact</Text>
-                                <Text size="sm" fw={500}>
+                                <Text size="sm" c={ui.textDim}>Load Impact</Text>
+                                <Text size="sm" fw={700} c={ui.textMain}>
                                   +{(act.aerobic_load || 0).toFixed(1)} Aer · +{(act.anaerobic_load || 0).toFixed(1)} Ana
                                 </Text>
                             </Group>
                     </Stack>
+                    </Box>
                 </Card>
-            ))}
+                    );
+                })()
+            )}
                         {activitiesQuery.data?.length === 0 && (
-                            <Paper withBorder p="lg" radius="md">
+                            <Paper withBorder p="lg" radius="lg" style={cardStyle}>
                                 <Stack align="center" gap="xs">
                                     <IconUpload size={28} />
-                                    <Text fw={600}>Your training story starts with one activity.</Text>
-                                    <List size="sm" c="dimmed" spacing={2}>
+                                    <Text fw={700} c={ui.textMain}>Your training story starts with one activity.</Text>
+                                    <List size="sm" c={ui.textDim} spacing={2}>
                                         <List.Item>Connect a wearable provider in Settings</List.Item>
                                         <List.Item>Upload your first FIT or GPX file</List.Item>
                                         <List.Item>Set baseline zones so workouts adapt to you</List.Item>

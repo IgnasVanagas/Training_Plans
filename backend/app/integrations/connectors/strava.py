@@ -242,16 +242,61 @@ class StravaConnector(ProviderConnector):
 
         return [lap for lap in normalized if (lap.get("distance") or 0) > 0]
 
+    async def _get_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        *,
+        url: str,
+        headers: dict[str, str],
+        params: dict[str, Any] | None = None,
+        context: str,
+        max_retries: int = 3,
+    ) -> httpx.Response:
+        last_response: httpx.Response | None = None
+        for attempt in range(1, max_retries + 1):
+            response = await client.get(url, headers=headers, params=params)
+            if response.status_code != 429:
+                return response
+
+            last_response = response
+            retry_after = response.headers.get("Retry-After")
+            wait_seconds = 60.0
+            if retry_after:
+                try:
+                    wait_seconds = max(1.0, float(retry_after))
+                except ValueError:
+                    wait_seconds = 60.0
+
+            logger.warning(
+                "Strava rate limit hit (429) on %s (attempt %s/%s). Pausing for %.0fs...",
+                context,
+                attempt,
+                max_retries,
+                wait_seconds,
+            )
+            await asyncio.sleep(wait_seconds)
+
+        if last_response is not None:
+            return last_response
+        raise RuntimeError(f"Failed Strava request for {context}")
+
     async def _fetch_activity_detail_payload(self, access_token: str, activity_id: str, start_time: datetime) -> dict[str, Any]:
         headers = {"Authorization": f"Bearer {access_token}"}
         async with httpx.AsyncClient(timeout=30.0) as client:
-            detail_res = await client.get(f"https://www.strava.com/api/v3/activities/{activity_id}", headers=headers)
+            detail_res = await self._get_with_retry(
+                client,
+                url=f"https://www.strava.com/api/v3/activities/{activity_id}",
+                headers=headers,
+                context=f"activity detail {activity_id}",
+            )
             detail_res.raise_for_status()
             detail = detail_res.json() if isinstance(detail_res.json(), dict) else {}
 
-            laps_res = await client.get(
-                f"https://www.strava.com/api/v3/activities/{activity_id}/laps",
+            laps_res = await self._get_with_retry(
+                client,
+                url=f"https://www.strava.com/api/v3/activities/{activity_id}/laps",
                 headers=headers,
+                context=f"activity laps {activity_id}",
             )
             if laps_res.status_code == 404:
                 laps_payload = []
@@ -259,13 +304,15 @@ class StravaConnector(ProviderConnector):
                 laps_res.raise_for_status()
                 laps_payload = laps_res.json() if isinstance(laps_res.json(), list) else []
 
-            streams_res = await client.get(
-                f"https://www.strava.com/api/v3/activities/{activity_id}/streams",
+            streams_res = await self._get_with_retry(
+                client,
+                url=f"https://www.strava.com/api/v3/activities/{activity_id}/streams",
                 params={
                     "keys": "time,latlng,distance,velocity_smooth,heartrate,watts,cadence,altitude",
                     "key_by_type": "true",
                 },
                 headers=headers,
+                context=f"activity streams {activity_id}",
             )
 
             if streams_res.status_code == 404:
@@ -340,6 +387,14 @@ class StravaConnector(ProviderConnector):
         initial_sync_done = bool(cursor.get("initial_sync_done"))
         backfill_before_epoch = cursor.get("backfill_before_epoch")
 
+        daily_request_limit = max(1, int(os.getenv("STRAVA_DAILY_REQUEST_LIMIT", "500")))
+        today_key = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        request_day = str(cursor.get("strava_request_day") or "")
+        request_used = int(cursor.get("strava_request_count") or 0)
+        if request_day != today_key:
+            request_day = today_key
+            request_used = 0
+
         initial_sync_max_raw = int(os.getenv("STRAVA_INITIAL_SYNC_MAX_ACTIVITIES", "50"))
         initial_sync_max = max(20, min(50, initial_sync_max_raw))
 
@@ -359,8 +414,17 @@ class StravaConnector(ProviderConnector):
             max_activities: int,
             request_delay_seconds: float = 0.0,
         ) -> None:
+            nonlocal request_used
             pages_fetched = 0
             while len(activities) < max_activities:
+                if request_used >= daily_request_limit:
+                    logger.warning(
+                        "Strava daily request limit reached (%s/%s). Stopping import for now.",
+                        request_used,
+                        daily_request_limit,
+                    )
+                    break
+
                 if request_delay_seconds > 0:
                     await asyncio.sleep(request_delay_seconds)
 
@@ -369,6 +433,7 @@ class StravaConnector(ProviderConnector):
                     params=params,
                     headers={"Authorization": f"Bearer {access_token}"},
                 )
+                request_used += 1
                 if response.status_code == 429:
                     logger.warning("Strava rate limit hit (429) on list activities. Pausing for 60s...")
                     await asyncio.sleep(60)
@@ -461,6 +526,10 @@ class StravaConnector(ProviderConnector):
         if full_history_enabled and initial_sync_done and backfill_before_epoch and len(activities) == 0:
             next_cursor["full_backfill_once_done"] = True
             next_cursor.pop("backfill_before_epoch", None)
+
+        next_cursor["strava_request_day"] = request_day
+        next_cursor["strava_request_count"] = request_used
+        next_cursor["strava_request_limit"] = daily_request_limit
 
         return SyncResult(
             activities=activities,

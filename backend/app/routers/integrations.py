@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
@@ -38,7 +39,10 @@ from ..models import (
 from ..schemas import (
     BridgeSleepIn,
     BridgeWellnessIn,
+    ManualWellnessIn,
     ProviderConnectOut,
+    StravaImportPreferencesIn,
+    StravaImportPreferencesOut,
     ProviderStatusOut,
     ProviderSyncOut,
     SyncStatusOut,
@@ -48,6 +52,139 @@ from ..services.compliance import match_and_score
 import os
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+
+
+def _as_stream_payload(payload: object) -> dict:
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def _has_strava_detail(payload: dict) -> bool:
+    detail = payload.get("detail") if isinstance(payload.get("detail"), dict) else None
+    if isinstance(detail, dict) and (
+        isinstance(detail.get("data"), list)
+        or isinstance(detail.get("laps"), list)
+        or isinstance(detail.get("stats"), dict)
+    ):
+        return True
+
+    return (
+        isinstance(payload.get("data"), list) and len(payload.get("data") or []) > 0
+    ) or (
+        isinstance(payload.get("laps"), list) and len(payload.get("laps") or []) > 0
+    )
+
+
+async def _strava_backfill_activity_details(
+    db: AsyncSession,
+    *,
+    state: ProviderSyncState,
+    connector,
+    access_token: str,
+    user_id: int,
+    import_all_time: bool,
+) -> tuple[int, str | None]:
+    daily_limit = max(1, int(os.getenv("STRAVA_DAILY_REQUEST_LIMIT", "500")))
+    detail_batch = max(1, int(os.getenv("STRAVA_DETAIL_BACKFILL_BATCH_ACTIVITIES", "12")))
+    detail_window_days = max(30, int(os.getenv("STRAVA_DETAIL_BACKFILL_WINDOW_DAYS", "365")))
+    enrich_delay_seconds = max(0.0, float(os.getenv("STRAVA_ENRICH_DELAY_SECONDS", "0.35")))
+
+    cursor = state.cursor or {}
+    today_key = datetime.utcnow().strftime("%Y-%m-%d")
+    request_day = str(cursor.get("strava_request_day") or "")
+    request_used = int(cursor.get("strava_request_count") or 0)
+    if request_day != today_key:
+        request_day = today_key
+        request_used = 0
+
+    remaining_calls = max(0, daily_limit - request_used)
+    max_by_budget = remaining_calls // 3
+    if max_by_budget <= 0:
+        cursor["strava_request_day"] = request_day
+        cursor["strava_request_count"] = request_used
+        cursor["strava_request_limit"] = daily_limit
+        state.cursor = cursor
+        return 0, f"Detail backfill paused (daily Strava limit {daily_limit} reached)."
+
+    target_count = min(detail_batch, max_by_budget)
+    cutoff = datetime.utcnow() - timedelta(days=detail_window_days)
+
+    query = select(Activity).where(
+        Activity.athlete_id == user_id,
+        Activity.file_type == "provider",
+    )
+    if not import_all_time:
+        query = query.where(Activity.created_at >= cutoff)
+    query = query.order_by(Activity.created_at.desc()).limit(max(200, target_count * 12))
+    res = await db.execute(query)
+    activities = list(res.scalars().all())
+
+    candidates: list[Activity] = []
+    for activity in activities:
+        streams = _as_stream_payload(activity.streams)
+        meta = streams.get("_meta") if isinstance(streams.get("_meta"), dict) else {}
+        if str(meta.get("source_provider") or "") != "strava":
+            continue
+        if not meta.get("source_activity_id"):
+            continue
+        if _has_strava_detail(streams):
+            continue
+        candidates.append(activity)
+        if len(candidates) >= target_count:
+            break
+
+    enriched = 0
+    for activity in candidates:
+        if request_used + 3 > daily_limit:
+            break
+
+        streams = _as_stream_payload(activity.streams)
+        meta = streams.get("_meta") if isinstance(streams.get("_meta"), dict) else {}
+        source_activity_id = str(meta.get("source_activity_id"))
+        try:
+            detail_payload = await connector.fetch_activity_deep_data(
+                access_token=access_token,
+                activity_id=source_activity_id,
+                start_time=activity.created_at,
+            )
+        except Exception:
+            continue
+
+        streams["data"] = detail_payload.get("data") or streams.get("data") or []
+        streams["power_curve"] = detail_payload.get("power_curve")
+        streams["hr_zones"] = detail_payload.get("hr_zones")
+        streams["pace_curve"] = detail_payload.get("pace_curve")
+        streams["laps"] = detail_payload.get("laps") or []
+        streams["splits_metric"] = detail_payload.get("splits_metric") or []
+        streams["stats"] = detail_payload.get("stats") or {}
+
+        provider_payload = streams.get("provider_payload") if isinstance(streams.get("provider_payload"), dict) else {}
+        provider_payload["detail"] = detail_payload.get("provider_activity_detail") or {}
+        streams["provider_payload"] = provider_payload
+
+        meta["enriched_at"] = datetime.utcnow().isoformat()
+        streams["_meta"] = meta
+
+        activity.streams = streams
+        db.add(activity)
+        enriched += 1
+        request_used += 3
+
+        if enrich_delay_seconds > 0:
+            await asyncio.sleep(enrich_delay_seconds)
+
+    await db.commit()
+
+    cursor = state.cursor or {}
+    cursor["strava_request_day"] = request_day
+    cursor["strava_request_count"] = request_used
+    cursor["strava_request_limit"] = daily_limit
+    state.cursor = cursor
+
+    if enriched == 0:
+        return 0, None
+    return enriched, f"Background detail backfill enriched {enriched} activities."
 
 
 def _wants_json(request: Request) -> bool:
@@ -369,21 +506,46 @@ async def provider_status(
         base["last_error"] = connection.last_error
 
 
+@router.get("/strava/import-preferences", response_model=StravaImportPreferencesOut)
+async def get_strava_import_preferences(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    state = await get_or_create_sync_state(db, user_id=current_user.id, provider="strava")
+    cursor = state.cursor or {}
+    return StravaImportPreferencesOut(
+        import_all_time=bool(cursor.get("strava_import_all_time")),
+        default_window_days=max(30, int(os.getenv("STRAVA_DETAIL_BACKFILL_WINDOW_DAYS", "365"))),
+        daily_request_limit=max(1, int(os.getenv("STRAVA_DAILY_REQUEST_LIMIT", "500"))),
+    )
+
+
+@router.post("/strava/import-preferences", response_model=StravaImportPreferencesOut)
+async def set_strava_import_preferences(
+    payload: StravaImportPreferencesIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    state = await get_or_create_sync_state(db, user_id=current_user.id, provider="strava")
+    cursor = dict(state.cursor or {})
+    cursor["strava_import_all_time"] = bool(payload.import_all_time)
+    state.cursor = cursor
+    await db.commit()
+
+    return StravaImportPreferencesOut(
+        import_all_time=bool(cursor.get("strava_import_all_time")),
+        default_window_days=max(30, int(os.getenv("STRAVA_DETAIL_BACKFILL_WINDOW_DAYS", "365"))),
+        daily_request_limit=max(1, int(os.getenv("STRAVA_DAILY_REQUEST_LIMIT", "500"))),
+    )
+
+
 async def _sync_provider_task(provider: str, user_id: int):
     # Create a new session for the background task since the original one is closed
     async with AsyncSessionLocal() as db:
         try:
             state = await get_or_create_sync_state(db, user_id=user_id, provider=provider)
-            prior_cursor = state.cursor or {}
-            is_strava_initial_phase = provider == "strava" and not bool(prior_cursor.get("initial_sync_done"))
             state.sync_status = "syncing"
-            if provider == "strava":
-                if is_strava_initial_phase:
-                    state.sync_message = "Starting sync... loading your most recent activities first."
-                else:
-                    state.sync_message = "Starting sync... adding older history in the background."
-            else:
-                state.sync_message = "Starting sync..."
+            state.sync_message = "Starting sync..."
             state.sync_progress = 0
             state.sync_total = 0  # Unknown initially
             state.last_error = None
@@ -419,6 +581,11 @@ async def _sync_provider_task(provider: str, user_id: int):
                     await db.commit()
                     return
 
+            strava_auto_backfill_enabled = os.getenv("STRAVA_AUTO_BACKFILL_CONTINUE", "true").lower() in {"1", "true", "yes", "on"}
+            strava_auto_backfill_delay_seconds = max(0.0, float(os.getenv("STRAVA_AUTO_BACKFILL_DELAY_SECONDS", "8")))
+            strava_auto_backfill_max_phases = max(0, int(os.getenv("STRAVA_AUTO_BACKFILL_MAX_PHASES", "0")))
+            strava_phase_index = 0
+
             # Progress callback to update DB
             async def progress_callback(fetched_count: int):
                 # Update progress in DB every time? Or batch?
@@ -433,91 +600,228 @@ async def _sync_provider_task(provider: str, user_id: int):
                 )
                 await db.commit()
 
-            sync_result = await connector.fetch_activities(
-                access_token=access_token, 
-                cursor=state.cursor,
-                progress_callback=progress_callback
-            )
+            while True:
+                current_cursor = state.cursor or {}
+                is_strava_initial_phase = provider == "strava" and not bool(current_cursor.get("initial_sync_done"))
 
-            # --- Existing logic for stream backfill ---
-            if provider == "strava" and len(sync_result.activities) == 0:
-                 # Check if we need to backfill streams (simplified logic for bg task)
-                 pass 
-            # ------------------------------------------
-
-            # Ingest activities
-            imported = 0
-            duplicates = 0
-            total_items = len(sync_result.activities)
-            state.sync_total = total_items
-            await db.commit()
-            
-            for index, record in enumerate(sync_result.activities):
-                suffix = ""
                 if provider == "strava":
-                    suffix = " Recent first; full history appears progressively."
-                await db.execute(
-                    update(ProviderSyncState)
-                    .where(ProviderSyncState.id == state.id)
-                    .values(sync_progress=index + 1, sync_total=total_items, sync_message=f"Saving activity {index+1}/{total_items}...{suffix}")
-                )
-                await db.commit()
-                
-                activity, created = await ingest_provider_activity(
-                    db,
-                    user_id=user_id,
-                    provider=provider,
-                    provider_activity_id=record.provider_activity_id,
-                    name=record.name,
-                    start_time=record.start_time,
-                    duration_s=record.duration_s,
-                    distance_m=record.distance_m,
-                    sport=record.sport,
-                    average_hr=record.average_hr,
-                    average_watts=record.average_watts,
-                    average_speed=record.average_speed,
-                    payload=record.payload,
-                )
-                if created:
-                    imported += 1
+                    if is_strava_initial_phase:
+                        state.sync_message = "Starting sync... loading your most recent activities first."
+                    elif strava_phase_index > 0:
+                        state.sync_message = f"Continuing sync phase {strava_phase_index + 1}... adding older history."
+                    else:
+                        state.sync_message = "Starting sync... adding older history in the background."
                 else:
-                    duplicates += 1
-                
-                # Match compliance immediately?
-                # await match_and_score(db, user_id, record.start_time.date())
+                    state.sync_message = "Starting sync..."
+                state.sync_progress = 0
+                state.sync_total = 0
+                state.sync_status = "syncing"
+                state.last_error = None
+                await db.commit()
 
-            # Fetch wellness (simplified, no progress tracking for this part yet)
-            wellness_payload = sync_result.wellness.__dict__
-            try:
-                extra_wellness = await connector.fetch_wellness(access_token=access_token, cursor=state.cursor)
-                if extra_wellness:
-                    for key in wellness_payload.keys():
-                        wellness_payload[key] = (wellness_payload.get(key) or []) + (getattr(extra_wellness, key) or [])
-            except Exception as e:
-                # Log but don't fail entire sync
-                print(f"Wellness sync failed: {e}")
-
-            counts = await _upsert_wellness(db, user_id=user_id, provider=provider, wellness_payload=wellness_payload)
-
-            state.cursor = sync_result.next_cursor
-            state.last_success = datetime.utcnow()
-            state.last_error = None
-            state.sync_status = "completed"
-            if provider == "strava" and sync_result.next_cursor and sync_result.next_cursor.get("backfill_before_epoch"):
-                state.sync_message = (
-                    f"Completed this phase. Imported {imported} new, {duplicates} duplicates. "
-                    "More historical activities will continue to appear over time as sync progresses."
+                sync_result = await connector.fetch_activities(
+                    access_token=access_token,
+                    cursor=current_cursor,
+                    progress_callback=progress_callback,
                 )
-            else:
-                state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates."
-            # Reset progress for next valid run, or leave it to show 100%? 
-            # Leave it for now so UI sees it finished.
-            
-            # Update connection last_sync_at
-            connection.last_sync_at = datetime.utcnow()
-            connection.last_error = None
-            
-            await db.commit()
+
+                # Ingest activities
+                imported = 0
+                duplicates = 0
+                total_items = len(sync_result.activities)
+                state.sync_total = total_items
+                await db.commit()
+
+                strava_enrich_on_import = os.getenv("STRAVA_ENRICH_ON_IMPORT", "true").lower() in {"1", "true", "yes", "on"}
+                strava_enrich_initial_only = os.getenv("STRAVA_ENRICH_INITIAL_ONLY", "true").lower() in {"1", "true", "yes", "on"}
+                strava_enrich_max_activities = max(1, min(50, int(os.getenv("STRAVA_ENRICH_MAX_ACTIVITIES", "50"))))
+                strava_enrich_delay_seconds = max(0.0, float(os.getenv("STRAVA_ENRICH_DELAY_SECONDS", "0.35")))
+                strava_daily_request_limit = max(1, int(os.getenv("STRAVA_DAILY_REQUEST_LIMIT", "500")))
+                today_key = datetime.utcnow().strftime("%Y-%m-%d")
+
+                for index, record in enumerate(sync_result.activities):
+                    suffix = ""
+                    if provider == "strava":
+                        suffix = " Recent first; full history appears progressively."
+                    await db.execute(
+                        update(ProviderSyncState)
+                        .where(ProviderSyncState.id == state.id)
+                        .values(sync_progress=index + 1, sync_total=total_items, sync_message=f"Saving activity {index+1}/{total_items}...{suffix}")
+                    )
+                    await db.commit()
+
+                    should_enrich_this_activity = (
+                        provider == "strava"
+                        and strava_enrich_on_import
+                        and hasattr(connector, "fetch_activity_deep_data")
+                        and index < strava_enrich_max_activities
+                        and (is_strava_initial_phase or not strava_enrich_initial_only)
+                    )
+
+                    if should_enrich_this_activity:
+                        cursor_snapshot = state.cursor or {}
+                        request_day = str(cursor_snapshot.get("strava_request_day") or "")
+                        request_used = int(cursor_snapshot.get("strava_request_count") or 0)
+                        if request_day != today_key:
+                            request_day = today_key
+                            request_used = 0
+
+                        # Deep detail fetch uses 3 Strava requests: activity detail, laps, streams.
+                        estimated_cost = 3
+                        if request_used + estimated_cost > strava_daily_request_limit:
+                            strava_enrich_on_import = False
+                            state.sync_message = (
+                                f"Saving activity {index+1}/{total_items}... detail enrichment paused "
+                                f"(daily Strava limit {strava_daily_request_limit} reached)."
+                            )
+                            await db.commit()
+                            continue
+
+                        payload = record.payload if isinstance(record.payload, dict) else {}
+                        detail_payload = payload.get("detail") if isinstance(payload.get("detail"), dict) else None
+                        has_local_detail = isinstance(detail_payload, dict) and (
+                            isinstance(detail_payload.get("data"), list)
+                            or isinstance(detail_payload.get("laps"), list)
+                            or isinstance(detail_payload.get("stats"), dict)
+                        )
+
+                        if not has_local_detail:
+                            try:
+                                fetched_detail = await connector.fetch_activity_deep_data(
+                                    access_token=access_token,
+                                    activity_id=record.provider_activity_id,
+                                    start_time=record.start_time,
+                                )
+                                payload = dict(payload)
+                                payload["detail"] = fetched_detail
+                                record.payload = payload
+
+                                updated_cursor = dict(state.cursor or {})
+                                updated_cursor["strava_request_day"] = request_day
+                                updated_cursor["strava_request_count"] = request_used + estimated_cost
+                                updated_cursor["strava_request_limit"] = strava_daily_request_limit
+                                state.cursor = updated_cursor
+                                request_used += estimated_cost
+                            except Exception as enrich_error:
+                                # Keep sync resilient; activity summary still imports and can be enriched later.
+                                await log_integration_audit(
+                                    db,
+                                    user_id=user_id,
+                                    provider=provider,
+                                    action="activity_detail_enrich_failed",
+                                    status="warning",
+                                    message=f"Failed to enrich activity {record.provider_activity_id}: {enrich_error}",
+                                    payload={"activity_id": record.provider_activity_id},
+                                )
+
+                            if strava_enrich_delay_seconds > 0:
+                                await asyncio.sleep(strava_enrich_delay_seconds)
+
+                    activity, created = await ingest_provider_activity(
+                        db,
+                        user_id=user_id,
+                        provider=provider,
+                        provider_activity_id=record.provider_activity_id,
+                        name=record.name,
+                        start_time=record.start_time,
+                        duration_s=record.duration_s,
+                        distance_m=record.distance_m,
+                        sport=record.sport,
+                        average_hr=record.average_hr,
+                        average_watts=record.average_watts,
+                        average_speed=record.average_speed,
+                        payload=record.payload,
+                    )
+                    if created:
+                        imported += 1
+                    else:
+                        duplicates += 1
+
+                    # Match compliance immediately?
+                    # await match_and_score(db, user_id, record.start_time.date())
+
+                # Fetch wellness (simplified, no progress tracking for this part yet)
+                wellness_payload = sync_result.wellness.__dict__
+                try:
+                    extra_wellness = await connector.fetch_wellness(access_token=access_token, cursor=current_cursor)
+                    if extra_wellness:
+                        for key in wellness_payload.keys():
+                            wellness_payload[key] = (wellness_payload.get(key) or []) + (getattr(extra_wellness, key) or [])
+                except Exception as e:
+                    # Log but don't fail entire sync
+                    print(f"Wellness sync failed: {e}")
+
+                await _upsert_wellness(db, user_id=user_id, provider=provider, wellness_payload=wellness_payload)
+
+                if provider == "strava" and hasattr(connector, "fetch_activity_deep_data"):
+                    cursor_snapshot = state.cursor or {}
+                    import_all_time = bool(cursor_snapshot.get("strava_import_all_time"))
+                    enriched_count, enriched_message = await _strava_backfill_activity_details(
+                        db,
+                        state=state,
+                        connector=connector,
+                        access_token=access_token,
+                        user_id=user_id,
+                        import_all_time=import_all_time,
+                    )
+                    if enriched_count > 0 and enriched_message:
+                        state.sync_message = (
+                            f"Saving activity {total_items}/{total_items}... {enriched_message}"
+                            if total_items > 0
+                            else enriched_message
+                        )
+
+                next_cursor = sync_result.next_cursor or {}
+                cursor_snapshot = state.cursor or {}
+                if cursor_snapshot.get("strava_request_day"):
+                    next_cursor["strava_request_day"] = cursor_snapshot.get("strava_request_day")
+                if cursor_snapshot.get("strava_request_count") is not None:
+                    next_cursor["strava_request_count"] = cursor_snapshot.get("strava_request_count")
+                if cursor_snapshot.get("strava_request_limit") is not None:
+                    next_cursor["strava_request_limit"] = cursor_snapshot.get("strava_request_limit")
+
+                has_backfill_remaining = bool(next_cursor.get("backfill_before_epoch")) and not bool(next_cursor.get("full_backfill_once_done"))
+                can_continue_backfill = (
+                    provider == "strava"
+                    and strava_auto_backfill_enabled
+                    and has_backfill_remaining
+                    and (strava_auto_backfill_max_phases <= 0 or (strava_phase_index + 1) < strava_auto_backfill_max_phases)
+                )
+
+                state.cursor = next_cursor
+                state.last_success = datetime.utcnow()
+                state.last_error = None
+                connection.last_sync_at = datetime.utcnow()
+                connection.last_error = None
+
+                if can_continue_backfill:
+                    state.sync_status = "syncing"
+                    state.sync_message = (
+                        f"Completed phase {strava_phase_index + 1}. Imported {imported} new, {duplicates} duplicates. "
+                        "Continuing historical backfill shortly..."
+                    )
+                    await db.commit()
+                    strava_phase_index += 1
+                    if strava_auto_backfill_delay_seconds > 0:
+                        await asyncio.sleep(strava_auto_backfill_delay_seconds)
+                    continue
+
+                state.sync_status = "completed"
+                if provider == "strava" and has_backfill_remaining and not strava_auto_backfill_enabled:
+                    state.sync_message = (
+                        f"Completed this phase. Imported {imported} new, {duplicates} duplicates. "
+                        "More historical activities are available; trigger sync again to continue backfill."
+                    )
+                elif provider == "strava" and has_backfill_remaining and strava_auto_backfill_max_phases > 0:
+                    state.sync_message = (
+                        f"Completed this run. Imported {imported} new, {duplicates} duplicates. "
+                        "More historical activities remain and will sync on the next run."
+                    )
+                else:
+                    state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates."
+
+                await db.commit()
+                break
 
         except Exception as e:
             await db.rollback()
@@ -738,6 +1042,51 @@ async def bridge_sleep_ingest(
         message=f"{counts}",
     )
     return {"provider": provider, "updated": counts}
+
+
+@router.post("/wellness/manual")
+async def log_manual_wellness(
+    payload: ManualWellnessIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if payload.hrv_ms is None and payload.resting_hr is None:
+        raise HTTPException(status_code=400, detail="Provide at least one of hrv_ms or resting_hr")
+
+    normalized = {
+        "hrv_daily": [],
+        "rhr_daily": [],
+        "sleep_sessions": [],
+        "stress_daily": [],
+    }
+    if payload.hrv_ms is not None:
+        normalized["hrv_daily"].append({
+            "date": payload.date,
+            "hrv_ms": payload.hrv_ms,
+            "provider_record_id": None,
+        })
+    if payload.resting_hr is not None:
+        normalized["rhr_daily"].append({
+            "date": payload.date,
+            "resting_hr": payload.resting_hr,
+            "provider_record_id": None,
+        })
+
+    counts = await _upsert_wellness(
+        db,
+        user_id=current_user.id,
+        provider="manual",
+        wellness_payload=normalized,
+    )
+    await log_integration_audit(
+        db,
+        user_id=current_user.id,
+        provider="manual",
+        action="manual_wellness_log",
+        status="ok",
+        message=f"{counts}",
+    )
+    return {"updated": counts}
 
 
 @router.get("/wellness/summary", response_model=WellnessSummaryOut)

@@ -122,6 +122,31 @@ Secrets/config:
 - `GOOGLE_FIT_CLIENT_ID`, `GOOGLE_FIT_CLIENT_SECRET`, `GOOGLE_FIT_REDIRECT_URI`
 - `APPLE_HEALTH_CLIENT_ID`, `APPLE_HEALTH_CLIENT_SECRET`, `APPLE_HEALTH_REDIRECT_URI`
 
+Strava sync tuning (optional):
+
+- `STRAVA_INITIAL_SYNC_MAX_ACTIVITIES` (default `50`, clamped `20-50` for fast first sync)
+- `STRAVA_SYNC_MAX_ACTIVITIES` (default `50` for incremental recent sync)
+- `STRAVA_FULL_HISTORY_ENABLED` (default `true`)
+- `STRAVA_BACKFILL_BATCH_ACTIVITIES` (default `100` per backfill phase)
+- `STRAVA_BACKFILL_REQUEST_DELAY_SECONDS` (default `2.0` between Strava history requests)
+- `STRAVA_DAILY_REQUEST_LIMIT` (default `500`, hard cap for Strava API calls per UTC day during import)
+- `STRAVA_AUTO_BACKFILL_CONTINUE` (default `true`, chain backfill phases in one background run)
+- `STRAVA_AUTO_BACKFILL_DELAY_SECONDS` (default `8`, pause between backfill phases)
+- `STRAVA_AUTO_BACKFILL_MAX_PHASES` (default `0` = no phase limit)
+- `STRAVA_ENRICH_ON_IMPORT` (default `true`; enriches activity detail during import)
+- `STRAVA_ENRICH_INITIAL_ONLY` (default `true`; limit enrichment to initial recent-sync phase)
+- `STRAVA_ENRICH_MAX_ACTIVITIES` (default `50`; max activities enriched per sync run)
+- `STRAVA_DETAIL_BACKFILL_BATCH_ACTIVITIES` (default `12`; additional saved activities enriched per background sync run)
+- `STRAVA_DETAIL_BACKFILL_WINDOW_DAYS` (default `365`; default full-detail backfill window when all-time is disabled)
+- `STRAVA_ALLOW_LAZY_DETAIL_FETCH` (default `false`; when `false`, opening activity detail never triggers Strava API calls)
+
+Per-user Strava detail scope:
+
+- Settings → Integrations includes **Strava detail backfill: import all-time history**.
+- OFF (default): full-detail backfill runs in background for the last `STRAVA_DETAIL_BACKFILL_WINDOW_DAYS` only.
+- ON: full-detail backfill runs in background for all historical imported activities.
+- In both cases, work is chunked and constrained by `STRAVA_DAILY_REQUEST_LIMIT`.
+
 App startup is safe when credentials are missing (providers remain disabled/scaffolded).
 
 ### Local Testing Guide

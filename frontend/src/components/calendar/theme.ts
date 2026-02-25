@@ -48,17 +48,23 @@ export const ORIGAMI_THEME: Record<'dark' | 'light', OrigamiPalette> = {
 
 export const ORIGAMI_ACTIVITY_COLORS: Record<'dark' | 'light', Record<ActivityBrandType, string>> = {
     dark: {
-        run: '#38BDF8',
-        cycling: '#2563EB',
-        workout: '#8B5CF6',
-        virtual: '#0EA5E9',
-        default: '#3B82F6'
+        run: '#FF5D7A',
+        cycling: '#5C6CFF',
+        swim: '#8FE36E',
+        walk: '#F2C94C',
+        hike: '#FF6A1A',
+        workout: '#7A5AF8',
+        virtual: '#5C6CFF',
+        default: '#94A3B8'
     },
     light: {
-        run: '#0C4A6E',
-        cycling: '#1D4ED8',
-        workout: '#6D28D9',
-        virtual: '#0369A1',
-        default: '#1E40AF'
+        run: '#ED4B6A',
+        cycling: '#4C5DFF',
+        swim: '#63C951',
+        walk: '#D4A72C',
+        hike: '#E95A12',
+        workout: '#6E4BF3',
+        virtual: '#4C5DFF',
+        default: '#64748B'
     }
 };
