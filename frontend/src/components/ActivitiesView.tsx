@@ -137,16 +137,15 @@ export function ActivitiesView({
         </Paper>
 
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" verticalSpacing="sm">
-            {activitiesQuery.data?.map((act) => (
-                (() => {
-                    const accentColor = resolveActivityAccentColor(
-                        activityColors as any,
-                        act.sport || undefined,
-                        act.filename
-                    );
-                    const pillLabel = resolveActivityPillLabel(act.sport || undefined, act.filename);
+            {activitiesQuery.data?.map((act) => {
+                const accentColor = resolveActivityAccentColor(
+                    activityColors as any,
+                    act.sport || undefined,
+                    act.filename
+                );
+                const pillLabel = resolveActivityPillLabel(act.sport || undefined, act.filename);
 
-                    return (
+                return (
                 <Card 
                     key={act.id} 
                     withBorder 
@@ -249,9 +248,8 @@ export function ActivitiesView({
                     </Stack>
                     </Box>
                 </Card>
-                    );
-                })()
-            )}
+                );
+            })}
                         {activitiesQuery.data?.length === 0 && (
                             <Paper withBorder p="lg" radius="lg" style={cardStyle}>
                                 <Stack align="center" gap="xs">
