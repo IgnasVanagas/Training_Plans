@@ -8,6 +8,7 @@ import '@mantine/dates/styles.css';
 import ActivityUploadPanel from './dashboard/ActivityUploadPanel';
 import { ORIGAMI_ACTIVITY_COLORS } from './calendar/theme';
 import { resolveActivityAccentColor, resolveActivityPillLabel } from './calendar/activityStyling';
+import OrigamiLoadingAnimation from './common/OrigamiLoadingAnimation';
 
 type Activity = {
     id: number;
@@ -27,6 +28,13 @@ type Activity = {
 };
 
 import { useNavigate } from 'react-router-dom';
+
+const toLocalDateKey = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
 
 export function ActivitiesView({
     athleteId,
@@ -91,13 +99,16 @@ export function ActivitiesView({
     queryFn: async () => {
       const params: any = {};
       if (athleteId) params.athlete_id = athleteId;
-      if (dateRange[0]) params.start_date = dateRange[0].toISOString().split('T')[0];
-      if (dateRange[1]) params.end_date = dateRange[1].toISOString().split('T')[0];
+    if (dateRange[0]) params.start_date = toLocalDateKey(dateRange[0]);
+    if (dateRange[1]) params.end_date = toLocalDateKey(dateRange[1]);
       
       const res = await api.get<Activity[]>('/activities/', { params });
       return res.data; 
-    }
+        },
+        staleTime: 1000 * 60,
   });
+
+    const isInitialActivitiesLoading = (activitiesQuery.isLoading || activitiesQuery.isFetching) && !activitiesQuery.data;
 
   return (
         <Stack style={{ fontFamily: '"Inter", sans-serif' }} bg={ui.pageBg} p={6} gap="sm">
@@ -137,6 +148,11 @@ export function ActivitiesView({
         </Paper>
 
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" verticalSpacing="sm">
+            {isInitialActivitiesLoading && (
+                <Paper withBorder p="lg" radius="lg" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
+                    <OrigamiLoadingAnimation label="Loading activities..." minHeight={220} />
+                </Paper>
+            )}
             {activitiesQuery.data?.map((act) => {
                 const accentColor = resolveActivityAccentColor(
                     activityColors as any,
@@ -250,7 +266,7 @@ export function ActivitiesView({
                 </Card>
                 );
             })}
-                        {activitiesQuery.data?.length === 0 && (
+                        {!isInitialActivitiesLoading && activitiesQuery.data?.length === 0 && (
                             <Paper withBorder p="lg" radius="lg" style={cardStyle}>
                                 <Stack align="center" gap="xs">
                                     <IconUpload size={28} />

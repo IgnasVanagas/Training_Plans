@@ -69,9 +69,9 @@ const calculateNormalizedPower = (powerSamples: number[]) => {
 
 const getZonePalette = (zoneCount: number) => {
     if (zoneCount === 5) {
-        return ['#64748B', '#3B82F6', '#22C55E', '#EAB308', '#EF4444'];
+        return ['#22C55E', '#84CC16', '#EAB308', '#F97316', '#EF4444'];
     }
-    return ['#6366F1', '#3B82F6', '#06B6D4', '#22C55E', '#EAB308', '#F97316', '#EF4444'];
+    return ['#22C55E', '#84CC16', '#EAB308', '#EAB308', '#F59E0B', '#F97316', '#EF4444'];
 };
 
 const renderStackedZoneBar = (zoneValues: number[], zoneCount: number, height: number = 8, dayCellBorder: string) => {
@@ -124,36 +124,6 @@ export default function TrainingCalendarZoneSummaryPanel({
     const [zoneDetailModal, setZoneDetailModal] = useState<ZoneDetailModalData | null>(null);
     const [weeklyZoneMetricMode, setWeeklyZoneMetricMode] = useState<'hr' | 'performance'>('performance');
     const lastHandledMonthlySignalRef = useRef(0);
-
-    const { data: weekRangeZoneActivities = [] } = useQuery({
-        queryKey: ['zone-week-range-activities', athleteId, allAthletes, weekStartDay, ...weeksInMonth.map((week) => week.key)],
-        enabled: weeksInMonth.length > 0,
-        queryFn: async () => {
-            const byId = new Map<number, ActivityZoneSummary>();
-
-            await Promise.all(
-                weeksInMonth.map(async (week) => {
-                    const params = new URLSearchParams();
-                    params.set('reference_date', week.key);
-                    params.set('week_start_day', weekStartDay === 0 ? 'sunday' : 'monday');
-                    if (athleteId) {
-                        params.set('athlete_id', athleteId.toString());
-                    } else if (allAthletes) {
-                        params.set('all_athletes', 'true');
-                    }
-
-                    const res = await api.get<ZoneSummaryResponse>(`/activities/zone-summary?${params.toString()}`);
-                    (res.data.athletes || []).forEach((summary) => {
-                        (summary.weekly_activity_zones || []).forEach((activity) => {
-                            byId.set(activity.activity_id, activity);
-                        });
-                    });
-                })
-            );
-
-            return Array.from(byId.values());
-        }
-    });
 
     const hasZoneSeconds = (source?: Record<string, number>) => {
         if (!source) return false;
@@ -354,6 +324,46 @@ export default function TrainingCalendarZoneSummaryPanel({
         return events.filter((event: any) => !(event.resource as CalendarEvent).is_planned);
     }, [events]);
 
+    const weeksWithActivities = useMemo(() => {
+        return weeksInMonth
+            .filter((week) => completedEvents.some((event: any) => {
+                const eventDate = event.start as Date;
+                return eventDate >= week.start && eventDate <= week.end;
+            }))
+            .map((week) => week.key);
+    }, [weeksInMonth, completedEvents]);
+
+    const { data: supplementalWeekZoneActivities = [] } = useQuery({
+        queryKey: ['zone-week-range-activities-supplemental', athleteId, allAthletes, weekStartDay, ...weeksWithActivities],
+        enabled: weeksWithActivities.length > 0,
+        staleTime: 1000 * 60 * 5,
+        queryFn: async () => {
+            const byId = new Map<number, ActivityZoneSummary>();
+
+            await Promise.all(
+                weeksWithActivities.map(async (weekKey) => {
+                    const params = new URLSearchParams();
+                    params.set('reference_date', weekKey);
+                    params.set('week_start_day', weekStartDay === 0 ? 'sunday' : 'monday');
+                    if (athleteId) {
+                        params.set('athlete_id', athleteId.toString());
+                    } else if (allAthletes) {
+                        params.set('all_athletes', 'true');
+                    }
+
+                    const res = await api.get<ZoneSummaryResponse>(`/activities/zone-summary?${params.toString()}`);
+                    (res.data.athletes || []).forEach((summary) => {
+                        (summary.weekly_activity_zones || []).forEach((activity) => {
+                            byId.set(activity.activity_id, activity);
+                        });
+                    });
+                })
+            );
+
+            return Array.from(byId.values());
+        }
+    });
+
     const scopedKnownActivities = useMemo(() => {
         const byId = new Map<number, ActivityZoneSummary>();
         summaries.forEach((summary) => {
@@ -364,14 +374,14 @@ export default function TrainingCalendarZoneSummaryPanel({
                 }
             });
         });
-        weekRangeZoneActivities.forEach((activity) => {
+        supplementalWeekZoneActivities.forEach((activity) => {
             const activityId = toActivityIdKey(activity.activity_id);
             if (activityId !== null) {
                 byId.set(activityId, activity);
             }
         });
         return Array.from(byId.values());
-    }, [summaries, weekRangeZoneActivities]);
+    }, [summaries, supplementalWeekZoneActivities]);
 
     const athleteProfileById = useMemo(() => {
         const byId = new Map<number, any>();
@@ -666,14 +676,22 @@ export default function TrainingCalendarZoneSummaryPanel({
             })
             .sort((a: DetailActivity, b: DetailActivity) => b.date.getTime() - a.date.getTime());
 
-        const hasMissingZoneCoverage = scopedEvents.some((event: any) => {
+        const hasMissingStreamData = scopedEvents.some((event: any) => {
             const resource = event.resource as CalendarEvent;
             const activityId = toActivityIdKey(resource.id);
             if (activityId === null) return true;
-            return !knownByActivityId.has(activityId);
+
+            const detail = detailByActivityId.get(activityId);
+            if (!detail) return true;
+
+            const streamPoints = Array.isArray(detail?.streams)
+                ? detail.streams
+                : (Array.isArray(detail?.streams?.data) ? detail.streams.data : []);
+
+            return !Array.isArray(streamPoints) || streamPoints.length === 0;
         });
 
-        const isPartialData = summaries.length === 0 || hasMissingZoneCoverage || !hasPerActivityZoneSeconds;
+        const isPartialData = scopedEvents.length > 0 && hasMissingStreamData;
         const enhancedMetrics = buildEnhancedMetrics(scopedEvents, detailByActivityId);
 
         setZoneDetailModal({
@@ -683,7 +701,7 @@ export default function TrainingCalendarZoneSummaryPanel({
             activities,
             partialData: isPartialData,
             partialDataMessage: isPartialData
-                ? 'Data is still syncing from Strava. Showing available activities and current totals; values will expand as sync completes.'
+                ? 'Some activities in this period still do not have stream data. Values will update as stream sync completes.'
                 : undefined,
             isLoading: false,
         });

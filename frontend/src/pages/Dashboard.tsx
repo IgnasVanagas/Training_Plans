@@ -28,6 +28,13 @@ import {
 import { extractApiErrorMessage } from "./dashboard/utils";
 import { useIntegrationSync } from "./dashboard/useIntegrationSync";
 
+const toLocalDateKey = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const Dashboard = () => {
   const location = useLocation();
   const navigationState = (location.state || {}) as {
@@ -139,7 +146,7 @@ const Dashboard = () => {
       const days = Array.from({ length: 14 }, (_, index) => {
         const date = new Date(today);
         date.setDate(today.getDate() - (13 - index));
-        return date.toISOString().slice(0, 10);
+        return toLocalDateKey(date);
       });
 
       const rows = await Promise.all(
@@ -170,8 +177,8 @@ const Dashboard = () => {
       end.setDate(today.getDate() + 14);
 
       const params = new URLSearchParams({
-        start_date: start.toISOString().slice(0, 10),
-        end_date: end.toISOString().slice(0, 10),
+        start_date: toLocalDateKey(start),
+        end_date: toLocalDateKey(end),
       });
 
       if (meQuery.data?.role === "coach") {
@@ -221,7 +228,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (!me || me.role !== "athlete") return;
     const storageKey = `profile-metric-history-${me.id}`;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = toLocalDateKey(new Date());
 
     const currentSnapshot: ProfileMetricSnapshot = {
       date: today,
@@ -298,7 +305,7 @@ const Dashboard = () => {
   }, [profileMetricHistory, selectedMetric, trainingStatusHistoryQuery.data]);
 
   const athleteIdNum = selectedAthleteId ? parseInt(selectedAthleteId) : null;
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = toLocalDateKey(new Date());
   const todayWorkout = (dashboardCalendarQuery.data || []).find((row) => row.date === todayIso && row.is_planned);
 
   const complianceAlerts = useMemo(() => {
@@ -342,7 +349,7 @@ const Dashboard = () => {
     }
 
     manualWellnessMutation.mutate({
-      date: manualMetricDate.toISOString().slice(0, 10),
+      date: toLocalDateKey(manualMetricDate),
       hrv_ms: selectedMetric === "hrv" ? Number(manualMetricValue) : undefined,
       resting_hr: selectedMetric === "rhr" ? Number(manualMetricValue) : undefined,
     });

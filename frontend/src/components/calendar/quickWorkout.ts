@@ -132,29 +132,14 @@ export const buildQuickWorkoutStructure = (
   minutes: number,
   distanceKm: number,
 ): WorkoutNode[] => {
+  const boundedZone = Math.max(1, zone);
   if (mode === "time") {
     const totalSeconds = Math.max(300, Math.round(minutes * 60));
-    const warmupSeconds = Math.min(900, Math.max(300, Math.round(totalSeconds * 0.2)));
-    const cooldownSeconds = Math.min(600, Math.max(300, Math.round(totalSeconds * 0.15)));
-    const mainSeconds = Math.max(300, totalSeconds - warmupSeconds - cooldownSeconds);
-
-    return [
-      quickWorkoutStep("warmup", "time", warmupSeconds, sportType, Math.max(1, zone - 1)),
-      quickWorkoutStep("work", "time", mainSeconds, sportType, zone),
-      quickWorkoutStep("cooldown", "time", cooldownSeconds, sportType, Math.max(1, zone - 1)),
-    ];
+    return [quickWorkoutStep("work", "time", totalSeconds, sportType, boundedZone)];
   }
 
   const totalMeters = Math.max(1000, Math.round(distanceKm * 1000));
-  const warmupMeters = Math.min(3000, Math.max(1000, Math.round(totalMeters * 0.2)));
-  const cooldownMeters = Math.min(2000, Math.max(500, Math.round(totalMeters * 0.15)));
-  const mainMeters = Math.max(1000, totalMeters - warmupMeters - cooldownMeters);
-
-  return [
-    quickWorkoutStep("warmup", "distance", warmupMeters, sportType, Math.max(1, zone - 1)),
-    quickWorkoutStep("work", "distance", mainMeters, sportType, zone),
-    quickWorkoutStep("cooldown", "distance", cooldownMeters, sportType, Math.max(1, zone - 1)),
-  ];
+  return [quickWorkoutStep("work", "distance", totalMeters, sportType, boundedZone)];
 };
 
 export const buildQuickWorkoutDescription = (

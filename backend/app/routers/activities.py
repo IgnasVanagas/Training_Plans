@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from ..database import get_db
-from ..models import User, Activity, CoachAthleteLink, OrganizationMember, RoleEnum, Profile
+from ..models import User, Activity, CoachAthleteLink, OrganizationMember, RoleEnum, Profile, PlannedWorkout, RHRDaily
 from ..integrations.crypto import decrypt_token, encrypt_token
 from ..integrations.registry import get_connector
 from ..integrations.service import get_connection
@@ -19,6 +19,7 @@ from ..services.activity_dedupe import (
 )
 from datetime import datetime, timezone, date, timedelta
 from collections import defaultdict
+from typing import Any
 import math
 import os
 import uuid
@@ -145,6 +146,33 @@ def _metric_upper_bounds(
     return fallback_bounds
 
 
+def _resolve_effective_resting_hr(profile: Profile | None, lowest_recorded_rhr: float | None = None) -> float:
+    profile_rhr = _safe_number(getattr(profile, "resting_hr", None), default=0.0)
+    recorded_rhr = _safe_number(lowest_recorded_rhr, default=0.0)
+
+    candidates = [value for value in (profile_rhr, recorded_rhr) if value > 0]
+    if not candidates:
+        return 60.0
+    return min(candidates)
+
+
+def _hr_zone_bounds_from_reserve(max_hr: float, resting_hr: float) -> list[float]:
+    if max_hr <= 0:
+        return []
+
+    effective_resting_hr = max(30.0, min(resting_hr, max_hr - 1.0))
+    reserve = max_hr - effective_resting_hr
+    if reserve <= 0:
+        return [max_hr * 0.60, max_hr * 0.70, max_hr * 0.80, max_hr * 0.90]
+
+    return [
+        effective_resting_hr + reserve * 0.60,
+        effective_resting_hr + reserve * 0.70,
+        effective_resting_hr + reserve * 0.80,
+        effective_resting_hr + reserve * 0.90,
+    ]
+
+
 def _zone_index_from_upper_bounds(value: float, upper_bounds: list[float], reverse: bool = False) -> int:
     if not upper_bounds:
         return 1
@@ -257,6 +285,482 @@ def _as_stream_payload(streams) -> dict:
     return {}
 
 
+def _flatten_planned_time_steps(structure) -> list[dict]:
+    steps = structure if isinstance(structure, list) else []
+    out: list[dict] = []
+
+    def walk(nodes, multiplier: int = 1):
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+
+            node_type = str(node.get("type") or "")
+            if node_type == "repeat":
+                repeats = max(1, int(node.get("repeats") or 1))
+                nested = node.get("steps") if isinstance(node.get("steps"), list) else []
+                for _ in range(repeats):
+                    walk(nested, multiplier)
+                continue
+
+            duration = node.get("duration") if isinstance(node.get("duration"), dict) else {}
+            if str(duration.get("type") or "") != "time":
+                continue
+
+            duration_seconds = float(duration.get("value") or 0.0) * multiplier
+            if duration_seconds <= 0:
+                continue
+
+            target = node.get("target") if isinstance(node.get("target"), dict) else {}
+            out.append(
+                {
+                    "category": node.get("category"),
+                    "planned_duration_s": duration_seconds,
+                    "target": {
+                        "type": target.get("type"),
+                        "metric": target.get("metric"),
+                        "zone": target.get("zone"),
+                        "min": target.get("min"),
+                        "max": target.get("max"),
+                        "value": target.get("value"),
+                        "unit": target.get("unit"),
+                    },
+                }
+            )
+
+    walk(steps)
+    return out
+
+
+def _extract_actual_split_rows(splits_metric, laps) -> list[dict]:
+    source = splits_metric if isinstance(splits_metric, list) and splits_metric else laps if isinstance(laps, list) else []
+    out: list[dict] = []
+    for idx, item in enumerate(source):
+        if not isinstance(item, dict):
+            continue
+        duration_s = float(item.get("duration") or item.get("elapsed_time") or item.get("moving_time") or 0.0)
+        out.append(
+            {
+                "split": idx + 1,
+                "actual_duration_s": duration_s,
+                "distance_m": float(item.get("distance") or 0.0),
+                "avg_hr": item.get("avg_hr") or item.get("average_heartrate"),
+                "avg_power": item.get("avg_power") or item.get("average_watts"),
+                "avg_speed": item.get("avg_speed") or item.get("average_speed"),
+            }
+        )
+    return out
+
+
+def _compute_normalized_power_watts_from_payload(payload: dict) -> float | None:
+    stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
+    direct = _safe_number(stats.get("normalized_power"), default=0.0)
+    if direct > 0:
+        return direct
+
+    power_curve = payload.get("power_curve") if isinstance(payload.get("power_curve"), dict) else {}
+    curve_np = _safe_number(power_curve.get("normalized_power"), default=0.0)
+    if curve_np > 0:
+        return curve_np
+
+    data_points = payload.get("data") if isinstance(payload.get("data"), list) else []
+    power_samples = [
+        _safe_number(point.get("power"), default=-1.0)
+        for point in data_points
+        if isinstance(point, dict)
+    ]
+    power_samples = [sample for sample in power_samples if sample >= 0]
+    if not power_samples:
+        return None
+
+    if len(power_samples) < 30:
+        avg = sum(power_samples) / len(power_samples)
+        return avg if avg > 0 else None
+
+    rolling: list[float] = []
+    for idx in range(0, len(power_samples) - 29):
+        window = power_samples[idx: idx + 30]
+        rolling.append(sum(window) / len(window))
+    if not rolling:
+        return None
+
+    mean_fourth = sum(value ** 4 for value in rolling) / len(rolling)
+    normalized_power = mean_fourth ** 0.25
+    return normalized_power if normalized_power > 0 else None
+
+
+def _workout_target_zone(workout: PlannedWorkout) -> int | None:
+    token = str(workout.planned_intensity or "").lower()
+    digits = "".join(ch for ch in token if ch.isdigit())
+    if digits:
+        zone = int(digits)
+        if zone > 0:
+            return zone
+
+    structure = workout.structure if isinstance(workout.structure, list) else []
+    zones: list[int] = []
+
+    def walk(nodes: list[dict[str, Any]]) -> None:
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            if str(node.get("type") or "") == "repeat":
+                nested = node.get("steps") if isinstance(node.get("steps"), list) else []
+                repeats = max(1, int(node.get("repeats") or 1))
+                for _ in range(repeats):
+                    walk(nested)
+                continue
+            target = node.get("target") if isinstance(node.get("target"), dict) else {}
+            value = int(_safe_number(target.get("zone"), default=0.0))
+            if value > 0:
+                zones.append(value)
+
+    walk(structure)
+    if not zones:
+        return None
+
+    counts: dict[int, int] = {}
+    for zone in zones:
+        counts[zone] = counts.get(zone, 0) + 1
+    return sorted(counts.items(), key=lambda pair: (-pair[1], pair[0]))[0][0]
+
+
+def _is_steady_zone_workout(workout: PlannedWorkout) -> bool:
+    structure = workout.structure if isinstance(workout.structure, list) else []
+    if not structure:
+        return False
+
+    zones: list[int] = []
+
+    def walk(nodes: list[dict[str, Any]]) -> None:
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            if str(node.get("type") or "") == "repeat":
+                nested = node.get("steps") if isinstance(node.get("steps"), list) else []
+                repeats = max(1, int(node.get("repeats") or 1))
+                for _ in range(repeats):
+                    walk(nested)
+                continue
+            target = node.get("target") if isinstance(node.get("target"), dict) else {}
+            value = int(_safe_number(target.get("zone"), default=0.0))
+            if value > 0:
+                zones.append(value)
+
+    walk(structure)
+    if not zones:
+        return False
+    return len(set(zones)) == 1
+
+
+def _range_match_pct(value: float | None, low: float, high: float, tolerance: float) -> float | None:
+    if value is None:
+        return None
+    if low <= value <= high:
+        return 100.0
+    distance = min(abs(value - low), abs(value - high))
+    return max(0.0, 100.0 - (distance / max(1.0, tolerance)) * 100.0)
+
+
+def _intensity_assessment(workout: PlannedWorkout, activity: Activity, profile: Profile | None, stats: dict) -> dict | None:
+    zone = _workout_target_zone(workout)
+    if zone is None:
+        return None
+
+    sport = _normalize_sport_name(workout.sport_type)
+    if sport == "cycling":
+        ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+        if ftp <= 0:
+            return None
+
+        zone_bounds: list[tuple[float, float]] = [
+            (50.0, 55.0),
+            (56.0, 75.0),
+            (76.0, 90.0),
+            (91.0, 105.0),
+            (106.0, 120.0),
+            (121.0, 150.0),
+            (151.0, 200.0),
+        ]
+        idx = max(1, min(len(zone_bounds), zone)) - 1
+        low_pct, high_pct = zone_bounds[idx]
+
+        avg_watts = _safe_number(activity.average_watts, default=0.0)
+        avg_pct = (avg_watts / ftp) * 100.0 if avg_watts > 0 else None
+
+        payload = _as_stream_payload(activity.streams)
+        np_watts = _compute_normalized_power_watts_from_payload(payload)
+        np_pct = (np_watts / ftp) * 100.0 if np_watts and np_watts > 0 else None
+
+        max_watts = _safe_number(stats.get("max_watts"), default=0.0)
+        max_pct = (max_watts / ftp) * 100.0 if max_watts > 0 else None
+
+        avg_match = _range_match_pct(avg_pct, low_pct, high_pct, tolerance=15.0)
+        np_match = _range_match_pct(np_pct, low_pct, high_pct, tolerance=16.0)
+
+        max_cap = high_pct + 20.0
+        max_warn = high_pct + 40.0
+        if max_pct is None:
+            max_match = None
+        elif max_pct <= max_cap:
+            max_match = 100.0
+        elif max_pct <= max_warn:
+            max_match = 65.0
+        else:
+            max_match = 20.0
+
+        components: list[tuple[float, float | None]] = [
+            (0.35, avg_match),
+            (0.45, np_match),
+            (0.20, max_match),
+        ]
+        weighted = 0.0
+        total_weight = 0.0
+        for weight, score in components:
+            if score is None:
+                continue
+            weighted += weight * score
+            total_weight += weight
+        if total_weight <= 0:
+            return None
+
+        match_pct = weighted / total_weight
+        status = "green" if match_pct >= 78 else "yellow" if match_pct >= 58 else "red"
+        return {
+            "sport": "cycling",
+            "zone": zone,
+            "match_pct": round(match_pct, 1),
+            "status": status,
+            "metrics": {
+                "avg_power_w": round(avg_watts, 1) if avg_watts > 0 else None,
+                "np_power_w": round(np_watts, 1) if np_watts else None,
+                "max_power_w": round(max_watts, 1) if max_watts > 0 else None,
+                "target_power_pct": {"min": low_pct, "max": high_pct},
+                "actual_power_pct": {
+                    "avg": round(avg_pct, 1) if avg_pct is not None else None,
+                    "np": round(np_pct, 1) if np_pct is not None else None,
+                    "max": round(max_pct, 1) if max_pct is not None else None,
+                },
+            },
+            "note": "For steady rides, intensity quality (NP/avg/max) is prioritized over split count.",
+        }
+
+    if sport == "running":
+        lt2 = _safe_number(getattr(profile, "lt2", None), default=0.0)
+        max_hr = _safe_number(getattr(profile, "max_hr", None), default=0.0)
+
+        avg_speed = _safe_number(activity.avg_speed, default=0.0)
+        avg_pace = (1000.0 / (avg_speed * 60.0)) if avg_speed > 0 else None
+        avg_hr = _safe_number(activity.average_hr, default=0.0)
+        max_hr_actual = _safe_number(stats.get("max_hr"), default=0.0)
+
+        match_scores: list[float] = []
+        metrics: dict[str, Any] = {}
+
+        if lt2 > 0 and avg_pace is not None:
+            pace_ranges: list[tuple[float, float]] = [
+                (135.0, 120.0),
+                (120.0, 110.0),
+                (110.0, 103.0),
+                (103.0, 97.0),
+                (97.0, 90.0),
+                (90.0, 84.0),
+                (84.0, 75.0),
+            ]
+            idx = max(1, min(len(pace_ranges), zone)) - 1
+            slow_pct, fast_pct = pace_ranges[idx]
+            low = lt2 * (fast_pct / 100.0)
+            high = lt2 * (slow_pct / 100.0)
+            pace_match = _range_match_pct(avg_pace, low, high, tolerance=0.45)
+            if pace_match is not None:
+                match_scores.append(pace_match)
+            metrics["target_pace_min_per_km"] = {"min": round(low, 2), "max": round(high, 2)}
+            metrics["actual_pace_min_per_km"] = round(avg_pace, 2)
+
+        if max_hr > 0 and avg_hr > 0:
+            low = max_hr * 0.60
+            high = max_hr * 0.70 if zone <= 2 else max_hr * 0.80 if zone == 3 else max_hr * 0.90
+            hr_match = _range_match_pct(avg_hr, low, high, tolerance=10.0)
+            if hr_match is not None:
+                match_scores.append(hr_match)
+            metrics["target_hr_bpm"] = {"min": round(low), "max": round(high)}
+            metrics["actual_avg_hr_bpm"] = round(avg_hr)
+            if max_hr_actual > 0:
+                metrics["actual_max_hr_bpm"] = round(max_hr_actual)
+
+        if not match_scores:
+            return None
+
+        match_pct = sum(match_scores) / len(match_scores)
+        status = "green" if match_pct >= 78 else "yellow" if match_pct >= 58 else "red"
+        return {
+            "sport": "running",
+            "zone": zone,
+            "match_pct": round(match_pct, 1),
+            "status": status,
+            "metrics": metrics,
+            "note": "Running intensity uses pace and heart-rate adherence to target zone.",
+        }
+
+    return None
+
+
+def _build_planned_comparison_payload(
+    workout: PlannedWorkout,
+    activity: Activity,
+    splits_metric,
+    laps,
+    profile: Profile | None,
+    stats: dict,
+) -> dict:
+    planned_duration_min = float(workout.planned_duration or 0.0)
+    actual_duration_min = float((activity.duration or 0.0) / 60.0)
+    planned_distance_km = float(workout.planned_distance or 0.0)
+    actual_distance_km = float((activity.distance or 0.0) / 1000.0)
+    has_planned_distance = planned_distance_km > 0
+
+    planned_steps = _flatten_planned_time_steps(workout.structure)
+    actual_splits = _extract_actual_split_rows(splits_metric, laps)
+    intensity = _intensity_assessment(workout, activity, profile, stats)
+
+    steady_zone_workout = _is_steady_zone_workout(workout)
+    split_importance = "high"
+    if steady_zone_workout and len(actual_splits) > (len(planned_steps) + 2):
+        split_importance = "low"
+
+    split_comparison: list[dict] = []
+    if split_importance != "low":
+        max_len = max(len(planned_steps), len(actual_splits))
+        for idx in range(max_len):
+            planned = planned_steps[idx] if idx < len(planned_steps) else None
+            actual = actual_splits[idx] if idx < len(actual_splits) else None
+            planned_s = float((planned or {}).get("planned_duration_s") or 0.0)
+            actual_s = float((actual or {}).get("actual_duration_s") or 0.0)
+            delta_s = actual_s - planned_s
+            delta_pct = (delta_s / planned_s * 100.0) if planned_s > 0 else None
+            split_comparison.append(
+                {
+                    "split": idx + 1,
+                    "planned": planned,
+                    "actual": actual,
+                    "delta_duration_s": delta_s,
+                    "delta_duration_pct": delta_pct,
+                }
+            )
+
+    duration_match_pct = (
+        max(0.0, 100.0 - abs(actual_duration_min - planned_duration_min) / planned_duration_min * 100.0)
+        if planned_duration_min > 0
+        else None
+    )
+    distance_match_pct = (
+        max(0.0, 100.0 - abs(actual_distance_km - planned_distance_km) / planned_distance_km * 100.0)
+        if has_planned_distance
+        else None
+    )
+    intensity_match_pct = intensity.get("match_pct") if isinstance(intensity, dict) else None
+
+    split_match_pct: float | None = None
+    if split_importance == "high" and split_comparison:
+        split_scores: list[float] = []
+        for row in split_comparison:
+            planned = row.get("planned") if isinstance(row, dict) else None
+            if not isinstance(planned, dict):
+                continue
+            delta_pct = row.get("delta_duration_pct") if isinstance(row, dict) else None
+            if delta_pct is None:
+                continue
+            split_scores.append(max(0.0, 100.0 - abs(float(delta_pct))))
+        if split_scores:
+            split_match_pct = sum(split_scores) / len(split_scores)
+
+    execution_components: dict[str, float] = {}
+    if duration_match_pct is not None:
+        execution_components["duration"] = float(duration_match_pct)
+    if distance_match_pct is not None:
+        execution_components["distance"] = float(distance_match_pct)
+    if intensity_match_pct is not None:
+        execution_components["intensity"] = float(intensity_match_pct)
+    if split_match_pct is not None:
+        execution_components["splits"] = float(split_match_pct)
+
+    execution_weights = {
+        "duration": 0.35,
+        "distance": 0.20,
+        "intensity": 0.35,
+        "splits": 0.10,
+    }
+
+    weighted_total = 0.0
+    used_weight = 0.0
+    for key, value in execution_components.items():
+        weight = execution_weights.get(key, 0.0)
+        if weight <= 0:
+            continue
+        weighted_total += value * weight
+        used_weight += weight
+
+    execution_score_pct: float | None = None
+    execution_status = "incomplete"
+    if used_weight > 0:
+        execution_score_pct = weighted_total / used_weight
+        if execution_score_pct >= 92:
+            execution_status = "great"
+        elif execution_score_pct >= 82:
+            execution_status = "good"
+        elif execution_score_pct >= 72:
+            execution_status = "ok"
+        elif execution_score_pct >= 62:
+            execution_status = "fair"
+        elif execution_score_pct >= 50:
+            execution_status = "subpar"
+        elif execution_score_pct >= 35:
+            execution_status = "poor"
+        else:
+            execution_status = "incomplete"
+
+    if actual_duration_min <= 0:
+        execution_status = "incomplete"
+        execution_score_pct = None
+
+    return {
+        "workout_id": workout.id,
+        "workout_title": workout.title,
+        "sport_type": workout.sport_type,
+        "planned": {
+            "duration_min": planned_duration_min,
+            "distance_km": planned_distance_km,
+            "intensity": workout.planned_intensity,
+            "description": workout.description,
+            "structure": workout.structure,
+        },
+        "actual": {
+            "activity_id": activity.id,
+            "duration_min": actual_duration_min,
+            "distance_km": actual_distance_km,
+        },
+        "summary": {
+            "has_planned_distance": has_planned_distance,
+            "duration_delta_min": (actual_duration_min - planned_duration_min) if has_planned_distance else None,
+            "distance_delta_km": (actual_distance_km - planned_distance_km) if has_planned_distance else None,
+            "duration_match_pct": duration_match_pct,
+            "distance_match_pct": distance_match_pct,
+            "intensity_match_pct": intensity_match_pct,
+            "intensity_status": intensity.get("status") if isinstance(intensity, dict) else None,
+            "execution_score_pct": round(execution_score_pct, 1) if execution_score_pct is not None else None,
+            "execution_status": execution_status,
+            "execution_components": execution_components,
+            "split_importance": split_importance,
+            "split_note": (
+                "This is a steady zone workout; intensity adherence matters more than matching every auto-split."
+                if split_importance == "low"
+                else None
+            ),
+        },
+        "intensity": intensity,
+        "splits": split_comparison,
+    }
+
+
 def _activity_feedback_from_payload(payload: dict) -> tuple[int | None, str | None]:
     if not isinstance(payload, dict):
         return None, None
@@ -286,7 +790,14 @@ def _is_activity_deleted(activity: Activity) -> bool:
     return bool(meta.get("deleted")) if isinstance(meta, dict) else False
 
 
-def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_hr: float, profile: Profile | None = None) -> None:
+def _apply_activity_to_bucket(
+    bucket: dict,
+    activity: Activity,
+    ftp: float,
+    max_hr: float,
+    profile: Profile | None = None,
+    resting_hr: float | None = None,
+) -> None:
     duration_seconds = _safe_number(activity.duration)
     distance_km = _safe_number(activity.distance) / 1000.0 if activity.distance else 0.0
     duration_minutes = duration_seconds / 60.0 if duration_seconds else 0.0
@@ -321,12 +832,13 @@ def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_
                     if speed > 0.1:
                         speed_samples.append(speed)
 
+        effective_resting_hr = _resolve_effective_resting_hr(profile, resting_hr)
         lt2_pace = _safe_number(getattr(profile, "lt2", None), default=0.0)
         running_hr_bounds = _metric_upper_bounds(
             profile,
             sport="running",
             metric="hr",
-            fallback_bounds=[max_hr * 0.60, max_hr * 0.70, max_hr * 0.80, max_hr * 0.90],
+            fallback_bounds=_hr_zone_bounds_from_reserve(max_hr, effective_resting_hr),
         )
         running_pace_bounds = _metric_upper_bounds(
             profile,
@@ -395,6 +907,7 @@ def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_
                 if hr > 0:
                     hr_samples.append(hr)
 
+    effective_resting_hr = _resolve_effective_resting_hr(profile, resting_hr)
     cycling_power_bounds = _metric_upper_bounds(
         profile,
         sport="cycling",
@@ -405,7 +918,7 @@ def _apply_activity_to_bucket(bucket: dict, activity: Activity, ftp: float, max_
         profile,
         sport="cycling",
         metric="hr",
-        fallback_bounds=[max_hr * 0.60, max_hr * 0.70, max_hr * 0.80, max_hr * 0.90],
+        fallback_bounds=_hr_zone_bounds_from_reserve(max_hr, effective_resting_hr),
     )
 
     if cycling_power_bounds and power_samples and duration_seconds > 0:
@@ -469,13 +982,19 @@ def _round_bucket(bucket: dict) -> dict:
     return bucket
 
 
-def _build_activity_zone_summary(activity: Activity, ftp: float, max_hr: float, profile: Profile | None = None) -> dict | None:
+def _build_activity_zone_summary(
+    activity: Activity,
+    ftp: float,
+    max_hr: float,
+    profile: Profile | None = None,
+    resting_hr: float | None = None,
+) -> dict | None:
     sport = _normalize_sport_name(activity.sport)
     if sport not in ("running", "cycling"):
         return None
 
     temp_bucket = _empty_bucket()
-    _apply_activity_to_bucket(temp_bucket, activity, ftp, max_hr, profile)
+    _apply_activity_to_bucket(temp_bucket, activity, ftp, max_hr, profile, resting_hr)
     sport_bucket = temp_bucket["sports"][sport]
 
     duration_minutes = (_safe_number(activity.duration) / 60.0) if activity.duration else 0.0
@@ -558,6 +1077,50 @@ def _estimate_load_from_activity_summary(
     aerobic = total_load * 0.92
     anaerobic = total_load * 0.08
     return round(aerobic, 1), round(anaerobic, 1)
+
+
+def _cached_activity_load_from_meta(activity: Activity) -> tuple[float, float] | None:
+    payload = _as_stream_payload(activity.streams)
+    meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
+    if not isinstance(meta, dict):
+        return None
+
+    aerobic_raw = meta.get("aerobic_load")
+    anaerobic_raw = meta.get("anaerobic_load")
+    try:
+        aerobic = float(aerobic_raw)
+        anaerobic = float(anaerobic_raw)
+    except (TypeError, ValueError):
+        return None
+
+    if aerobic < 0 or anaerobic < 0:
+        return None
+
+    return round(aerobic, 1), round(anaerobic, 1)
+
+
+def _activity_list_load(
+    activity: Activity,
+    ftp: float,
+    max_hr: float,
+    profile: Profile | None = None,
+) -> tuple[float, float]:
+    cached = _cached_activity_load_from_meta(activity)
+    if cached is not None:
+        return cached
+
+    sport = _normalize_sport_name(activity.sport)
+    estimated = _estimate_load_from_activity_summary(
+        activity,
+        sport=sport,
+        ftp=ftp,
+        max_hr=max_hr,
+        profile=profile,
+    )
+    if estimated is not None:
+        return estimated
+
+    return _activity_training_load(activity, ftp, max_hr, profile)
 
 
 def _activity_training_load(
@@ -678,7 +1241,8 @@ def _activity_training_load(
 
     if hr_samples and max_hr > 0 and duration_seconds > 0:
         seconds_per_sample = duration_seconds / len(hr_samples)
-        upper_bounds = [max_hr * 0.60, max_hr * 0.70, max_hr * 0.80, max_hr * 0.90]
+        resting_hr = _resolve_effective_resting_hr(profile, None)
+        upper_bounds = _hr_zone_bounds_from_reserve(max_hr, resting_hr)
         for hr_value in hr_samples:
             zone_idx = _zone_index_from_upper_bounds(hr_value, upper_bounds)
             key = f"Z{zone_idx}"
@@ -802,6 +1366,17 @@ async def get_zone_summary(
     profiles_res = await db.execute(profiles_stmt)
     profiles = {p.user_id: p for p in profiles_res.scalars().all()}
 
+    lowest_rhr_stmt = (
+        select(RHRDaily.user_id, func.min(RHRDaily.resting_hr))
+        .where(RHRDaily.user_id.in_(target_user_ids))
+        .group_by(RHRDaily.user_id)
+    )
+    lowest_rhr_res = await db.execute(lowest_rhr_stmt)
+    lowest_rhr_by_user: dict[int, float] = {
+        int(user_id): _safe_number(min_rhr, default=0.0)
+        for user_id, min_rhr in lowest_rhr_res.all()
+    }
+
     users_stmt = select(User).where(User.id.in_(target_user_ids))
     users_res = await db.execute(users_stmt)
     users = {u.id: u for u in users_res.scalars().all()}
@@ -839,14 +1414,16 @@ async def get_zone_summary(
         profile = profiles.get(activity.athlete_id)
         ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
         max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
-        activity_zone_summary = _build_activity_zone_summary(activity, ftp, max_hr, profile)
+        lowest_recorded_rhr = lowest_rhr_by_user.get(activity.athlete_id)
+        effective_resting_hr = _resolve_effective_resting_hr(profile, lowest_recorded_rhr)
+        activity_zone_summary = _build_activity_zone_summary(activity, ftp, max_hr, profile, effective_resting_hr)
 
         if week_start <= activity_date <= week_end:
-            _apply_activity_to_bucket(athlete_summary["weekly"], activity, ftp, max_hr, profile)
+            _apply_activity_to_bucket(athlete_summary["weekly"], activity, ftp, max_hr, profile, effective_resting_hr)
             if activity_zone_summary is not None:
                 athlete_summary["weekly_activity_zones"].append(activity_zone_summary)
         if month_start <= activity_date <= month_end:
-            _apply_activity_to_bucket(athlete_summary["monthly"], activity, ftp, max_hr, profile)
+            _apply_activity_to_bucket(athlete_summary["monthly"], activity, ftp, max_hr, profile, effective_resting_hr)
             if activity_zone_summary is not None:
                 athlete_summary["monthly_activity_zones"].append(activity_zone_summary)
 
@@ -1254,7 +1831,7 @@ async def get_activities(
         profile = profile_map.get(activity.athlete_id)
         ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
         max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
-        aerobic_load, anaerobic_load = _activity_training_load(activity, ftp, max_hr, profile)
+        aerobic_load, anaerobic_load = _activity_list_load(activity, ftp, max_hr, profile)
         payload = _as_stream_payload(activity.streams)
         rpe, notes = _activity_feedback_from_payload(payload)
         out.append(
@@ -1393,6 +1970,18 @@ async def get_activity(
     ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
     max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
     aerobic_load, anaerobic_load = _activity_training_load(activity, ftp, max_hr, profile)
+
+    matched_workout = await db.scalar(
+        select(PlannedWorkout).where(
+            PlannedWorkout.user_id == activity.athlete_id,
+            PlannedWorkout.matched_activity_id == activity.id,
+        )
+    )
+    planned_comparison = (
+        _build_planned_comparison_payload(matched_workout, activity, splits_metric, laps, profile, stats)
+        if matched_workout
+        else None
+    )
         
     activity_response = ActivityDetail(
         id=activity.id,
@@ -1419,6 +2008,7 @@ async def get_activity(
         avg_cadence=stats.get("avg_cadence"),
         total_elevation_gain=stats.get("total_elevation_gain"),
         total_calories=stats.get("total_calories"),
+        planned_comparison=planned_comparison,
         is_deleted=_is_activity_deleted(activity),
         aerobic_load=aerobic_load,
         anaerobic_load=anaerobic_load,

@@ -138,10 +138,19 @@ async def get_calendar_events(
     res_activities = await db.execute(query_activities)
     activities = res_activities.scalars().all()
 
+    visible_activity_ids = {activity.id for activity in activities if not _is_activity_deleted(activity)}
+    workout_by_matched_activity_id = {
+        workout.matched_activity_id: workout
+        for workout in workouts
+        if workout.matched_activity_id is not None
+    }
+
     events = []
     
     # Map Workouts
     for w in workouts:
+        if w.matched_activity_id is not None and w.matched_activity_id in visible_activity_ids:
+            continue
         events.append(CalendarEvent(
             id=w.id,
             user_id=w.user_id,
@@ -165,6 +174,7 @@ async def get_calendar_events(
     for a in activities:
         if _is_activity_deleted(a):
             continue
+        matched_workout = workout_by_matched_activity_id.get(a.id)
         events.append(CalendarEvent(
             id=a.id,
             user_id=a.athlete_id,
@@ -174,6 +184,13 @@ async def get_calendar_events(
             duration=((a.duration / 60) if a.duration else 0), 
             distance=(a.distance / 1000) if a.distance else 0, 
             is_planned=False,
+            compliance_status=matched_workout.compliance_status if matched_workout else None,
+            matched_activity_id=matched_workout.matched_activity_id if matched_workout else None,
+            description=matched_workout.description if matched_workout else None,
+            planned_intensity=matched_workout.planned_intensity if matched_workout else None,
+            planned_duration=matched_workout.planned_duration if matched_workout else None,
+            planned_distance=matched_workout.planned_distance if matched_workout else None,
+            structure=matched_workout.structure if matched_workout else None,
             avg_hr=a.average_hr,
             avg_watts=a.average_watts,
             avg_speed=a.avg_speed,
@@ -284,9 +301,6 @@ async def delete_workout(
     else:
         if workout.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        athlete_permissions = await get_athlete_permissions(db, workout.user_id)
-        if not athlete_permissions.get("allow_delete_workouts", False):
-            raise HTTPException(status_code=403, detail="Coach has not allowed workout deletion")
             
     target_user_id = workout.user_id
     target_date = workout.date

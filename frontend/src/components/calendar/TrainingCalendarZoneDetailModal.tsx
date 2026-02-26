@@ -86,20 +86,20 @@ export default function TrainingCalendarZoneDetailModal({ data, onClose }: Props
         const total = values.reduce((sum, value) => sum + value, 0);
         const zonePalette = zoneCount === 5
             ? [
-                'var(--mantine-color-blue-5)',
-                'var(--mantine-color-cyan-5)',
                 'var(--mantine-color-green-5)',
-                'var(--mantine-color-yellow-5)',
-                'var(--mantine-color-red-5)'
-            ]
-            : [
-                'var(--mantine-color-indigo-5)',
-                'var(--mantine-color-blue-5)',
-                'var(--mantine-color-cyan-5)',
-                'var(--mantine-color-green-5)',
+                'var(--mantine-color-lime-5)',
                 'var(--mantine-color-yellow-5)',
                 'var(--mantine-color-orange-5)',
                 'var(--mantine-color-red-5)'
+            ]
+            : [
+                'var(--mantine-color-green-5)',
+                'var(--mantine-color-lime-5)',
+                'var(--mantine-color-yellow-5)',
+                'var(--mantine-color-yellow-6)',
+                'var(--mantine-color-orange-5)',
+                'var(--mantine-color-orange-6)',
+                'var(--mantine-color-red-6)'
             ];
 
         const formatZoneDuration = (seconds: number) => {
@@ -154,11 +154,12 @@ export default function TrainingCalendarZoneDetailModal({ data, onClose }: Props
                 {values.map((seconds, idx) => {
                     const pct = total > 0 ? (seconds / total) * 100 : 0;
                     const zoneColor = zonePalette[idx] || 'var(--mantine-color-gray-5)';
+                    const pctLabel = `${Math.round(pct)}%`;
                     return (
                         <Group key={`zone-${idx + 1}`} gap={6} wrap="nowrap" style={{ cursor: 'pointer' }} onClick={() => openZoneExplanation(idx + 1)}>
                             <Box w={28}><Text size="xs">Z{idx + 1}</Text></Box>
                             <Progress value={pct} color={zoneColor} size={8} radius={4} flex={1} />
-                            <Box w={70} ta="right"><Text size="xs" c="dimmed">{formatZoneDuration(seconds)}</Text></Box>
+                            <Box w={112} ta="right"><Text size="xs" c="dimmed">{formatZoneDuration(seconds)} · {pctLabel}</Text></Box>
                         </Group>
                     );
                 })}

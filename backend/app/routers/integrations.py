@@ -86,7 +86,7 @@ async def _strava_backfill_activity_details(
     import_all_time: bool,
 ) -> tuple[int, str | None]:
     daily_limit = max(1, int(os.getenv("STRAVA_DAILY_REQUEST_LIMIT", "500")))
-    detail_batch = max(1, int(os.getenv("STRAVA_DETAIL_BACKFILL_BATCH_ACTIVITIES", "12")))
+    detail_batch = max(20, min(50, int(os.getenv("STRAVA_DETAIL_BACKFILL_BATCH_ACTIVITIES", "50"))))
     detail_window_days = max(30, int(os.getenv("STRAVA_DETAIL_BACKFILL_WINDOW_DAYS", "365")))
     enrich_delay_seconds = max(0.0, float(os.getenv("STRAVA_ENRICH_DELAY_SECONDS", "0.35")))
 
@@ -143,10 +143,16 @@ async def _strava_backfill_activity_details(
         meta = streams.get("_meta") if isinstance(streams.get("_meta"), dict) else {}
         source_activity_id = str(meta.get("source_activity_id"))
         try:
+            async def _on_strava_request_debug(requests_last_10m: int):
+                cursor_dbg = dict(state.cursor or {})
+                cursor_dbg["strava_requests_last_10m"] = requests_last_10m
+                state.cursor = cursor_dbg
+
             detail_payload = await connector.fetch_activity_deep_data(
                 access_token=access_token,
                 activity_id=source_activity_id,
                 start_time=activity.created_at,
+                request_debug_callback=_on_strava_request_debug,
             )
         except Exception:
             continue
@@ -592,7 +598,11 @@ async def _sync_provider_task(provider: str, user_id: int):
                 # Updating every request (10 items) is fine.
                 suffix = ""
                 if provider == "strava":
-                    suffix = " Recent first; full history appears progressively."
+                    requests_last_10m = (state.cursor or {}).get("strava_requests_last_10m")
+                    if requests_last_10m is not None:
+                        suffix = f" Recent first; full history appears progressively. Strava requests last 10m: {requests_last_10m}."
+                    else:
+                        suffix = " Recent first; full history appears progressively."
                 await db.execute(
                     update(ProviderSyncState)
                     .where(ProviderSyncState.id == state.id)
@@ -603,6 +613,15 @@ async def _sync_provider_task(provider: str, user_id: int):
             while True:
                 current_cursor = state.cursor or {}
                 is_strava_initial_phase = provider == "strava" and not bool(current_cursor.get("initial_sync_done"))
+                sync_request_cursor = dict(current_cursor)
+
+                if provider == "strava":
+                    if strava_phase_index <= 0:
+                        sync_request_cursor["strava_recent_only"] = True
+                        sync_request_cursor.pop("strava_history_only", None)
+                    else:
+                        sync_request_cursor["strava_history_only"] = True
+                        sync_request_cursor.pop("strava_recent_only", None)
 
                 if provider == "strava":
                     if is_strava_initial_phase:
@@ -621,9 +640,12 @@ async def _sync_provider_task(provider: str, user_id: int):
 
                 sync_result = await connector.fetch_activities(
                     access_token=access_token,
-                    cursor=current_cursor,
+                    cursor=sync_request_cursor,
                     progress_callback=progress_callback,
                 )
+
+                # Ensure newest activities are always processed first (today, then yesterday, etc.).
+                sync_result.activities.sort(key=lambda rec: rec.start_time, reverse=True)
 
                 # Ingest activities
                 imported = 0
@@ -634,10 +656,11 @@ async def _sync_provider_task(provider: str, user_id: int):
 
                 strava_enrich_on_import = os.getenv("STRAVA_ENRICH_ON_IMPORT", "true").lower() in {"1", "true", "yes", "on"}
                 strava_enrich_initial_only = os.getenv("STRAVA_ENRICH_INITIAL_ONLY", "true").lower() in {"1", "true", "yes", "on"}
-                strava_enrich_max_activities = max(1, min(50, int(os.getenv("STRAVA_ENRICH_MAX_ACTIVITIES", "50"))))
+                strava_enrich_max_activities = max(20, min(50, int(os.getenv("STRAVA_ENRICH_MAX_ACTIVITIES", "50"))))
                 strava_enrich_delay_seconds = max(0.0, float(os.getenv("STRAVA_ENRICH_DELAY_SECONDS", "0.35")))
                 strava_daily_request_limit = max(1, int(os.getenv("STRAVA_DAILY_REQUEST_LIMIT", "500")))
                 today_key = datetime.utcnow().strftime("%Y-%m-%d")
+                matched_dates: set = set()
 
                 for index, record in enumerate(sync_result.activities):
                     suffix = ""
@@ -655,7 +678,11 @@ async def _sync_provider_task(provider: str, user_id: int):
                         and strava_enrich_on_import
                         and hasattr(connector, "fetch_activity_deep_data")
                         and index < strava_enrich_max_activities
-                        and (is_strava_initial_phase or not strava_enrich_initial_only)
+                        and (
+                            is_strava_initial_phase
+                            or bool(sync_request_cursor.get("strava_recent_only"))
+                            or not strava_enrich_initial_only
+                        )
                     )
 
                     if should_enrich_this_activity:
@@ -687,10 +714,16 @@ async def _sync_provider_task(provider: str, user_id: int):
 
                         if not has_local_detail:
                             try:
+                                async def _on_strava_request_debug(requests_last_10m: int):
+                                    updated_cursor_dbg = dict(state.cursor or {})
+                                    updated_cursor_dbg["strava_requests_last_10m"] = requests_last_10m
+                                    state.cursor = updated_cursor_dbg
+
                                 fetched_detail = await connector.fetch_activity_deep_data(
                                     access_token=access_token,
                                     activity_id=record.provider_activity_id,
                                     start_time=record.start_time,
+                                    request_debug_callback=_on_strava_request_debug,
                                 )
                                 payload = dict(payload)
                                 payload["detail"] = fetched_detail
@@ -711,7 +744,6 @@ async def _sync_provider_task(provider: str, user_id: int):
                                     action="activity_detail_enrich_failed",
                                     status="warning",
                                     message=f"Failed to enrich activity {record.provider_activity_id}: {enrich_error}",
-                                    payload={"activity_id": record.provider_activity_id},
                                 )
 
                             if strava_enrich_delay_seconds > 0:
@@ -736,9 +768,18 @@ async def _sync_provider_task(provider: str, user_id: int):
                         imported += 1
                     else:
                         duplicates += 1
+                    matched_dates.add(record.start_time.date())
 
-                    # Match compliance immediately?
-                    # await match_and_score(db, user_id, record.start_time.date())
+                # Recompute planned-vs-actual matching for all touched dates in this phase.
+                for match_date in sorted(matched_dates):
+                    await match_and_score(db, user_id, match_date)
+
+                # Also refresh recent days so newly created plans for already-synced activities get matched.
+                compliance_backfill_days = max(0, int(os.getenv("COMPLIANCE_MATCH_BACKFILL_DAYS", "2")))
+                if compliance_backfill_days > 0:
+                    base_day = datetime.utcnow().date()
+                    for day_offset in range(0, compliance_backfill_days + 1):
+                        await match_and_score(db, user_id, base_day - timedelta(days=day_offset))
 
                 # Fetch wellness (simplified, no progress tracking for this part yet)
                 wellness_payload = sync_result.wellness.__dict__
@@ -753,6 +794,7 @@ async def _sync_provider_task(provider: str, user_id: int):
 
                 await _upsert_wellness(db, user_id=user_id, provider=provider, wellness_payload=wellness_payload)
 
+                enriched_count = 0
                 if provider == "strava" and hasattr(connector, "fetch_activity_deep_data"):
                     cursor_snapshot = state.cursor or {}
                     import_all_time = bool(cursor_snapshot.get("strava_import_all_time"))
@@ -772,19 +814,37 @@ async def _sync_provider_task(provider: str, user_id: int):
                         )
 
                 next_cursor = sync_result.next_cursor or {}
+                next_cursor.pop("strava_recent_only", None)
+                next_cursor.pop("strava_history_only", None)
                 cursor_snapshot = state.cursor or {}
-                if cursor_snapshot.get("strava_request_day"):
-                    next_cursor["strava_request_day"] = cursor_snapshot.get("strava_request_day")
+                cursor_request_day = cursor_snapshot.get("strava_request_day")
+                next_request_day = next_cursor.get("strava_request_day")
+                if not next_request_day and cursor_request_day:
+                    next_cursor["strava_request_day"] = cursor_request_day
+
                 if cursor_snapshot.get("strava_request_count") is not None:
-                    next_cursor["strava_request_count"] = cursor_snapshot.get("strava_request_count")
-                if cursor_snapshot.get("strava_request_limit") is not None:
+                    next_cursor["strava_request_count"] = max(
+                        int(next_cursor.get("strava_request_count") or 0),
+                        int(cursor_snapshot.get("strava_request_count") or 0),
+                    )
+                if cursor_snapshot.get("strava_request_limit") is not None and next_cursor.get("strava_request_limit") is None:
                     next_cursor["strava_request_limit"] = cursor_snapshot.get("strava_request_limit")
+                if cursor_snapshot.get("strava_requests_last_10m") is not None:
+                    next_cursor["strava_requests_last_10m"] = max(
+                        int(next_cursor.get("strava_requests_last_10m") or 0),
+                        int(cursor_snapshot.get("strava_requests_last_10m") or 0),
+                    )
 
                 has_backfill_remaining = bool(next_cursor.get("backfill_before_epoch")) and not bool(next_cursor.get("full_backfill_once_done"))
+                backfill_cursor_advanced = next_cursor.get("backfill_before_epoch") != current_cursor.get("backfill_before_epoch")
+                made_phase_progress = imported > 0 or enriched_count > 0 or backfill_cursor_advanced
+                strava_daily_limit_reached = bool(next_cursor.get("strava_daily_limit_reached"))
                 can_continue_backfill = (
                     provider == "strava"
                     and strava_auto_backfill_enabled
                     and has_backfill_remaining
+                    and made_phase_progress
+                    and not strava_daily_limit_reached
                     and (strava_auto_backfill_max_phases <= 0 or (strava_phase_index + 1) < strava_auto_backfill_max_phases)
                 )
 
@@ -808,17 +868,44 @@ async def _sync_provider_task(provider: str, user_id: int):
 
                 state.sync_status = "completed"
                 if provider == "strava" and has_backfill_remaining and not strava_auto_backfill_enabled:
+                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
+                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
                     state.sync_message = (
                         f"Completed this phase. Imported {imported} new, {duplicates} duplicates. "
                         "More historical activities are available; trigger sync again to continue backfill."
+                        + debug_tail
+                    )
+                elif provider == "strava" and has_backfill_remaining and not made_phase_progress:
+                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
+                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
+                    state.sync_message = (
+                        f"Completed this phase. Imported {imported} new, {duplicates} duplicates. "
+                        "Backfill paused with no additional progress this run; sync again later."
+                        + debug_tail
+                    )
+                elif provider == "strava" and has_backfill_remaining and strava_daily_limit_reached:
+                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
+                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
+                    state.sync_message = (
+                        f"Completed this phase. Imported {imported} new, {duplicates} duplicates. "
+                        "Paused because daily Strava API limit is reached; will continue next UTC day."
+                        + debug_tail
                     )
                 elif provider == "strava" and has_backfill_remaining and strava_auto_backfill_max_phases > 0:
+                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
+                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
                     state.sync_message = (
                         f"Completed this run. Imported {imported} new, {duplicates} duplicates. "
                         "More historical activities remain and will sync on the next run."
+                        + debug_tail
                     )
                 else:
-                    state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates."
+                    if provider == "strava":
+                        requests_last_10m = next_cursor.get("strava_requests_last_10m")
+                        debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
+                        state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates.{debug_tail}"
+                    else:
+                        state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates."
 
                 await db.commit()
                 break

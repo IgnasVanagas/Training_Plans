@@ -1,5 +1,5 @@
 import { ActionIcon, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Textarea, Modal, TextInput } from "@mantine/core";
-import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity } from "@tabler/icons-react";
+import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
@@ -47,6 +47,34 @@ type ActivityDetail = {
     total_load_impact?: number;
     rpe?: number | null;
     notes?: string | null;
+    planned_comparison?: {
+        workout_id: number;
+        workout_title: string;
+        summary?: {
+            has_planned_distance?: boolean | null;
+            duration_delta_min?: number | null;
+            distance_delta_km?: number | null;
+            duration_match_pct?: number | null;
+            distance_match_pct?: number | null;
+            intensity_match_pct?: number | null;
+            intensity_status?: 'green' | 'yellow' | 'red' | string | null;
+            execution_score_pct?: number | null;
+            execution_status?: 'great' | 'good' | 'ok' | 'fair' | 'subpar' | 'poor' | 'incomplete' | string | null;
+            execution_components?: Record<string, number> | null;
+            split_importance?: 'high' | 'low' | string | null;
+            split_note?: string | null;
+        };
+        intensity?: {
+            note?: string | null;
+        } | null;
+        splits?: Array<{
+            split: number;
+            planned?: { planned_duration_s?: number | null; category?: string | null } | null;
+            actual?: { actual_duration_s?: number | null } | null;
+            delta_duration_s?: number | null;
+            delta_duration_pct?: number | null;
+        }>;
+    } | null;
 };
 
 export const ActivityDetailPage = () => {
@@ -97,6 +125,7 @@ export const ActivityDetailPage = () => {
     const [zoneInfoOpen, setZoneInfoOpen] = useState(false);
     const [zoneInfoTitle, setZoneInfoTitle] = useState('');
     const [zoneInfoBody, setZoneInfoBody] = useState('');
+    const [executionInfoOpen, setExecutionInfoOpen] = useState(false);
 
     const { data: me } = useQuery({
         queryKey: ['me'],
@@ -754,6 +783,114 @@ export const ActivityDetailPage = () => {
                             <Text size="xl" fw={800} c={ui.textMain}>{activity.average_hr?.toFixed(0) || '-'} bpm</Text>
                         </Card>
                     </SimpleGrid>
+
+                    {activity.planned_comparison && (
+                        <Paper withBorder p="md" radius="lg" mb="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
+                            <Group justify="space-between" mb="xs">
+                                <Title order={5} c={ui.textMain}>Planned vs Actual</Title>
+                                <Text size="xs" c={ui.textDim}>{activity.planned_comparison.workout_title}</Text>
+                            </Group>
+                            <SimpleGrid cols={{ base: 1, md: 6 }} spacing="xs" mb="sm">
+                                {activity.planned_comparison.summary?.has_planned_distance && (
+                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
+                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Duration Delta</Text>
+                                    <Text fw={700}>{(activity.planned_comparison.summary?.duration_delta_min || 0).toFixed(1)} min</Text>
+                                </Card>
+                                )}
+                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
+                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Duration Match</Text>
+                                    <Text fw={700}>{Math.round(activity.planned_comparison.summary?.duration_match_pct || 0)}%</Text>
+                                </Card>
+                                {activity.planned_comparison.summary?.has_planned_distance && (
+                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
+                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Distance Delta</Text>
+                                    <Text fw={700}>{(activity.planned_comparison.summary?.distance_delta_km || 0).toFixed(2)} km</Text>
+                                </Card>
+                                )}
+                                {activity.planned_comparison.summary?.has_planned_distance && (
+                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
+                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Distance Match</Text>
+                                    <Text fw={700}>{Math.round(activity.planned_comparison.summary?.distance_match_pct || 0)}%</Text>
+                                </Card>
+                                )}
+                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
+                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Intensity Match</Text>
+                                    <Text fw={700}>{Math.round(activity.planned_comparison.summary?.intensity_match_pct || 0)}%</Text>
+                                </Card>
+                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
+                                    <Group justify="space-between" align="center" gap={6}>
+                                        <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Workout Execution Status</Text>
+                                        <ActionIcon variant="subtle" size="xs" onClick={() => setExecutionInfoOpen(true)} aria-label="Execution status info">
+                                            <IconHelpCircle size={14} />
+                                        </ActionIcon>
+                                    </Group>
+                                    <Text fw={700} c={
+                                        activity.planned_comparison.summary?.execution_status === 'great' || activity.planned_comparison.summary?.execution_status === 'good'
+                                            ? 'green.6'
+                                            : activity.planned_comparison.summary?.execution_status === 'ok' || activity.planned_comparison.summary?.execution_status === 'fair' || activity.planned_comparison.summary?.execution_status === 'subpar'
+                                                ? 'yellow.6'
+                                                : activity.planned_comparison.summary?.execution_status === 'poor' || activity.planned_comparison.summary?.execution_status === 'incomplete'
+                                                    ? 'red.6'
+                                                    : ui.textMain
+                                    }>
+                                        {(activity.planned_comparison.summary?.execution_status || '-').toString().toUpperCase()}
+                                    </Text>
+                                </Card>
+                            </SimpleGrid>
+                            {activity.planned_comparison.summary?.split_importance === 'low' && (
+                                <Text size="xs" c={ui.textDim} mb="xs">
+                                    {activity.planned_comparison.summary?.split_note || activity.planned_comparison.intensity?.note}
+                                </Text>
+                            )}
+                            {!!activity.planned_comparison.splits?.length && (
+                                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>Split</Table.Th>
+                                            <Table.Th>Planned</Table.Th>
+                                            <Table.Th>Actual</Table.Th>
+                                            <Table.Th>Delta</Table.Th>
+                                            <Table.Th>Delta %</Table.Th>
+                                        </Table.Tr>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {activity.planned_comparison.splits.slice(0, 20).map((row) => (
+                                            <Table.Tr key={`cmp-split-${row.split}`}>
+                                                <Table.Td>{row.split}</Table.Td>
+                                                <Table.Td>{row.planned?.planned_duration_s ? formatDuration(row.planned.planned_duration_s) : '-'}</Table.Td>
+                                                <Table.Td>{row.actual?.actual_duration_s ? formatDuration(row.actual.actual_duration_s) : '-'}</Table.Td>
+                                                <Table.Td>{row.delta_duration_s ? `${(row.delta_duration_s / 60).toFixed(1)} min` : '0.0 min'}</Table.Td>
+                                                <Table.Td>{row.delta_duration_pct != null ? `${Math.round(row.delta_duration_pct)}%` : '-'}</Table.Td>
+                                            </Table.Tr>
+                                        ))}
+                                    </Table.Tbody>
+                                </Table>
+                            )}
+                        </Paper>
+                    )}
+
+                        <Modal
+                            opened={executionInfoOpen}
+                            onClose={() => setExecutionInfoOpen(false)}
+                            title="Workout Execution Status"
+                            size="md"
+                            centered
+                        >
+                            <Stack gap="xs">
+                                <Text size="sm" c={ui.textDim}>
+                                    Execution status is a weighted workout-quality score built from available metrics:
+                                    duration match, distance match (when planned), intensity match, and split adherence (when splits are relevant).
+                                </Text>
+                                <Text size="sm" c={ui.textDim}>
+                                    If a workout is steady-state (for example a regular Z2 ride), intensity quality is prioritized over auto-split count.
+                                </Text>
+                                <Text size="sm" fw={700}>Status levels (best to worst):</Text>
+                                <Text size="sm">Great, Good, Ok, Fair, Subpar, Poor, Incomplete.</Text>
+                                <Text size="sm" c={ui.textDim}>
+                                    Incomplete is used when key execution data is missing or the session is not sufficiently complete for reliable scoring.
+                                </Text>
+                            </Stack>
+                        </Modal>
 
                     <Paper withBorder p="md" radius="lg" mb="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
                         <Group justify="space-between" align="flex-start" mb="sm">

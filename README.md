@@ -125,20 +125,23 @@ Secrets/config:
 Strava sync tuning (optional):
 
 - `STRAVA_INITIAL_SYNC_MAX_ACTIVITIES` (default `50`, clamped `20-50` for fast first sync)
-- `STRAVA_SYNC_MAX_ACTIVITIES` (default `50` for incremental recent sync)
+- `STRAVA_SYNC_MAX_ACTIVITIES` (default `50`, clamped `20-50`; every sync always fetches newest activities first)
 - `STRAVA_FULL_HISTORY_ENABLED` (default `true`)
 - `STRAVA_BACKFILL_BATCH_ACTIVITIES` (default `100` per backfill phase)
 - `STRAVA_BACKFILL_REQUEST_DELAY_SECONDS` (default `2.0` between Strava history requests)
 - `STRAVA_DAILY_REQUEST_LIMIT` (default `500`, hard cap for Strava API calls per UTC day during import)
+- `STRAVA_MAX_REQUESTS_PER_MINUTE` (default `50`, hard-capped at `50`; runtime throttle across Strava requests)
 - `STRAVA_AUTO_BACKFILL_CONTINUE` (default `true`, chain backfill phases in one background run)
 - `STRAVA_AUTO_BACKFILL_DELAY_SECONDS` (default `8`, pause between backfill phases)
 - `STRAVA_AUTO_BACKFILL_MAX_PHASES` (default `0` = no phase limit)
 - `STRAVA_ENRICH_ON_IMPORT` (default `true`; enriches activity detail during import)
 - `STRAVA_ENRICH_INITIAL_ONLY` (default `true`; limit enrichment to initial recent-sync phase)
-- `STRAVA_ENRICH_MAX_ACTIVITIES` (default `50`; max activities enriched per sync run)
-- `STRAVA_DETAIL_BACKFILL_BATCH_ACTIVITIES` (default `12`; additional saved activities enriched per background sync run)
+- `STRAVA_ENRICH_MAX_ACTIVITIES` (default `50`; clamped `20-50` for full-detail enrichment of most recent activities)
+- `STRAVA_DETAIL_BACKFILL_BATCH_ACTIVITIES` (default `50`, clamped `20-50`; additional saved activities enriched per background sync run)
 - `STRAVA_DETAIL_BACKFILL_WINDOW_DAYS` (default `365`; default full-detail backfill window when all-time is disabled)
 - `STRAVA_ALLOW_LAZY_DETAIL_FETCH` (default `false`; when `false`, opening activity detail never triggers Strava API calls)
+
+Strava sync status/debug includes a rolling `requests last 10m` counter in sync messages for troubleshooting API usage.
 
 Per-user Strava detail scope:
 

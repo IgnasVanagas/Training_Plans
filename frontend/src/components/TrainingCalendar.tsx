@@ -18,6 +18,7 @@ import { resolveActivityAccentColor } from './calendar/activityStyling';
 import { BulkEditModal, DayDetailsModal, WorkoutEditModal } from './calendar/TrainingCalendarModals';
 import TrainingCalendarZoneSummaryPanel from './calendar/TrainingCalendarZoneSummaryPanel';
 import { buildTrainingCalendarStyles } from './calendar/trainingCalendarStyles';
+import OrigamiLoadingAnimation from './common/OrigamiLoadingAnimation';
 import {
     AthletePermissionsResponse,
     CalendarEvent,
@@ -69,7 +70,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
     });
 
     const canEditWorkouts = me?.role === 'coach' || Boolean(selfPermissions?.permissions?.allow_edit_workouts);
-    const canDeleteWorkouts = me?.role === 'coach' || Boolean(selfPermissions?.permissions?.allow_delete_workouts);
+    const canDeleteWorkouts = me?.role === 'coach' || me?.role === 'athlete';
 
     const weekStartDay = me?.profile?.week_start_day === 'sunday' ? 0 : 1;
     const localizer = useMemo(() => dateFnsLocalizer({
@@ -152,10 +153,13 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
     const startRange = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
     const endRange = new Date(viewDate.getFullYear(), viewDate.getMonth() + 2, 0);
 
-    const { data: events = [] } = useQuery({
+    const { data: events = [], isLoading: eventsLoading, isFetching: eventsFetching } = useQuery({
         queryKey: ['calendar', format(viewDate, 'yyyy-MM'), athleteId, allAthletes], // Added athleteId to queryKey
-        queryFn: () => fetchEvents(startRange, endRange)
+        queryFn: () => fetchEvents(startRange, endRange),
+        staleTime: 1000 * 60,
     });
+
+    const isInitialCalendarLoading = (eventsLoading || eventsFetching) && events.length === 0;
 
     const calendarEvents = useMemo(() => {
         if (currentView === 'week') {
@@ -216,7 +220,8 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
             }
             const res = await api.get<ZoneSummaryResponse>(`/activities/zone-summary?${params.toString()}`);
             return res.data;
-        }
+        },
+        staleTime: 1000 * 60,
     });
 
     const createMutation = useMutation({
@@ -706,6 +711,11 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
             <Group align="stretch" gap={8} wrap="nowrap" style={{ flex: 1, minHeight: 0 }}>
                 {currentView === 'week' ? (
                     <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, padding: 10, overflowY: 'auto' }}>
+                        {isInitialCalendarLoading ? (
+                            <Paper withBorder p="md" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder }}>
+                                <OrigamiLoadingAnimation label="Loading calendar..." minHeight={300} />
+                            </Paper>
+                        ) : (
                         <Stack gap="sm">
                             <Paper withBorder p="sm" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder }}>
                                 <Group justify="space-between" align="center">
@@ -768,29 +778,36 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                                 })
                             )}
                         </Stack>
+                        )}
                     </Box>
                 ) : (
                     <>
                         <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0 }}>
-                            <DnDCalendar
-                                localizer={localizer}
-                                events={calendarEvents}
-                                startAccessor={(e: any) => e.start}
-                                endAccessor={(e: any) => e.end}
-                                onEventDrop={onEventDrop}
-                                selectable
-                                onSelectSlot={handleSlotSelection}
-                                onSelectEvent={handleSelectEvent}
-                                views={[Views.MONTH]}
-                                defaultView={Views.MONTH}
-                                view={Views.MONTH}
-                                toolbar={false}
-                                onNavigate={(date) => setViewDate(date)}
-                                date={viewDate}
-                                popup
-                                components={calendarComponents}
-                                dayPropGetter={emptyDayPropGetter}
-                            />
+                            {isInitialCalendarLoading ? (
+                                <Paper withBorder p="md" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder, margin: 10 }}>
+                                    <OrigamiLoadingAnimation label="Loading calendar..." minHeight={360} />
+                                </Paper>
+                            ) : (
+                                <DnDCalendar
+                                    localizer={localizer}
+                                    events={calendarEvents}
+                                    startAccessor={(e: any) => e.start}
+                                    endAccessor={(e: any) => e.end}
+                                    onEventDrop={onEventDrop}
+                                    selectable
+                                    onSelectSlot={handleSlotSelection}
+                                    onSelectEvent={handleSelectEvent}
+                                    views={[Views.MONTH]}
+                                    defaultView={Views.MONTH}
+                                    view={Views.MONTH}
+                                    toolbar={false}
+                                    onNavigate={(date) => setViewDate(date)}
+                                    date={viewDate}
+                                    popup
+                                    components={calendarComponents}
+                                    dayPropGetter={emptyDayPropGetter}
+                                />
+                            )}
                         </Box>
                         <TrainingCalendarZoneSummaryPanel
                             monthlyOpenSignal={monthlyOpenSignal}
