@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { ActionIcon, AppShell, Avatar, Button, Divider, Group, NavLink, Stack, Text, Title, Tooltip, useComputedColorScheme, useMantineColorScheme } from '@mantine/core';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import {
   IconActivity,
@@ -26,6 +27,8 @@ export const AppSidebarLayout = ({
   const { setColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
+  const [opened, { toggle, close }] = useDisclosure(false);
+  const isMobile = useMediaQuery('(max-width: 48em)');
 
   const { data: me } = useQuery({
     queryKey: ['me'],
@@ -46,13 +49,16 @@ export const AppSidebarLayout = ({
       navbar={{
         width: 300,
         breakpoint: 'sm',
-        collapsed: { mobile: false }
+        collapsed: { mobile: !opened }
       }}
       padding="md"
     >
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group>
+            <Button variant="subtle" size="compact-sm" hiddenFrom="sm" onClick={toggle}>
+              ☰
+            </Button>
             <img src={appLogo} alt="Origami Plans" width={32} height={32} />
             <Title order={3} visibleFrom="xs">Origami Plans</Title>
           </Group>
@@ -83,28 +89,40 @@ export const AppSidebarLayout = ({
             label="Dashboard"
             leftSection={<IconLayoutDashboard size="1rem" stroke={1.5} />}
             active={activeNav === 'dashboard'}
-            onClick={() => navigate('/dashboard')}
+            onClick={() => {
+              navigate('/dashboard');
+              if (isMobile) close();
+            }}
             variant="filled"
           />
           <NavLink
             label="Activities"
             leftSection={<IconActivity size="1rem" stroke={1.5} />}
             active={activeNav === 'activities'}
-            onClick={() => navigate('/dashboard')}
+            onClick={() => {
+              navigate('/dashboard');
+              if (isMobile) close();
+            }}
             variant="filled"
           />
           <NavLink
             label="Training Plan"
             leftSection={<IconCalendar size="1rem" stroke={1.5} />}
             active={activeNav === 'plan'}
-            onClick={() => navigate('/dashboard')}
+            onClick={() => {
+              navigate('/dashboard');
+              if (isMobile) close();
+            }}
             variant="filled"
           />
           <NavLink
             label="Settings"
             leftSection={<IconSettings size="1rem" stroke={1.5} />}
             active={activeNav === 'settings'}
-            onClick={() => navigate('/dashboard')}
+            onClick={() => {
+              navigate('/dashboard');
+              if (isMobile) close();
+            }}
             variant="filled"
           />
 

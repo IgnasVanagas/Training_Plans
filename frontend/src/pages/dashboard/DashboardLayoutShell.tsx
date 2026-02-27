@@ -1,11 +1,13 @@
 import { ReactNode } from "react";
 import {
+  Affix,
   ActionIcon,
   AppShell,
   Button,
   Burger,
   Group,
   Menu,
+  SegmentedControl,
   Stack,
   Text,
   Title,
@@ -13,20 +15,25 @@ import {
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import {
   IconActivity,
   IconCalendar,
   IconLayoutDashboard,
+  IconBell,
   IconLogout,
   IconMoon,
   IconPlus,
   IconSettings,
   IconSun,
   IconUserCircle,
+  IconUsersGroup,
 } from "@tabler/icons-react";
 import appLogo from "../../../uploads/favicon_Origami-removebg-preview.png";
+import { useI18n } from "../../i18n/I18nProvider";
+import OfflineNotice from "../../components/common/OfflineNotice";
 
-type DashboardTab = "dashboard" | "activities" | "plan" | "settings";
+type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
 
 type Props = {
   opened: boolean;
@@ -49,12 +56,22 @@ const DashboardLayoutShell = ({
   onQuickAddActivity,
   children,
 }: Props) => {
+  const { language, setLanguage, t } = useI18n();
   const { setColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme("light");
   const isDark = computedColorScheme === "dark";
+  const isMobile = useMediaQuery("(max-width: 48em)");
   const shellBackground = isDark ? "#081226" : "var(--mantine-color-body)";
   const accentPrimary = "#E95A12";
   const accentSecondary = "#6E4BF3";
+  const navItems: Array<{ key: DashboardTab; icon: typeof IconLayoutDashboard; label: string }> = [
+    { key: "dashboard", icon: IconLayoutDashboard, label: t("Dashboard") },
+    { key: "activities", icon: IconActivity, label: t("Activities") },
+    { key: "plan", icon: IconCalendar, label: t("Training Plan") },
+    { key: "organizations", icon: IconUsersGroup, label: t("Organizations") },
+    { key: "notifications", icon: IconBell, label: t("Notifications") },
+    { key: "settings", icon: IconSettings, label: t("Settings") },
+  ];
 
   const Header = () => (
     <Group h="100%" px="md" justify="space-between" style={{ fontFamily: '"Inter", sans-serif' }}>
@@ -74,7 +91,7 @@ const DashboardLayoutShell = ({
           Origami Plans
         </Title>
       </Group>
-      <Group>
+      <Group gap="xs" wrap="nowrap">
         {headerRight}
         <Menu shadow="md" width={180} position="bottom-end" withArrow>
           <Menu.Target>
@@ -101,7 +118,7 @@ const DashboardLayoutShell = ({
                 }
               }}
             >
-              {meDisplayName}
+              {!isMobile ? meDisplayName : t("Account")}
             </Button>
           </Menu.Target>
           <Menu.Dropdown>
@@ -114,10 +131,20 @@ const DashboardLayoutShell = ({
                 window.location.href = "/login";
               }}
             >
-              Sign Out
+              {t("Sign Out")}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
+        <SegmentedControl
+          size="xs"
+          value={language}
+          onChange={(value) => setLanguage(value as "en" | "lt")}
+          data={[
+            { value: "en", label: "EN" },
+            { value: "lt", label: "LT" },
+          ]}
+          visibleFrom="xs"
+        />
       </Group>
     </Group>
   );
@@ -126,7 +153,7 @@ const DashboardLayoutShell = ({
     <AppShell
       header={{ height: 60 }}
       navbar={{
-        width: 96,
+        width: isMobile ? 260 : 96,
         breakpoint: "sm",
         collapsed: { mobile: !opened },
       }}
@@ -138,15 +165,37 @@ const DashboardLayoutShell = ({
 
       <AppShell.Navbar p="sm" style={{ backgroundColor: shellBackground, borderRight: `1px solid ${isDark ? "rgba(148,163,184,0.22)" : "rgba(15,23,42,0.12)"}` }}>
         <Stack h="100%" justify="space-between" gap="md">
-          <Stack gap="sm" align="center" pt="xs">
-            {[
-              { key: "dashboard", icon: IconLayoutDashboard, label: "Dashboard" },
-              { key: "activities", icon: IconActivity, label: "Activities" },
-              { key: "plan", icon: IconCalendar, label: "Training Plan" },
-              { key: "settings", icon: IconSettings, label: "Settings" },
-            ].map((item) => {
+          <Stack gap="sm" align={isMobile ? "stretch" : "center"} pt="xs">
+            {navItems.map((item) => {
               const IconComponent = item.icon;
               const active = activeTab === item.key;
+              if (isMobile) {
+                return (
+                  <Button
+                    key={item.key}
+                    variant={active ? "light" : "subtle"}
+                    leftSection={<IconComponent size={16} stroke={1.8} />}
+                    justify="flex-start"
+                    onClick={() => {
+                      setActiveTab(item.key as DashboardTab);
+                      toggle();
+                    }}
+                    styles={{
+                      root: {
+                        border: `1px solid ${active
+                          ? (isDark ? "rgba(233, 90, 18, 0.55)" : "rgba(233, 90, 18, 0.35)")
+                          : (isDark ? "rgba(148,163,184,0.20)" : "rgba(15,23,42,0.12)")}`,
+                        color: active ? accentPrimary : (isDark ? "#E2E8F0" : "#1E293B"),
+                        background: active
+                          ? (isDark ? "rgba(233, 90, 18, 0.20)" : "rgba(233, 90, 18, 0.10)")
+                          : "transparent"
+                      }
+                    }}
+                  >
+                    {item.label}
+                  </Button>
+                );
+              }
               return (
                 <Tooltip key={item.key} label={item.label} position="right">
                   <ActionIcon
@@ -179,13 +228,13 @@ const DashboardLayoutShell = ({
               );
             })}
             {onQuickAddActivity && (
-              <Tooltip label="Add Activity" position="right">
+              <Tooltip label={t("Add Activity")} position={isMobile ? "bottom" : "right"}>
                 <ActionIcon
                   size="xl"
                   radius="md"
                   variant="subtle"
                   onClick={onQuickAddActivity}
-                  aria-label="Add activity"
+                  aria-label={t("Add Activity")}
                   styles={{
                     root: {
                       border: `1px solid ${isDark ? 'rgba(110, 75, 243, 0.38)' : 'rgba(110, 75, 243, 0.24)'}`,
@@ -199,14 +248,14 @@ const DashboardLayoutShell = ({
               </Tooltip>
             )}
           </Stack>
-          <Stack gap="sm" align="center" pb="xs">
-            <Tooltip label={isDark ? "Switch to light mode" : "Switch to dark mode"} position="right">
+          <Stack gap="sm" align={isMobile ? "stretch" : "center"} pb="xs">
+            <Tooltip label={isDark ? t("Switch to light mode") : t("Switch to dark mode")} position="right">
               <ActionIcon
                 variant="subtle"
                 size="xl"
                 radius="md"
                 onClick={() => setColorScheme(isDark ? "light" : "dark")}
-                aria-label="Toggle color mode"
+                aria-label={t("Switch to dark mode")}
                 style={{ position: "relative", overflow: "hidden", border: `1px solid ${isDark ? 'rgba(110, 75, 243, 0.38)' : 'rgba(110, 75, 243, 0.24)'}`, color: accentSecondary }}
               >
                 <IconSun
@@ -233,7 +282,45 @@ const DashboardLayoutShell = ({
         </Stack>
       </AppShell.Navbar>
 
-      <AppShell.Main bg={shellBackground}>{children}</AppShell.Main>
+      <AppShell.Main bg={shellBackground} pb={isMobile ? 84 : undefined}>
+        <OfflineNotice />
+        {children}
+      </AppShell.Main>
+
+      {isMobile && (
+        <Affix position={{ bottom: 12, left: 12, right: 12 }}>
+          <Group
+            justify="space-around"
+            wrap="nowrap"
+            px="sm"
+            py={8}
+            style={{
+              borderRadius: 14,
+              border: `1px solid ${isDark ? "rgba(148,163,184,0.22)" : "rgba(15,23,42,0.12)"}`,
+              background: isDark ? "rgba(8,18,38,0.94)" : "rgba(255,255,255,0.94)",
+              backdropFilter: "blur(8px)"
+            }}
+          >
+            {navItems.map((item) => {
+              const IconComponent = item.icon;
+              const active = activeTab === item.key;
+              return (
+                <ActionIcon
+                  key={`mobile-${item.key}`}
+                  size="lg"
+                  radius="xl"
+                  variant={active ? "light" : "subtle"}
+                  aria-label={item.label}
+                  onClick={() => setActiveTab(item.key)}
+                  color={active ? "orange" : undefined}
+                >
+                  <IconComponent size={18} stroke={1.8} />
+                </ActionIcon>
+              );
+            })}
+          </Group>
+        </Affix>
+      )}
     </AppShell>
   );
 };

@@ -131,7 +131,10 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
 
     const cooldownMs = 15 * 60 * 1000;
     const now = Date.now();
-    const connectedProviders = integrations.filter((provider) => provider.connection_status === "connected");
+    const connectedProviders = integrations.filter((provider) => {
+      if (provider.connection_status !== "connected") return false;
+      return provider.provider.trim().toLowerCase() !== "strava";
+    });
 
     const toSync = connectedProviders.filter((provider) => {
       if (autoSyncRequestedRef.current.has(provider.provider)) return false;

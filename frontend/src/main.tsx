@@ -7,10 +7,24 @@ import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
 import "@mantine/notifications/styles.css";
 import App from "./App";
+import { I18nProvider } from "./i18n/I18nProvider";
 import faviconOrigami from "../uploads/favicon_Origami.png";
 import faviconOrigamiRemoveBg from "../uploads/favicon_Origami-removebg-preview.png";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      gcTime: 30 * 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+      retry: 1,
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+});
 const theme = createTheme({
   primaryColor: "cyan",
   fontFamily: "Inter, sans-serif",
@@ -60,12 +74,14 @@ const theme = createTheme({
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <MantineProvider theme={theme} defaultColorScheme="light">
-      <Notifications position="bottom-right" />
-      <QueryClientProvider client={queryClient}>
-        <App />
-      </QueryClientProvider>
-    </MantineProvider>
+    <I18nProvider>
+      <MantineProvider theme={theme} defaultColorScheme="light">
+        <Notifications position="bottom-right" />
+        <QueryClientProvider client={queryClient}>
+          <App />
+        </QueryClientProvider>
+      </MantineProvider>
+    </I18nProvider>
   </React.StrictMode>
 );
 
@@ -84,4 +100,10 @@ shortcutIconLink.setAttribute("type", "image/png");
 shortcutIconLink.setAttribute("href", faviconOrigamiRemoveBg);
 if (!shortcutIconLink.parentElement) {
   document.head.appendChild(shortcutIconLink);
+}
+
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js");
+  });
 }

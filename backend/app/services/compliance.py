@@ -347,12 +347,10 @@ async def match_and_score(db: AsyncSession, user_id: int, target_date: date):
         await db.commit()
         return
 
-    # 2. Fetch Activities for the date
-    # Activity.created_at is DateTime. Cast to date?
-    # Or range check for the day.
-    # Include adjacent UTC days to avoid missing matches around timezone/day boundaries.
-    start_of_day = datetime.combine(target_date - timedelta(days=1), datetime.min.time())
-    end_of_day = datetime.combine(target_date + timedelta(days=1), datetime.max.time())
+    # 2. Fetch Activities for the exact target date only.
+    # Planned workouts must not be compared to activities from other calendar days.
+    start_of_day = datetime.combine(target_date, datetime.min.time())
+    end_of_day = datetime.combine(target_date, datetime.max.time())
     
     stmt_activities = select(Activity).where(
         and_(

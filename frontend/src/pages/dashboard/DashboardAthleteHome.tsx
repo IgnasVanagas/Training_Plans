@@ -15,40 +15,101 @@ type Props = {
   isDark: boolean;
   me: User;
   todayWorkout?: DashboardCalendarEvent;
+  isTodayWorkout?: boolean;
   wellnessSummary: any;
   integrations: any[];
   trainingStatus?: TrainingStatus;
   onOpenPlan: () => void;
   onSelectMetric: (metric: MetricKey) => void;
+  onRespondInvitation: (organizationId: number, action: "accept" | "decline") => void;
+  respondingInvitation: boolean;
 };
 
 const DashboardAthleteHome = ({
   isDark,
   me,
   todayWorkout,
+  isTodayWorkout,
   wellnessSummary,
   integrations,
   trainingStatus,
   onOpenPlan,
   onSelectMetric,
+  onRespondInvitation,
+  respondingInvitation,
 }: Props) => {
   const cardBg = isDark ? 'rgba(22, 34, 58, 0.62)' : 'rgba(255, 255, 255, 0.92)';
   const cardBorder = isDark ? 'rgba(148, 163, 184, 0.26)' : 'rgba(15, 23, 42, 0.14)';
+  const pendingInvites = (me.organization_memberships || []).filter(
+    (membership) => membership.role === "athlete" && membership.status === "pending"
+  );
+  const pendingInviteOrgNames = pendingInvites
+    .map((membership) => membership.organization?.name)
+    .filter((name): name is string => Boolean(name && name.trim()));
+  const joinedGroups = (me.organization_memberships || []).filter(
+    (membership) => membership.role === "athlete" && membership.status === "active"
+  );
+  const joinedGroupNames = joinedGroups
+    .map((membership) => membership.organization?.name)
+    .filter((name): name is string => Boolean(name && name.trim()));
+  const coachNames = (me.coaches || []).map((coach) => {
+    const fullName = `${coach.first_name || ""} ${coach.last_name || ""}`.trim();
+    return fullName || coach.email;
+  });
 
   return (
     <Stack style={{ fontFamily: '"Inter", sans-serif' }}>
+      {pendingInvites.length > 0 && (
+        <Alert color="blue" variant="light" icon={<IconAlertTriangle size={16} />}>
+          <Stack gap={8}>
+            <Text size="sm">
+              {pendingInviteOrgNames.length > 0
+                ? `You have an invitation to join ${pendingInviteOrgNames.join(", ")}.`
+                : "You have a team invitation."}
+              {" "}Your access is pending coach approval.
+            </Text>
+            <Group gap="xs">
+              {pendingInvites.map((membership) => {
+                const orgId = membership.organization?.id;
+                if (!orgId) return null;
+                const orgName = membership.organization?.name || `Team #${orgId}`;
+                return (
+                  <Group key={orgId} gap={6}>
+                    <Button size="xs" variant="light" loading={respondingInvitation} onClick={() => onRespondInvitation(orgId, "accept")}>
+                      Accept {orgName}
+                    </Button>
+                    <Button size="xs" color="red" variant="subtle" loading={respondingInvitation} onClick={() => onRespondInvitation(orgId, "decline")}>
+                      Decline
+                    </Button>
+                  </Group>
+                );
+              })}
+            </Group>
+          </Stack>
+        </Alert>
+      )}
+
       <Paper withBorder p="lg" radius="md" shadow="sm" bg={cardBg} style={{ borderColor: cardBorder }}>
         <Group justify="space-between" align="flex-start">
           <Stack gap={4}>
             <Group gap="xs">
               <ThemeIcon color="orange" variant="light" radius="xl"><IconTargetArrow size={16} /></ThemeIcon>
-              <Text size="xs" tt="uppercase" fw={700} c="dimmed">Today’s Workout</Text>
+              <Text size="xs" tt="uppercase" fw={700} c="dimmed">{isTodayWorkout ? "Today’s Workout" : "Next Workout"}</Text>
             </Group>
             <Title order={3}>{todayWorkout?.title || "No workout planned yet"}</Title>
             <Text size="sm" c="dimmed">
               {todayWorkout
-                ? `${todayWorkout.sport_type || "Session"} · ${formatMinutesHm(todayWorkout.planned_duration)} · Stay smooth, not rushed.`
+                ? `${todayWorkout.date} · ${todayWorkout.sport_type || "Session"} · ${formatMinutesHm(todayWorkout.planned_duration)} · Stay smooth, not rushed.`
                 : "Sync your device or ask your coach to schedule today’s session."}
+            </Text>
+            {todayWorkout?.created_by_name && (
+              <Text size="xs" c="dimmed">Created by: {todayWorkout.created_by_name}</Text>
+            )}
+            <Text size="xs" c="dimmed">
+              Coach: {coachNames.length > 0 ? coachNames.join(", ") : "No active coach assigned"}
+            </Text>
+            <Text size="xs" c="dimmed">
+              Groups: {joinedGroupNames.length > 0 ? joinedGroupNames.join(", ") : "No active groups"}
             </Text>
           </Stack>
           <Group>

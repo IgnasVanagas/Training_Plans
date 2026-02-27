@@ -6,7 +6,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { MapContainer, TileLayer, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
 
@@ -61,6 +61,28 @@ type ActivityDetail = {
             execution_score_pct?: number | null;
             execution_status?: 'great' | 'good' | 'ok' | 'fair' | 'subpar' | 'poor' | 'incomplete' | string | null;
             execution_components?: Record<string, number> | null;
+            execution_trace?: {
+                model_version?: string | null;
+                scoring_basis?: string | null;
+                used_weight_pct?: number | null;
+                weighted_total_points?: number | null;
+                normalization_divisor?: number | null;
+                components?: Array<{
+                    key?: string | null;
+                    label?: string | null;
+                    available?: boolean | null;
+                    weight_fraction?: number | null;
+                    weight_pct?: number | null;
+                    component_score_pct?: number | null;
+                    weighted_points?: number | null;
+                    normalized_contribution_pct?: number | null;
+                    note?: string | null;
+                }>;
+                status_thresholds?: Array<{
+                    status?: string | null;
+                    min_score_pct?: number | null;
+                }>;
+            } | null;
             split_importance?: 'high' | 'low' | string | null;
             split_note?: string | null;
         };
@@ -93,7 +115,29 @@ export const ActivityDetailPage = () => {
         textDim: isDark ? '#9FB0C8' : '#52617A',
         accent: '#E95A12'
     }), [isDark]);
+    const sharedTooltipProps = useMemo(() => ({
+        isAnimationActive: false,
+        cursor: { stroke: ui.border, strokeWidth: 1 },
+        wrapperStyle: { outline: 'none' },
+        contentStyle: {
+            backgroundColor: ui.surfaceAlt,
+            borderColor: ui.border,
+            borderRadius: 10,
+            color: ui.textMain,
+        },
+        labelStyle: { color: ui.textDim, fontWeight: 600 },
+        itemStyle: { color: ui.textMain },
+    }), [ui.border, ui.surfaceAlt, ui.textDim, ui.textMain]);
+    const formatTooltipDistance = (value: unknown) => {
+        const distance = Number(value);
+        if (!Number.isFinite(distance)) return '-';
+        return `${distance.toFixed(3)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`;
+    };
     const [graphMode, setGraphMode] = useState<'standard' | 'power_curve' | 'hr_zones' | 'pace_zones' | 'power_zones'>('standard');
+    const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
+    const hoveredPointIndexRef = useRef<number | null>(null);
+    const pendingHoveredPointIndexRef = useRef<number | null>(null);
+    const hoveredPointRafRef = useRef<number | null>(null);
     const [splitMode, setSplitMode] = useState<'metric' | 'laps'>('metric');
     const [focusMode, setFocusMode] = useState(false);
     const [focusObjective, setFocusObjective] = useState<'pacing' | 'cardio' | 'efficiency'>('pacing');
@@ -214,10 +258,11 @@ export const ActivityDetailPage = () => {
     const chartData = useMemo(() => {
         if (!activity || streamPoints.length === 0) return [];
         const startTs = new Date(streamPoints[0]?.timestamp).getTime();
+        const isRunningLike = (activity.sport || '').toLowerCase().includes('run');
 
         return streamPoints.map((s: any, index: number) => {
             let pace = null;
-            if (s.speed && s.speed > 0.1) {
+            if (isRunningLike && s.speed && s.speed > 0.1) {
                 // m/s to min/km or min/mi
                 const mpm = s.speed * 60; // meters per minute
                 if (me?.profile?.preferred_units === 'imperial') {
@@ -259,6 +304,224 @@ export const ActivityDetailPage = () => {
             };
         });
     }, [activity, streamPoints, me?.profile?.preferred_units]);
+
+    const hoveredPoint = useMemo(() => {
+        if (hoveredPointIndex === null) return null;
+        return chartData[hoveredPointIndex] || null;
+    }, [chartData, hoveredPointIndex]);
+
+    const handleSharedChartMouseMove = (state: any) => {
+        const idx = state?.activeTooltipIndex;
+        if (typeof idx !== 'number' || !Number.isFinite(idx)) return;
+        if (idx === hoveredPointIndexRef.current || idx === pendingHoveredPointIndexRef.current) return;
+
+        pendingHoveredPointIndexRef.current = idx;
+
+        if (hoveredPointRafRef.current !== null) return;
+        hoveredPointRafRef.current = window.requestAnimationFrame(() => {
+            hoveredPointRafRef.current = null;
+            const next = pendingHoveredPointIndexRef.current;
+            pendingHoveredPointIndexRef.current = null;
+            if (typeof next !== 'number' || !Number.isFinite(next)) return;
+            if (next === hoveredPointIndexRef.current) return;
+            hoveredPointIndexRef.current = next;
+            setHoveredPointIndex(next);
+        });
+    };
+
+    const handleSharedChartMouseLeave = () => {
+        pendingHoveredPointIndexRef.current = null;
+        if (hoveredPointRafRef.current !== null) {
+            window.cancelAnimationFrame(hoveredPointRafRef.current);
+            hoveredPointRafRef.current = null;
+        }
+        if (hoveredPointIndexRef.current === null) return;
+        hoveredPointIndexRef.current = null;
+        setHoveredPointIndex(null);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (hoveredPointRafRef.current !== null) {
+                window.cancelAnimationFrame(hoveredPointRafRef.current);
+                hoveredPointRafRef.current = null;
+            }
+        };
+    }, []);
+
+    const renderMetricTooltip = (
+        point: any,
+        valueLabel: string,
+        value: string,
+    ) => {
+        if (!point) return null;
+        return (
+            <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt}>
+                <Text size="xs" c={ui.textDim} fw={600} mb={4}>
+                    {formatTooltipDistance(point.distance_km)}
+                </Text>
+                <Text size="xs" c={ui.textMain}>
+                    {valueLabel}: {value}
+                </Text>
+            </Paper>
+        );
+    };
+
+    const hrTooltipContent = () => {
+        const point = hoveredPoint;
+        if (!point) return null;
+        const value = Number(point.heart_rate);
+        return renderMetricTooltip(point, 'HR', Number.isFinite(value) ? `${Math.round(value)} bpm` : '-');
+    };
+
+    const paceTooltipContent = () => {
+        const point = hoveredPoint;
+        if (!point) return null;
+        const value = Number(point.pace);
+        if (!Number.isFinite(value)) return renderMetricTooltip(point, 'Pace', '-');
+        const m = Math.floor(value);
+        const s = Math.floor((value - m) * 60);
+        return renderMetricTooltip(point, 'Pace', `${m}:${s.toString().padStart(2, '0')}${me?.profile?.preferred_units === 'imperial' ? '/mi' : '/km'}`);
+    };
+
+    const powerTooltipContent = () => {
+        const point = hoveredPoint;
+        if (!point) return null;
+        const value = Number(point.power);
+        return renderMetricTooltip(point, 'Power', Number.isFinite(value) ? `${Math.round(value)} W` : '-');
+    };
+
+    const cadenceTooltipContent = () => {
+        const point = hoveredPoint;
+        if (!point) return null;
+        const value = Number(point.cadence);
+        return renderMetricTooltip(point, 'Cadence', Number.isFinite(value) ? `${Math.round(value)} rpm` : '-');
+    };
+
+    const altitudeTooltipContent = () => {
+        const point = hoveredPoint;
+        if (!point) return null;
+        const value = Number(point.altitude);
+        return renderMetricTooltip(point, 'Elev', Number.isFinite(value) ? `${Math.round(value)} m` : '-');
+    };
+
+    const supportsPaceSeries = useMemo(() => {
+        const sportName = (activity?.sport || '').toLowerCase();
+        return sportName.includes('run');
+    }, [activity?.sport]);
+
+    const plannedSummary = activity?.planned_comparison?.summary;
+
+    const executionTraceRows = useMemo(() => {
+        const traceRows = plannedSummary?.execution_trace?.components;
+        if (Array.isArray(traceRows) && traceRows.length > 0) {
+            return traceRows.map((row) => {
+                const weightPctRaw = Number(row?.weight_pct);
+                const weightFractionRaw = Number(row?.weight_fraction);
+                const weightPct = Number.isFinite(weightPctRaw)
+                    ? weightPctRaw
+                    : (Number.isFinite(weightFractionRaw) ? weightFractionRaw * 100 : 0);
+
+                const componentScoreRaw = Number(row?.component_score_pct);
+                const weightedPointsRaw = Number(row?.weighted_points);
+                const normalizedContributionRaw = Number(row?.normalized_contribution_pct);
+
+                return {
+                    key: (row?.key || '').toString() || 'unknown',
+                    label: (row?.label || row?.key || 'Component').toString(),
+                    available: Boolean(row?.available),
+                    weightPct,
+                    componentScorePct: Number.isFinite(componentScoreRaw) ? componentScoreRaw : null,
+                    weightedPoints: Number.isFinite(weightedPointsRaw) ? weightedPointsRaw : null,
+                    normalizedContributionPct: Number.isFinite(normalizedContributionRaw) ? normalizedContributionRaw : null,
+                    note: row?.note || null,
+                };
+            });
+        }
+
+        const fallbackWeights: Record<string, number> = {
+            duration: 35,
+            distance: 20,
+            intensity: 35,
+            splits: 10,
+        };
+        const fallbackLabels: Record<string, string> = {
+            duration: 'Duration Match',
+            distance: 'Distance Match',
+            intensity: 'Intensity Match',
+            splits: 'Split Adherence',
+        };
+        const components = plannedSummary?.execution_components || {};
+
+        return Object.entries(fallbackWeights).map(([key, weightPct]) => {
+            const raw = Number((components as Record<string, number>)[key]);
+            const available = Number.isFinite(raw);
+            const weightedPoints = available ? (raw * weightPct) / 100 : null;
+            return {
+                key,
+                label: fallbackLabels[key] || key,
+                available,
+                weightPct,
+                componentScorePct: available ? raw : null,
+                weightedPoints,
+                normalizedContributionPct: null,
+                note: available ? null : 'Excluded from this score because data is unavailable or not applicable.',
+            };
+        });
+    }, [plannedSummary]);
+
+    const executionTraceMeta = useMemo(() => {
+        const trace = plannedSummary?.execution_trace;
+        const usedWeightPctRaw = Number(trace?.used_weight_pct);
+        const weightedTotalRaw = Number(trace?.weighted_total_points);
+        const normalizationDivisorRaw = Number(trace?.normalization_divisor);
+
+        const usedWeightPct = Number.isFinite(usedWeightPctRaw)
+            ? usedWeightPctRaw
+            : executionTraceRows
+                .filter((row) => row.available)
+                .reduce((sum, row) => sum + row.weightPct, 0);
+
+        const weightedTotalPoints = Number.isFinite(weightedTotalRaw)
+            ? weightedTotalRaw
+            : executionTraceRows
+                .map((row) => row.weightedPoints)
+                .filter((val): val is number => typeof val === 'number' && Number.isFinite(val))
+                .reduce((sum, value) => sum + value, 0);
+
+        const normalizationDivisor = Number.isFinite(normalizationDivisorRaw)
+            ? normalizationDivisorRaw
+            : (usedWeightPct > 0 ? usedWeightPct / 100 : 0);
+
+        const reconstructedScorePct = normalizationDivisor > 0
+            ? weightedTotalPoints / normalizationDivisor
+            : null;
+
+        const thresholds = Array.isArray(trace?.status_thresholds) && trace?.status_thresholds.length > 0
+            ? trace.status_thresholds
+                  .map((row) => ({
+                      status: (row?.status || '').toString(),
+                      minScorePct: Number(row?.min_score_pct),
+                  }))
+                  .filter((row) => row.status && Number.isFinite(row.minScorePct))
+            : [
+                  { status: 'great', minScorePct: 92 },
+                  { status: 'good', minScorePct: 82 },
+                  { status: 'ok', minScorePct: 72 },
+                  { status: 'fair', minScorePct: 62 },
+                  { status: 'subpar', minScorePct: 50 },
+                  { status: 'poor', minScorePct: 35 },
+                  { status: 'incomplete', minScorePct: 0 },
+              ];
+
+        return {
+            usedWeightPct,
+            weightedTotalPoints,
+            normalizationDivisor,
+            reconstructedScorePct,
+            thresholds,
+        };
+    }, [executionTraceRows, plannedSummary]);
 
     const hrZoneData = useMemo(() => {
         const zoneSeconds = Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>;
@@ -655,13 +918,23 @@ export const ActivityDetailPage = () => {
         return () => window.clearTimeout(timer);
     }, [activity?.id]);
 
+    useEffect(() => {
+        if (supportsPaceSeries) return;
+        setVisibleSeries((prev) => (prev.pace ? { ...prev, pace: false } : prev));
+    }, [supportsPaceSeries]);
+
     const focusSeries = useMemo(() => {
-        if (!focusMode) return visibleSeries;
+        if (!focusMode) {
+            return {
+                ...visibleSeries,
+                pace: supportsPaceSeries ? visibleSeries.pace : false,
+            };
+        }
         if (focusObjective === 'cardio') {
             return {
                 heart_rate: true,
                 power: false,
-                pace: true,
+                pace: supportsPaceSeries,
                 cadence: false,
                 altitude: false
             };
@@ -678,11 +951,11 @@ export const ActivityDetailPage = () => {
         return {
             heart_rate: true,
             power: false,
-            pace: true,
+            pace: supportsPaceSeries,
             cadence: false,
             altitude: true
         };
-    }, [focusMode, focusObjective, visibleSeries]);
+    }, [focusMode, focusObjective, visibleSeries, supportsPaceSeries]);
 
 
     if (isLoading) return <Container my={60}><Text>Loading activity...</Text></Container>;
@@ -842,6 +1115,47 @@ export const ActivityDetailPage = () => {
                                     {activity.planned_comparison.summary?.split_note || activity.planned_comparison.intensity?.note}
                                 </Text>
                             )}
+                            {!!executionTraceRows.length && (
+                                <Paper withBorder radius="md" p="sm" mb="sm" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
+                                    <Group justify="space-between" mb={6}>
+                                        <Text size="sm" fw={700} c={ui.textMain}>Execution Explainability</Text>
+                                        <Badge variant="light">Traceable weights</Badge>
+                                    </Group>
+                                    <Text size="xs" c={ui.textDim} mb="xs">
+                                        Score formula: Σ(component score × weight) / Σ(used weights).
+                                    </Text>
+                                    <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                        <Table.Thead>
+                                            <Table.Tr>
+                                                <Table.Th>Component</Table.Th>
+                                                <Table.Th>Score</Table.Th>
+                                                <Table.Th>Weight</Table.Th>
+                                                <Table.Th>Weighted Pts</Table.Th>
+                                                <Table.Th>Contribution</Table.Th>
+                                                <Table.Th>Trace</Table.Th>
+                                            </Table.Tr>
+                                        </Table.Thead>
+                                        <Table.Tbody>
+                                            {executionTraceRows.map((row) => (
+                                                <Table.Tr key={`exec-trace-${row.key}`}>
+                                                    <Table.Td>{row.label}</Table.Td>
+                                                    <Table.Td>{row.componentScorePct != null ? `${row.componentScorePct.toFixed(1)}%` : '-'}</Table.Td>
+                                                    <Table.Td>{row.weightPct.toFixed(1)}%</Table.Td>
+                                                    <Table.Td>{row.weightedPoints != null ? row.weightedPoints.toFixed(2) : '-'}</Table.Td>
+                                                    <Table.Td>{row.normalizedContributionPct != null ? `${row.normalizedContributionPct.toFixed(1)}%` : '-'}</Table.Td>
+                                                    <Table.Td>{row.available ? 'Included' : (row.note || 'Excluded')}</Table.Td>
+                                                </Table.Tr>
+                                            ))}
+                                        </Table.Tbody>
+                                    </Table>
+                                    <Group mt="xs" gap="md">
+                                        <Text size="xs" c={ui.textDim}>Used weight: {executionTraceMeta.usedWeightPct.toFixed(1)}%</Text>
+                                        <Text size="xs" c={ui.textDim}>Weighted total: {executionTraceMeta.weightedTotalPoints.toFixed(2)}</Text>
+                                        <Text size="xs" c={ui.textDim}>Normalizer: {executionTraceMeta.normalizationDivisor.toFixed(3)}</Text>
+                                        <Text size="xs" c={ui.textDim}>Rebuilt score: {executionTraceMeta.reconstructedScorePct != null ? `${executionTraceMeta.reconstructedScorePct.toFixed(1)}%` : '-'}</Text>
+                                    </Group>
+                                </Paper>
+                            )}
                             {!!activity.planned_comparison.splits?.length && (
                                 <Table striped highlightOnHover withTableBorder withColumnBorders>
                                     <Table.Thead>
@@ -889,6 +1203,45 @@ export const ActivityDetailPage = () => {
                                 <Text size="sm" c={ui.textDim}>
                                     Incomplete is used when key execution data is missing or the session is not sufficiently complete for reliable scoring.
                                 </Text>
+                                {!!executionTraceRows.length && (
+                                    <>
+                                        <Text size="sm" fw={700}>Traceability breakdown</Text>
+                                        <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th>Component</Table.Th>
+                                                    <Table.Th>Score</Table.Th>
+                                                    <Table.Th>Weight</Table.Th>
+                                                    <Table.Th>Weighted</Table.Th>
+                                                    <Table.Th>In Score</Table.Th>
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {executionTraceRows.map((row) => (
+                                                    <Table.Tr key={`exec-modal-${row.key}`}>
+                                                        <Table.Td>{row.label}</Table.Td>
+                                                        <Table.Td>{row.componentScorePct != null ? `${row.componentScorePct.toFixed(1)}%` : '-'}</Table.Td>
+                                                        <Table.Td>{row.weightPct.toFixed(1)}%</Table.Td>
+                                                        <Table.Td>{row.weightedPoints != null ? row.weightedPoints.toFixed(2) : '-'}</Table.Td>
+                                                        <Table.Td>{row.available ? 'Yes' : 'No'}</Table.Td>
+                                                    </Table.Tr>
+                                                ))}
+                                            </Table.Tbody>
+                                        </Table>
+                                        <Text size="sm" c={ui.textDim}>
+                                            Reconstructed execution score: {executionTraceMeta.reconstructedScorePct != null ? `${executionTraceMeta.reconstructedScorePct.toFixed(1)}%` : '-'}
+                                            {' '}from weighted total {executionTraceMeta.weightedTotalPoints.toFixed(2)} and normalizer {executionTraceMeta.normalizationDivisor.toFixed(3)}.
+                                        </Text>
+                                        <Text size="sm" fw={700}>Thresholds</Text>
+                                        <Group gap="xs" wrap="wrap">
+                                            {executionTraceMeta.thresholds.map((row) => (
+                                                <Badge key={`exec-threshold-${row.status}`} variant="light">
+                                                    {row.status.toUpperCase()} ≥ {row.minScorePct.toFixed(0)}%
+                                                </Badge>
+                                            ))}
+                                        </Group>
+                                    </>
+                                )}
                             </Stack>
                         </Modal>
 
@@ -982,7 +1335,9 @@ export const ActivityDetailPage = () => {
                                                 <Group mb="sm" gap="xs">
                                                     <Text size="xs" fw={700}>Show:</Text>
                                                     <Chip checked={focusSeries.heart_rate} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, heart_rate: !v.heart_rate}))} size="xs" color="red" variant="light">Heart Rate</Chip>
-                                                    <Chip checked={focusSeries.pace} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, pace: !v.pace}))} size="xs" color="blue" variant="light">Pace</Chip>
+                                                    {isRunningActivity && (
+                                                        <Chip checked={focusSeries.pace} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, pace: !v.pace}))} size="xs" color="blue" variant="light">Pace</Chip>
+                                                    )}
                                                     <Chip checked={focusSeries.power} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, power: !v.power}))} size="xs" color="orange" variant="light">Power</Chip>
                                                     <Chip checked={focusSeries.cadence} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, cadence: !v.cadence}))} size="xs" color="cyan" variant="light">Cadence</Chip>
                                                     <Chip checked={focusSeries.altitude} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, altitude: !v.altitude}))} size="xs" color="green" variant="light">Altitude</Chip>
@@ -992,13 +1347,14 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.heart_rate && (
                                                         <Box h={160} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis dataKey="distance_km" hide />
+                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis dataKey="heart_rate" orientation="right" domain={['dataMin - 5', 'dataMax + 5']} width={40} tick={{fontSize: 10}} />
                                                                     <Tooltip 
-                                                                        labelFormatter={(val) => `${Number(val).toFixed(2)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`}
-                                                                        formatter={(val: number) => [val, 'HR']} 
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={hrTooltipContent}
                                                                     />
                                                                     <Area type="monotone" dataKey="heart_rate" stroke="#fa5252" fill="#fa5252" fillOpacity={0.15} strokeWidth={2} activeDot={{ r: 4 }} />
                                                                 </AreaChart>
@@ -1006,12 +1362,12 @@ export const ActivityDetailPage = () => {
                                                         </Box>
                                                     )}
 
-                                                    {focusSeries.pace && (
+                                                    {isRunningActivity && focusSeries.pace && (
                                                         <Box h={160} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis dataKey="distance_km" hide />
+                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis 
                                                                         dataKey="pace" 
                                                                         orientation="right" 
@@ -1025,12 +1381,9 @@ export const ActivityDetailPage = () => {
                                                                         }}
                                                                     />
                                                                     <Tooltip 
-                                                                        labelFormatter={(val) => `${Number(val).toFixed(2)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`}
-                                                                        formatter={(val: number) => {
-                                                                            const m = Math.floor(val);
-                                                                            const s = Math.floor((val - m) * 60);
-                                                                            return [`${m}:${s.toString().padStart(2, '0')}${me?.profile?.preferred_units === 'imperial' ? '/mi' : '/km'}`, 'Pace'];
-                                                                        }} 
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={paceTooltipContent}
                                                                     />
                                                                     <Area type="monotone" dataKey="pace" stroke="#228be6" fill="#228be6" fillOpacity={0.15} strokeWidth={2} connectNulls />
                                                                 </AreaChart>
@@ -1041,13 +1394,14 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.power && (
                                                         <Box h={160} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis dataKey="distance_km" hide />
+                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis dataKey="power" orientation="right" width={40} tick={{fontSize: 10}} />
                                                                     <Tooltip 
-                                                                        labelFormatter={(val) => `${Number(val).toFixed(2)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`}
-                                                                        formatter={(val: number) => [val + ' W', 'Power']} 
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={powerTooltipContent}
                                                                     />
                                                                     <Area type="monotone" dataKey="power" stroke="#fd7e14" fill="#fd7e14" fillOpacity={0.15} strokeWidth={1.5} />
                                                                 </AreaChart>
@@ -1058,13 +1412,14 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.cadence && (
                                                         <Box h={120} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis dataKey="distance_km" hide />
+                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis dataKey="cadence" orientation="right" domain={['dataMin - 10', 'dataMax + 10']} width={40} tick={{fontSize: 10}} />
                                                                     <Tooltip 
-                                                                        labelFormatter={(val) => `${Number(val).toFixed(2)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`} 
-                                                                        formatter={(val: number) => [val + ' rpm', 'Cadence']}
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={cadenceTooltipContent}
                                                                     />
                                                                     <Area type="monotone" dataKey="cadence" stroke="#15aabf" fill="#15aabf" fillOpacity={0.1} strokeWidth={1} />
                                                                 </AreaChart>
@@ -1075,13 +1430,14 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.altitude && (
                                                         <Box h={120} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis dataKey="distance_km" hide />
+                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis dataKey="altitude" orientation="right" domain={['dataMin', 'dataMax']} width={40} tick={{fontSize: 10}} />
                                                                     <Tooltip 
-                                                                        labelFormatter={(val) => `${Number(val).toFixed(2)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`} 
-                                                                        formatter={(val: number) => [Math.round(val) + ' m', 'Elev']}
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={altitudeTooltipContent}
                                                                     />
                                                                     <Area type="monotone" dataKey="altitude" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.1} strokeWidth={1} />
                                                                 </AreaChart>
@@ -1092,8 +1448,8 @@ export const ActivityDetailPage = () => {
                                                     {/* Shared Axis at bottom */}
                                                     <Box h={30} w="100%">
                                                          <ResponsiveContainer>
-                                                            <AreaChart data={chartData} syncId="activityGraph" margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                                                                <XAxis dataKey="distance_km" orientation="bottom" tick={{fontSize: 10}} tickFormatter={(val) => val.toFixed(1) + (me?.profile?.preferred_units === 'imperial' ? ' mi' : ' km')} />
+                                                            <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 0, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} orientation="bottom" tick={{fontSize: 10}} tickFormatter={(val) => val.toFixed(1) + (me?.profile?.preferred_units === 'imperial' ? ' mi' : ' km')} />
                                                                 <YAxis hide domain={[0, 1]} />
                                                                 {/* Transparent area to enforce X Axis points */}
                                                                 <Area dataKey="distance_km" fill="none" stroke="none" /> 
@@ -1111,7 +1467,7 @@ export const ActivityDetailPage = () => {
                                                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                          <XAxis dataKey="label" />
                                                          <YAxis />
-                                                         <Tooltip />
+                                                         <Tooltip {...sharedTooltipProps} />
                                                          <Line type="monotone" dataKey="watts" stroke="#fd7e14" strokeWidth={3} dot={true} name="Max Power" />
                                                     </LineChart>
                                                 </ResponsiveContainer>
@@ -1125,7 +1481,7 @@ export const ActivityDetailPage = () => {
                                                          <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                          <XAxis dataKey="zone" />
                                                          <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
-                                                         <Tooltip formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                         <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
                                                          <Bar dataKey="seconds" fill="#228be6" name="Pace Zone Time" onClick={(entry: any) => entry?.zone && openZoneExplanation('pace', entry.zone)} />
                                                     </BarChart>
                                                 </ResponsiveContainer>
@@ -1146,7 +1502,7 @@ export const ActivityDetailPage = () => {
                                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                         <XAxis dataKey="zone" />
                                                         <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
-                                                        <Tooltip formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                        <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
                                                         <Bar dataKey="seconds" fill="#fd7e14" name="Power Zone Time" onClick={(entry: any) => entry?.zone && openZoneExplanation('power', entry.zone)} />
                                                     </BarChart>
                                                 </ResponsiveContainer>
@@ -1167,7 +1523,7 @@ export const ActivityDetailPage = () => {
                                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                         <XAxis dataKey="zone" />
                                                         <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
-                                                        <Tooltip formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                        <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
                                                         <Bar dataKey="seconds" fill="#fa5252" name="Time in Zone" onClick={(entry: any) => entry?.zone && openZoneExplanation('hr', entry.zone)} />
                                                     </BarChart>
                                                 </ResponsiveContainer>

@@ -23,7 +23,27 @@ export type Profile = {
 export type User = {
   id: number;
   email: string;
+  email_verified?: boolean;
   role: "coach" | "athlete" | "admin";
+  coaches?: Array<{
+    id: number;
+    email: string;
+    first_name?: string | null;
+    last_name?: string | null;
+    organization_ids?: number[];
+    organization_names?: string[];
+  }>;
+  organization_memberships?: Array<{
+    organization?: {
+      id: number;
+      name: string;
+      code?: string | null;
+      description?: string | null;
+      picture?: string | null;
+    };
+    role: string;
+    status: string;
+  }>;
   profile?: Profile | null;
 };
 
@@ -64,10 +84,14 @@ export type AthletePermissions = {
 export type DashboardCalendarEvent = {
   id?: number;
   user_id?: number;
+  created_by_user_id?: number;
+  created_by_name?: string;
+  created_by_email?: string;
   title: string;
   date: string;
   sport_type?: string;
   compliance_status?: "planned" | "completed_green" | "completed_yellow" | "completed_red" | "missed";
+  matched_activity_id?: number;
   is_planned?: boolean;
   planned_duration?: number;
   duration?: number;
@@ -84,4 +108,71 @@ export type ActivityFeedRow = {
 export type InviteResponse = {
   invite_token: string;
   invite_url: string;
+};
+
+export type InviteByEmailResponse = {
+  email: string;
+  existing_user: boolean;
+  invite_url: string;
+  status: string;
+  message: string;
+};
+
+export type NotificationItem = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  created_at: string;
+  entity_type?: string | null;
+  entity_id?: number | null;
+  organization_id?: number | null;
+  athlete_id?: number | null;
+  status?: string | null;
+};
+
+export type NotificationsFeed = {
+  items: NotificationItem[];
+};
+
+export type OrganizationCoach = {
+  id: number;
+  email: string;
+  first_name?: string | null;
+  last_name?: string | null;
+};
+
+export type OrganizationDiscoverItem = {
+  id: number;
+  name: string;
+  description?: string | null;
+  picture?: string | null;
+  coaches: OrganizationCoach[];
+  my_membership_status?: string | null;
+};
+
+export type OrganizationDiscoverResponse = {
+  items: OrganizationDiscoverItem[];
+};
+
+export type OrganizationGroupMessage = {
+  id: number;
+  organization_id: number;
+  sender_id: number;
+  sender_role: string;
+  sender_name?: string | null;
+  body: string;
+  created_at: string;
+};
+
+export type OrganizationCoachMessage = {
+  id: number;
+  organization_id: number;
+  athlete_id: number;
+  coach_id: number;
+  sender_id: number;
+  sender_role: string;
+  sender_name?: string | null;
+  body: string;
+  created_at: string;
 };

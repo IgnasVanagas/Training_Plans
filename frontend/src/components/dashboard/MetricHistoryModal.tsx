@@ -3,6 +3,7 @@ import { DateInput } from "@mantine/dates";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { MetricKey } from "../../pages/dashboard/types";
 import { metricDescriptions, metricModalTitle } from "../../pages/dashboard/utils";
+import { useI18n } from "../../i18n/I18nProvider";
 
 type MetricHistoryModalProps = {
   selectedMetric: MetricKey | null;
@@ -29,6 +30,9 @@ export const MetricHistoryModal = ({
   selectedMetricChartData,
   selectedMetricRows,
 }: MetricHistoryModalProps) => {
+  const { language } = useI18n();
+  const isLt = language === "lt";
+
   return (
     <Modal
       opened={Boolean(selectedMetric)}
@@ -65,13 +69,13 @@ export const MetricHistoryModal = ({
           {selectedMetric === "training_status" && (
             <Paper withBorder p="sm" radius="sm">
               <Stack gap={4}>
-                <Text size="sm" fw={600}>All possible statuses</Text>
-                <Text size="sm"><b>Detraining</b>: very low recent and chronic load; fitness stimulus is likely insufficient.</Text>
-                <Text size="sm"><b>Maintaining</b>: minimal baseline load with stable low strain.</Text>
-                <Text size="sm"><b>Recovering</b>: acute load is well below chronic load ($ACWR &lt; 0.8$); useful after hard blocks.</Text>
-                <Text size="sm"><b>Productive</b>: balanced progression zone ($0.8 \le ACWR \le 1.2$); best range for consistent adaptation.</Text>
-                <Text size="sm"><b>Overreaching</b>: elevated short-term stress ($1.2 &lt; ACWR \le 1.5$); manageable if brief and planned.</Text>
-                <Text size="sm"><b>Strained</b>: excessive short-term stress ($ACWR &gt; 1.5$); higher fatigue/injury risk.</Text>
+                <Text size="sm" fw={600}>{isLt ? "Visos galimos būsenos" : "All possible statuses"}</Text>
+                <Text size="sm"><b>{isLt ? "Formos kritimas" : "Detraining"}</b>{isLt ? ": labai mažas pastarasis ir lėtinis krūvis; treniruočių stimulas greičiausiai nepakankamas." : ": very low recent and chronic load; fitness stimulus is likely insufficient."}</Text>
+                <Text size="sm"><b>{isLt ? "Palaikymas" : "Maintaining"}</b>{isLt ? ": minimalus bazinis krūvis su stabiliai mažu nuovargiu." : ": minimal baseline load with stable low strain."}</Text>
+                <Text size="sm"><b>{isLt ? "Atsistatymas" : "Recovering"}</b>{isLt ? ": ūmus krūvis yra gerokai mažesnis už lėtinį (ACWR < 0.8); naudinga po sunkių blokų." : ": acute load is well below chronic load (ACWR < 0.8); useful after hard blocks."}</Text>
+                <Text size="sm"><b>{isLt ? "Produktyvu" : "Productive"}</b>{isLt ? ": subalansuota progreso zona (0.8 ≤ ACWR ≤ 1.2); geriausias intervalas nuosekliai adaptacijai." : ": balanced progression zone (0.8 ≤ ACWR ≤ 1.2); best range for consistent adaptation."}</Text>
+                <Text size="sm"><b>{isLt ? "Perkrova" : "Overreaching"}</b>{isLt ? ": padidintas trumpalaikis stresas (1.2 < ACWR ≤ 1.5); valdoma, jei trumpa ir suplanuota." : ": elevated short-term stress (1.2 < ACWR ≤ 1.5); manageable if brief and planned."}</Text>
+                <Text size="sm"><b>{isLt ? "Perdėtas nuovargis" : "Strained"}</b>{isLt ? ": per didelis trumpalaikis stresas (ACWR > 1.5); didesnė nuovargio ir traumų rizika." : ": excessive short-term stress (ACWR > 1.5); higher fatigue/injury risk."}</Text>
               </Stack>
             </Paper>
           )}

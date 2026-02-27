@@ -1,5 +1,5 @@
 import { Container, Modal, Select, Text, useComputedColorScheme } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -13,13 +13,17 @@ import ActivityUploadPanel from "../components/dashboard/ActivityUploadPanel";
 import DashboardAthleteHome from "./dashboard/DashboardAthleteHome";
 import DashboardCoachHome from "./dashboard/DashboardCoachHome";
 import DashboardLayoutShell from "./dashboard/DashboardLayoutShell";
+import DashboardNotificationsTab from "./dashboard/DashboardNotificationsTab";
+import DashboardOrganizationsTab from "./dashboard/DashboardOrganizationsTab";
 import DashboardSettingsTab from "./dashboard/DashboardSettingsTab";
 import {
   ActivityFeedRow,
   AthletePermissions,
   DashboardCalendarEvent,
+  InviteByEmailResponse,
   InviteResponse,
   MetricKey,
+  NotificationsFeed,
   Profile,
   ProfileMetricSnapshot,
   TrainingStatus,
@@ -38,14 +42,15 @@ const toLocalDateKey = (value: Date): string => {
 const Dashboard = () => {
   const location = useLocation();
   const navigationState = (location.state || {}) as {
-    activeTab?: "dashboard" | "activities" | "plan" | "settings";
+    activeTab?: "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
     selectedAthleteId?: string | null;
     calendarDate?: string | null;
   };
 
   const [opened, { toggle }] = useDisclosure();
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "activities" | "plan" | "settings">(
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings">(
     navigationState.activeTab || "dashboard",
   );
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(navigationState.selectedAthleteId ?? null);
@@ -55,6 +60,7 @@ const Dashboard = () => {
   const [profileMetricHistory, setProfileMetricHistory] = useState<ProfileMetricSnapshot[]>([]);
   const [manualMetricDate, setManualMetricDate] = useState<Date | null>(new Date());
   const [manualMetricValue, setManualMetricValue] = useState<number | "">("");
+  const isMobile = useMediaQuery("(max-width: 48em)");
 
   const queryClient = useQueryClient();
   const isDark = useComputedColorScheme("light") === "dark";
@@ -102,6 +108,74 @@ const Dashboard = () => {
     onSuccess: (data) => setInviteUrl(data.invite_url),
   });
 
+  const inviteByEmailMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const response = await api.post<InviteByEmailResponse>("/users/invite-by-email", {
+        email,
+      });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setInviteUrl(data.invite_url);
+      notifications.show({
+        color: data.status === "already_active" ? "blue" : "green",
+        title: "Invite status",
+        message: data.message,
+      });
+      setInviteEmail("");
+      queryClient.invalidateQueries({ queryKey: ["athletes"] });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Invite failed",
+        message: extractApiErrorMessage(error),
+      });
+    },
+  });
+
+  const requestEmailConfirmationMutation = useMutation({
+    mutationFn: async () => {
+      const response = await api.post<{ message: string; verify_url?: string }>("/auth/request-email-confirmation");
+      return response.data;
+    },
+    onSuccess: (data) => {
+      notifications.show({
+        color: "blue",
+        title: "Verification email",
+        message: data.verify_url ? `${data.message}. Link: ${data.verify_url}` : data.message,
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Could not request verification",
+        message: extractApiErrorMessage(error),
+      });
+    },
+  });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: async (payload: { current_password: string; new_password: string }) => {
+      const response = await api.post<{ message: string }>("/users/change-password", payload);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      notifications.show({
+        color: "green",
+        title: "Password updated",
+        message: data.message,
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Password update failed",
+        message: extractApiErrorMessage(error),
+      });
+    },
+  });
+
   const profileUpdateMutation = useMutation({
     mutationFn: async (updatedProfile: Profile) => {
       const response = await api.put<User>("/users/profile", updatedProfile);
@@ -127,6 +201,33 @@ const Dashboard = () => {
       return response.data;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["athlete-permissions"] }),
+  });
+
+  const respondInvitationMutation = useMutation({
+    mutationFn: async (vars: { organizationId: number; action: "accept" | "decline" }) => {
+      const response = await api.post<{ message: string; status: string }>(
+        `/users/organization/invitations/${vars.organizationId}/respond`,
+        { action: vars.action },
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      notifications.show({
+        color: data.status === "rejected" ? "orange" : "green",
+        title: "Invitation updated",
+        message: data.message,
+      });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["athletes"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications-feed"] });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Invitation update failed",
+        message: extractApiErrorMessage(error),
+      });
+    },
   });
 
   const trainingStatusQuery = useQuery({
@@ -201,6 +302,15 @@ const Dashboard = () => {
       const params: Record<string, string> = {};
       if (selectedAthleteId) params.athlete_id = selectedAthleteId;
       const response = await api.get<ActivityFeedRow[]>("/activities/", { params });
+      return response.data;
+    },
+  });
+
+  const notificationsFeedQuery = useQuery({
+    queryKey: ["notifications-feed", meQuery.data?.id],
+    enabled: Boolean(meQuery.data?.id),
+    queryFn: async () => {
+      const response = await api.get<NotificationsFeed>("/communications/notifications");
       return response.data;
     },
   });
@@ -306,7 +416,12 @@ const Dashboard = () => {
 
   const athleteIdNum = selectedAthleteId ? parseInt(selectedAthleteId) : null;
   const todayIso = toLocalDateKey(new Date());
-  const todayWorkout = (dashboardCalendarQuery.data || []).find((row) => row.date === todayIso && row.is_planned);
+  const plannedRows = (dashboardCalendarQuery.data || [])
+    .filter((row) => row.is_planned)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const todayWorkout = plannedRows.find((row) => row.date === todayIso);
+  const nextWorkout = plannedRows.find((row) => row.date >= todayIso);
+  const featuredWorkout = todayWorkout || nextWorkout;
 
   const complianceAlerts = useMemo(() => {
     if (me?.role !== "coach") return [] as DashboardCalendarEvent[];
@@ -388,8 +503,8 @@ const Dashboard = () => {
       onChange={(val) => setSelectedAthleteId(val === "" ? null : val)}
       searchable
       allowDeselect={false}
-      w={220}
-      mr="md"
+      w={isMobile ? "100%" : 220}
+      mr={isMobile ? 0 : "md"}
     />
   ) : null;
 
@@ -403,7 +518,7 @@ const Dashboard = () => {
       headerRight={headerRight}
       onQuickAddActivity={me.role !== "coach" ? () => setUploadModalOpened(true) : undefined}
     >
-      <Container size="xl">
+      <Container size="xl" px={{ base: 0, sm: "md" }}>
         <Modal
           opened={uploadModalOpened}
           onClose={() => setUploadModalOpened(false)}
@@ -441,6 +556,19 @@ const Dashboard = () => {
             athletes={me.role === "coach" ? athletesQuery.data || [] : []}
             initialViewDate={calendarViewDate}
           />
+        ) : activeTab === "notifications" ? (
+          <DashboardNotificationsTab
+            me={me}
+            items={notificationsFeedQuery.data?.items || []}
+            loading={notificationsFeedQuery.isFetching}
+            onRefresh={() => notificationsFeedQuery.refetch()}
+            onRespondInvitation={(organizationId, action) =>
+              respondInvitationMutation.mutate({ organizationId, action })
+            }
+            respondingInvitation={respondInvitationMutation.isPending}
+          />
+        ) : activeTab === "organizations" ? (
+          <DashboardOrganizationsTab me={me} athletes={athletesQuery.data || []} />
         ) : activeTab === "settings" ? (
           <DashboardSettingsTab
             me={me}
@@ -455,6 +583,10 @@ const Dashboard = () => {
             onConnect={(provider) => connectIntegrationMutation.mutate(provider)}
             onDisconnect={(provider) => disconnectIntegrationMutation.mutate(provider)}
             onSync={(provider) => syncIntegrationMutation.mutate(provider)}
+            requestingEmailConfirmation={requestEmailConfirmationMutation.isPending}
+            changingPassword={changePasswordMutation.isPending}
+            onRequestEmailConfirmation={() => requestEmailConfirmationMutation.mutate()}
+            onChangePassword={(payload) => changePasswordMutation.mutate(payload)}
             onUpdateAthletePermission={(athleteId, permissions) =>
               updateAthletePermissionMutation.mutate({ athleteId, permissions })
             }
@@ -466,19 +598,36 @@ const Dashboard = () => {
             complianceAlerts={complianceAlerts}
             coachFeedbackRows={coachFeedbackRows}
             inviteUrl={inviteUrl}
+            inviteEmail={inviteEmail}
+            onInviteEmailChange={setInviteEmail}
+            onInviteByEmail={() => {
+              const normalized = inviteEmail.trim().toLowerCase();
+              if (!normalized) {
+                notifications.show({ color: "red", title: "Email required", message: "Enter athlete email first." });
+                return;
+              }
+              inviteByEmailMutation.mutate(normalized);
+            }}
+            invitingByEmail={inviteByEmailMutation.isPending}
             onGenerateInvite={() => inviteMutation.mutate()}
             generatingInvite={inviteMutation.isPending}
+            onOpenPlan={() => setActiveTab("plan")}
+            onOpenActivities={() => setActiveTab("activities")}
+            onOpenOrganizations={() => setActiveTab("organizations")}
           />
         ) : (
           <DashboardAthleteHome
             isDark={isDark}
             me={me}
-            todayWorkout={todayWorkout}
+            todayWorkout={featuredWorkout}
+            isTodayWorkout={Boolean(todayWorkout && featuredWorkout?.date === todayWorkout.date)}
             wellnessSummary={wellnessSummaryQuery.data}
             integrations={integrationsQuery.data || []}
             trainingStatus={trainingStatusQuery.data}
             onOpenPlan={() => setActiveTab("plan")}
             onSelectMetric={(metric) => setSelectedMetric(metric)}
+            respondingInvitation={respondInvitationMutation.isPending}
+            onRespondInvitation={(organizationId, action) => respondInvitationMutation.mutate({ organizationId, action })}
           />
         )}
       </Container>

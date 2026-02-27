@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
+import { useMediaQuery } from "@mantine/hooks";
 import {
+  Alert,
+  Badge,
   Button,
+  Divider,
   Group,
   MultiSelect,
   NumberInput,
+  PasswordInput,
   Paper,
   Select,
   SimpleGrid,
@@ -12,6 +17,7 @@ import {
   Tabs,
   Text,
   TextInput,
+  useComputedColorScheme,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
 import { notifications } from "@mantine/notifications";
@@ -47,6 +53,7 @@ type Profile = {
 type User = {
   id: number;
   email: string;
+  email_verified?: boolean;
   role: "coach" | "athlete" | "admin";
   profile?: Profile | null;
 };
@@ -62,6 +69,10 @@ type SettingsFormProps = {
   onConnect?: (p: string) => void;
   onDisconnect?: (p: string) => void;
   onSync?: (p: string) => void;
+  requestingEmailConfirmation?: boolean;
+  changingPassword?: boolean;
+  onRequestEmailConfirmation?: () => void;
+  onChangePassword?: (payload: { current_password: string; new_password: string }) => void;
 };
 
 const getSupportedTimeZones = (): string[] => {
@@ -71,7 +82,9 @@ const getSupportedTimeZones = (): string[] => {
   return intlWithSupportedValues.supportedValuesOf?.("timeZone") ?? [Intl.DateTimeFormat().resolvedOptions().timeZone];
 };
 
-const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider, disconnectingProvider, syncingProvider, onConnect, onDisconnect, onSync }: SettingsFormProps) => {
+const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider, disconnectingProvider, syncingProvider, onConnect, onDisconnect, onSync, requestingEmailConfirmation, changingPassword, onRequestEmailConfirmation, onChangePassword }: SettingsFormProps) => {
+  const isDark = useComputedColorScheme("light") === "dark";
+  const isMobile = useMediaQuery("(max-width: 48em)");
   const capitalize = (s?: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const initialProfile: Profile = user.profile
     ? {
@@ -92,6 +105,9 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
   const [stravaImportPrefs, setStravaImportPrefs] = useState<StravaImportPreferences | null>(null);
   const [stravaPrefsLoading, setStravaPrefsLoading] = useState(false);
   const [stravaPrefsSaving, setStravaPrefsSaving] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   useEffect(() => {
     if (zoneSport === 'running' && zoneMetric === 'power') {
@@ -225,17 +241,30 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
   };
 
   return (
-    <Tabs defaultValue="general">
-        <Tabs.List>
-            <Tabs.Tab value="general">Personal Information</Tabs.Tab>
+    <Tabs
+      defaultValue="general"
+      orientation={isMobile ? "horizontal" : "vertical"}
+      styles={{ root: { width: "100%", alignItems: "stretch" }, panel: { width: "100%", flex: 1 } }}
+    >
+      <Tabs.List
+        style={{
+          minWidth: isMobile ? 0 : 220,
+          borderRight: isMobile ? "none" : `1px solid ${isDark ? "var(--mantine-color-dark-4)" : "var(--mantine-color-gray-3)"}`,
+          borderBottom: isMobile ? `1px solid ${isDark ? "var(--mantine-color-dark-4)" : "var(--mantine-color-gray-3)"}` : "none",
+          overflowX: isMobile ? "auto" : "visible",
+          flexWrap: isMobile ? "nowrap" : "wrap",
+        }}
+      >
+            <Tabs.Tab value="general">Profile</Tabs.Tab>
             <Tabs.Tab value="preferences">Preferences</Tabs.Tab>
-            <Tabs.Tab value="athletic">Athletic Profile</Tabs.Tab>
+            <Tabs.Tab value="athletic">Athletic</Tabs.Tab>
           <Tabs.Tab value="zones">Custom Zones</Tabs.Tab>
+            <Tabs.Tab value="account">Account & Security</Tabs.Tab>
             <Tabs.Tab value="integrations">Integrations</Tabs.Tab>
         </Tabs.List>
 
-        <Tabs.Panel value="general" pt="md">
-            <Paper p="md" radius="md" withBorder>
+        <Tabs.Panel value="general" pt="xs" pl={isMobile ? 0 : "md"}>
+            <Paper p="md" radius="md" withBorder bg={isDark ? "dark.6" : "white"} w="100%">
                 <Stack>
                     <Group grow>
                         <TextInput label="First Name" value={profile.first_name || ''} onChange={(e) => handleChange('first_name', e.currentTarget.value)} />
@@ -259,8 +288,8 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
             </Paper>
         </Tabs.Panel>
 
-        <Tabs.Panel value="preferences" pt="md">
-            <Paper p="md" radius="md" withBorder>
+        <Tabs.Panel value="preferences" pt="xs" pl={isMobile ? 0 : "md"}>
+            <Paper p="md" radius="md" withBorder bg={isDark ? "dark.6" : "white"} w="100%">
                 <Stack>
                     <Group grow>
                         <Select
@@ -280,8 +309,8 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
             </Paper>
         </Tabs.Panel>
 
-        <Tabs.Panel value="athletic" pt="md">
-            <Paper p="md" radius="md" withBorder>
+        <Tabs.Panel value="athletic" pt="xs" pl={isMobile ? 0 : "md"}>
+            <Paper p="md" radius="md" withBorder bg={isDark ? "dark.6" : "white"} w="100%">
                 <Stack>
                     <MultiSelect
                         label="Sports"
@@ -341,8 +370,8 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
             </Paper>
         </Tabs.Panel>
 
-        <Tabs.Panel value="zones" pt="md">
-            <Paper p="md" radius="md" withBorder>
+        <Tabs.Panel value="zones" pt="xs" pl={isMobile ? 0 : "md"}>
+            <Paper p="md" radius="md" withBorder bg={isDark ? "dark.6" : "white"} w="100%">
                 <Stack>
                     <Group grow>
                         <Select
@@ -469,8 +498,84 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
       }} loading={isSaving}>Save Changes</Button>
       </Group>
 
-      <Tabs.Panel value="integrations" pt="md">
-        <Paper p="md" radius="md" withBorder>
+      <Tabs.Panel value="account" pt="xs" pl={isMobile ? 0 : "md"}>
+        <Paper p="md" radius="md" withBorder bg={isDark ? "dark.6" : "white"} w="100%">
+          <Stack>
+            <Group justify="space-between" align="center">
+              <div>
+                <Text fw={600}>Email</Text>
+                <Text size="sm" c="dimmed">{user.email}</Text>
+              </div>
+              <Badge color={user.email_verified ? "teal" : "orange"} variant="light">
+                {user.email_verified ? "Verified" : "Unverified"}
+              </Badge>
+            </Group>
+
+            {!user.email_verified && (
+              <Alert color="yellow" title="Email confirmation recommended">
+                Confirm your email to improve account recovery and security.
+              </Alert>
+            )}
+
+            <Button
+              variant="light"
+              onClick={() => onRequestEmailConfirmation && onRequestEmailConfirmation()}
+              loading={requestingEmailConfirmation}
+              disabled={!onRequestEmailConfirmation}
+            >
+              Send verification email
+            </Button>
+
+            <Divider />
+
+            <Text fw={600}>Change password</Text>
+            <PasswordInput
+              label="Current password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.currentTarget.value)}
+            />
+            <PasswordInput
+              label="New password"
+              description="At least 10 characters with upper, lower, number, and symbol"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.currentTarget.value)}
+            />
+            <PasswordInput
+              label="Confirm new password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.currentTarget.value)}
+            />
+            <Group justify="flex-end">
+              <Button
+                onClick={() => {
+                  if (!currentPassword || !newPassword || !confirmPassword) {
+                    notifications.show({ color: "red", title: "Missing fields", message: "Fill in all password fields." });
+                    return;
+                  }
+                  if (newPassword !== confirmPassword) {
+                    notifications.show({ color: "red", title: "Passwords do not match", message: "Please confirm the same new password." });
+                    return;
+                  }
+                  if (!onChangePassword) {
+                    return;
+                  }
+                  onChangePassword({ current_password: currentPassword, new_password: newPassword });
+                  setCurrentPassword("");
+                  setNewPassword("");
+                  setConfirmPassword("");
+                }}
+                loading={changingPassword}
+                disabled={!onChangePassword}
+              >
+                Update password
+              </Button>
+            </Group>
+          </Stack>
+        </Paper>
+      </Tabs.Panel>
+
+      <Tabs.Panel value="integrations" pt="xs" pl={isMobile ? 0 : "md"}>
+        <Paper p="md" radius="md" withBorder bg={isDark ? "dark.6" : "white"} w="100%">
           <Switch
             mb="md"
             label="Automatic sync for connected services"

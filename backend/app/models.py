@@ -27,6 +27,7 @@ class PlannedWorkout(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     matched_activity_id = Column(Integer, ForeignKey("activities.id"), nullable=True)
     
     date = Column(Date, nullable=False)
@@ -40,7 +41,8 @@ class PlannedWorkout(Base):
     
     compliance_status = Column(Enum(ComplianceStatusEnum), default=ComplianceStatusEnum.planned, nullable=False)
 
-    user = relationship("User", back_populates="planned_workouts")
+    user = relationship("User", back_populates="planned_workouts", foreign_keys=[user_id])
+    created_by = relationship("User", foreign_keys=[created_by_user_id], back_populates="created_planned_workouts")
     matched_activity = relationship("Activity", back_populates="matched_workout")
 
 
@@ -50,7 +52,7 @@ class OrganizationMember(Base):
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     organization_id = Column(Integer, ForeignKey("organizations.id"), primary_key=True)
     role = Column(String(20), nullable=False)  # coach, athlete, admin
-    status = Column(String(20), default="active", nullable=False) # active, pending, rejected
+    status = Column(String(20), default="active", nullable=False) # active, pending, pending_approval, rejected
 
     user = relationship("User", back_populates="organization_memberships")
     organization = relationship("Organization", back_populates="members")
@@ -75,6 +77,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
+    email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(Enum(RoleEnum), nullable=False, default=RoleEnum.athlete)
     
     # Relationships
@@ -82,7 +85,8 @@ class User(Base):
     
     profile = relationship("Profile", back_populates="user", uselist=False)
     activities = relationship("Activity", back_populates="athlete")
-    planned_workouts = relationship("PlannedWorkout", back_populates="user")
+    planned_workouts = relationship("PlannedWorkout", foreign_keys="PlannedWorkout.user_id", back_populates="user")
+    created_planned_workouts = relationship("PlannedWorkout", foreign_keys="PlannedWorkout.created_by_user_id", back_populates="created_by")
     
     created_structured_workouts = relationship("StructuredWorkout", back_populates="coach")
 
@@ -279,3 +283,63 @@ class StressDaily(Base):
     record_date = Column(Date, nullable=False, index=True)
     stress_score = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class CommunicationThread(Base):
+    __tablename__ = "communication_threads"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "athlete_id", name="uq_comm_thread_entity_athlete"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String(20), nullable=False, index=True)  # activity | workout
+    entity_id = Column(Integer, nullable=False, index=True)
+    athlete_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    coach_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class CommunicationComment(Base):
+    __tablename__ = "communication_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    thread_id = Column(Integer, ForeignKey("communication_threads.id"), nullable=False, index=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class CommunicationAcknowledgement(Base):
+    __tablename__ = "communication_acknowledgements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String(20), nullable=False, index=True)  # activity | workout
+    entity_id = Column(Integer, nullable=False, index=True)
+    athlete_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    action = Column(String(40), nullable=False)  # acknowledged | seen | coach_note
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class OrganizationGroupMessage(Base):
+    __tablename__ = "organization_group_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class OrganizationCoachMessage(Base):
+    __tablename__ = "organization_coach_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    athlete_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    coach_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

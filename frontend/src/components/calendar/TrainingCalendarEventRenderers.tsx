@@ -252,7 +252,10 @@ export const DayEventItem = ({
         </Text>
       )}
       {r.is_planned && r.id && (
-        <Group justify="flex-end" mt={6}>
+        <Group justify="space-between" mt={6}>
+          <Text size="xs" c={palette.textDim}>
+            {r.created_by_name ? `Created by ${r.created_by_name}` : ""}
+          </Text>
           <Button
             size="xs"
             variant="subtle"

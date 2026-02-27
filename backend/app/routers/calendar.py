@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
 from app.database import get_db
-from app.models import User, PlannedWorkout, Activity, ComplianceStatusEnum, RoleEnum, OrganizationMember
+from app.models import User, PlannedWorkout, Activity, ComplianceStatusEnum, RoleEnum, OrganizationMember, Profile
 from app.schemas import PlannedWorkoutCreate, PlannedWorkoutUpdate, PlannedWorkoutOut, CalendarEvent
 from app.auth import get_current_user
 from app.services.compliance import match_and_score
@@ -145,12 +145,46 @@ async def get_calendar_events(
         if workout.matched_activity_id is not None
     }
 
+    creator_ids = {workout.created_by_user_id for workout in workouts if workout.created_by_user_id is not None}
+    creator_by_id: dict[int, tuple[str, Optional[str], Optional[str]]] = {}
+    if creator_ids:
+        creator_result = await db.execute(
+            select(User.id, User.email)
+            .where(User.id.in_(creator_ids))
+        )
+        email_by_id = {row[0]: row[1] for row in creator_result.all()}
+
+        profile_result = await db.execute(
+            select(Profile.user_id, Profile.first_name, Profile.last_name)
+            .where(Profile.user_id.in_(creator_ids))
+        )
+        for user_id, first_name, last_name in profile_result.all():
+            creator_by_id[user_id] = (email_by_id.get(user_id, ""), first_name, last_name)
+
+        for user_id, email in email_by_id.items():
+            if user_id not in creator_by_id:
+                creator_by_id[user_id] = (email, None, None)
+
+    def _creator_payload(workout: PlannedWorkout) -> tuple[Optional[int], Optional[str], Optional[str]]:
+        created_by_user_id = workout.created_by_user_id
+        if created_by_user_id is None:
+            return None, None, None
+
+        creator = creator_by_id.get(created_by_user_id)
+        if creator is None:
+            return created_by_user_id, None, None
+
+        email, first_name, last_name = creator
+        created_by_name = f"{first_name or ''} {last_name or ''}".strip() if (first_name or last_name) else email
+        return created_by_user_id, created_by_name, email
+
     events = []
     
     # Map Workouts
     for w in workouts:
         if w.matched_activity_id is not None and w.matched_activity_id in visible_activity_ids:
             continue
+        created_by_user_id, created_by_name, created_by_email = _creator_payload(w)
         events.append(CalendarEvent(
             id=w.id,
             user_id=w.user_id,
@@ -167,6 +201,9 @@ async def get_calendar_events(
             planned_duration=w.planned_duration,
             planned_distance=w.planned_distance,
             structure=w.structure,
+            created_by_user_id=created_by_user_id,
+            created_by_name=created_by_name,
+            created_by_email=created_by_email,
             start_time=datetime.combine(w.date, datetime.min.time())
         ))
 
@@ -175,6 +212,9 @@ async def get_calendar_events(
         if _is_activity_deleted(a):
             continue
         matched_workout = workout_by_matched_activity_id.get(a.id)
+        created_by_user_id, created_by_name, created_by_email = (None, None, None)
+        if matched_workout is not None:
+            created_by_user_id, created_by_name, created_by_email = _creator_payload(matched_workout)
         events.append(CalendarEvent(
             id=a.id,
             user_id=a.athlete_id,
@@ -191,6 +231,9 @@ async def get_calendar_events(
             planned_duration=matched_workout.planned_duration if matched_workout else None,
             planned_distance=matched_workout.planned_distance if matched_workout else None,
             structure=matched_workout.structure if matched_workout else None,
+            created_by_user_id=created_by_user_id,
+            created_by_name=created_by_name,
+            created_by_email=created_by_email,
             avg_hr=a.average_hr,
             avg_watts=a.average_watts,
             avg_speed=a.avg_speed,
@@ -220,6 +263,7 @@ async def create_workout(
 
     new_workout = PlannedWorkout(
         user_id=target_user_id,
+        created_by_user_id=current_user.id,
         **workout_in.model_dump()
     )
     db.add(new_workout)
@@ -338,6 +382,7 @@ async def copy_workout(
 
     new_workout = PlannedWorkout(
         user_id=target_user_id,
+        created_by_user_id=current_user.id,
         date=target_date,
         title=source_workout.title,
         description=source_workout.description,

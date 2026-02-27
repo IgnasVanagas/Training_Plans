@@ -1,6 +1,7 @@
 import { Badge, Group, List, Paper, SimpleGrid, Card, Stack, Text, Title, Box, useComputedColorScheme } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useState } from 'react';
+import { useMediaQuery } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { IconCalendar, IconUpload } from '@tabler/icons-react';
@@ -49,6 +50,7 @@ export function ActivitiesView({
 }) {
   const navigate = useNavigate();
     const isDark = useComputedColorScheme('light') === 'dark';
+    const isMobile = useMediaQuery('(max-width: 48em)');
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
         const ui = {
                 pageBg: isDark ? '#081226' : '#F4F7FC',
@@ -125,7 +127,7 @@ export function ActivitiesView({
             bg={ui.panelBg}
             style={{ borderColor: ui.border }}
         >
-        <Group justify="space-between" align="center">
+        <Group justify="space-between" align={isMobile ? 'stretch' : 'center'} wrap={isMobile ? 'wrap' : 'nowrap'}>
              <Title order={3} c={ui.textMain}>My Activities</Title>
              <DatePickerInput
                 placeholder="Filter by Date Range"
@@ -134,7 +136,7 @@ export function ActivitiesView({
                 onChange={setDateRange}
                 leftSection={<IconCalendar size={16} />}
                 clearable
-                w={270}
+                w={isMobile ? '100%' : 270}
                 radius="md"
                 styles={{
                     input: {

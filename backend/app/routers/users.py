@@ -1,15 +1,15 @@
 import os
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, and_
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_password_hash, verify_password
 from ..database import get_db
 from ..models import CoachAthleteLink, RoleEnum, User, Profile, Organization, OrganizationMember
-from ..schemas import AthleteOut, InviteLinkResponse, UserOut, ProfileUpdate, OrganizationOut, OrganizationUpdate, JoinOrganization, OrganizationCreate, AthletePermissionOut, AthletePermissionUpdate, AthletePermissionSettings
+from ..schemas import AthleteOut, InviteLinkResponse, InviteByEmailRequest, InviteByEmailResponse, UserOut, ProfileUpdate, OrganizationOut, OrganizationUpdate, JoinOrganization, JoinOrganizationRequest, InvitationRespondRequest, OrganizationCreate, AthletePermissionOut, AthletePermissionUpdate, AthletePermissionSettings, ChangePasswordRequest, CoachSummaryOut, OrganizationDiscoverOut, OrganizationDiscoverItemOut, OrganizationCoachOut
 from ..services.permissions import get_shared_org_ids, get_athlete_permissions, set_athlete_permissions_for_shared_orgs
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -48,12 +48,69 @@ def _normalize_user_for_response(user: User | None) -> None:
     _normalize_profile_for_response(user.profile)
 
 
+async def _get_athlete_coach_summaries(db: AsyncSession, athlete: User) -> list[CoachSummaryOut]:
+    athlete_org_ids = [
+        membership.organization_id
+        for membership in (athlete.organization_memberships or [])
+        if membership.role == RoleEnum.athlete.value and membership.status == "active"
+    ]
+    if not athlete_org_ids:
+        return []
+
+    rows = await db.execute(
+        select(
+            User.id,
+            User.email,
+            Profile.first_name,
+            Profile.last_name,
+            Organization.id,
+            Organization.name,
+        )
+        .join(OrganizationMember, OrganizationMember.user_id == User.id)
+        .join(Organization, Organization.id == OrganizationMember.organization_id)
+        .outerjoin(Profile, Profile.user_id == User.id)
+        .where(
+            OrganizationMember.organization_id.in_(athlete_org_ids),
+            OrganizationMember.role == RoleEnum.coach.value,
+            OrganizationMember.status == "active",
+            User.id != athlete.id,
+        )
+    )
+
+    by_coach_id: dict[int, dict] = {}
+    for coach_id, email, first_name, last_name, org_id, org_name in rows.all():
+        existing = by_coach_id.get(coach_id)
+        if existing is None:
+            existing = {
+                "id": coach_id,
+                "email": email,
+                "first_name": first_name,
+                "last_name": last_name,
+                "organization_ids": [],
+                "organization_names": [],
+            }
+            by_coach_id[coach_id] = existing
+
+        if org_id not in existing["organization_ids"]:
+            existing["organization_ids"].append(org_id)
+        if org_name and org_name not in existing["organization_names"]:
+            existing["organization_names"].append(org_name)
+
+    return [CoachSummaryOut(**payload) for payload in by_coach_id.values()]
+
+
 @router.get("/me", response_model=UserOut)
-async def get_me(current_user: User = Depends(get_current_user)) -> UserOut:
+async def get_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
     # Need to load organization_memberships eagerly or lazy load will trigger.
     # get_current_user implementation might need check.
     _normalize_user_for_response(current_user)
-    return current_user
+    response_payload = UserOut.model_validate(current_user)
+    if current_user.role == RoleEnum.athlete:
+        response_payload.coaches = await _get_athlete_coach_summaries(db, current_user)
+    return response_payload
 
 
 @router.get("/athletes", response_model=list[AthleteOut])
@@ -118,7 +175,7 @@ async def get_pending_athletes(
         .join(OrganizationMember, OrganizationMember.user_id == User.id)
         .where(
             OrganizationMember.organization_id.in_(my_org_ids),
-            OrganizationMember.status == 'pending'
+            OrganizationMember.status.in_(["pending", "pending_approval"])
         )
         .distinct()
         .options(selectinload(User.profile))
@@ -152,7 +209,7 @@ async def approve_athlete(
     stmt = select(OrganizationMember).where(
         OrganizationMember.user_id == athlete_id,
         OrganizationMember.organization_id.in_(my_org_ids),
-        OrganizationMember.status == 'pending'
+        OrganizationMember.status.in_(["pending", "pending_approval"])
     )
     
     member = await db.scalar(stmt)
@@ -341,8 +398,267 @@ async def create_invite(
         await db.refresh(org)
 
     base_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
-    invite_url = f"{base_url}/join?code={org.code}"
+    invite_url = f"{base_url}/invite/{org.code}"
     return InviteLinkResponse(invite_token=org.code, invite_url=invite_url)
+
+
+@router.post("/invite-by-email", response_model=InviteByEmailResponse)
+async def invite_existing_athlete_by_email(
+    payload: InviteByEmailRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> InviteByEmailResponse:
+    if current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Only coaches can invite athletes")
+
+    my_memberships = [
+        m for m in current_user.organization_memberships
+        if m.role == RoleEnum.coach.value and m.status == 'active'
+    ]
+    if not my_memberships:
+        raise HTTPException(status_code=400, detail="You are not an active coach in any organization")
+
+    target_org_id = my_memberships[0].organization_id
+    org = await db.scalar(select(Organization).where(Organization.id == target_org_id))
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    if not org.code:
+        org.code = str(uuid.uuid4())[:8]
+        await db.commit()
+        await db.refresh(org)
+
+    base_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+    invite_url = f"{base_url}/invite/{org.code}"
+
+    target_email = str(payload.email).strip().lower()
+    target_user = await db.scalar(select(User).where(User.email == target_email))
+
+    if not target_user:
+        return InviteByEmailResponse(
+            email=target_email,
+            existing_user=False,
+            invite_url=invite_url,
+            status="not_found",
+            message="No account with this email exists yet. Share the invite link so they can register and join.",
+        )
+
+    if target_user.id == current_user.id:
+        raise HTTPException(status_code=400, detail="You cannot invite yourself")
+
+    existing_membership = await db.scalar(
+        select(OrganizationMember).where(
+            OrganizationMember.user_id == target_user.id,
+            OrganizationMember.organization_id == org.id,
+        )
+    )
+
+    if existing_membership:
+        if existing_membership.status == "active":
+            return InviteByEmailResponse(
+                email=target_email,
+                existing_user=True,
+                invite_url=invite_url,
+                status="already_active",
+                message="This athlete is already active in your organization.",
+            )
+        if existing_membership.status in {"pending", "pending_approval", "rejected"}:
+            existing_membership.status = "pending"
+            existing_membership.role = RoleEnum.athlete.value
+            await db.commit()
+            return InviteByEmailResponse(
+                email=target_email,
+                existing_user=True,
+                invite_url=invite_url,
+                status="pending",
+                message="Invitation sent. The athlete is now pending approval.",
+            )
+
+    db.add(
+        OrganizationMember(
+            user_id=target_user.id,
+            organization_id=org.id,
+            role=RoleEnum.athlete.value,
+            status="pending",
+        )
+    )
+    await db.commit()
+
+    return InviteByEmailResponse(
+        email=target_email,
+        existing_user=True,
+        invite_url=invite_url,
+        status="pending",
+        message="Invitation sent. The athlete is now pending approval.",
+    )
+
+
+@router.post("/change-password", response_model=dict)
+async def change_password(
+    payload: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    if not verify_password(payload.current_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+
+    if verify_password(payload.new_password, current_user.password_hash):
+        raise HTTPException(status_code=400, detail="New password must be different from the current password")
+
+    current_user.password_hash = get_password_hash(payload.new_password)
+    await db.commit()
+    return {"message": "Password updated"}
+
+
+@router.post("/organization/invitations/{organization_id}/respond", response_model=dict)
+async def respond_to_organization_invitation(
+    organization_id: int,
+    payload: InvitationRespondRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    membership = await db.scalar(
+        select(OrganizationMember).where(
+            OrganizationMember.user_id == current_user.id,
+            OrganizationMember.organization_id == organization_id,
+            OrganizationMember.role == RoleEnum.athlete.value,
+        )
+    )
+    if not membership:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+
+    if payload.action == "accept":
+        if membership.status == "active":
+            return {"message": "You are already active in this organization", "status": "active"}
+        membership.status = "active"
+        await db.commit()
+        return {"message": "Invitation accepted. You are now active in this organization.", "status": "active"}
+
+    if membership.status == "active":
+        raise HTTPException(status_code=400, detail="Cannot decline an active organization membership")
+
+    membership.status = "rejected"
+    await db.commit()
+    return {"message": "Invitation declined", "status": "rejected"}
+
+
+@router.get("/organizations/discover", response_model=OrganizationDiscoverOut)
+async def discover_organizations(
+    query: str | None = Query(default=None, min_length=1, max_length=120),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrganizationDiscoverOut:
+    if current_user.role != RoleEnum.athlete:
+        raise HTTPException(status_code=403, detail="Only athletes can discover organizations")
+
+    org_query = select(Organization).order_by(Organization.name.asc())
+    if query:
+        like_term = f"%{query.strip()}%"
+        org_query = org_query.where(
+            or_(Organization.name.ilike(like_term), Organization.description.ilike(like_term))
+        )
+
+    organizations = (await db.execute(org_query.limit(100))).scalars().all()
+    if not organizations:
+        return OrganizationDiscoverOut(items=[])
+
+    org_ids = [org.id for org in organizations]
+
+    membership_rows = (
+        await db.execute(
+            select(OrganizationMember.organization_id, OrganizationMember.status)
+            .where(
+                OrganizationMember.user_id == current_user.id,
+                OrganizationMember.organization_id.in_(org_ids),
+            )
+        )
+    ).all()
+    my_status_by_org: dict[int, str] = {org_id: status for org_id, status in membership_rows}
+
+    coach_rows = (
+        await db.execute(
+            select(
+                OrganizationMember.organization_id,
+                User.id,
+                User.email,
+                Profile.first_name,
+                Profile.last_name,
+            )
+            .join(User, User.id == OrganizationMember.user_id)
+            .outerjoin(Profile, Profile.user_id == User.id)
+            .where(
+                OrganizationMember.organization_id.in_(org_ids),
+                OrganizationMember.role == RoleEnum.coach.value,
+                OrganizationMember.status == "active",
+            )
+            .order_by(Profile.first_name.asc().nulls_last(), Profile.last_name.asc().nulls_last(), User.email.asc())
+        )
+    ).all()
+
+    coaches_by_org: dict[int, list[OrganizationCoachOut]] = {org_id: [] for org_id in org_ids}
+    for org_id, coach_id, email, first_name, last_name in coach_rows:
+        coaches_by_org.setdefault(org_id, []).append(
+            OrganizationCoachOut(
+                id=coach_id,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+            )
+        )
+
+    items = [
+        OrganizationDiscoverItemOut(
+            id=org.id,
+            name=org.name,
+            description=org.description,
+            picture=org.picture,
+            coaches=coaches_by_org.get(org.id, []),
+            my_membership_status=my_status_by_org.get(org.id),
+        )
+        for org in organizations
+    ]
+
+    return OrganizationDiscoverOut(items=items)
+
+
+@router.post("/organization/request-join", response_model=dict)
+async def request_join_organization(
+    payload: JoinOrganizationRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    if current_user.role != RoleEnum.athlete:
+        raise HTTPException(status_code=403, detail="Only athletes can request organization membership")
+
+    org = await db.scalar(select(Organization).where(Organization.id == payload.organization_id))
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    membership = await db.scalar(
+        select(OrganizationMember).where(
+            OrganizationMember.user_id == current_user.id,
+            OrganizationMember.organization_id == org.id,
+        )
+    )
+
+    if membership:
+        if membership.role != RoleEnum.athlete.value:
+            raise HTTPException(status_code=400, detail="Membership role is incompatible with athlete join request")
+        if membership.status == "active":
+            return {"message": "You are already an active member", "status": "active"}
+        membership.status = "pending_approval"
+    else:
+        db.add(
+            OrganizationMember(
+                user_id=current_user.id,
+                organization_id=org.id,
+                role=RoleEnum.athlete.value,
+                status="pending_approval",
+            )
+        )
+
+    await db.commit()
+    return {"message": "Join request sent. Waiting for coach approval.", "status": "pending_approval"}
 
 
 @router.put("/profile", response_model=UserOut)
@@ -455,21 +771,18 @@ async def join_organization(
     if existing_membership:
         # Already member, maybe update status if previously rejected?
         if existing_membership.status == "rejected":
-             existing_membership.status = "pending"
+            existing_membership.status = "active"
         elif existing_membership.status == "active":
-             raise HTTPException(status_code=400, detail="You are already an active member of this organization")
-        # if pending, do nothing
+            raise HTTPException(status_code=400, detail="You are already an active member of this organization")
+        elif existing_membership.status in {"pending", "pending_approval"}:
+            existing_membership.status = "active"
     else:
         # Create new membership
-        # Default role: athlete (unless user is coach? But usually joining implies athlete role or requires approval)
-        # Requirement: "athlete enters the code ... and goes to pending status"
-        # So we join as athlete or user's current role?
-        # User has a global role "coach" or "athlete". Let's use that.
         new_membership = OrganizationMember(
             user_id=current_user.id,
             organization_id=org.id,
-            role=current_user.role.value, # or "athlete" if coaches also join as athletes? No, usually use their role.
-            status="pending"
+            role=current_user.role.value,
+            status="active"
         )
         db.add(new_membership)
     

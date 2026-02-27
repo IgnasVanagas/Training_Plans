@@ -1,10 +1,12 @@
-import { useState, FormEvent } from "react";
+import { useEffect, useState, FormEvent } from "react";
 import {
   Anchor,
+  Alert,
   Button,
   Center,
   Container,
   Group,
+  SegmentedControl,
   Paper,
   PasswordInput,
   Select,
@@ -12,26 +14,34 @@ import {
   Text,
   TextInput,
   Title,
-  Alert,
   rem,
   List
 } from "@mantine/core";
 import { DateInput } from '@mantine/dates';
 import { useMutation } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { IconAt, IconLock, IconUser, IconBuilding } from "@tabler/icons-react";
 import api from "../api/client";
 import appLogo from "../../uploads/favicon_Origami-removebg-preview.png";
+import { useI18n } from "../i18n/I18nProvider";
 
 type AuthResponse = {
   access_token: string;
 };
 
 const LoginPage = () => {
+  const { language, setLanguage, t } = useI18n();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteCode = searchParams.get("invite");
+  const verifyToken = searchParams.get("verify");
+  const resetToken = searchParams.get("reset");
   const [isRegister, setIsRegister] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState("athlete");
   const [organizationName, setOrganizationName] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -39,6 +49,7 @@ const LoginPage = () => {
   const [gender, setGender] = useState<string | null>(null);
   const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
 
   const getErrorMessage = (error: any) => {
     if (error.response?.data?.detail) {
@@ -60,8 +71,16 @@ const LoginPage = () => {
       });
       return response.data;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       localStorage.setItem("access_token", data.access_token);
+      if (inviteCode) {
+        try {
+          await api.put("/users/organization/join", { code: inviteCode });
+        } catch (err) {
+          setError(getErrorMessage(err));
+          return;
+        }
+      }
       navigate("/dashboard");
     },
     onError: (err) => setError(getErrorMessage(err))
@@ -72,8 +91,9 @@ const LoginPage = () => {
       const response = await api.post<AuthResponse>("/auth/register", {
         email: email.trim().toLowerCase(),
         password,
-        role,
+        role: inviteCode ? "athlete" : role,
         organization_name: organizationName || undefined,
+        organization_code: inviteCode || undefined,
         first_name: firstName,
         last_name: lastName,
         gender: gender,
@@ -88,12 +108,69 @@ const LoginPage = () => {
     onError: (err) => setError(getErrorMessage(err))
   });
 
+  const verifyEmailMutation = useMutation({
+    mutationFn: async (token: string) => {
+      await api.post("/auth/verify-email", { token });
+    },
+    onSuccess: () => setInfo("Email verified successfully. You can now sign in."),
+  });
+
+  const forgotPasswordMutation = useMutation({
+    mutationFn: async (emailValue: string) => {
+      const response = await api.post<{ message: string; reset_url?: string }>("/auth/forgot-password", { email: emailValue });
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setInfo(data.reset_url ? `${data.message} Reset link: ${data.reset_url}` : data.message);
+      setIsForgotPassword(false);
+    },
+    onError: (err) => setError(getErrorMessage(err)),
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (payload: { token: string; new_password: string }) => {
+      const response = await api.post<{ message: string }>("/auth/reset-password", payload);
+      return response.data;
+    },
+    onSuccess: (data) => {
+      setInfo(data.message);
+      setNewPassword("");
+      setConfirmPassword("");
+      navigate("/login");
+    },
+    onError: (err) => setError(getErrorMessage(err)),
+  });
+
+  useEffect(() => {
+    if (!verifyToken) return;
+    verifyEmailMutation.mutate(verifyToken);
+  }, [verifyToken]);
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    setInfo(null);
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
       setError("Email is required.");
+      return;
+    }
+
+    if (resetToken) {
+      if (!newPassword || !confirmPassword) {
+        setError("Both password fields are required.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+      }
+      resetPasswordMutation.mutate({ token: resetToken, new_password: newPassword });
+      return;
+    }
+
+    if (isForgotPassword) {
+      forgotPasswordMutation.mutate(normalizedEmail);
       return;
     }
 
@@ -116,7 +193,7 @@ const LoginPage = () => {
     }
   };
 
-  const isLoading = loginMutation.isPending || registerMutation.isPending;
+  const isLoading = loginMutation.isPending || registerMutation.isPending || forgotPasswordMutation.isPending || resetPasswordMutation.isPending;
 
   return (
     <Center style={{ width: "100%", height: "100vh", backgroundColor: "var(--mantine-color-body)" }}>
@@ -124,6 +201,17 @@ const LoginPage = () => {
         <Center mb="xl">
             <img src={appLogo} alt="Origami Plans" width={88} height={88} />
         </Center>
+        <Group justify="center" mb="sm">
+          <SegmentedControl
+            size="xs"
+            value={language}
+            onChange={(value) => setLanguage(value as "en" | "lt")}
+            data={[
+              { value: "en", label: "EN" },
+              { value: "lt", label: "LT" },
+            ]}
+          />
+        </Group>
         <Title ta="center" order={1} mb="sm" style={{ fontFamily: "greycliff cf, sans-serif", fontSize: rem(28) }}>
           Origami Plans
         </Title>
@@ -133,7 +221,7 @@ const LoginPage = () => {
         
         <Paper shadow="xl" p={40} radius="md" withBorder>
           <Text size="lg" fw={500} mb="lg" ta="center">
-            {isRegister ? "Create an account" : "Welcome back"}
+            {isRegister ? t("Create an account") : t("Welcome back")}
           </Text>
 
           <form onSubmit={handleSubmit}>
@@ -142,6 +230,18 @@ const LoginPage = () => {
                 <Alert variant="light" color="red" title="Error">
                     {error}
                 </Alert>
+                )}
+
+                {info && (
+                  <Alert variant="light" color="blue" title="Info">
+                    {info}
+                  </Alert>
+                )}
+
+                {inviteCode && (
+                  <Alert variant="light" color="blue" title="Team invite detected">
+                    Sign in to join this coach&apos;s team, or create an athlete account to join directly.
+                  </Alert>
                 )}
 
                 <TextInput
@@ -154,6 +254,7 @@ const LoginPage = () => {
                 size="lg"
                 />
                 
+                {!isForgotPassword && !resetToken && (
                 <PasswordInput
                 label="Password"
                 placeholder="Your password"
@@ -163,8 +264,32 @@ const LoginPage = () => {
                 required
                 size="lg"
                 />
+                )}
 
-                {isRegister && (
+                {resetToken && (
+                  <>
+                    <PasswordInput
+                      label="New password"
+                      placeholder="New password"
+                      leftSection={<IconLock style={{ width: rem(20), height: rem(20) }} />}
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.currentTarget.value)}
+                      required
+                      size="lg"
+                    />
+                    <PasswordInput
+                      label="Confirm new password"
+                      placeholder="Confirm new password"
+                      leftSection={<IconLock style={{ width: rem(20), height: rem(20) }} />}
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.currentTarget.value)}
+                      required
+                      size="lg"
+                    />
+                  </>
+                )}
+
+                {isRegister && !resetToken && !isForgotPassword && (
                 <>
                     <List size="xs" spacing={2} mb={4}>
                       <List.Item><Text c={password.length >= 10 ? "teal" : "dimmed"}>At least 10 characters</Text></List.Item>
@@ -213,14 +338,17 @@ const LoginPage = () => {
                     
                     <Select
                     label="I am a"
-                    value={role}
+                    value={inviteCode ? "athlete" : role}
                     leftSection={<IconUser style={{ width: rem(20), height: rem(20) }} />}
-                    data={[
-                      { value: "athlete", label: "Athlete" },
-                      { value: "coach", label: "Coach" }
-                    ]}
+                    data={inviteCode
+                      ? [{ value: "athlete", label: "Athlete" }]
+                      : [
+                          { value: "athlete", label: "Athlete" },
+                          { value: "coach", label: "Coach" }
+                        ]}
                     onChange={(value) => setRole(value || "athlete")}
                     size="lg"
+                    disabled={Boolean(inviteCode)}
                     />
                     <TextInput
                     label="Organization Name"
@@ -236,9 +364,20 @@ const LoginPage = () => {
             </Stack>
 
             <Button fullWidth mt="xl" size="lg" type="submit" loading={isLoading}>
-                {isRegister ? "Register" : "Sign in"}
+                {resetToken ? "Reset password" : isForgotPassword ? "Send reset instructions" : isRegister ? "Register" : "Sign in"}
             </Button>
           </form>
+
+          {!isRegister && !resetToken && (
+            <Group justify="center" mt="md">
+              <Anchor component="button" type="button" size="sm" fw={500} onClick={() => {
+                setIsForgotPassword(!isForgotPassword);
+                setError(null);
+              }}>
+                {isForgotPassword ? "Back to login" : "Forgot password?"}
+              </Anchor>
+            </Group>
+          )}
 
           <Group justify="center" mt="md">
             <Text size="sm" c="dimmed">
@@ -246,6 +385,7 @@ const LoginPage = () => {
             </Text>
             <Anchor component="button" type="button" size="sm" fw={600} onClick={() => {
               setIsRegister(!isRegister);
+              setIsForgotPassword(false);
               setError(null);
               setPassword("");
             }}>

@@ -689,6 +689,12 @@ def _build_planned_comparison_payload(
         "intensity": 0.35,
         "splits": 0.10,
     }
+    execution_component_labels = {
+        "duration": "Duration Match",
+        "distance": "Distance Match",
+        "intensity": "Intensity Match",
+        "splits": "Split Adherence",
+    }
 
     weighted_total = 0.0
     used_weight = 0.0
@@ -722,6 +728,47 @@ def _build_planned_comparison_payload(
         execution_status = "incomplete"
         execution_score_pct = None
 
+    trace_components: list[dict] = []
+    for key, weight in execution_weights.items():
+        component_score = execution_components.get(key)
+        available = component_score is not None
+        weighted_points = (float(component_score) * weight) if available else None
+        normalized_contribution = (
+            (weighted_points / used_weight) if (weighted_points is not None and used_weight > 0)
+            else None
+        )
+        trace_components.append(
+            {
+                "key": key,
+                "label": execution_component_labels.get(key, key.replace("_", " ").title()),
+                "available": available,
+                "weight_fraction": weight,
+                "weight_pct": round(weight * 100.0, 1),
+                "component_score_pct": round(float(component_score), 1) if available else None,
+                "weighted_points": round(weighted_points, 2) if weighted_points is not None else None,
+                "normalized_contribution_pct": (
+                    round(normalized_contribution * 100.0, 1)
+                    if normalized_contribution is not None
+                    else None
+                ),
+                "note": (
+                    None
+                    if available
+                    else "Excluded from this session score because required data was unavailable or not applicable."
+                ),
+            }
+        )
+
+    status_thresholds = [
+        {"status": "great", "min_score_pct": 92.0},
+        {"status": "good", "min_score_pct": 82.0},
+        {"status": "ok", "min_score_pct": 72.0},
+        {"status": "fair", "min_score_pct": 62.0},
+        {"status": "subpar", "min_score_pct": 50.0},
+        {"status": "poor", "min_score_pct": 35.0},
+        {"status": "incomplete", "min_score_pct": 0.0},
+    ]
+
     return {
         "workout_id": workout.id,
         "workout_title": workout.title,
@@ -749,6 +796,15 @@ def _build_planned_comparison_payload(
             "execution_score_pct": round(execution_score_pct, 1) if execution_score_pct is not None else None,
             "execution_status": execution_status,
             "execution_components": execution_components,
+            "execution_trace": {
+                "model_version": "v1",
+                "scoring_basis": "weighted_normalized_average",
+                "used_weight_pct": round(used_weight * 100.0, 1),
+                "weighted_total_points": round(weighted_total, 2) if used_weight > 0 else None,
+                "normalization_divisor": round(used_weight, 3) if used_weight > 0 else None,
+                "components": trace_components,
+                "status_thresholds": status_thresholds,
+            },
             "split_importance": split_importance,
             "split_note": (
                 "This is a steady zone workout; intensity adherence matters more than matching every auto-split."

@@ -3,6 +3,9 @@ import { WorkoutNode } from "../../types/workout";
 export interface CalendarEvent {
   id?: number;
   user_id?: number;
+  created_by_user_id?: number;
+  created_by_name?: string;
+  created_by_email?: string;
   title: string;
   date: string;
   is_more_indicator?: boolean;

@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { Group, Stack, Text, Box, useComputedColorScheme, Paper, Badge } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { useMediaQuery } from '@mantine/hooks';
 import { useNavigate } from 'react-router-dom';
 import CalendarHeader from './calendar/CalendarHeader';
 import { parseDate } from './calendar/dateUtils';
@@ -48,6 +49,7 @@ const WEEKLY_TOTALS_PANEL_WIDTH = 324;
 export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialViewDate }: { athleteId?: number | null, allAthletes?: boolean, athletes?: any[], initialViewDate?: string | null }) => {
     const navigate = useNavigate();
     const isDark = useComputedColorScheme('light') === 'dark';
+    const isMobileViewport = useMediaQuery('(max-width: 62em)');
     const palette = isDark ? ORIGAMI_THEME.dark : ORIGAMI_THEME.light;
     const activityColors = isDark ? ORIGAMI_ACTIVITY_COLORS.dark : ORIGAMI_ACTIVITY_COLORS.light;
     const queryClient = useQueryClient();
@@ -98,7 +100,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
     }, [initialViewDate]);
 
     const [viewDate, setViewDate] = useState(parsedInitialViewDate || new Date());
-    const [currentView, setCurrentView] = useState<'month' | 'week'>('month');
+    const [currentView, setCurrentView] = useState<'month' | 'week'>(isMobileViewport ? 'week' : 'month');
 
     const athleteById = useMemo(() => {
         const map = new Map<number, any>();
@@ -113,6 +115,12 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
             setViewDate(parsedInitialViewDate);
         }
     }, [parsedInitialViewDate]);
+
+    useEffect(() => {
+        if (isMobileViewport && currentView === 'month') {
+            setCurrentView('week');
+        }
+    }, [currentView, isMobileViewport]);
 
     // Fetch Events logic
     const fetchEvents = useCallback(async (start: Date, end: Date) => {
@@ -695,7 +703,16 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
     }), [isDark, palette]);
 
     return (
-        <Stack p={10} gap={0} h="calc(100vh - 132px)" bg={palette.background} maw={2480} mx="auto" w="100%" style={{ overflow: 'hidden' }}>
+        <Stack
+            p={10}
+            gap={0}
+            h={isMobileViewport ? 'auto' : 'calc(100vh - 132px)'}
+            bg={palette.background}
+            maw={2480}
+            mx="auto"
+            w="100%"
+            style={{ overflow: isMobileViewport ? 'visible' : 'hidden' }}
+        >
             <style>{calendarStyles}</style>
             
             <CalendarHeader
@@ -708,7 +725,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                 monthlyTotalsWidth={WEEKLY_TOTALS_PANEL_WIDTH}
             />
             
-            <Group align="stretch" gap={8} wrap="nowrap" style={{ flex: 1, minHeight: 0 }}>
+            <Group align="stretch" gap={8} wrap={isMobileViewport ? 'wrap' : 'nowrap'} style={{ flex: 1, minHeight: 0 }}>
                 {currentView === 'week' ? (
                     <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, padding: 10, overflowY: 'auto' }}>
                         {isInitialCalendarLoading ? (
@@ -773,6 +790,9 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                                             <Text size="md" c={palette.textDim}>
                                                 {distanceKm > 0 ? `${distanceKm.toFixed(1)}km` : '-'} · {metricText}{hrText ? ` · ${hrText}` : ''}
                                             </Text>
+                                            {resource.is_planned && resource.created_by_name && (
+                                                <Text size="xs" c={palette.textDim}>Created by {resource.created_by_name}</Text>
+                                            )}
                                         </Paper>
                                     );
                                 })
@@ -782,31 +802,33 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                     </Box>
                 ) : (
                     <>
-                        <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0 }}>
+                        <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, overflowX: isMobileViewport ? 'auto' : 'hidden' }}>
                             {isInitialCalendarLoading ? (
                                 <Paper withBorder p="md" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder, margin: 10 }}>
                                     <OrigamiLoadingAnimation label="Loading calendar..." minHeight={360} />
                                 </Paper>
                             ) : (
-                                <DnDCalendar
-                                    localizer={localizer}
-                                    events={calendarEvents}
-                                    startAccessor={(e: any) => e.start}
-                                    endAccessor={(e: any) => e.end}
-                                    onEventDrop={onEventDrop}
-                                    selectable
-                                    onSelectSlot={handleSlotSelection}
-                                    onSelectEvent={handleSelectEvent}
-                                    views={[Views.MONTH]}
-                                    defaultView={Views.MONTH}
-                                    view={Views.MONTH}
-                                    toolbar={false}
-                                    onNavigate={(date) => setViewDate(date)}
-                                    date={viewDate}
-                                    popup
-                                    components={calendarComponents}
-                                    dayPropGetter={emptyDayPropGetter}
-                                />
+                                <Box style={{ minWidth: isMobileViewport ? 760 : 0 }}>
+                                    <DnDCalendar
+                                        localizer={localizer}
+                                        events={calendarEvents}
+                                        startAccessor={(e: any) => e.start}
+                                        endAccessor={(e: any) => e.end}
+                                        onEventDrop={onEventDrop}
+                                        selectable
+                                        onSelectSlot={handleSlotSelection}
+                                        onSelectEvent={handleSelectEvent}
+                                        views={[Views.MONTH]}
+                                        defaultView={Views.MONTH}
+                                        view={Views.MONTH}
+                                        toolbar={false}
+                                        onNavigate={(date) => setViewDate(date)}
+                                        date={viewDate}
+                                        popup
+                                        components={calendarComponents}
+                                        dayPropGetter={emptyDayPropGetter}
+                                    />
+                                </Box>
                             )}
                         </Box>
                         <TrainingCalendarZoneSummaryPanel

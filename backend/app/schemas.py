@@ -1,4 +1,4 @@
-from typing import Optional, Any, List, Union
+from typing import Optional, Any, List, Union, Literal
 from datetime import datetime, date as dt_date
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -49,12 +49,23 @@ class ProfileOut(BaseModel):
         from_attributes = True
 
 
+class CoachSummaryOut(BaseModel):
+    id: int
+    email: EmailStr
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    organization_ids: list[int] = []
+    organization_names: list[str] = []
+
+
 class UserOut(BaseModel):
     id: int
     email: EmailStr
+    email_verified: bool = False
     role: RoleEnum
     organization_memberships: list[OrganizationMemberOut] = []
     profile: Optional[ProfileOut] = None
+    coaches: list[CoachSummaryOut] = []
 
     class Config:
         from_attributes = True
@@ -74,6 +85,14 @@ class OrganizationCreate(BaseModel):
 
 class JoinOrganization(BaseModel):
     code: str
+
+
+class JoinOrganizationRequest(BaseModel):
+    organization_id: int = Field(gt=0)
+
+
+class InvitationRespondRequest(BaseModel):
+    action: Literal["accept", "decline"]
 
 
 class ProfileUpdate(BaseModel):
@@ -217,6 +236,68 @@ class InviteLinkResponse(BaseModel):
     invite_url: str
 
 
+class InviteByEmailRequest(BaseModel):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class InviteByEmailResponse(BaseModel):
+    email: EmailStr
+    existing_user: bool
+    invite_url: str
+    status: str
+    message: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=10)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        has_lower = any(ch.islower() for ch in value)
+        has_upper = any(ch.isupper() for ch in value)
+        has_digit = any(ch.isdigit() for ch in value)
+        has_symbol = any(not ch.isalnum() for ch in value)
+        if not (has_lower and has_upper and has_digit and has_symbol):
+            raise ValueError("password must include upper, lower, number and symbol")
+        return value
+
+
+class EmailTokenRequest(BaseModel):
+    token: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str = Field(min_length=10)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        has_lower = any(ch.islower() for ch in value)
+        has_upper = any(ch.isupper() for ch in value)
+        has_digit = any(ch.isdigit() for ch in value)
+        has_symbol = any(not ch.isalnum() for ch in value)
+        if not (has_lower and has_upper and has_digit and has_symbol):
+            raise ValueError("password must include upper, lower, number and symbol")
+        return value
+
+
 class AthleteOut(BaseModel):
     id: int
     email: EmailStr
@@ -323,6 +404,9 @@ class PlannedWorkoutUpdate(BaseModel):
 class PlannedWorkoutOut(PlannedWorkoutBase):
     id: int
     user_id: int
+    created_by_user_id: Optional[int] = None
+    created_by_name: Optional[str] = None
+    created_by_email: Optional[str] = None
     matched_activity_id: Optional[int] = None
     compliance_status: ComplianceStatusEnum
     
@@ -350,6 +434,9 @@ class CalendarEvent(BaseModel):
     planned_duration: Optional[int] = None
     planned_distance: Optional[float] = None
     structure: Optional[List[Union['ConcreteStep', 'RepeatStep']]] = None
+    created_by_user_id: Optional[int] = None
+    created_by_name: Optional[str] = None
+    created_by_email: Optional[str] = None
     
     # Activity specific
     filename: Optional[str] = None
@@ -488,3 +575,108 @@ class WellnessSummaryOut(BaseModel):
     resting_hr: Optional[dict] = None
     sleep: Optional[dict] = None
     stress: Optional[dict] = None
+
+
+class CommunicationCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+    athlete_id: Optional[int] = None
+
+
+class CommunicationCommentOut(BaseModel):
+    id: int
+    thread_id: int
+    author_id: int
+    author_role: str
+    body: str
+    created_at: datetime
+
+
+class CommunicationThreadOut(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    athlete_id: int
+    coach_id: Optional[int] = None
+    comments: list[CommunicationCommentOut] = []
+
+
+class CommunicationAcknowledgementCreate(BaseModel):
+    entity_type: str = Field(pattern="^(activity|workout)$")
+    entity_id: int = Field(gt=0)
+    athlete_id: Optional[int] = None
+    action: str = Field(min_length=2, max_length=40)
+    note: Optional[str] = Field(default=None, max_length=2000)
+
+
+class CommunicationAcknowledgementOut(BaseModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    athlete_id: int
+    actor_id: int
+    action: str
+    note: Optional[str] = None
+    created_at: datetime
+
+
+class NotificationItemOut(BaseModel):
+    id: str
+    type: str
+    title: str
+    message: str
+    created_at: datetime
+    entity_type: Optional[str] = None
+    entity_id: Optional[int] = None
+    organization_id: Optional[int] = None
+    athlete_id: Optional[int] = None
+    status: Optional[str] = None
+
+
+class NotificationsFeedOut(BaseModel):
+    items: list[NotificationItemOut]
+
+
+class OrganizationCoachOut(BaseModel):
+    id: int
+    email: EmailStr
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+class OrganizationDiscoverItemOut(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    picture: Optional[str] = None
+    coaches: list[OrganizationCoachOut] = []
+    my_membership_status: Optional[str] = None
+
+
+class OrganizationDiscoverOut(BaseModel):
+    items: list[OrganizationDiscoverItemOut]
+
+
+class OrganizationChatMessageCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=2000)
+
+
+class OrganizationChatMessageOut(BaseModel):
+    id: int
+    organization_id: int
+    sender_id: int
+    sender_role: str
+    sender_name: Optional[str] = None
+    body: str
+    created_at: datetime
+
+
+class OrganizationCoachChatMessageOut(BaseModel):
+    id: int
+    organization_id: int
+    athlete_id: int
+    coach_id: int
+    sender_id: int
+    sender_role: str
+    sender_name: Optional[str] = None
+    body: str
+    created_at: datetime

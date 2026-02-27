@@ -953,9 +953,15 @@ async def sync_provider_now(
     state = await get_or_create_sync_state(db, user_id=current_user.id, provider=provider)
     connection = await get_connection(db, user_id=current_user.id, provider=provider)
     if getattr(state, "sync_status", "idle") == "syncing":
-         # Maybe check updated_at to see if it's stale?
-         # For now, allow trigger but warn or just return status
-         pass
+         return SyncStatusOut(
+            provider=provider,
+            status="syncing",
+            progress=getattr(state, "sync_progress", 0),
+            total=getattr(state, "sync_total", 0),
+            message=getattr(state, "sync_message", "Sync already in progress"),
+            last_success=state.last_success,
+            last_error=state.last_error,
+        )
 
     # Start background task
     background_tasks.add_task(_sync_provider_task, provider, current_user.id)

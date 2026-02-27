@@ -23,6 +23,7 @@ from ..base import (
 logger = logging.getLogger(__name__)
 
 _STRAVA_REQUEST_WINDOW_SECONDS = 60.0
+_STRAVA_REQUEST_WINDOW_15M_SECONDS = 900.0
 _STRAVA_DEBUG_WINDOW_SECONDS = 600.0
 _STRAVA_REQUEST_TIMESTAMPS: deque[float] = deque()
 _STRAVA_REQUEST_LOCK = asyncio.Lock()
@@ -250,8 +251,10 @@ class StravaConnector(ProviderConnector):
         return [lap for lap in normalized if (lap.get("distance") or 0) > 0]
 
     async def _acquire_rate_limit_slot(self) -> int:
-        configured = int(os.getenv("STRAVA_MAX_REQUESTS_PER_MINUTE", "50"))
-        per_minute_limit = max(1, min(50, configured))
+        configured_per_minute = int(os.getenv("STRAVA_MAX_REQUESTS_PER_MINUTE", "6"))
+        configured_per_15m = int(os.getenv("STRAVA_MAX_REQUESTS_PER_15_MIN", "90"))
+        per_15m_limit = max(1, configured_per_15m)
+        per_minute_limit = max(1, min(configured_per_minute, per_15m_limit // 15 if per_15m_limit >= 15 else 1))
 
         while True:
             wait_seconds = 0.0
@@ -262,16 +265,19 @@ class StravaConnector(ProviderConnector):
                     _STRAVA_REQUEST_TIMESTAMPS.popleft()
 
                 requests_last_minute = sum(1 for ts in _STRAVA_REQUEST_TIMESTAMPS if now - ts < _STRAVA_REQUEST_WINDOW_SECONDS)
-                if requests_last_minute < per_minute_limit:
+                requests_last_15m = sum(1 for ts in _STRAVA_REQUEST_TIMESTAMPS if now - ts < _STRAVA_REQUEST_WINDOW_15M_SECONDS)
+                if requests_last_minute < per_minute_limit and requests_last_15m < per_15m_limit:
                     _STRAVA_REQUEST_TIMESTAMPS.append(now)
                     requests_last_10m = sum(1 for ts in _STRAVA_REQUEST_TIMESTAMPS if now - ts < _STRAVA_DEBUG_WINDOW_SECONDS)
                     return requests_last_10m
 
-                oldest_in_minute = next(
-                    (ts for ts in _STRAVA_REQUEST_TIMESTAMPS if now - ts < _STRAVA_REQUEST_WINDOW_SECONDS),
-                    now,
-                )
-                wait_seconds = max(0.2, _STRAVA_REQUEST_WINDOW_SECONDS - (now - oldest_in_minute))
+                oldest_in_minute = next((ts for ts in _STRAVA_REQUEST_TIMESTAMPS if now - ts < _STRAVA_REQUEST_WINDOW_SECONDS), now)
+                wait_for_minute = _STRAVA_REQUEST_WINDOW_SECONDS - (now - oldest_in_minute)
+
+                oldest_in_15m = next((ts for ts in _STRAVA_REQUEST_TIMESTAMPS if now - ts < _STRAVA_REQUEST_WINDOW_15M_SECONDS), now)
+                wait_for_15m = _STRAVA_REQUEST_WINDOW_15M_SECONDS - (now - oldest_in_15m)
+
+                wait_seconds = max(0.2, wait_for_minute if requests_last_minute >= per_minute_limit else 0.0, wait_for_15m if requests_last_15m >= per_15m_limit else 0.0)
 
             await asyncio.sleep(wait_seconds)
 
@@ -286,6 +292,7 @@ class StravaConnector(ProviderConnector):
         max_retries: int = 3,
         request_debug_callback=None,
     ) -> httpx.Response:
+        max_wait_seconds = max(1.0, float(os.getenv("STRAVA_429_MAX_WAIT_SECONDS", "15")))
         last_response: httpx.Response | None = None
         for attempt in range(1, max_retries + 1):
             requests_last_10m = await self._acquire_rate_limit_slot()
@@ -298,12 +305,12 @@ class StravaConnector(ProviderConnector):
 
             last_response = response
             retry_after = response.headers.get("Retry-After")
-            wait_seconds = 60.0
+            wait_seconds = max_wait_seconds
             if retry_after:
                 try:
-                    wait_seconds = max(1.0, float(retry_after))
+                    wait_seconds = max(1.0, min(float(retry_after), max_wait_seconds))
                 except ValueError:
-                    wait_seconds = 60.0
+                    wait_seconds = max_wait_seconds
 
             logger.warning(
                 "Strava rate limit hit (429) on %s (attempt %s/%s). Pausing for %.0fs...",
@@ -478,6 +485,8 @@ class StravaConnector(ProviderConnector):
         ) -> None:
             nonlocal request_used, requests_last_10m_debug
             pages_fetched = 0
+            max_429_retries = max(1, int(os.getenv("STRAVA_LIST_429_MAX_RETRIES", "2")))
+            consecutive_429s = 0
             while len(activities) < max_activities:
                 if request_used >= daily_request_limit:
                     logger.warning(
@@ -504,9 +513,29 @@ class StravaConnector(ProviderConnector):
                     requests_last_10m_debug,
                 )
                 if response.status_code == 429:
-                    logger.warning("Strava rate limit hit (429) on list activities. Pausing for 60s...")
-                    await asyncio.sleep(60)
+                    consecutive_429s += 1
+                    retry_after = response.headers.get("Retry-After")
+                    max_wait_seconds = max(1.0, float(os.getenv("STRAVA_429_MAX_WAIT_SECONDS", "15")))
+                    wait_seconds = max_wait_seconds
+                    if retry_after:
+                        try:
+                            wait_seconds = max(1.0, min(float(retry_after), max_wait_seconds))
+                        except ValueError:
+                            wait_seconds = max_wait_seconds
+
+                    logger.warning(
+                        "Strava rate limit hit (429) on list activities (attempt %s/%s). Pausing for %.0fs...",
+                        consecutive_429s,
+                        max_429_retries,
+                        wait_seconds,
+                    )
+                    if consecutive_429s >= max_429_retries:
+                        logger.warning("Stopping Strava list pagination for this run after repeated 429s.")
+                        break
+                    await asyncio.sleep(wait_seconds)
                     continue
+
+                consecutive_429s = 0
 
                 response.raise_for_status()
                 payload = response.json()

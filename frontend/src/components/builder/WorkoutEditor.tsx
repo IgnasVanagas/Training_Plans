@@ -22,7 +22,7 @@ import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useS
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ConcreteStep, StepCategory, TargetConfig, WorkoutNode } from '../../types/workout';
-import { createDefaultBlock, createDefaultRepeat, createStarterPreset, durationTypeOptions, edgeColorFromZone, estimateTotals, flattenBlocks, formatHms, formatPace, formatSecondsHm, hrZoneRows, inferIntensityZone, intensityPercentForStep, intensityTypeOptions, metricMeta, metricOptions, nodeCategory, normalizePaceSeconds, paceZoneRows, parseHms, parsePaceInput, powerZoneRows, randomId, sectionHeaderText, sectionHeaderTint, type IntensityMetric, type ZoneRow } from './workoutEditorUtils';
+import { createDefaultBlock, createDefaultRepeat, createStarterPreset, durationTypeOptions, edgeColorFromZone, estimateTotals, flattenBlocks, formatHms, formatPace, formatSecondsHm, hrZoneRows, inferIntensityZone, intensityPercentForStep, intensityTypeOptions, metricMeta, metricOptions, nodeCategory, normalizePaceSeconds, paceZoneRows, parseHms, parsePaceInput, powerZoneRows, randomId, sectionAccentColor, sectionHeaderText, sectionHeaderTint, type IntensityMetric, type ZoneRow } from './workoutEditorUtils';
 
 interface WorkoutEditorProps {
 	structure: WorkoutNode[];
@@ -86,8 +86,9 @@ export const WorkoutEditor = ({
 	const blocks = useMemo(() => flattenBlocks(structure), [structure]);
 	const [zoneView, setZoneView] = useState<'power' | 'heart_rate_zone' | 'pace'>('power');
 	const [activeStepId, setActiveStepId] = useState<string | null>(null);
+	const [durationDrafts, setDurationDrafts] = useState<Record<string, string>>({});
 	const [collapsedSections, setCollapsedSections] = useState<Record<StepCategory, boolean>>({ warmup: false, work: false, recovery: false, cooldown: false });
-	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 2 } }));
 	const normalizedSport = sportType?.toLowerCase().includes('run') ? 'running' : 'cycling';
 	const pZones = useMemo(() => powerZoneRows(athleteProfile?.ftp), [athleteProfile?.ftp]);
 	const hZones = useMemo(() => hrZoneRows(athleteProfile?.max_hr), [athleteProfile?.max_hr]);
@@ -103,6 +104,22 @@ export const WorkoutEditor = ({
 
 	const updateNodeAt = (nodes: WorkoutNode[], index: number, next: WorkoutNode) => nodes.map((node, i) => (i === index ? next : node));
 	const removeNodeAt = (nodes: WorkoutNode[], index: number) => nodes.filter((_, i) => i !== index);
+
+	const applyDurationDraft = (
+		step: ConcreteStep,
+		nodes: WorkoutNode[],
+		index: number,
+		onNodesChange: (nextNodes: WorkoutNode[]) => void
+	) => {
+		const raw = (durationDrafts[step.id] ?? formatHms(step.duration.value)).trim();
+		const parsed = Math.max(0, parseHms(raw));
+		onNodesChange(updateNodeAt(nodes, index, { ...step, duration: { ...step.duration, value: parsed } }));
+		setDurationDrafts((prev) => {
+			const next = { ...prev };
+			delete next[step.id];
+			return next;
+		});
+	};
 
 	const updateStepById = (nodes: WorkoutNode[], id: string, updater: (step: ConcreteStep) => ConcreteStep): WorkoutNode[] => {
 		return nodes.map((node) => {
@@ -240,6 +257,7 @@ export const WorkoutEditor = ({
 	const renderConcrete = (step: ConcreteStep, index: number, nodes: WorkoutNode[], onNodesChange: (nextNodes: WorkoutNode[]) => void, dragHandle?: DragHandleProps) => {
 		const zoneValue = inferIntensityZone(step);
 		const isActive = activeStepId === step.id;
+		const categoryAccent = sectionAccentColor[step.category];
 		return (
 			<Paper
 				key={step.id}
@@ -248,7 +266,7 @@ export const WorkoutEditor = ({
 				radius="md"
 				bg={cardBg}
 				onClick={() => setActiveStepId(step.id)}
-				style={{ border: `1px solid ${cardBorder}`, borderLeft: `6px solid ${edgeColorFromZone(zoneValue)}`, boxShadow: isActive ? `0 0 0 2px ${isDark ? 'rgba(233, 90, 18, 0.35)' : 'rgba(233, 90, 18, 0.2)'}` : undefined, transition: 'box-shadow 160ms ease, transform 120ms ease' }}
+				style={{ border: `1px solid ${cardBorder}`, borderLeft: `6px solid ${categoryAccent}`, boxShadow: isActive ? `0 0 0 2px ${isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(15, 23, 42, 0.12)'}` : undefined, transition: 'box-shadow 160ms ease, transform 120ms ease' }}
 			>
 				<Stack gap="sm">
 					<Group justify="space-between" align="center">
@@ -257,9 +275,9 @@ export const WorkoutEditor = ({
 								ref={dragHandle?.setActivatorNodeRef}
 								{...(dragHandle?.attributes || {})}
 								{...(dragHandle?.listeners || {})}
-								style={{ width: 18, height: 24, borderRadius: 4, cursor: dragHandle ? 'grab' : 'default', border: `1px solid ${cardBorder}`, background: isDark ? 'rgba(51,65,85,0.6)' : 'rgba(241,245,249,0.9)' }}
+								style={{ width: 24, height: 28, borderRadius: 6, cursor: dragHandle ? 'grab' : 'default', border: `1px solid ${cardBorder}`, background: isDark ? 'rgba(51,65,85,0.7)' : 'rgba(241,245,249,0.95)' }}
 							>
-								<GripVertical size={12} style={{ margin: 5, color: textDim }} />
+								<GripVertical size={14} style={{ margin: 7, color: textDim }} />
 							</Box>
 							<Rows3 size={14} color={textDim} />
 							<Select
@@ -270,6 +288,13 @@ export const WorkoutEditor = ({
 								onChange={(value) => value && onNodesChange(updateNodeAt(nodes, index, { ...step, category: value as StepCategory }))}
 								w={120}
 							/>
+							<Badge
+								variant="light"
+								radius={4}
+								style={{ background: isDark ? `${categoryAccent}2E` : `${categoryAccent}1F`, color: isDark ? '#E2E8F0' : '#0F172A' }}
+							>
+								{sectionHeaderText[step.category]}
+							</Badge>
 						</Group>
 						<ActionIcon variant="subtle" color="red" onClick={() => onNodesChange(removeNodeAt(nodes, index))}>
 							<Trash2 size={16} />
@@ -291,7 +316,55 @@ export const WorkoutEditor = ({
 							/>
 						</Group>
 
-						{step.duration.type === 'time' && <TextInput size="xs" w={112} value={formatHms(step.duration.value)} onBlur={(event) => onNodesChange(updateNodeAt(nodes, index, { ...step, duration: { ...step.duration, value: parseHms(event.currentTarget.value) } }))} />}
+						{step.duration.type === 'time' && (
+							<Group gap={4} align="center">
+								<TextInput
+									size="xs"
+									w={130}
+									value={durationDrafts[step.id] ?? formatHms(step.duration.value)}
+									onFocus={() => setDurationDrafts((prev) => ({ ...prev, [step.id]: durationDrafts[step.id] ?? formatHms(step.duration.value) }))}
+									onChange={(event) => setDurationDrafts((prev) => ({ ...prev, [step.id]: event.currentTarget.value }))}
+									onKeyDown={(event) => {
+										if (event.key === 'Enter') {
+											event.preventDefault();
+											applyDurationDraft(step, nodes, index, onNodesChange);
+										}
+									}}
+									onBlur={() => applyDurationDraft(step, nodes, index, onNodesChange)}
+									placeholder="HH:MM:SS"
+								/>
+								<ActionIcon
+									size="sm"
+									variant="subtle"
+									onClick={() =>
+										onNodesChange(
+											updateNodeAt(nodes, index, {
+												...step,
+												duration: { ...step.duration, value: Math.max(0, (step.duration.value || 0) - 60) }
+											})
+										)
+									}
+									title="Decrease 1 minute"
+								>
+									<Minus size={14} />
+								</ActionIcon>
+								<ActionIcon
+									size="sm"
+									variant="subtle"
+									onClick={() =>
+										onNodesChange(
+											updateNodeAt(nodes, index, {
+												...step,
+												duration: { ...step.duration, value: (step.duration.value || 0) + 60 }
+											})
+										)
+									}
+									title="Increase 1 minute"
+								>
+									<Plus size={14} />
+								</ActionIcon>
+							</Group>
+						)}
 						{step.duration.type === 'distance' && (
 							<Group gap={4} align="center">
 								<Route size={14} color="var(--mantine-color-gray-6)" />

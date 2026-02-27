@@ -70,16 +70,23 @@ export const metricMeta: Record<IntensityMetric, { targetType: TargetType; defau
 };
 
 export const sectionHeaderTint: Record<StepCategory, string> = {
-	warmup: 'rgba(100, 116, 139, 0.10)',
-	work: 'rgba(233, 90, 18, 0.10)',
-	recovery: 'rgba(71, 85, 105, 0.09)',
-	cooldown: 'rgba(110, 75, 243, 0.10)'
+	warmup: 'rgba(14, 165, 233, 0.14)',
+	work: 'rgba(249, 115, 22, 0.14)',
+	recovery: 'rgba(34, 197, 94, 0.14)',
+	cooldown: 'rgba(168, 85, 247, 0.14)'
+};
+
+export const sectionAccentColor: Record<StepCategory, string> = {
+	warmup: '#0EA5E9',
+	work: '#F97316',
+	recovery: '#22C55E',
+	cooldown: '#A855F7'
 };
 
 export const sectionHeaderText: Record<StepCategory, string> = {
 	warmup: 'Warm Up',
 	work: 'Main Set',
-	recovery: 'Main Set',
+	recovery: 'Recovery',
 	cooldown: 'Cool Down'
 };
 

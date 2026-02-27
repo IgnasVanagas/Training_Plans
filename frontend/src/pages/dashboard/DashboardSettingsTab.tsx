@@ -1,4 +1,4 @@
-import { Paper, Stack, Switch, Text, Title } from "@mantine/core";
+import { Paper, Stack, Switch, Text, Title, useComputedColorScheme } from "@mantine/core";
 import SettingsForm from "../../components/dashboard/SettingsForm";
 import { AthletePermissions, Profile, User } from "./types";
 
@@ -15,6 +15,10 @@ type Props = {
   onConnect: (provider: string) => void;
   onDisconnect: (provider: string) => void;
   onSync: (provider: string) => void;
+  requestingEmailConfirmation: boolean;
+  changingPassword: boolean;
+  onRequestEmailConfirmation: () => void;
+  onChangePassword: (payload: { current_password: string; new_password: string }) => void;
   onUpdateAthletePermission: (athleteId: number, permissions: AthletePermissions["permissions"]) => void;
 };
 
@@ -31,16 +35,21 @@ const DashboardSettingsTab = ({
   onConnect,
   onDisconnect,
   onSync,
+  requestingEmailConfirmation,
+  changingPassword,
+  onRequestEmailConfirmation,
+  onChangePassword,
   onUpdateAthletePermission,
 }: Props) => {
+  const isDark = useComputedColorScheme("light") === "dark";
   const panelStyle = {
-    borderColor: "rgba(148,163,184,0.26)",
-    background: "rgba(255,255,255,0.9)",
+    borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)",
+    background: isDark ? "var(--mantine-color-dark-7)" : "rgba(255,255,255,0.9)",
     fontFamily: '"Inter", sans-serif',
   } as const;
 
   return (
-    <Stack maw={600}>
+    <Stack w="100%">
       <Title order={3}>Settings</Title>
       <Paper withBorder p="md" radius="md" style={panelStyle}>
         <SettingsForm
@@ -54,6 +63,10 @@ const DashboardSettingsTab = ({
           onConnect={onConnect}
           onDisconnect={onDisconnect}
           onSync={onSync}
+          requestingEmailConfirmation={requestingEmailConfirmation}
+          changingPassword={changingPassword}
+          onRequestEmailConfirmation={onRequestEmailConfirmation}
+          onChangePassword={onChangePassword}
         />
       </Paper>
 
@@ -81,7 +94,16 @@ const DashboardSettingsTab = ({
               };
 
               return (
-                <Paper key={athlete.id} withBorder p="sm" radius="sm" style={{ borderColor: "rgba(148,163,184,0.22)", background: "rgba(248,250,252,0.9)" }}>
+                <Paper
+                  key={athlete.id}
+                  withBorder
+                  p="sm"
+                  radius="sm"
+                  style={{
+                    borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.22)",
+                    background: isDark ? "var(--mantine-color-dark-6)" : "rgba(248,250,252,0.9)",
+                  }}
+                >
                   <Stack gap={6}>
                     <Text fw={600} size="sm">{athleteName}</Text>
                     <Switch

@@ -4,7 +4,7 @@ import os
 from sqlalchemy import text
 
 from .database import Base, engine
-from .routers import auth, users, activities, calendar, workouts, integrations
+from .routers import auth, users, activities, calendar, workouts, integrations, communications
 from .seed import seed_data
 
 app = FastAPI(title="Endurance Sports Management Platform")
@@ -26,6 +26,10 @@ async def on_startup() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS hrv_ms DOUBLE PRECISION"))
+        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE"))
+        await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER"))
+        await conn.execute(text("UPDATE planned_workouts SET created_by_user_id = user_id WHERE created_by_user_id IS NULL"))
+        await conn.execute(text("UPDATE users SET email_verified = TRUE WHERE email_verified IS NULL"))
 
     if os.getenv("AUTO_SEED_DEMO", "true").lower() in {"1", "true", "yes", "on"}:
         await seed_data()
@@ -37,3 +41,4 @@ app.include_router(activities.router)
 app.include_router(calendar.router)
 app.include_router(workouts.router)
 app.include_router(integrations.router)
+app.include_router(communications.router)

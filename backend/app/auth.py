@@ -51,6 +51,41 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+
+def create_action_token(*, subject: str, purpose: str, expires_minutes: int = 60) -> str:
+    now = datetime.utcnow()
+    expire = now + timedelta(minutes=max(1, expires_minutes))
+    to_encode = {
+        "exp": expire,
+        "iat": now,
+        "nbf": now,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
+        "jti": str(uuid.uuid4()),
+        "sub": str(subject),
+        "purpose": purpose,
+        "typ": "action",
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_action_token(*, token: str, purpose: str) -> str:
+    payload = jwt.decode(
+        token,
+        SECRET_KEY,
+        algorithms=[ALGORITHM],
+        audience=JWT_AUDIENCE,
+        issuer=JWT_ISSUER,
+    )
+    if payload.get("typ") != "action":
+        raise JWTError("invalid action token type")
+    if payload.get("purpose") != purpose:
+        raise JWTError("invalid action token purpose")
+    subject = payload.get("sub")
+    if not subject:
+        raise JWTError("missing subject")
+    return str(subject)
+
 async def get_current_user(
     request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
