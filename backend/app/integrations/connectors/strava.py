@@ -447,7 +447,7 @@ class StravaConnector(ProviderConnector):
             request_debug_callback=request_debug_callback,
         )
 
-    async def fetch_activities(self, *, access_token: str, cursor: dict[str, Any] | None, progress_callback=None) -> SyncResult:
+    async def fetch_activities(self, *, access_token: str, cursor: dict[str, Any] | None, progress_callback=None, should_cancel=None) -> SyncResult:
         cursor = cursor or {}
         after_epoch = cursor.get("after_epoch")
         initial_sync_done = bool(cursor.get("initial_sync_done"))
@@ -488,6 +488,10 @@ class StravaConnector(ProviderConnector):
             max_429_retries = max(1, int(os.getenv("STRAVA_LIST_429_MAX_RETRIES", "2")))
             consecutive_429s = 0
             while len(activities) < max_activities:
+                if should_cancel and await should_cancel():
+                    logger.info("Strava sync cancellation requested. Stopping list pagination.")
+                    break
+
                 if request_used >= daily_request_limit:
                     logger.warning(
                         "Strava daily request limit reached (%s/%s). Stopping import for now.",
@@ -543,6 +547,10 @@ class StravaConnector(ProviderConnector):
                     break
 
                 for item in payload:
+                    if should_cancel and await should_cancel():
+                        logger.info("Strava sync cancellation requested during page processing. Stopping.")
+                        break
+
                     if len(activities) >= max_activities:
                         break
                     if not isinstance(item, dict):
@@ -581,9 +589,17 @@ class StravaConnector(ProviderConnector):
                 if max_pages > 0 and pages_fetched >= max_pages:
                     break
 
+                if should_cancel and await should_cancel():
+                    logger.info("Strava sync cancellation requested after page. Stopping.")
+                    break
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             should_collect_recent = not history_only_mode
             should_collect_history = not recent_only_mode
+
+            if should_cancel and await should_cancel():
+                should_collect_recent = False
+                should_collect_history = False
 
             if should_collect_recent and not initial_sync_done:
                 await collect_activity_summaries(

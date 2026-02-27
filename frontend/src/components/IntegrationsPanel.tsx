@@ -6,10 +6,12 @@ type Props = {
   providers: ProviderStatus[];
   connectingProvider?: string | null;
   disconnectingProvider?: string | null;
+  cancelingProvider?: string | null;
   syncingProvider?: string | null;
   onConnect: (provider: string) => void;
   onDisconnect: (provider: string) => void;
   onSync: (provider: string) => void;
+  onCancelSync: (provider: string) => void;
 };
 
 const providerLabel = (provider: ProviderStatus) => provider.display_name || provider.provider;
@@ -30,10 +32,12 @@ export const IntegrationsPanel = ({
   providers,
   connectingProvider,
   disconnectingProvider,
+  cancelingProvider,
   syncingProvider,
   onConnect,
   onDisconnect,
   onSync,
+  onCancelSync,
 }: Props) => {
   const getStatusText = (item: ProviderStatus, isConnected: boolean) => {
     if (isConnected) return "Connected";
@@ -53,6 +57,7 @@ export const IntegrationsPanel = ({
           const isConnected = item.connection_status === "connected";
           const isConnecting = connectingProvider === item.provider;
           const isDisconnecting = disconnectingProvider === item.provider;
+          const isCanceling = cancelingProvider === item.provider;
           const isSyncing = syncingProvider === item.provider;
           return (
             <Paper key={item.provider} withBorder p="sm" radius="sm">
@@ -107,6 +112,18 @@ export const IntegrationsPanel = ({
                   >
                     Sync now
                   </Button>
+                  {item.provider === "strava" && isSyncing && (
+                    <Button
+                      size="xs"
+                      color="orange"
+                      variant="light"
+                      loading={isCanceling}
+                      disabled={isConnecting || isDisconnecting}
+                      onClick={() => onCancelSync(item.provider)}
+                    >
+                      Cancel sync
+                    </Button>
+                  )}
                 </Group>
               </Group>
             </Paper>

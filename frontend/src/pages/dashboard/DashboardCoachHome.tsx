@@ -99,15 +99,6 @@ const DashboardCoachHome = ({
 
   return (
     <Stack gap="lg">
-      {isMobile && (
-        <SimpleGrid cols={4} spacing="xs">
-          <Button size="compact-sm" variant="light" onClick={onOpenPlan}>{t("Training Plan")}</Button>
-          <Button size="compact-sm" variant="light" onClick={onOpenActivities}>{t("Activities")}</Button>
-          <Button size="compact-sm" variant="light" onClick={onOpenOrganizations}>{t("Organizations")}</Button>
-          <Button size="compact-sm" variant="light" onClick={onGenerateInvite} loading={generatingInvite}>{t("Invite Athlete")}</Button>
-        </SimpleGrid>
-      )}
-
       <SimpleGrid cols={{ base: 1, lg: 2 }}>
         <Paper withBorder p="md" radius="md" shadow="sm">
           <Group justify="space-between" mb="xs">

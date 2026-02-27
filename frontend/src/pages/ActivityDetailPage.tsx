@@ -9,6 +9,8 @@ import api from "../api/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
+import OrigamiLoadingAnimation from "../components/common/OrigamiLoadingAnimation";
+import { readSnapshot, writeSnapshot } from "../utils/localSnapshot";
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -236,10 +238,16 @@ export const ActivityDetailPage = () => {
     
     const { data: activity, isLoading, isError } = useQuery({
         queryKey: ['activity', id],
-        queryFn: async () => {
-             const res = await api.get<ActivityDetail>(`/activities/${id}`);
-             return res.data;
-        }
+           initialData: () => readSnapshot<ActivityDetail>(`activity:${id}`),
+           queryFn: async () => {
+               const res = await api.get<ActivityDetail>(`/activities/${id}`);
+               writeSnapshot(`activity:${id}`, res.data);
+               return res.data;
+           },
+           staleTime: 1000 * 60 * 5,
+           gcTime: 1000 * 60 * 30,
+           placeholderData: (prev) => prev,
+           refetchOnMount: false,
     });
 
     const streamPoints = useMemo(() => {
@@ -958,7 +966,7 @@ export const ActivityDetailPage = () => {
     }, [focusMode, focusObjective, visibleSeries, supportsPaceSeries]);
 
 
-    if (isLoading) return <Container my={60}><Text>Loading activity...</Text></Container>;
+    if (isLoading) return <Container my={60}><OrigamiLoadingAnimation label="Loading activity..." minHeight={220} /></Container>;
     if (isError || !activity) return <Container my={60}><Text c="red">Error loading activity.</Text></Container>;
 
     const sportName = (activity.sport || '').toLowerCase();

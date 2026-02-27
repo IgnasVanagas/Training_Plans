@@ -8,6 +8,7 @@ import { parseDate } from './dateUtils';
 import { computeLoadsFromZones, deriveZonesFromActivityDetail, normalizeSport, zoneCountForSport } from './loadModel';
 import { ActivityZoneSummary, CalendarEvent, ZoneSummaryResponse } from './types';
 import TrainingCalendarZoneDetailModal, { ZoneDetailModalData } from './TrainingCalendarZoneDetailModal';
+import { readSnapshot, writeSnapshot } from '../../utils/localSnapshot';
 
 type WeekRange = { start: Date; end: Date; key: string };
 
@@ -16,6 +17,7 @@ type ZoneSummaryPanelProps = {
     zoneSummary?: ZoneSummaryResponse;
     events: any[];
     weeksInMonth: WeekRange[];
+    weekRowHeights?: number[];
     palette: any;
     isDark: boolean;
     activityColors: any;
@@ -108,6 +110,7 @@ export default function TrainingCalendarZoneSummaryPanel({
     zoneSummary,
     events,
     weeksInMonth,
+    weekRowHeights,
     palette,
     isDark,
     activityColors,
@@ -333,10 +336,16 @@ export default function TrainingCalendarZoneSummaryPanel({
             .map((week) => week.key);
     }, [weeksInMonth, completedEvents]);
 
+    const supplementalSnapshotKey = useMemo(() => {
+        const scope = athleteId ? `athlete:${athleteId}` : (allAthletes ? 'all' : 'self');
+        return `zone-week-range-activities-supplemental:${scope}:${weekStartDay}:${monthStart.toISOString().slice(0, 10)}:${monthEnd.toISOString().slice(0, 10)}`;
+    }, [allAthletes, athleteId, monthEnd, monthStart, weekStartDay]);
+
     const { data: supplementalWeekZoneActivities = [] } = useQuery({
         queryKey: ['zone-week-range-activities-supplemental', athleteId, allAthletes, weekStartDay, ...weeksWithActivities],
         enabled: weeksWithActivities.length > 0,
         staleTime: 1000 * 60 * 5,
+        initialData: () => readSnapshot<ActivityZoneSummary[]>(supplementalSnapshotKey) || [],
         queryFn: async () => {
             const byId = new Map<number, ActivityZoneSummary>();
 
@@ -360,7 +369,9 @@ export default function TrainingCalendarZoneSummaryPanel({
                 })
             );
 
-            return Array.from(byId.values());
+            const merged = Array.from(byId.values());
+            writeSnapshot(supplementalSnapshotKey, merged);
+            return merged;
         }
     });
 
@@ -493,20 +504,6 @@ export default function TrainingCalendarZoneSummaryPanel({
         try {
         const detailByActivityId = new Map<number, any>();
 
-        await Promise.all(
-            scopedEvents.map(async (event: any) => {
-                const resource = event.resource as CalendarEvent;
-                const activityId = toActivityIdKey(resource.id);
-                if (activityId === null) return;
-                try {
-                    const detailRes = await api.get(`/activities/${activityId}`);
-                    detailByActivityId.set(activityId, detailRes.data);
-                } catch {
-                    // Keep graceful degradation when detail endpoint fails for some activities
-                }
-            })
-        );
-
         const perActivityZones = new Map<number, { sport: string; zoneSecondsByMetric: Record<string, Record<string, number> | undefined> }>();
 
         const knownByActivityId = new Map<number, ActivityZoneSummary>(
@@ -555,6 +552,23 @@ export default function TrainingCalendarZoneSummaryPanel({
             const known = knownByActivityId.get(resource.id);
             return needsDerivedZones(resource, known);
         });
+
+        const detailFetchIds = Array.from(new Set(
+            fallbackCandidates
+                .map((event: any) => toActivityIdKey((event.resource as CalendarEvent).id))
+                .filter((activityId): activityId is number => activityId !== null)
+        )).slice(0, 16);
+
+        await Promise.all(
+            detailFetchIds.map(async (activityId) => {
+                try {
+                    const detailRes = await api.get(`/activities/${activityId}`);
+                    detailByActivityId.set(activityId, detailRes.data);
+                } catch {
+                    // Keep graceful degradation when detail endpoint fails for some activities
+                }
+            })
+        );
 
         if (fallbackCandidates.length > 0) {
             fallbackCandidates.forEach((event: any) => {
@@ -779,6 +793,13 @@ export default function TrainingCalendarZoneSummaryPanel({
         );
     }, [monthlyOpenSignal, monthEnd, monthStart]);
 
+    const weeklyRowsTemplate = useMemo(() => {
+        if (weekRowHeights && weekRowHeights.length === weeksInMonth.length && weekRowHeights.length > 0) {
+            return weekRowHeights.map((value) => `${Math.max(1, value)}px`).join(' ');
+        }
+        return `repeat(${Math.max(weeksInMonth.length, 1)}, minmax(0, 1fr))`;
+    }, [weekRowHeights, weeksInMonth.length]);
+
     return (
         <Stack w={panelWidth} miw={panelWidth} h="100%" gap={0} style={{ overflow: 'hidden' }}>
             <Box
@@ -817,7 +838,7 @@ export default function TrainingCalendarZoneSummaryPanel({
                     background: palette.panelBg,
                     backdropFilter: 'blur(14px)',
                     display: 'grid',
-                    gridTemplateRows: `repeat(${Math.max(weeksInMonth.length, 1)}, minmax(0, 1fr))`,
+                    gridTemplateRows: weeklyRowsTemplate,
                     overflow: 'hidden',
                     minHeight: 0
                 }}

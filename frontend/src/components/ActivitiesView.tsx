@@ -10,6 +10,7 @@ import ActivityUploadPanel from './dashboard/ActivityUploadPanel';
 import { ORIGAMI_ACTIVITY_COLORS } from './calendar/theme';
 import { resolveActivityAccentColor, resolveActivityPillLabel } from './calendar/activityStyling';
 import OrigamiLoadingAnimation from './common/OrigamiLoadingAnimation';
+import { readSnapshot, writeSnapshot } from '../utils/localSnapshot';
 
 type Activity = {
     id: number;
@@ -98,16 +99,29 @@ export function ActivitiesView({
 
   const activitiesQuery = useQuery({
     queryKey: ['activities', athleteId, dateRange],
+        initialData: () => {
+            const key = `activities:${athleteId || 'self'}:${dateRange[0] ? toLocalDateKey(dateRange[0]) : 'na'}:${dateRange[1] ? toLocalDateKey(dateRange[1]) : 'na'}`;
+            return readSnapshot<Activity[]>(key);
+        },
     queryFn: async () => {
       const params: any = {};
       if (athleteId) params.athlete_id = athleteId;
     if (dateRange[0]) params.start_date = toLocalDateKey(dateRange[0]);
     if (dateRange[1]) params.end_date = toLocalDateKey(dateRange[1]);
+            params.include_load_metrics = false;
+            if (!dateRange[0] && !dateRange[1]) {
+                params.limit = 120;
+            }
       
       const res = await api.get<Activity[]>('/activities/', { params });
+            const key = `activities:${athleteId || 'self'}:${dateRange[0] ? toLocalDateKey(dateRange[0]) : 'na'}:${dateRange[1] ? toLocalDateKey(dateRange[1]) : 'na'}`;
+            writeSnapshot(key, res.data);
       return res.data; 
         },
-        staleTime: 1000 * 60,
+                staleTime: 1000 * 60 * 5,
+                gcTime: 1000 * 60 * 30,
+                placeholderData: (prev) => prev,
+                refetchOnMount: false,
   });
 
     const isInitialActivitiesLoading = (activitiesQuery.isLoading || activitiesQuery.isFetching) && !activitiesQuery.data;

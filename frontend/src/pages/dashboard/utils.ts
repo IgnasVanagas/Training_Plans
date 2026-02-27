@@ -1,8 +1,14 @@
 import { MetricKey } from "./types";
 
 export const extractApiErrorMessage = (error: unknown): string => {
-  const maybeError = error as { response?: { data?: { detail?: string } }; message?: string };
+  const maybeError = error as {
+    code?: string;
+    response?: { data?: { detail?: string } };
+    message?: string;
+  };
+  if (maybeError?.code === "ECONNABORTED") return "Request timed out. Please try again.";
   if (maybeError?.response?.data?.detail) return maybeError.response.data.detail;
+  if (maybeError?.message === "Network Error") return "Network error. Check your connection and try again.";
   return maybeError?.message || "Unexpected error";
 };
 

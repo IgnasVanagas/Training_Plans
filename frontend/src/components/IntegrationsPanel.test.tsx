@@ -58,6 +58,7 @@ describe("IntegrationsPanel", () => {
         onConnect={() => undefined}
         onDisconnect={() => undefined}
         onSync={() => undefined}
+        onCancelSync={() => undefined}
       />
     );
 
@@ -71,6 +72,7 @@ describe("IntegrationsPanel", () => {
     const onConnect = vi.fn();
     const onDisconnect = vi.fn();
     const onSync = vi.fn();
+    const onCancelSync = vi.fn();
 
     renderPanel(
       <IntegrationsPanel
@@ -81,6 +83,7 @@ describe("IntegrationsPanel", () => {
         onConnect={onConnect}
         onDisconnect={onDisconnect}
         onSync={onSync}
+        onCancelSync={onCancelSync}
       />
     );
 

@@ -4,9 +4,11 @@ import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { endOfWeek, endOfMonth, format, startOfWeek, startOfMonth } from "date-fns";
 import api from "../api/client";
 import { getWellnessSummary, listIntegrationProviders, logManualWellness } from "../api/integrations";
 import { ActivitiesView } from "../components/ActivitiesView";
+import OrigamiLoadingAnimation from "../components/common/OrigamiLoadingAnimation";
 import { TrainingCalendar } from "../components/TrainingCalendar";
 import { MetricHistoryModal } from "../components/dashboard/MetricHistoryModal";
 import ActivityUploadPanel from "../components/dashboard/ActivityUploadPanel";
@@ -87,13 +89,57 @@ const Dashboard = () => {
     queryFn: listIntegrationProviders,
   });
 
+  useEffect(() => {
+    if (!meQuery.data) return;
+
+    const athleteIdNum = selectedAthleteId ? Number(selectedAthleteId) : null;
+    const weekStartDay = meQuery.data.profile?.week_start_day === "sunday" ? 0 : 1;
+    const now = new Date();
+    const monthStartVisible = startOfWeek(startOfMonth(now), { weekStartsOn: weekStartDay as any });
+    const monthEndVisible = endOfWeek(endOfMonth(now), { weekStartsOn: weekStartDay as any });
+
+    void queryClient.prefetchQuery({
+      queryKey: ["activities", athleteIdNum, [null, null]],
+      queryFn: async () => {
+        const params: Record<string, any> = { limit: 120, include_load_metrics: false };
+        if (athleteIdNum) params.athlete_id = athleteIdNum;
+        const res = await api.get("/activities/", { params });
+        return res.data;
+      },
+      staleTime: 1000 * 60 * 5,
+    });
+
+    void queryClient.prefetchQuery({
+      queryKey: [
+        "calendar",
+        "month",
+        format(monthStartVisible, "yyyy-MM-dd"),
+        format(monthEndVisible, "yyyy-MM-dd"),
+        athleteIdNum,
+        false,
+      ],
+      queryFn: async () => {
+        const params = new URLSearchParams({
+          start_date: format(monthStartVisible, "yyyy-MM-dd"),
+          end_date: format(monthEndVisible, "yyyy-MM-dd"),
+        });
+        if (athleteIdNum) params.set("athlete_id", String(athleteIdNum));
+        const res = await api.get(`/calendar/?${params.toString()}`);
+        return res.data;
+      },
+      staleTime: 1000 * 60 * 5,
+    });
+  }, [meQuery.data, queryClient, selectedAthleteId]);
+
   const {
     connectingProvider,
     disconnectingProvider,
+    cancelingProvider,
     syncingProvider,
     connectIntegrationMutation,
     disconnectIntegrationMutation,
     syncIntegrationMutation,
+    cancelSyncMutation,
   } = useIntegrationSync({
     queryClient,
     me: meQuery.data,
@@ -241,7 +287,10 @@ const Dashboard = () => {
 
   const trainingStatusHistoryQuery = useQuery({
     queryKey: ["training-status-history", meQuery.data?.id],
-    enabled: meQuery.data?.role === "athlete",
+    enabled:
+      meQuery.data?.role === "athlete" &&
+      (selectedMetric === "aerobic_load" || selectedMetric === "anaerobic_load" || selectedMetric === "training_status"),
+    staleTime: 1000 * 60 * 10,
     queryFn: async () => {
       const today = new Date();
       const days = Array.from({ length: 14 }, (_, index) => {
@@ -298,8 +347,9 @@ const Dashboard = () => {
   const coachRecentActivityQuery = useQuery({
     queryKey: ["coach-feedback-feed", selectedAthleteId],
     enabled: meQuery.data?.role === "coach",
+    staleTime: 1000 * 60 * 3,
     queryFn: async () => {
-      const params: Record<string, string> = {};
+      const params: Record<string, string | number | boolean> = { limit: 40, include_load_metrics: false };
       if (selectedAthleteId) params.athlete_id = selectedAthleteId;
       const response = await api.get<ActivityFeedRow[]>("/activities/", { params });
       return response.data;
@@ -473,7 +523,7 @@ const Dashboard = () => {
   if (meQuery.isLoading) {
     return (
       <Container size="md" my={60}>
-        <Text>Loading dashboard...</Text>
+        <OrigamiLoadingAnimation label="Loading dashboard..." minHeight={220} />
       </Container>
     );
   }
@@ -503,7 +553,7 @@ const Dashboard = () => {
       onChange={(val) => setSelectedAthleteId(val === "" ? null : val)}
       searchable
       allowDeselect={false}
-      w={isMobile ? "100%" : 220}
+      w={isMobile ? 170 : 220}
       mr={isMobile ? 0 : "md"}
     />
   ) : null;
@@ -579,10 +629,12 @@ const Dashboard = () => {
             providers={integrationsQuery.data || []}
             connectingProvider={connectingProvider}
             disconnectingProvider={disconnectingProvider}
+            cancelingProvider={cancelingProvider}
             syncingProvider={syncingProvider}
             onConnect={(provider) => connectIntegrationMutation.mutate(provider)}
             onDisconnect={(provider) => disconnectIntegrationMutation.mutate(provider)}
             onSync={(provider) => syncIntegrationMutation.mutate(provider)}
+            onCancelSync={(provider) => cancelSyncMutation.mutate(provider)}
             requestingEmailConfirmation={requestEmailConfirmationMutation.isPending}
             changingPassword={changePasswordMutation.isPending}
             onRequestEmailConfirmation={() => requestEmailConfirmationMutation.mutate()}

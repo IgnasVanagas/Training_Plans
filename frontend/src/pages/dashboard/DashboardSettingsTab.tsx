@@ -11,10 +11,12 @@ type Props = {
   providers: any[];
   connectingProvider: string | null;
   disconnectingProvider: string | null;
+  cancelingProvider: string | null;
   syncingProvider: string | null;
   onConnect: (provider: string) => void;
   onDisconnect: (provider: string) => void;
   onSync: (provider: string) => void;
+  onCancelSync: (provider: string) => void;
   requestingEmailConfirmation: boolean;
   changingPassword: boolean;
   onRequestEmailConfirmation: () => void;
@@ -31,10 +33,12 @@ const DashboardSettingsTab = ({
   providers,
   connectingProvider,
   disconnectingProvider,
+  cancelingProvider,
   syncingProvider,
   onConnect,
   onDisconnect,
   onSync,
+  onCancelSync,
   requestingEmailConfirmation,
   changingPassword,
   onRequestEmailConfirmation,
@@ -59,10 +63,12 @@ const DashboardSettingsTab = ({
           providers={providers}
           connectingProvider={connectingProvider}
           disconnectingProvider={disconnectingProvider}
+          cancelingProvider={cancelingProvider}
           syncingProvider={syncingProvider}
           onConnect={onConnect}
           onDisconnect={onDisconnect}
           onSync={onSync}
+          onCancelSync={onCancelSync}
           requestingEmailConfirmation={requestingEmailConfirmation}
           changingPassword={changingPassword}
           onRequestEmailConfirmation={onRequestEmailConfirmation}

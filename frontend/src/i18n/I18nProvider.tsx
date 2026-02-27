@@ -63,10 +63,17 @@ const walkAndTranslateDom = (language: Language) => {
     const trimmed = raw.trim();
     if (!trimmed) continue;
 
-    const original = originalTextByNode.get(textNode) ?? raw;
-    if (!originalTextByNode.has(textNode)) {
+    const knownOriginal = originalTextByNode.get(textNode);
+    if (!knownOriginal) {
       originalTextByNode.set(textNode, raw);
+    } else {
+      const expectedCurrentValue = translateText(knownOriginal, language);
+      if (raw !== expectedCurrentValue) {
+        originalTextByNode.set(textNode, raw);
+      }
     }
+
+    const original = originalTextByNode.get(textNode) || raw;
     const translated = translateText(original, language);
     if (textNode.nodeValue !== translated) {
       textNode.nodeValue = translated;

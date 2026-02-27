@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
-import { format, parse, startOfWeek, getDay, endOfWeek } from 'date-fns';
+import { format, parse, startOfWeek, getDay, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
@@ -30,6 +30,7 @@ import {
     buildQuickWorkoutStructure,
     buildQuickWorkoutZoneDetails,
 } from './calendar/quickWorkout';
+import { readSnapshot, writeSnapshot } from '../utils/localSnapshot';
 
 // Setup Localizer
 const locales = {
@@ -101,6 +102,8 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
 
     const [viewDate, setViewDate] = useState(parsedInitialViewDate || new Date());
     const [currentView, setCurrentView] = useState<'month' | 'week'>(isMobileViewport ? 'week' : 'month');
+    const monthGridRef = React.useRef<HTMLDivElement | null>(null);
+    const [weekRowHeights, setWeekRowHeights] = useState<number[]>([]);
 
     const athleteById = useMemo(() => {
         const map = new Map<number, any>();
@@ -133,7 +136,11 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
             url += `&all_athletes=true`;
         }
         const res = await api.get(url);
-        return res.data.map((evt: CalendarEvent) => {
+        return (Array.isArray(res.data) ? res.data : []).filter((evt: CalendarEvent | null | undefined) => {
+            if (!evt || typeof evt !== 'object') return false;
+            if (!evt.date) return false;
+            return true;
+        }).map((evt: CalendarEvent) => {
             let title = evt.title;
             if (allAthletes && evt.user_id) {
                 const a = athleteById.get(evt.user_id);
@@ -156,15 +163,40 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
         });
     }, [athleteId, allAthletes, athleteById]);
 
-    // Calculate fetch range based on viewDate (simplification: fetch +/- 1 month)
-    // In real app, Calendar's onRangeChange provides bounds
-    const startRange = new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1);
-    const endRange = new Date(viewDate.getFullYear(), viewDate.getMonth() + 2, 0);
+    const rangeBounds = useMemo(() => {
+        if (currentView === 'week') {
+            return {
+                start: startOfWeek(viewDate, { weekStartsOn: weekStartDay as any }),
+                end: endOfWeek(viewDate, { weekStartsOn: weekStartDay as any }),
+            };
+        }
+
+        const monthStartVisible = startOfWeek(startOfMonth(viewDate), { weekStartsOn: weekStartDay as any });
+        const monthEndVisible = endOfWeek(endOfMonth(viewDate), { weekStartsOn: weekStartDay as any });
+        return {
+            start: monthStartVisible,
+            end: monthEndVisible,
+        };
+    }, [currentView, viewDate, weekStartDay]);
 
     const { data: events = [], isLoading: eventsLoading, isFetching: eventsFetching } = useQuery({
-        queryKey: ['calendar', format(viewDate, 'yyyy-MM'), athleteId, allAthletes], // Added athleteId to queryKey
-        queryFn: () => fetchEvents(startRange, endRange),
-        staleTime: 1000 * 60,
+        queryKey: ['calendar', currentView, format(rangeBounds.start, 'yyyy-MM-dd'), format(rangeBounds.end, 'yyyy-MM-dd'), athleteId, allAthletes],
+        initialData: () => {
+            const snapKey = `calendar:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
+            const snap = readSnapshot<any[]>(snapKey) || [];
+            return snap.filter((event: any) => event && event.resource && event.start);
+        },
+        queryFn: async () => {
+            const rows = await fetchEvents(rangeBounds.start, rangeBounds.end);
+            const safeRows = rows.filter((event: any) => event && event.resource && event.start);
+            const snapKey = `calendar:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
+            writeSnapshot(snapKey, safeRows);
+            return safeRows;
+        },
+        staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 30,
+        placeholderData: (prev) => prev,
+        refetchOnMount: false,
     });
 
     const isInitialCalendarLoading = (eventsLoading || eventsFetching) && events.length === 0;
@@ -526,6 +558,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
 
     const monthlyCompletedEvents = useMemo(() => {
         return events.filter((event: any) => {
+            if (!event || !event.resource) return false;
             const resource = event.resource as CalendarEvent;
             if (resource.is_planned) return false;
             const eventDate = event.start as Date;
@@ -556,7 +589,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
             .sort((a: any, b: any) => (a.start as Date).getTime() - (b.start as Date).getTime());
     }, [events, weekStart, weekEnd]);
 
-    const weeklyCompleted = useMemo(() => weeklyEvents.filter((event: any) => !(event.resource as CalendarEvent).is_planned), [weeklyEvents]);
+    const weeklyCompleted = useMemo(() => weeklyEvents.filter((event: any) => event?.resource && !(event.resource as CalendarEvent).is_planned), [weeklyEvents]);
     const weeklyTotals = useMemo(() => {
         let totalDistanceKm = 0;
         let totalDurationMin = 0;
@@ -587,6 +620,67 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
         setMonthlyOpenSignal((prev) => prev + 1);
     }, []);
 
+    const measureWeekRowHeights = useCallback(() => {
+        if (currentView !== 'month') {
+            setWeekRowHeights([]);
+            return;
+        }
+
+        const host = monthGridRef.current;
+        if (!host) return;
+
+        const rows = Array.from(host.querySelectorAll('.rbc-month-row')) as HTMLElement[];
+        if (rows.length === 0) {
+            setWeekRowHeights([]);
+            return;
+        }
+
+        const nextHeights = rows.map((row) => Math.round(row.getBoundingClientRect().height));
+        setWeekRowHeights((prev) => {
+            const sameLength = prev.length === nextHeights.length;
+            const sameValues = sameLength && prev.every((value, index) => Math.abs(value - nextHeights[index]) <= 1);
+            return sameValues ? prev : nextHeights;
+        });
+    }, [currentView]);
+
+    useEffect(() => {
+        if (currentView !== 'month' || isInitialCalendarLoading) {
+            return;
+        }
+
+        const frame = window.requestAnimationFrame(measureWeekRowHeights);
+        const host = monthGridRef.current;
+        if (!host) {
+            return () => window.cancelAnimationFrame(frame);
+        }
+
+        const observer = new ResizeObserver(() => {
+            measureWeekRowHeights();
+        });
+
+        observer.observe(host);
+        const monthView = host.querySelector('.rbc-month-view') as HTMLElement | null;
+        if (monthView) {
+            observer.observe(monthView);
+        }
+
+        const handleResize = () => measureWeekRowHeights();
+        window.addEventListener('resize', handleResize);
+
+        return () => {
+            window.cancelAnimationFrame(frame);
+            window.removeEventListener('resize', handleResize);
+            observer.disconnect();
+        };
+    }, [
+        currentView,
+        isInitialCalendarLoading,
+        viewDate,
+        calendarEvents.length,
+        isMobileViewport,
+        measureWeekRowHeights,
+    ]);
+
     const athleteOptions = useMemo(() => (athletes || []).map((athlete: any) => ({
         value: athlete.id.toString(),
         label: athlete.profile?.first_name
@@ -610,7 +704,8 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
 
         const selectedAthleteId = bulkAthleteScope !== 'all' ? Number(bulkAthleteScope) : null;
         const targetEvents = events
-            .map((row: any) => row.resource as CalendarEvent)
+            .map((row: any) => row?.resource as CalendarEvent)
+            .filter((row: CalendarEvent | undefined): row is CalendarEvent => Boolean(row && row.date))
             .filter((row: CalendarEvent) => {
                 if (!row.is_planned || !row.id) return false;
                 const eventDate = parseDate(row.date);
@@ -802,7 +897,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                     </Box>
                 ) : (
                     <>
-                        <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, overflowX: isMobileViewport ? 'auto' : 'hidden' }}>
+                        <Box ref={monthGridRef} className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, overflowX: isMobileViewport ? 'auto' : 'hidden' }}>
                             {isInitialCalendarLoading ? (
                                 <Paper withBorder p="md" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder, margin: 10 }}>
                                     <OrigamiLoadingAnimation label="Loading calendar..." minHeight={360} />
@@ -820,7 +915,6 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                                         onSelectEvent={handleSelectEvent}
                                         views={[Views.MONTH]}
                                         defaultView={Views.MONTH}
-                                        view={Views.MONTH}
                                         toolbar={false}
                                         onNavigate={(date) => setViewDate(date)}
                                         date={viewDate}
@@ -836,6 +930,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                             zoneSummary={zoneSummary}
                             events={events}
                             weeksInMonth={weeksInMonth}
+                            weekRowHeights={weekRowHeights}
                             palette={palette}
                             isDark={isDark}
                             activityColors={activityColors}

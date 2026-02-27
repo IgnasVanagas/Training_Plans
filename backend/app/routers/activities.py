@@ -1824,9 +1824,15 @@ async def get_activities(
     start_date: str | None = None,
     end_date: str | None = None,
     athlete_id: int | None = None,
+    include_load_metrics: bool = False,
+    limit: int = 120,
+    offset: int = 0,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+
     query = select(Activity)
 
     if start_date:
@@ -1873,21 +1879,28 @@ async def get_activities(
         # Regular athlete, see only own
         query = query.where(Activity.athlete_id == current_user.id)
 
-    result = await db.execute(query.order_by(Activity.created_at.desc()))
+    result = await db.execute(query.order_by(Activity.created_at.desc()).limit(limit).offset(offset))
     activities = result.scalars().all()
 
-    athlete_ids = list({activity.athlete_id for activity in activities})
     profile_map: dict[int, Profile] = {}
-    if athlete_ids:
-        profiles_res = await db.execute(select(Profile).where(Profile.user_id.in_(athlete_ids)))
-        profile_map = {profile.user_id: profile for profile in profiles_res.scalars().all()}
+    if include_load_metrics:
+        athlete_ids = list({activity.athlete_id for activity in activities})
+        if athlete_ids:
+            profiles_res = await db.execute(select(Profile).where(Profile.user_id.in_(athlete_ids)))
+            profile_map = {profile.user_id: profile for profile in profiles_res.scalars().all()}
 
     out: list[ActivityOut] = []
     for activity in activities:
-        profile = profile_map.get(activity.athlete_id)
-        ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
-        max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
-        aerobic_load, anaerobic_load = _activity_list_load(activity, ftp, max_hr, profile)
+        aerobic_load = None
+        anaerobic_load = None
+        total_load_impact = None
+        if include_load_metrics:
+            profile = profile_map.get(activity.athlete_id)
+            ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+            max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
+            aerobic_load, anaerobic_load = _activity_list_load(activity, ftp, max_hr, profile)
+            total_load_impact = round((aerobic_load or 0) + (anaerobic_load or 0), 1)
+
         payload = _as_stream_payload(activity.streams)
         rpe, notes = _activity_feedback_from_payload(payload)
         out.append(
@@ -1906,7 +1919,7 @@ async def get_activities(
                 is_deleted=_is_activity_deleted(activity),
                 aerobic_load=aerobic_load,
                 anaerobic_load=anaerobic_load,
-                total_load_impact=round(aerobic_load + anaerobic_load, 1),
+                total_load_impact=total_load_impact,
                 rpe=rpe,
                 notes=notes,
             )

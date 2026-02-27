@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { notifications } from "@mantine/notifications";
 import { useMutation, type QueryClient } from "@tanstack/react-query";
 import {
+  cancelIntegrationSync,
   connectIntegration,
   disconnectIntegration,
   getIntegrationSyncStatus,
@@ -17,9 +18,13 @@ type UseIntegrationSyncArgs = {
   integrations?: ProviderStatus[];
 };
 
+const STRAVA_LOGIN_RECENT_SYNC_FLAG = "tp:strava-login-recent-sync";
+const STRAVA_LOGIN_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
+
 export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegrationSyncArgs) => {
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
   const [disconnectingProvider, setDisconnectingProvider] = useState<string | null>(null);
+  const [cancelingProvider, setCancelingProvider] = useState<string | null>(null);
   const [syncingProvider, setSyncingProvider] = useState<string | null>(null);
   const autoSyncRequestedRef = useRef<Set<string>>(new Set());
 
@@ -87,12 +92,14 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
         notifications.update({
           id: notificationId,
           title: `${provider} sync`,
-          message: status.message || "Waiting for sync worker...",
-          loading: true,
-          autoClose: false,
-          withCloseButton: false,
+          message: status.message || "No active sync.",
+          color: "blue",
+          loading: false,
+          autoClose: 3500,
+          withCloseButton: true,
           position: "bottom-right",
         });
+        setSyncingProvider(null);
       } catch (error) {
         if (!isActive) return;
         notifications.update({
@@ -122,6 +129,55 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
 
   useEffect(() => {
     if (!me || !integrations) return;
+
+    const shouldRunStravaRecentSync = window.sessionStorage.getItem(STRAVA_LOGIN_RECENT_SYNC_FLAG) === "1";
+    if (shouldRunStravaRecentSync) {
+      const stravaProvider = integrations.find((provider) => provider.provider.trim().toLowerCase() === "strava");
+      if (!stravaProvider) {
+        return;
+      }
+      if (stravaProvider?.connection_status === "connected") {
+        const lastSyncMs = stravaProvider.last_sync_at ? new Date(stravaProvider.last_sync_at).getTime() : Number.NaN;
+        const isCooldownActive = Number.isFinite(lastSyncMs) && (Date.now() - lastSyncMs) < STRAVA_LOGIN_SYNC_COOLDOWN_MS;
+        if (isCooldownActive) {
+          window.sessionStorage.removeItem(STRAVA_LOGIN_RECENT_SYNC_FLAG);
+          return;
+        }
+        window.sessionStorage.removeItem(STRAVA_LOGIN_RECENT_SYNC_FLAG);
+        autoSyncRequestedRef.current.add("strava");
+        setSyncingProvider("strava");
+        notifications.show({
+          id: "integration-sync-strava",
+          title: "strava sync",
+          message: "Sync queued...",
+          loading: true,
+          autoClose: false,
+          withCloseButton: false,
+          position: "bottom-right",
+        });
+        void syncIntegrationNow("strava", "recent")
+          .then(() => {
+            queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
+            queryClient.invalidateQueries({ queryKey: ["wellness-summary"] });
+            queryClient.invalidateQueries({ queryKey: ["activities"] });
+          })
+          .catch((error) => {
+            notifications.update({
+              id: "integration-sync-strava",
+              title: "strava sync failed",
+              message: extractApiErrorMessage(error),
+              color: "red",
+              loading: false,
+              autoClose: 7000,
+              withCloseButton: true,
+              position: "bottom-right",
+            });
+            setSyncingProvider(null);
+          });
+      } else {
+        window.sessionStorage.removeItem(STRAVA_LOGIN_RECENT_SYNC_FLAG);
+      }
+    }
 
     const autoSyncEnabled = me.profile?.auto_sync_integrations !== false;
     if (!autoSyncEnabled) {
@@ -214,7 +270,10 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
   });
 
   const syncIntegrationMutation = useMutation({
-    mutationFn: (provider: string) => syncIntegrationNow(provider),
+    mutationFn: (provider: string) => syncIntegrationNow(
+      provider,
+      provider.trim().toLowerCase() === "strava" ? "full" : undefined,
+    ),
     onMutate: (provider) => {
       setSyncingProvider(provider);
       notifications.show({
@@ -256,12 +315,58 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
     },
   });
 
+  const cancelSyncMutation = useMutation({
+    mutationFn: (provider: string) => cancelIntegrationSync(provider),
+    onMutate: (provider) => {
+      setCancelingProvider(provider);
+      notifications.update({
+        id: `integration-sync-${provider}`,
+        title: `${provider} sync`,
+        message: "Cancel requested...",
+        loading: true,
+        autoClose: false,
+        withCloseButton: false,
+        position: "bottom-right",
+      });
+    },
+    onSuccess: (data, provider) => {
+      notifications.update({
+        id: `integration-sync-${provider}`,
+        title: `${provider} sync`,
+        message: data.message || "Cancel requested.",
+        loading: true,
+        autoClose: false,
+        withCloseButton: false,
+        position: "bottom-right",
+      });
+      setSyncingProvider(provider);
+      queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
+    },
+    onError: (error, provider) => {
+      notifications.update({
+        id: `integration-sync-${provider}`,
+        title: `${provider} cancel failed`,
+        message: extractApiErrorMessage(error),
+        color: "red",
+        loading: false,
+        autoClose: 7000,
+        withCloseButton: true,
+        position: "bottom-right",
+      });
+    },
+    onSettled: () => {
+      setCancelingProvider(null);
+    },
+  });
+
   return {
     connectingProvider,
     disconnectingProvider,
+    cancelingProvider,
     syncingProvider,
     connectIntegrationMutation,
     disconnectIntegrationMutation,
     syncIntegrationMutation,
+    cancelSyncMutation,
   };
 };

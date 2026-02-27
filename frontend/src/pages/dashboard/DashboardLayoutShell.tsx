@@ -95,31 +95,46 @@ const DashboardLayoutShell = ({
         {headerRight}
         <Menu shadow="md" width={180} position="bottom-end" withArrow>
           <Menu.Target>
-            <Button
-              variant="subtle"
-              size="compact-sm"
-              leftSection={<IconUserCircle size={18} />}
-              aria-label="Account menu"
-              styles={{
-                root: {
-                  borderRadius: 999,
-                  paddingInline: 10,
+            {isMobile ? (
+              <ActionIcon
+                variant="subtle"
+                size="lg"
+                radius="xl"
+                aria-label="Account menu"
+                style={{
                   border: `1px solid ${isDark ? 'rgba(148,163,184,0.26)' : 'rgba(15,23,42,0.14)'}`,
-                  background: 'transparent',
                   color: isDark ? '#E2E8F0' : '#1E293B'
-                },
-                label: {
-                  maxWidth: 160,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  fontWeight: 700,
-                  fontSize: 12
-                }
-              }}
-            >
-              {!isMobile ? meDisplayName : t("Account")}
-            </Button>
+                }}
+              >
+                <IconUserCircle size={18} />
+              </ActionIcon>
+            ) : (
+              <Button
+                variant="subtle"
+                size="compact-sm"
+                leftSection={<IconUserCircle size={18} />}
+                aria-label="Account menu"
+                styles={{
+                  root: {
+                    borderRadius: 999,
+                    paddingInline: 10,
+                    border: `1px solid ${isDark ? 'rgba(148,163,184,0.26)' : 'rgba(15,23,42,0.14)'}`,
+                    background: 'transparent',
+                    color: isDark ? '#E2E8F0' : '#1E293B'
+                  },
+                  label: {
+                    maxWidth: 160,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 700,
+                    fontSize: 12
+                  }
+                }}
+              >
+                {meDisplayName}
+              </Button>
+            )}
           </Menu.Target>
           <Menu.Dropdown>
             <Menu.Label>{meDisplayName}</Menu.Label>

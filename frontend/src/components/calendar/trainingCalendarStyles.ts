@@ -43,7 +43,7 @@ export const buildTrainingCalendarStyles = ({
                     background: transparent !important;
                     border-top: 1px solid ${palette.dayCellBorder} !important;
                     overflow: hidden !important;
-                    min-height: 0 !important;
+                    min-height: 96px !important;
                     flex: 1 1 0 !important;
                 }
                 .rbc-month-row:first-of-type {
@@ -71,7 +71,7 @@ export const buildTrainingCalendarStyles = ({
                 .rbc-row-content {
                     z-index: 4;
                     padding-bottom: 1px;
-                    min-height: 0 !important;
+                    min-height: 24px !important;
                 }
                 .rbc-row-segment {
                     padding: 1px 2px !important;

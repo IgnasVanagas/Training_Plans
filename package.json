@@ -1,4 +1,8 @@
 {
+  "scripts": {
+    "mobile:qr": "powershell -ExecutionPolicy Bypass -File ./scripts/mobile-qr.ps1",
+    "mobile:qr:tunnel": "powershell -ExecutionPolicy Bypass -File ./scripts/mobile-qr.ps1 -UseTunnel"
+  },
   "dependencies": {
     "@mantine/dates": "^8.3.15",
     "dayjs": "^1.11.19"

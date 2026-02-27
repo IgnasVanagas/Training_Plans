@@ -66,9 +66,11 @@ type SettingsFormProps = {
   connectingProvider?: string | null;
   disconnectingProvider?: string | null;
   syncingProvider?: string | null;
+  cancelingProvider?: string | null;
   onConnect?: (p: string) => void;
   onDisconnect?: (p: string) => void;
   onSync?: (p: string) => void;
+  onCancelSync?: (p: string) => void;
   requestingEmailConfirmation?: boolean;
   changingPassword?: boolean;
   onRequestEmailConfirmation?: () => void;
@@ -82,7 +84,7 @@ const getSupportedTimeZones = (): string[] => {
   return intlWithSupportedValues.supportedValuesOf?.("timeZone") ?? [Intl.DateTimeFormat().resolvedOptions().timeZone];
 };
 
-const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider, disconnectingProvider, syncingProvider, onConnect, onDisconnect, onSync, requestingEmailConfirmation, changingPassword, onRequestEmailConfirmation, onChangePassword }: SettingsFormProps) => {
+const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider, disconnectingProvider, syncingProvider, cancelingProvider, onConnect, onDisconnect, onSync, onCancelSync, requestingEmailConfirmation, changingPassword, onRequestEmailConfirmation, onChangePassword }: SettingsFormProps) => {
   const isDark = useComputedColorScheme("light") === "dark";
   const isMobile = useMediaQuery("(max-width: 48em)");
   const capitalize = (s?: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -634,10 +636,12 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
             providers={providers || []}
             connectingProvider={connectingProvider}
             disconnectingProvider={disconnectingProvider}
+            cancelingProvider={cancelingProvider}
             syncingProvider={syncingProvider}
             onConnect={(p) => onConnect && onConnect(p)}
             onDisconnect={(p) => onDisconnect && onDisconnect(p)}
             onSync={(p) => onSync && onSync(p)}
+            onCancelSync={(p) => onCancelSync && onCancelSync(p)}
           />
         </Paper>
       </Tabs.Panel>

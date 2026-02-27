@@ -31,6 +31,8 @@ export type ProviderSyncResponse = {
   last_error?: string | null;
 };
 
+export type SyncNowMode = "recent" | "full";
+
 export type WellnessSummary = {
   hrv?: { value: number; date: string; provider: string } | null;
   resting_hr?: { value: number; date: string; provider: string } | null;
@@ -65,13 +67,21 @@ export const disconnectIntegration = async (provider: string) => {
   return response.data;
 };
 
-export const syncIntegrationNow = async (provider: string): Promise<ProviderSyncResponse> => {
-  const response = await client.post<ProviderSyncResponse>(`/integrations/${provider}/sync-now`);
+export const syncIntegrationNow = async (provider: string, mode?: SyncNowMode): Promise<ProviderSyncResponse> => {
+  const response = await client.post<ProviderSyncResponse>(
+    `/integrations/${provider}/sync-now`,
+    mode ? { mode } : undefined,
+  );
   return response.data;
 };
 
 export const getIntegrationSyncStatus = async (provider: string): Promise<ProviderSyncResponse> => {
   const response = await client.get<ProviderSyncResponse>(`/integrations/${provider}/sync-status`);
+  return response.data;
+};
+
+export const cancelIntegrationSync = async (provider: string): Promise<ProviderSyncResponse> => {
+  const response = await client.post<ProviderSyncResponse>(`/integrations/${provider}/cancel-sync`);
   return response.data;
 };
 

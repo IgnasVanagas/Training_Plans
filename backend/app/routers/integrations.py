@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timedelta
+from datetime import date as dt_date
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Body
 from fastapi.responses import RedirectResponse
 from sqlalchemy import or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -591,6 +592,36 @@ async def _sync_provider_task(provider: str, user_id: int):
             strava_auto_backfill_delay_seconds = max(0.0, float(os.getenv("STRAVA_AUTO_BACKFILL_DELAY_SECONDS", "8")))
             strava_auto_backfill_max_phases = max(0, int(os.getenv("STRAVA_AUTO_BACKFILL_MAX_PHASES", "0")))
             strava_phase_index = 0
+            strava_recent_only_once = provider == "strava" and bool((state.cursor or {}).get("strava_recent_only_once"))
+            strava_no_auto_history = provider == "strava" and bool((state.cursor or {}).get("strava_no_auto_history", True))
+
+            async def _is_cancel_requested() -> bool:
+                latest_state = await db.scalar(select(ProviderSyncState).where(ProviderSyncState.id == state.id))
+                if not latest_state:
+                    return False
+                latest_cursor = latest_state.cursor if isinstance(latest_state.cursor, dict) else {}
+                if bool(latest_cursor.get("cancel_requested")):
+                    state.cursor = dict(latest_cursor)
+                    return True
+                return False
+
+            async def _finalize_cancelled(message: str, imported: int = 0, duplicates: int = 0) -> None:
+                updated_cursor = dict(state.cursor or {})
+                updated_cursor.pop("cancel_requested", None)
+                updated_cursor.pop("strava_recent_only_once", None)
+                state.cursor = updated_cursor
+                state.sync_status = "completed"
+                state.sync_message = message
+                state.last_error = None
+                await db.commit()
+                await log_integration_audit(
+                    db,
+                    user_id=user_id,
+                    provider=provider,
+                    action="sync_cancelled",
+                    status="ok",
+                    message=f"Cancelled by user after imported={imported}, duplicates={duplicates}",
+                )
 
             # Progress callback to update DB
             async def progress_callback(fetched_count: int):
@@ -609,14 +640,23 @@ async def _sync_provider_task(provider: str, user_id: int):
                     .values(sync_progress=fetched_count, sync_message=f"Synced {fetched_count} activities...{suffix}")
                 )
                 await db.commit()
+                if await _is_cancel_requested():
+                    raise RuntimeError("SYNC_CANCELLED_BY_USER")
 
             while True:
+                if await _is_cancel_requested():
+                    await _finalize_cancelled("Sync cancelled by user before processing started.")
+                    return
+
                 current_cursor = state.cursor or {}
                 is_strava_initial_phase = provider == "strava" and not bool(current_cursor.get("initial_sync_done"))
                 sync_request_cursor = dict(current_cursor)
 
                 if provider == "strava":
-                    if strava_phase_index <= 0:
+                    if strava_recent_only_once:
+                        sync_request_cursor["strava_recent_only"] = True
+                        sync_request_cursor.pop("strava_history_only", None)
+                    elif strava_phase_index <= 0:
                         sync_request_cursor["strava_recent_only"] = True
                         sync_request_cursor.pop("strava_history_only", None)
                     else:
@@ -638,11 +678,23 @@ async def _sync_provider_task(provider: str, user_id: int):
                 state.last_error = None
                 await db.commit()
 
-                sync_result = await connector.fetch_activities(
-                    access_token=access_token,
-                    cursor=sync_request_cursor,
-                    progress_callback=progress_callback,
-                )
+                if provider == "strava":
+                    sync_result = await connector.fetch_activities(
+                        access_token=access_token,
+                        cursor=sync_request_cursor,
+                        progress_callback=progress_callback,
+                        should_cancel=_is_cancel_requested,
+                    )
+                else:
+                    sync_result = await connector.fetch_activities(
+                        access_token=access_token,
+                        cursor=sync_request_cursor,
+                        progress_callback=progress_callback,
+                    )
+
+                if await _is_cancel_requested():
+                    await _finalize_cancelled("Sync cancelled by user.")
+                    return
 
                 # Ensure newest activities are always processed first (today, then yesterday, etc.).
                 sync_result.activities.sort(key=lambda rec: rec.start_time, reverse=True)
@@ -663,6 +715,14 @@ async def _sync_provider_task(provider: str, user_id: int):
                 matched_dates: set = set()
 
                 for index, record in enumerate(sync_result.activities):
+                    if await _is_cancel_requested():
+                        await _finalize_cancelled(
+                            f"Sync cancelled by user. Imported {imported} new, {duplicates} duplicates.",
+                            imported=imported,
+                            duplicates=duplicates,
+                        )
+                        return
+
                     suffix = ""
                     if provider == "strava":
                         suffix = " Recent first; full history appears progressively."
@@ -769,8 +829,31 @@ async def _sync_provider_task(provider: str, user_id: int):
                     else:
                         duplicates += 1
                     matched_dates.add(record.start_time.date())
+                    if provider == "strava":
+                        payload_obj = record.payload if isinstance(record.payload, dict) else {}
+                        summary = payload_obj.get("summary") if isinstance(payload_obj.get("summary"), dict) else {}
+                        local_start_raw = summary.get("start_date_local")
+                        if isinstance(local_start_raw, str):
+                            local_start_text = local_start_raw.strip()
+                            if local_start_text:
+                                try:
+                                    local_day = datetime.fromisoformat(local_start_text.replace("Z", "+00:00")).date()
+                                    matched_dates.add(local_day)
+                                except ValueError:
+                                    try:
+                                        matched_dates.add(dt_date.fromisoformat(local_start_text[:10]))
+                                    except ValueError:
+                                        pass
 
                 # Recompute planned-vs-actual matching for all touched dates in this phase.
+                if await _is_cancel_requested():
+                    await _finalize_cancelled(
+                        f"Sync cancelled by user. Imported {imported} new, {duplicates} duplicates.",
+                        imported=imported,
+                        duplicates=duplicates,
+                    )
+                    return
+
                 for match_date in sorted(matched_dates):
                     await match_and_score(db, user_id, match_date)
 
@@ -796,6 +879,14 @@ async def _sync_provider_task(provider: str, user_id: int):
 
                 enriched_count = 0
                 if provider == "strava" and hasattr(connector, "fetch_activity_deep_data"):
+                    if await _is_cancel_requested():
+                        await _finalize_cancelled(
+                            f"Sync cancelled by user. Imported {imported} new, {duplicates} duplicates.",
+                            imported=imported,
+                            duplicates=duplicates,
+                        )
+                        return
+
                     cursor_snapshot = state.cursor or {}
                     import_all_time = bool(cursor_snapshot.get("strava_import_all_time"))
                     enriched_count, enriched_message = await _strava_backfill_activity_details(
@@ -842,6 +933,8 @@ async def _sync_provider_task(provider: str, user_id: int):
                 can_continue_backfill = (
                     provider == "strava"
                     and strava_auto_backfill_enabled
+                    and not strava_no_auto_history
+                    and not strava_recent_only_once
                     and has_backfill_remaining
                     and made_phase_progress
                     and not strava_daily_limit_reached
@@ -849,6 +942,8 @@ async def _sync_provider_task(provider: str, user_id: int):
                 )
 
                 state.cursor = next_cursor
+                state.cursor.pop("strava_recent_only_once", None)
+                state.cursor.pop("strava_no_auto_history", None)
                 state.last_success = datetime.utcnow()
                 state.last_error = None
                 connection.last_sync_at = datetime.utcnow()
@@ -867,7 +962,15 @@ async def _sync_provider_task(provider: str, user_id: int):
                     continue
 
                 state.sync_status = "completed"
-                if provider == "strava" and has_backfill_remaining and not strava_auto_backfill_enabled:
+                if provider == "strava" and strava_recent_only_once and has_backfill_remaining:
+                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
+                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
+                    state.sync_message = (
+                        f"Completed recent sync. Imported {imported} new, {duplicates} duplicates. "
+                        "Press Sync now to continue importing older historical activities."
+                        + debug_tail
+                    )
+                elif provider == "strava" and has_backfill_remaining and not strava_auto_backfill_enabled:
                     requests_last_10m = next_cursor.get("strava_requests_last_10m")
                     debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
                     state.sync_message = (
@@ -911,6 +1014,11 @@ async def _sync_provider_task(provider: str, user_id: int):
                 break
 
         except Exception as e:
+            if str(e) == "SYNC_CANCELLED_BY_USER":
+                await db.rollback()
+                await _finalize_cancelled("Sync cancelled by user.")
+                return
+
             await db.rollback()
             # New config session to save error state
             async with AsyncSessionLocal() as error_db:
@@ -940,30 +1048,90 @@ async def get_sync_status(
     )
 
 
+@router.post("/{provider}/cancel-sync", response_model=SyncStatusOut)
+async def cancel_sync(
+    provider: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    provider = _ensure_provider(provider)
+    state = await get_or_create_sync_state(db, user_id=current_user.id, provider=provider)
+
+    cursor = dict(state.cursor or {})
+    cursor["cancel_requested"] = True
+    state.cursor = cursor
+
+    if getattr(state, "sync_status", "idle") == "syncing":
+        state.sync_message = "Cancel requested. Stopping sync..."
+    else:
+        state.sync_status = "idle"
+        state.sync_message = "No active sync to cancel."
+
+    await db.commit()
+
+    return SyncStatusOut(
+        provider=provider,
+        status=getattr(state, "sync_status", "idle"),
+        progress=getattr(state, "sync_progress", 0),
+        total=getattr(state, "sync_total", 0),
+        message=getattr(state, "sync_message", ""),
+        last_success=state.last_success,
+        last_error=state.last_error,
+    )
+
+
 @router.post("/{provider}/sync-now", response_model=SyncStatusOut)
 async def sync_provider_now(
     provider: str,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    payload: dict | None = Body(default=None),
 ):
     provider = _ensure_provider(provider)
+    requested_mode = str((payload or {}).get("mode") or "").strip().lower()
     
     # Check if already syncing?
     state = await get_or_create_sync_state(db, user_id=current_user.id, provider=provider)
     connection = await get_connection(db, user_id=current_user.id, provider=provider)
+    stale_sync_seconds = max(30, int(os.getenv("INTEGRATION_SYNC_STALE_SECONDS", "180")))
     if getattr(state, "sync_status", "idle") == "syncing":
-         return SyncStatusOut(
-            provider=provider,
-            status="syncing",
-            progress=getattr(state, "sync_progress", 0),
-            total=getattr(state, "sync_total", 0),
-            message=getattr(state, "sync_message", "Sync already in progress"),
-            last_success=state.last_success,
-            last_error=state.last_error,
+        updated_at = getattr(state, "updated_at", None)
+        is_stale = (
+            updated_at is not None
+            and (datetime.utcnow() - updated_at).total_seconds() > stale_sync_seconds
         )
+        if not is_stale:
+            return SyncStatusOut(
+                provider=provider,
+                status="syncing",
+                progress=getattr(state, "sync_progress", 0),
+                total=getattr(state, "sync_total", 0),
+                message=getattr(state, "sync_message", "Sync already in progress"),
+                last_success=state.last_success,
+                last_error=state.last_error,
+            )
+
+        state.sync_status = "idle"
+        state.sync_message = "Recovered from stale sync state; retrying now."
+        state.last_error = None
+        await db.commit()
 
     # Start background task
+    if provider == "strava":
+        cursor = dict(state.cursor or {})
+        cursor.pop("cancel_requested", None)
+        if requested_mode == "recent":
+            cursor["strava_recent_only_once"] = True
+        else:
+            cursor.pop("strava_recent_only_once", None)
+        cursor["strava_no_auto_history"] = True
+        state.cursor = cursor
+    else:
+        cursor = dict(state.cursor or {})
+        cursor.pop("cancel_requested", None)
+        state.cursor = cursor
+
     background_tasks.add_task(_sync_provider_task, provider, current_user.id)
     
     # Update state to starting immediately so UI reflects it
@@ -979,7 +1147,10 @@ async def sync_provider_now(
 
     queued_message = "Sync queued"
     if provider == "strava":
-        queued_message = "Sync queued. Your newest activities arrive first; full history follows over time."
+        if requested_mode == "recent":
+            queued_message = "Sync queued. Loading newest activities now; older history syncs when you press Sync now."
+        else:
+            queued_message = "Sync queued. Your newest activities arrive first; full history follows over time."
 
     return SyncStatusOut(
         provider=provider,

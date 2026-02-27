@@ -29,6 +29,8 @@ type AuthResponse = {
   access_token: string;
 };
 
+const STRAVA_LOGIN_RECENT_SYNC_FLAG = "tp:strava-login-recent-sync";
+
 const LoginPage = () => {
   const { language, setLanguage, t } = useI18n();
   const navigate = useNavigate();
@@ -52,6 +54,12 @@ const LoginPage = () => {
   const [info, setInfo] = useState<string | null>(null);
 
   const getErrorMessage = (error: any) => {
+    if (error?.code === "ECONNABORTED") {
+      return "Request timed out. Please check your connection and try again.";
+    }
+    if (error?.message === "Network Error") {
+      return "Cannot reach server. Ensure phone and computer are on the same Wi-Fi and backend is running.";
+    }
     if (error.response?.data?.detail) {
       const detail = error.response.data.detail;
       if (Array.isArray(detail)) {
@@ -73,6 +81,7 @@ const LoginPage = () => {
     },
     onSuccess: async (data) => {
       localStorage.setItem("access_token", data.access_token);
+      sessionStorage.setItem(STRAVA_LOGIN_RECENT_SYNC_FLAG, "1");
       if (inviteCode) {
         try {
           await api.put("/users/organization/join", { code: inviteCode });
@@ -381,7 +390,7 @@ const LoginPage = () => {
 
           <Group justify="center" mt="md">
             <Text size="sm" c="dimmed">
-              {isRegister ? "Already have an account?" : "Don't have an account yet?"}
+              {isRegister ? t("Have an account?") : t("Don't have an account yet?")}
             </Text>
             <Anchor component="button" type="button" size="sm" fw={600} onClick={() => {
               setIsRegister(!isRegister);
@@ -389,7 +398,7 @@ const LoginPage = () => {
               setError(null);
               setPassword("");
             }}>
-              {isRegister ? "Login" : "Create account"}
+              {isRegister ? t("Login") : t("Create account")}
             </Anchor>
           </Group>
         </Paper>

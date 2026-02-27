@@ -99,6 +99,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Optional": "Nebūtina",
     "Send reset instructions": "Siųsti slaptažodžio atkūrimo instrukcijas",
     "Already have an account?": "Jau turite paskyrą?",
+    "Have an account?": "Turite paskyrą?",
     "Don't have an account yet?": "Dar neturite paskyros?",
     "Email is required.": "El. paštas yra privalomas.",
     "Both password fields are required.": "Abu slaptažodžio laukai yra privalomi.",

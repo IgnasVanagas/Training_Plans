@@ -33,6 +33,42 @@ def _extract_stream_payload(activity: Activity) -> dict[str, Any]:
     return activity.streams if isinstance(activity.streams, dict) else {}
 
 
+def _activity_date_candidates(activity: Activity) -> set[date]:
+    candidates: set[date] = set()
+
+    created_at = getattr(activity, "created_at", None)
+    if isinstance(created_at, datetime):
+        candidates.add(created_at.date())
+
+    payload = _extract_stream_payload(activity)
+    provider_payload = payload.get("provider_payload") if isinstance(payload.get("provider_payload"), dict) else {}
+    summary = provider_payload.get("summary") if isinstance(provider_payload.get("summary"), dict) else {}
+    detail = provider_payload.get("detail") if isinstance(provider_payload.get("detail"), dict) else {}
+
+    for source in (summary, detail):
+        for key in ("start_date_local", "start_date"):
+            raw_value = source.get(key)
+            if not isinstance(raw_value, str):
+                continue
+            text = raw_value.strip()
+            if not text:
+                continue
+
+            try:
+                parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+                candidates.add(parsed.date())
+                continue
+            except ValueError:
+                pass
+
+            try:
+                candidates.add(date.fromisoformat(text[:10]))
+            except ValueError:
+                pass
+
+    return candidates
+
+
 def _resolve_effective_resting_hr(profile: Profile | None, lowest_recorded_rhr: float | None) -> float:
     profile_rhr = _safe_float(getattr(profile, "resting_hr", None), default=0.0)
     recorded = _safe_float(lowest_recorded_rhr, default=0.0)
@@ -347,20 +383,24 @@ async def match_and_score(db: AsyncSession, user_id: int, target_date: date):
         await db.commit()
         return
 
-    # 2. Fetch Activities for the exact target date only.
-    # Planned workouts must not be compared to activities from other calendar days.
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    end_of_day = datetime.combine(target_date, datetime.max.time())
+    # 2. Fetch Activities around target date and filter by effective activity day.
+    # Planned workouts must only be compared to activities from the same calendar day.
+    start_of_window = datetime.combine(target_date - timedelta(days=1), datetime.min.time())
+    end_of_window = datetime.combine(target_date + timedelta(days=1), datetime.max.time())
     
     stmt_activities = select(Activity).where(
         and_(
             Activity.athlete_id == user_id,
-            Activity.created_at >= start_of_day,
-            Activity.created_at <= end_of_day
+            Activity.created_at >= start_of_window,
+            Activity.created_at <= end_of_window
         )
     )
     result_activities = await db.execute(stmt_activities)
-    activities = [activity for activity in result_activities.scalars().all() if not _is_activity_deleted(activity)]
+    activities = [
+        activity
+        for activity in result_activities.scalars().all()
+        if not _is_activity_deleted(activity) and target_date in _activity_date_candidates(activity)
+    ]
 
     profile = await db.scalar(select(Profile).where(Profile.user_id == user_id))
     lowest_recorded_rhr = await db.scalar(
