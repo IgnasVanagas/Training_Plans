@@ -324,7 +324,10 @@ export default function TrainingCalendarZoneSummaryPanel({
     };
 
     const completedEvents = useMemo(() => {
-        return events.filter((event: any) => !(event.resource as CalendarEvent).is_planned);
+        return events.filter((event: any) => {
+            const resource = event?.resource as CalendarEvent | undefined;
+            return Boolean(resource && !resource.is_planned);
+        });
     }, [events]);
 
     const weeksWithActivities = useMemo(() => {
@@ -462,8 +465,8 @@ export default function TrainingCalendarZoneSummaryPanel({
         };
 
         const scopedEvents = events.filter((event: any) => {
-            const resource = event.resource as CalendarEvent;
-            if (resource.is_planned) return false;
+            const resource = event?.resource as CalendarEvent | undefined;
+            if (!resource || resource.is_planned) return false;
             const eventDate = event.start as Date;
             return eventDate >= periodStart && eventDate <= periodEnd;
         });

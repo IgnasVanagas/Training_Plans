@@ -1,6 +1,6 @@
-import { Badge, Group, List, Paper, SimpleGrid, Card, Stack, Text, Title, Box, useComputedColorScheme } from '@mantine/core';
+import { Badge, Group, List, Paper, SimpleGrid, Card, Stack, Text, Title, Box, Button, useComputedColorScheme } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
@@ -53,6 +53,10 @@ export function ActivitiesView({
     const isDark = useComputedColorScheme('light') === 'dark';
     const isMobile = useMediaQuery('(max-width: 48em)');
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
+    const [offset, setOffset] = useState(0);
+    const [loadedActivities, setLoadedActivities] = useState<Activity[]>([]);
+    const [hasMoreActivities, setHasMoreActivities] = useState(true);
+    const PAGE_SIZE = 40;
         const ui = {
                 pageBg: isDark ? '#081226' : '#F4F7FC',
                 panelBg: isDark ? '#12223E' : '#FFFFFF',
@@ -97,34 +101,62 @@ export function ActivitiesView({
       return `${h}h ${m}m`;
   };
 
-  const activitiesQuery = useQuery({
-    queryKey: ['activities', athleteId, dateRange],
+    const rangeStartKey = dateRange[0] ? toLocalDateKey(dateRange[0]) : 'na';
+    const rangeEndKey = dateRange[1] ? toLocalDateKey(dateRange[1]) : 'na';
+
+    useEffect(() => {
+        setOffset(0);
+        setLoadedActivities([]);
+        setHasMoreActivities(true);
+    }, [athleteId, rangeStartKey, rangeEndKey]);
+
+    const activitiesQuery = useQuery({
+        queryKey: ['activities', athleteId, rangeStartKey, rangeEndKey, offset],
         initialData: () => {
-            const key = `activities:${athleteId || 'self'}:${dateRange[0] ? toLocalDateKey(dateRange[0]) : 'na'}:${dateRange[1] ? toLocalDateKey(dateRange[1]) : 'na'}`;
-            return readSnapshot<Activity[]>(key);
+                        if (offset !== 0) return undefined;
+                        const key = `activities:${athleteId || 'self'}:${rangeStartKey}:${rangeEndKey}`;
+                        return readSnapshot<Activity[]>(key);
         },
     queryFn: async () => {
       const params: any = {};
       if (athleteId) params.athlete_id = athleteId;
-    if (dateRange[0]) params.start_date = toLocalDateKey(dateRange[0]);
-    if (dateRange[1]) params.end_date = toLocalDateKey(dateRange[1]);
+            if (dateRange[0]) params.start_date = toLocalDateKey(dateRange[0]);
+            if (dateRange[1]) params.end_date = toLocalDateKey(dateRange[1]);
             params.include_load_metrics = false;
-            if (!dateRange[0] && !dateRange[1]) {
-                params.limit = 120;
-            }
+                        params.limit = PAGE_SIZE;
+                        params.offset = offset;
       
       const res = await api.get<Activity[]>('/activities/', { params });
-            const key = `activities:${athleteId || 'self'}:${dateRange[0] ? toLocalDateKey(dateRange[0]) : 'na'}:${dateRange[1] ? toLocalDateKey(dateRange[1]) : 'na'}`;
-            writeSnapshot(key, res.data);
+                        if (offset === 0) {
+                                const key = `activities:${athleteId || 'self'}:${rangeStartKey}:${rangeEndKey}`;
+                                writeSnapshot(key, res.data);
+                        }
       return res.data; 
         },
                 staleTime: 1000 * 60 * 5,
                 gcTime: 1000 * 60 * 30,
                 placeholderData: (prev) => prev,
-                refetchOnMount: false,
+                refetchOnMount: 'always',
   });
 
-    const isInitialActivitiesLoading = (activitiesQuery.isLoading || activitiesQuery.isFetching) && !activitiesQuery.data;
+    useEffect(() => {
+        const page = activitiesQuery.data;
+        if (!page) return;
+
+        setLoadedActivities((prev) => {
+            if (offset === 0) return page;
+            const byId = new Map<number, Activity>();
+            prev.forEach((activity) => byId.set(activity.id, activity));
+            page.forEach((activity) => byId.set(activity.id, activity));
+            return Array.from(byId.values()).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        });
+        setHasMoreActivities(page.length === PAGE_SIZE);
+    }, [activitiesQuery.data, offset]);
+
+    const visibleActivities = useMemo(() => loadedActivities, [loadedActivities]);
+
+    const isInitialActivitiesLoading = (activitiesQuery.isLoading || activitiesQuery.isFetching) && visibleActivities.length === 0;
+    const isLoadingOlder = offset > 0 && activitiesQuery.isFetching;
 
   return (
         <Stack style={{ fontFamily: '"Inter", sans-serif' }} bg={ui.pageBg} p={6} gap="sm">
@@ -169,7 +201,7 @@ export function ActivitiesView({
                     <OrigamiLoadingAnimation label="Loading activities..." minHeight={220} />
                 </Paper>
             )}
-            {activitiesQuery.data?.map((act) => {
+            {visibleActivities.map((act) => {
                 const accentColor = resolveActivityAccentColor(
                     activityColors as any,
                     act.sport || undefined,
@@ -282,7 +314,7 @@ export function ActivitiesView({
                 </Card>
                 );
             })}
-                        {!isInitialActivitiesLoading && activitiesQuery.data?.length === 0 && (
+                        {!isInitialActivitiesLoading && visibleActivities.length === 0 && (
                             <Paper withBorder p="lg" radius="lg" style={cardStyle}>
                                 <Stack align="center" gap="xs">
                                     <IconUpload size={28} />
@@ -293,6 +325,20 @@ export function ActivitiesView({
                                         <List.Item>Set baseline zones so workouts adapt to you</List.Item>
                                     </List>
                                 </Stack>
+                            </Paper>
+                        )}
+                        {visibleActivities.length > 0 && (
+                            <Paper withBorder p="md" radius="lg" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
+                                <Group justify="center">
+                                    <Button
+                                        variant="light"
+                                        onClick={() => setOffset((prev) => prev + PAGE_SIZE)}
+                                        disabled={!hasMoreActivities || isLoadingOlder}
+                                        loading={isLoadingOlder}
+                                    >
+                                        {hasMoreActivities ? 'Load older activities' : 'No older activities'}
+                                    </Button>
+                                </Group>
                             </Paper>
                         )}
         </SimpleGrid>

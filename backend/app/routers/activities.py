@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
 from ..database import get_db
-from ..models import User, Activity, CoachAthleteLink, OrganizationMember, RoleEnum, Profile, PlannedWorkout, RHRDaily
+from ..models import User, Activity, OrganizationMember, RoleEnum, Profile, PlannedWorkout, RHRDaily
 from ..integrations.crypto import decrypt_token, encrypt_token
 from ..integrations.registry import get_connector
 from ..integrations.service import get_connection
@@ -1853,26 +1853,35 @@ async def get_activities(
 
     if current_user.role == "coach":
         if athlete_id:
-            # check link
-            link = await db.scalar(select(CoachAthleteLink).where(
-                and_(
-                    CoachAthleteLink.coach_id == current_user.id,
-                    CoachAthleteLink.athlete_id == athlete_id,
-                    CoachAthleteLink.is_active == True
+            if athlete_id != current_user.id:
+                coach_orgs_subq = select(OrganizationMember.organization_id).where(
+                    OrganizationMember.user_id == current_user.id,
+                    OrganizationMember.role == RoleEnum.coach.value,
+                    OrganizationMember.status == 'active'
                 )
-            ))
-            if not link and athlete_id != current_user.id:
-                 raise HTTPException(status_code=403, detail="Not authorized for this athlete")
+                membership = await db.scalar(
+                    select(OrganizationMember).where(
+                        OrganizationMember.user_id == athlete_id,
+                        OrganizationMember.organization_id.in_(coach_orgs_subq),
+                        OrganizationMember.status == 'active'
+                    )
+                )
+                if not membership:
+                    raise HTTPException(status_code=403, detail="Not authorized for this athlete")
             query = query.where(Activity.athlete_id == athlete_id)
         else:
-            # Return all activities from linked athletes AND the coach themselves
-            subq = select(CoachAthleteLink.athlete_id).where(
-                CoachAthleteLink.coach_id == current_user.id,
-                CoachAthleteLink.is_active == True
+            coach_orgs_subq = select(OrganizationMember.organization_id).where(
+                OrganizationMember.user_id == current_user.id,
+                OrganizationMember.role == RoleEnum.coach.value,
+                OrganizationMember.status == 'active'
             )
-            # We want activities where athlete_id is IN linked_athletes OR athlete_id is current_user.id
+            athlete_ids_subq = select(OrganizationMember.user_id).where(
+                OrganizationMember.organization_id.in_(coach_orgs_subq),
+                OrganizationMember.role == RoleEnum.athlete.value,
+                OrganizationMember.status == 'active'
+            )
             query = query.where(
-                (Activity.athlete_id.in_(subq)) | (Activity.athlete_id == current_user.id)
+                (Activity.athlete_id.in_(athlete_ids_subq)) | (Activity.athlete_id == current_user.id)
             )
             
     else:

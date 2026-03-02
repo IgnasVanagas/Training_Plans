@@ -1,7 +1,7 @@
 import { format, addMonths, addWeeks } from 'date-fns';
-import { Button, ActionIcon, Group, Popover, SegmentedControl, Box } from '@mantine/core';
+import { Button, ActionIcon, Group, Popover, SegmentedControl, Box, Stack } from '@mantine/core';
 import { MonthPicker } from '@mantine/dates';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useComputedColorScheme } from '@mantine/core';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
 
@@ -25,6 +25,7 @@ const CalendarHeader = ({
     monthlyTotalsWidth
 }: CalendarHeaderProps) => {
     const [opened, { open, close }] = useDisclosure(false);
+    const isMobile = useMediaQuery('(max-width: 48em)');
     const isDark = useComputedColorScheme('light') === 'dark';
     const accentPrimary = '#E95A12';
     const accentSecondary = '#6E4BF3';
@@ -38,7 +39,7 @@ const CalendarHeader = ({
     const handleToday = () => {
         onNavigate(new Date());
     };
-    const calendarCenterOffset = currentView === 'month' && monthlyTotalsWidth
+    const calendarCenterOffset = !isMobile && currentView === 'month' && monthlyTotalsWidth
         ? Math.round((monthlyTotalsWidth + 8) / 2)
         : 0;
 
@@ -87,7 +88,7 @@ const CalendarHeader = ({
                 </Group>
 
                 <Group gap={4} wrap="nowrap" justify="flex-end">
-                {onViewChange && (
+                {!isMobile && onViewChange && (
                     <SegmentedControl
                         size="xs"
                         radius="md"
@@ -100,7 +101,7 @@ const CalendarHeader = ({
                     />
                 )}
 
-                {currentView === 'month' && monthlyTotalsLabel && onMonthlyTotalsClick && (
+                {!isMobile && currentView === 'month' && monthlyTotalsLabel && onMonthlyTotalsClick && (
                     <Button
                         variant="subtle"
                         size="compact-sm"
@@ -122,7 +123,7 @@ const CalendarHeader = ({
                 </Group>
             </Group>
 
-            <Box style={{ position: 'absolute', left: `calc(50% - ${calendarCenterOffset}px)`, top: '50%', transform: 'translate(-50%, -50%)' }}>
+            <Box style={isMobile ? { marginTop: 6, display: 'flex', justifyContent: 'center' } : { position: 'absolute', left: `calc(50% - ${calendarCenterOffset}px)`, top: '50%', transform: 'translate(-50%, -50%)' }}>
                 <Popover opened={opened} onChange={close} trapFocus position="bottom" withArrow shadow="md">
                     <Popover.Target>
                         <Button
@@ -149,6 +150,21 @@ const CalendarHeader = ({
                     </Popover.Dropdown>
                 </Popover>
             </Box>
+
+            {isMobile && onViewChange && (
+                <Stack mt={6}>
+                    <SegmentedControl
+                        size="xs"
+                        radius="md"
+                        value={currentView}
+                        onChange={(value) => onViewChange(value as 'month' | 'week')}
+                        data={[
+                            { value: 'month', label: 'Month' },
+                            { value: 'week', label: 'Week' },
+                        ]}
+                    />
+                </Stack>
+            )}
         </Box>
     );
 };

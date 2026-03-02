@@ -53,6 +53,13 @@ const LoginPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  useEffect(() => {
+    const token = localStorage.getItem("access_token");
+    if (token) {
+      navigate("/dashboard", { replace: true });
+    }
+  }, [navigate]);
+
   const getErrorMessage = (error: any) => {
     if (error?.code === "ECONNABORTED") {
       return "Request timed out. Please check your connection and try again.";
@@ -90,7 +97,7 @@ const LoginPage = () => {
           return;
         }
       }
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
     },
     onError: (err) => setError(getErrorMessage(err))
   });
@@ -112,7 +119,7 @@ const LoginPage = () => {
     },
     onSuccess: (data) => {
       localStorage.setItem("access_token", data.access_token);
-      navigate("/dashboard");
+      navigate("/dashboard", { replace: true });
     },
     onError: (err) => setError(getErrorMessage(err))
   });

@@ -119,12 +119,6 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
         }
     }, [parsedInitialViewDate]);
 
-    useEffect(() => {
-        if (isMobileViewport && currentView === 'month') {
-            setCurrentView('week');
-        }
-    }, [currentView, isMobileViewport]);
-
     // Fetch Events logic
     const fetchEvents = useCallback(async (start: Date, end: Date) => {
         const startStr = format(start, 'yyyy-MM-dd');
@@ -179,16 +173,58 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
         };
     }, [currentView, viewDate, weekStartDay]);
 
+    const toEventDate = (value: unknown, fallbackDate?: string): Date | null => {
+        if (value instanceof Date && !Number.isNaN(value.getTime())) {
+            return value;
+        }
+        if (typeof value === 'string' && value.trim()) {
+            const parsed = new Date(value);
+            if (!Number.isNaN(parsed.getTime())) {
+                return parsed;
+            }
+            if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+                const localParsed = parseDate(value);
+                if (!Number.isNaN(localParsed.getTime())) {
+                    return localParsed;
+                }
+            }
+        }
+        if (fallbackDate) {
+            const fallback = parseDate(fallbackDate);
+            if (!Number.isNaN(fallback.getTime())) {
+                return fallback;
+            }
+        }
+        return null;
+    };
+
+    const normalizeCalendarEvent = (event: any) => {
+        if (!event || !event.resource) return null;
+        const start = toEventDate(event.start, event.resource?.date);
+        const end = toEventDate(event.end, event.resource?.date) || start;
+        if (!start || !end) return null;
+        return {
+            ...event,
+            start,
+            end,
+            allDay: event.allDay ?? true,
+        };
+    };
+
     const { data: events = [], isLoading: eventsLoading, isFetching: eventsFetching } = useQuery({
         queryKey: ['calendar', currentView, format(rangeBounds.start, 'yyyy-MM-dd'), format(rangeBounds.end, 'yyyy-MM-dd'), athleteId, allAthletes],
         initialData: () => {
             const snapKey = `calendar:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
             const snap = readSnapshot<any[]>(snapKey) || [];
-            return snap.filter((event: any) => event && event.resource && event.start);
+            return snap
+                .map(normalizeCalendarEvent)
+                .filter((event): event is any => Boolean(event));
         },
         queryFn: async () => {
             const rows = await fetchEvents(rangeBounds.start, rangeBounds.end);
-            const safeRows = rows.filter((event: any) => event && event.resource && event.start);
+            const safeRows = rows
+                .map(normalizeCalendarEvent)
+                .filter((event): event is any => Boolean(event));
             const snapKey = `calendar:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
             writeSnapshot(snapKey, safeRows);
             return safeRows;
@@ -196,7 +232,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
         staleTime: 1000 * 60 * 5,
         gcTime: 1000 * 60 * 30,
         placeholderData: (prev) => prev,
-        refetchOnMount: false,
+        refetchOnMount: 'always',
     });
 
     const isInitialCalendarLoading = (eventsLoading || eventsFetching) && events.length === 0;
@@ -799,7 +835,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
 
     return (
         <Stack
-            p={10}
+            p={isMobileViewport ? 6 : 10}
             gap={0}
             h={isMobileViewport ? 'auto' : 'calc(100vh - 132px)'}
             bg={palette.background}
@@ -822,7 +858,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
             
             <Group align="stretch" gap={8} wrap={isMobileViewport ? 'wrap' : 'nowrap'} style={{ flex: 1, minHeight: 0 }}>
                 {currentView === 'week' ? (
-                    <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, padding: 10, overflowY: 'auto' }}>
+                    <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, padding: isMobileViewport ? 6 : 10, overflowY: 'auto' }}>
                         {isInitialCalendarLoading ? (
                             <Paper withBorder p="md" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder }}>
                                 <OrigamiLoadingAnimation label="Loading calendar..." minHeight={300} />
@@ -871,18 +907,18 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                                         >
                                             <Group justify="space-between" align="center" wrap="nowrap" mb={4}>
                                                 <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-                                                    <Text fw={800} size="lg" c={palette.textMain} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                    <Text fw={800} size={isMobileViewport ? 'md' : 'lg'} c={palette.textMain} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                         {resource.title}
                                                     </Text>
                                                     <Badge size="sm" variant="light" color={resource.is_planned ? 'violet' : 'gray'}>
                                                         {resource.is_planned ? 'PLANNED' : 'COMPLETED'}
                                                     </Badge>
                                                 </Group>
-                                                <Text fw={800} size="xl" c={palette.textDim}>
+                                                <Text fw={800} size={isMobileViewport ? 'lg' : 'xl'} c={palette.textDim}>
                                                     {durationText}
                                                 </Text>
                                             </Group>
-                                            <Text size="md" c={palette.textDim}>
+                                            <Text size={isMobileViewport ? 'sm' : 'md'} c={palette.textDim}>
                                                 {distanceKm > 0 ? `${distanceKm.toFixed(1)}km` : '-'} · {metricText}{hrText ? ` · ${hrText}` : ''}
                                             </Text>
                                             {resource.is_planned && resource.created_by_name && (
