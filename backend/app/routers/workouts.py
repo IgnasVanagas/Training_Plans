@@ -18,8 +18,11 @@ async def create_workout(
     current_user: models.User = Depends(get_current_user),
     db: AsyncSession = Depends(database.get_db),
 ):
+    if workout.tags is None:
+        workout.tags = []
+        
     # Convert Pydantic model to dict, ensuring nested models are also converted
-    workout_data = workout.dict()
+    workout_data = workout.model_dump()
     
     db_workout = models.StructuredWorkout(
         **workout_data,
@@ -30,6 +33,51 @@ async def create_workout(
     await db.commit()
     await db.refresh(db_workout)
     return db_workout
+
+@router.patch("/{workout_id}", response_model=schemas.StructuredWorkoutOut)
+async def update_workout_library(
+    workout_id: int,
+    workout_update: schemas.StructuredWorkoutUpdate,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(database.get_db),
+):
+    stmt = select(models.StructuredWorkout).where(
+        models.StructuredWorkout.id == workout_id,
+        models.StructuredWorkout.coach_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    db_workout = result.scalar_one_or_none()
+    
+    if not db_workout:
+        raise HTTPException(status_code=404, detail="Workout not found")
+        
+    update_data = workout_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_workout, field, value)
+        
+    await db.commit()
+    await db.refresh(db_workout)
+    return db_workout
+
+@router.delete("/{workout_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_workout_library(
+    workout_id: int,
+    current_user: models.User = Depends(get_current_user),
+    db: AsyncSession = Depends(database.get_db),
+):
+    stmt = select(models.StructuredWorkout).where(
+        models.StructuredWorkout.id == workout_id,
+        models.StructuredWorkout.coach_id == current_user.id
+    )
+    result = await db.execute(stmt)
+    db_workout = result.scalar_one_or_none()
+    
+    if not db_workout:
+        raise HTTPException(status_code=404, detail="Workout not found")
+        
+    await db.delete(db_workout)
+    await db.commit()
+    return None
 
 @router.get("/", response_model=List[schemas.StructuredWorkoutOut])
 async def read_workouts(

@@ -276,6 +276,88 @@ async def add_acknowledgement(
     )
 
 
+@router.get("/acknowledgements/{entity_type}/{entity_id}", response_model=list[CommunicationAcknowledgementOut])
+async def get_acknowledgements(
+    entity_type: str,
+    entity_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[CommunicationAcknowledgementOut]:
+    normalized_entity_type = _normalize_entity_type(entity_type)
+    # Check access
+    await _ensure_access_to_entity(
+        db,
+        current_user=current_user,
+        entity_type=normalized_entity_type,
+        entity_id=entity_id,
+    )
+
+    stmt = (
+        select(CommunicationAcknowledgement)
+        .where(
+            CommunicationAcknowledgement.entity_type == normalized_entity_type,
+            CommunicationAcknowledgement.entity_id == entity_id,
+        )
+        .order_by(CommunicationAcknowledgement.created_at.asc())
+    )
+
+    rows = await db.execute(stmt)
+    return [
+        CommunicationAcknowledgementOut(
+            id=ack.id,
+            entity_type=ack.entity_type,
+            entity_id=ack.entity_id,
+            athlete_id=ack.athlete_id,
+            actor_id=ack.actor_id,
+            action=ack.action,
+            note=ack.note,
+            created_at=ack.created_at,
+        )
+        for ack in rows.scalars().all()
+    ]
+
+
+@router.get("/history/{athlete_id}", response_model=list[CommunicationAcknowledgementOut])
+async def get_communication_history(
+    athlete_id: int,
+    limit: int = Query(default=100, ge=1, le=500),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[CommunicationAcknowledgementOut]:
+    if current_user.id != athlete_id:
+        # Check if coach has access
+        if current_user.role != RoleEnum.coach:
+             raise HTTPException(status_code=403, detail="Not authorized")
+        
+        shared_org_ids = await get_shared_org_ids(db, current_user.id, athlete_id)
+        if not shared_org_ids:
+            raise HTTPException(status_code=403, detail="No shared organization with athlete")
+
+    stmt = (
+        select(CommunicationAcknowledgement)
+        .where(CommunicationAcknowledgement.athlete_id == athlete_id)
+        # Filter for coach notes or acknowledgements, usually history implies notes
+        .where(CommunicationAcknowledgement.note != None) 
+        .order_by(CommunicationAcknowledgement.created_at.desc())
+        .limit(limit)
+    )
+
+    rows = await db.execute(stmt)
+    return [
+        CommunicationAcknowledgementOut(
+            id=ack.id,
+            entity_type=ack.entity_type,
+            entity_id=ack.entity_id,
+            athlete_id=ack.athlete_id,
+            actor_id=ack.actor_id,
+            action=ack.action,
+            note=ack.note,
+            created_at=ack.created_at,
+        )
+        for ack in rows.scalars().all()
+    ]
+
+
 @router.get("/notifications", response_model=NotificationsFeedOut)
 async def get_notifications_feed(
     limit: int = Query(default=40, ge=1, le=200),

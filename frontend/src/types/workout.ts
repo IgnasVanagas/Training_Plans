@@ -43,6 +43,8 @@ export interface WorkoutStructure {
     sport_type: string;
     description?: string;
     structure: WorkoutNode[];
+    tags?: string[];
+    is_favorite?: boolean;
 }
 
 export interface SavedWorkout extends WorkoutStructure {

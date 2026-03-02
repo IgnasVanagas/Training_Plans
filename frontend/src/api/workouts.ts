@@ -15,3 +15,12 @@ export const createWorkout = async (workout: WorkoutStructure): Promise<SavedWor
     const response = await client.post<SavedWorkout>('/workouts/', workout);
     return response.data;
 };
+
+export const updateWorkout = async (id: number, updates: Partial<WorkoutStructure>): Promise<SavedWorkout> => {
+    const response = await client.patch<SavedWorkout>(`/workouts/${id}`, updates);
+    return response.data;
+};
+
+export const deleteWorkout = async (id: number): Promise<void> => {
+    await client.delete(`/workouts/${id}`);
+};

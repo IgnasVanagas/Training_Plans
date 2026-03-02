@@ -1911,7 +1911,17 @@ async def get_activities(
             total_load_impact = round((aerobic_load or 0) + (anaerobic_load or 0), 1)
 
         payload = _as_stream_payload(activity.streams)
-        rpe, notes = _activity_feedback_from_payload(payload)
+        
+        # Prefer new columns, fallback to streams (legacy)
+        rpe = activity.rpe
+        notes = activity.notes
+        if rpe is None or notes is None:
+            legacy_rpe, legacy_notes = _activity_feedback_from_payload(payload)
+            if rpe is None:
+                rpe = legacy_rpe
+            if notes is None:
+                notes = legacy_notes
+            
         out.append(
             ActivityOut(
                 id=activity.id,
@@ -2091,8 +2101,8 @@ async def get_activity(
         aerobic_load=aerobic_load,
         anaerobic_load=anaerobic_load,
         total_load_impact=round(aerobic_load + anaerobic_load, 1),
-        rpe=_activity_feedback_from_payload(stored_data)[0],
-        notes=_activity_feedback_from_payload(stored_data)[1],
+        rpe=activity.rpe if activity.rpe is not None else _activity_feedback_from_payload(stored_data)[0],
+        notes=activity.notes if activity.notes is not None else _activity_feedback_from_payload(stored_data)[1],
     )
     return activity_response
 
@@ -2135,9 +2145,14 @@ async def update_activity_feedback(
 
     update_data = payload.model_dump(exclude_unset=True)
     if "rpe" in update_data:
-        meta["rpe"] = update_data.get("rpe")
+        rpe_val = update_data.get("rpe")
+        activity.rpe = rpe_val
+        meta["rpe"] = rpe_val # Keep sync for now
     if "notes" in update_data:
-        meta["notes"] = update_data.get("notes")
+        notes_val = update_data.get("notes")
+        activity.notes = notes_val
+        meta["notes"] = notes_val # Keep sync for now
+
     stored_data["_meta"] = meta
 
     split_annotations = update_data.get("split_annotations") or []

@@ -39,6 +39,10 @@ class PlannedWorkout(Base):
     planned_intensity = Column(String(50), nullable=True)
     structure = Column(JSONB, nullable=True)
     
+    # Execution / Feedback
+    rpe = Column(Float, nullable=True) # 1-10
+    notes = Column(Text, nullable=True) # User feedback
+
     compliance_status = Column(Enum(ComplianceStatusEnum), default=ComplianceStatusEnum.planned, nullable=False)
 
     user = relationship("User", back_populates="planned_workouts", foreign_keys=[user_id])
@@ -143,6 +147,10 @@ class Activity(Base):
     average_hr = Column(Float, nullable=True)
     average_watts = Column(Float, nullable=True)
 
+    # User Feedback
+    rpe = Column(Float, nullable=True) # 1-10
+    notes = Column(Text, nullable=True) # User feedback
+
     streams = Column(JSONB, nullable=True)
 
     athlete = relationship("User", back_populates="activities")
@@ -158,6 +166,11 @@ class StructuredWorkout(Base):
     description = Column(String, nullable=True)
     sport_type = Column(String(50), nullable=False) # RUNNING, CYCLING
     structure = Column(JSONB, nullable=False)
+    
+    # Library features
+    tags = Column(JSONB, nullable=True, default=[])
+    is_favorite = Column(Boolean, default=False, nullable=False)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

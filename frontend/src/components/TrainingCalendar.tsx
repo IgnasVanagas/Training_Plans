@@ -7,6 +7,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
+import { SavedWorkout } from '../types/workout';
 import { Group, Stack, Text, Box, useComputedColorScheme, Paper, Badge } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useMediaQuery } from '@mantine/hooks';
@@ -47,7 +48,21 @@ const DnDCalendar = withDragAndDrop(Calendar);
 const WEEKDAY_HEADER_HEIGHT = 36;
 const WEEKLY_TOTALS_PANEL_WIDTH = 324;
 
-export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialViewDate }: { athleteId?: number | null, allAthletes?: boolean, athletes?: any[], initialViewDate?: string | null }) => {
+export const TrainingCalendar = ({ 
+    athleteId, 
+    allAthletes, 
+    athletes, 
+    initialViewDate,
+    draggedWorkout,
+    onWorkoutDrop 
+}: { 
+    athleteId?: number | null, 
+    allAthletes?: boolean, 
+    athletes?: any[], 
+    initialViewDate?: string | null,
+    draggedWorkout?: SavedWorkout | null,
+    onWorkoutDrop?: (workout: SavedWorkout, date: Date) => void
+}) => {
     const navigate = useNavigate();
     const isDark = useComputedColorScheme('light') === 'dark';
     const isMobileViewport = useMediaQuery('(max-width: 62em)');
@@ -341,6 +356,29 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
             updateMutation.mutate({ id: event.resource.id, data: { date: dateStr } });
         }
     }, [updateMutation, canEditWorkouts]);
+
+    const onDropFromOutside = useCallback(({ start }: { start: string | Date }) => {
+        if (!canEditWorkouts) return;
+        const startDate = typeof start === 'string' ? new Date(start) : start;
+        if (draggedWorkout) {
+             const dateStr = format(startDate, 'yyyy-MM-dd');
+             // Create planned workout from template
+             const newEvent: CalendarEvent = {
+                 title: draggedWorkout.title,
+                 date: dateStr,
+                 sport_type: draggedWorkout.sport_type,
+                 structure: draggedWorkout.structure,
+                 description: draggedWorkout.description,
+                 is_planned: true,
+                 user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
+                 planned_duration: 60 // Default or calculate from structure?
+             };
+             // Use existing create mutation
+             createMutation.mutate(newEvent);
+             
+             if (onWorkoutDrop) onWorkoutDrop(draggedWorkout, startDate);
+        }
+    }, [draggedWorkout, onWorkoutDrop, canEditWorkouts, athleteId, athletes, createMutation]);
 
     const [dayEvents, setDayEvents] = useState<CalendarEvent[]>([]);
     const [dayModalOpen, { open: openDayModal, close: closeDayModal }] = useDisclosure(false);
@@ -946,6 +984,7 @@ export const TrainingCalendar = ({ athleteId, allAthletes, athletes, initialView
                                         startAccessor={(e: any) => e.start}
                                         endAccessor={(e: any) => e.end}
                                         onEventDrop={onEventDrop}
+                                        onDropFromOutside={onDropFromOutside}
                                         selectable
                                         onSelectSlot={handleSlotSelection}
                                         onSelectEvent={handleSelectEvent}

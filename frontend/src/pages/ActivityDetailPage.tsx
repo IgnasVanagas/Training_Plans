@@ -11,6 +11,8 @@ import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
 import OrigamiLoadingAnimation from "../components/common/OrigamiLoadingAnimation";
 import { readSnapshot, writeSnapshot } from "../utils/localSnapshot";
+import { CommentsPanel } from "../components/activityDetail/CommentsPanel";
+import { SessionFeedbackPanel } from "../components/activityDetail/SessionFeedbackPanel";
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -23,6 +25,7 @@ L.Icon.Default.mergeOptions({
 
 type ActivityDetail = {
   id: number;
+  athlete_id: number;
   filename: string;
   created_at: string;
   sport: string;
@@ -1253,48 +1256,9 @@ export const ActivityDetailPage = () => {
                             </Stack>
                         </Modal>
 
-                    <Paper withBorder p="md" radius="lg" mb="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
-                        <Group justify="space-between" align="flex-start" mb="sm">
-                            <Stack gap={2}>
-                                <Title order={5} c={ui.textMain}>Session Feedback</Title>
-                                <Text size="xs" c={ui.textDim}>Keep it short: RPE and one note. Coaches can update this too.</Text>
-                            </Stack>
-                            <Button
-                                size="xs"
-                                radius="md"
-                                style={{ background: ui.accent }}
-                                loading={updateActivityMutation.isPending}
-                                onClick={() => {
-                                    updateActivityMutation.mutate({
-                                        rpe: activityRpe,
-                                        notes: activityNotes.trim() ? activityNotes.trim() : null
-                                    });
-                                }}
-                            >
-                                Save Feedback
-                            </Button>
-                        </Group>
-                        <Group align="flex-start" grow>
-                            <NumberInput
-                                label="RPE"
-                                description="1-10"
-                                min={1}
-                                max={10}
-                                value={activityRpe === null ? undefined : activityRpe}
-                                onChange={(val) => setActivityRpe(typeof val === 'number' ? val : null)}
-                            />
-                            <Textarea
-                                label="Notes"
-                                placeholder="How did this session feel?"
-                                minRows={2}
-                                maxLength={400}
-                                value={activityNotes}
-                                onChange={(e) => setActivityNotes(e.currentTarget.value)}
-                            />
-                        </Group>
-                    </Paper>
-
-                    <Grid gutter="sm">
+                    {/* Main Content Grid */}
+                    <Grid gutter="md">
+                        {/* LEFT COLUMN: Data & Analysis (8 cols) */}
                         <Grid.Col span={{ base: 12, md: 8 }}>
                              <Stack gap="sm">
                                 {/* Charts Section */}
@@ -1708,8 +1672,16 @@ export const ActivityDetailPage = () => {
                              </Stack>
                         </Grid.Col>
                         
-                        <Grid.Col span={{ base: 12, md: focusMode ? 12 : 4 }}>
+                        {/* RIGHT COLUMN: Map, Feedback, Stats, Comments (4 cols) */}
+                        <Grid.Col span={{ base: 12, md: 4 }}>
                             <Stack>
+                                {/* Feedback Panel - Prominent at top of sidebar */}
+                                <SessionFeedbackPanel 
+                                    activityId={Number(id)}
+                                    initialActivity={activity}
+                                    canEdit={me?.id === activity.athlete_id}
+                                />
+
                                 {/* Map */}
                                 {routePositions.length > 0 ? (
                                     <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
@@ -1737,6 +1709,10 @@ export const ActivityDetailPage = () => {
                                     </Paper>
                                 )}
                                 
+                                <Box>
+                                    <CommentsPanel entityType="activity" entityId={Number(id)} athleteId={activity.athlete_id} />
+                                </Box>
+
                                 {/* Detailed Stats */}
                                 <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
                                     <Title order={5} mb="md" c={ui.textMain}>Detailed Stats</Title>

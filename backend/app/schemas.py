@@ -484,10 +484,22 @@ class StructuredWorkoutCreate(BaseModel):
     description: Optional[str] = None
     sport_type: str
     structure: List[Union[ConcreteStep, RepeatStep]]
+    tags: Optional[List[str]] = None
+    is_favorite: Optional[bool] = False
+
+class StructuredWorkoutUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    sport_type: Optional[str] = None
+    structure: Optional[List[Union[ConcreteStep, RepeatStep]]] = None
+    tags: Optional[List[str]] = None
+    is_favorite: Optional[bool] = None
 
 class StructuredWorkoutOut(StructuredWorkoutCreate):
     id: int
     coach_id: int
+    tags: List[str] = []
+    is_favorite: bool = False
     created_at: datetime
     updated_at: datetime
     
