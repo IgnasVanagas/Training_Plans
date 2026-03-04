@@ -336,7 +336,7 @@ async def delete_workout(
     workout = result.scalars().first()
     
     if not workout:
-        raise HTTPException(status_code=404, detail="Workout not found")
+        return {"status": "success", "deleted": False}
 
     # Permission check
     if current_user.role == RoleEnum.coach:
@@ -355,7 +355,7 @@ async def delete_workout(
     # Re-score to clear compliance if needed (e.g. if an activity was matched to this)
     await match_and_score(db, target_user_id, target_date)
     
-    return {"status": "success"}
+    return {"status": "success", "deleted": True}
 
 @router.post("/{workout_id}/copy", response_model=PlannedWorkoutOut)
 async def copy_workout(

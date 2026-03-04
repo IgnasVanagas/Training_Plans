@@ -1,15 +1,18 @@
-import { Container, Modal, Select, Text, useComputedColorScheme } from "@mantine/core";
+import { Container, Modal, Select, Text, useComputedColorScheme, Button, Flex, Box, Group } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { endOfWeek, endOfMonth, format, startOfWeek, startOfMonth } from "date-fns";
+import { IconBooks, IconX } from "@tabler/icons-react";
 import api from "../api/client";
 import { getWellnessSummary, listIntegrationProviders, logManualWellness } from "../api/integrations";
 import { ActivitiesView } from "../components/ActivitiesView";
 import OrigamiLoadingAnimation from "../components/common/OrigamiLoadingAnimation";
 import { TrainingCalendar } from "../components/TrainingCalendar";
+import { WorkoutLibrary } from "../components/library/WorkoutLibrary";
+import { SavedWorkout } from "../types/workout";
 import { MetricHistoryModal } from "../components/dashboard/MetricHistoryModal";
 import ActivityUploadPanel from "../components/dashboard/ActivityUploadPanel";
 import DashboardAthleteHome from "./dashboard/DashboardAthleteHome";
@@ -43,6 +46,7 @@ const toLocalDateKey = (value: Date): string => {
 
 const Dashboard = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const navigationState = (location.state || {}) as {
     activeTab?: "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
     selectedAthleteId?: string | null;
@@ -56,13 +60,41 @@ const Dashboard = () => {
     navigationState.activeTab || "dashboard",
   );
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(navigationState.selectedAthleteId ?? null);
-  const [calendarViewDate] = useState<string | null>(navigationState.calendarDate ?? null);
+  const initialCalendarViewDate = useMemo(() => {
+    const navEntry = (typeof window !== "undefined"
+      ? (window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)
+      : undefined);
+    const isReload = navEntry?.type === "reload";
+    if (isReload) return null;
+    return navigationState.calendarDate ?? null;
+  }, [navigationState.calendarDate]);
+  const [calendarViewDate] = useState<string | null>(initialCalendarViewDate);
   const [selectedMetric, setSelectedMetric] = useState<MetricKey | null>(null);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [draggedWorkout, setDraggedWorkout] = useState<SavedWorkout | null>(null);
   const [uploadModalOpened, setUploadModalOpened] = useState(false);
   const [profileMetricHistory, setProfileMetricHistory] = useState<ProfileMetricSnapshot[]>([]);
   const [manualMetricDate, setManualMetricDate] = useState<Date | null>(new Date());
   const [manualMetricValue, setManualMetricValue] = useState<number | "">("");
   const isMobile = useMediaQuery("(max-width: 48em)");
+
+  useEffect(() => {
+    const hasTransientState = Boolean(
+      navigationState.activeTab !== undefined ||
+      navigationState.selectedAthleteId !== undefined ||
+      navigationState.calendarDate !== undefined,
+    );
+    if (!hasTransientState) return;
+
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [
+    location.pathname,
+    location.search,
+    navigate,
+    navigationState.activeTab,
+    navigationState.calendarDate,
+    navigationState.selectedAthleteId,
+  ]);
 
   const queryClient = useQueryClient();
   const isDark = useComputedColorScheme("light") === "dark";
@@ -600,12 +632,41 @@ const Dashboard = () => {
             showUploadSection={false}
           />
         ) : activeTab === "plan" ? (
-          <TrainingCalendar
-            athleteId={athleteIdNum}
-            allAthletes={me.role === "coach" && !athleteIdNum}
-            athletes={me.role === "coach" ? athletesQuery.data || [] : []}
-            initialViewDate={calendarViewDate}
-          />
+          <Flex direction="column" gap="xs" h="calc(100vh - 140px)">
+             <Group justify="flex-end">
+                <Button 
+                    variant={showLibrary ? "light" : "outline"}
+                    size="xs"
+                    leftSection={showLibrary ? <IconX size={14} /> : <IconBooks size={14} />}
+                    onClick={() => setShowLibrary(!showLibrary)}
+                >
+                    {showLibrary ? "Close Library" : "Library"}
+                </Button>
+             </Group>
+             <Flex style={{ flex: 1, minHeight: 0 }} gap="md">
+                <Box style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                  <TrainingCalendar
+                    athleteId={athleteIdNum}
+                    allAthletes={me.role === "coach" && !athleteIdNum}
+                    athletes={me.role === "coach" ? athletesQuery.data || [] : []}
+                    initialViewDate={calendarViewDate}
+                    draggedWorkout={draggedWorkout}
+                    onWorkoutDrop={(w, d) => {
+                        setDraggedWorkout(null);
+                        notifications.show({ title: 'Workout Scheduled', message: `${w.title} on ${format(d, 'MMM do')}` });
+                    }}
+                  />
+                </Box>
+                {showLibrary && (
+                    <Box w={320} style={{ borderLeft: '1px solid var(--mantine-color-default-border)' }}>
+                        <WorkoutLibrary 
+                            onDragStart={setDraggedWorkout} 
+                            onDragEnd={() => setDraggedWorkout(null)}
+                        />
+                    </Box>
+                )}
+             </Flex>
+          </Flex>
         ) : activeTab === "notifications" ? (
           <DashboardNotificationsTab
             me={me}

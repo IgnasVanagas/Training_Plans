@@ -23,6 +23,7 @@ async def ingest_provider_activity(
     average_watts: float | None,
     average_speed: float | None,
     payload: dict | None,
+    auto_commit: bool = True,
 ) -> tuple[Activity, bool]:
     ts = start_time
     if ts.tzinfo is not None:
@@ -88,8 +89,11 @@ async def ingest_provider_activity(
                 },
             }
             db.add(duplicate)
-            await db.commit()
-            await db.refresh(duplicate)
+            if auto_commit:
+                await db.commit()
+                await db.refresh(duplicate)
+            else:
+                await db.flush()
         return duplicate, False
 
     activity = Activity(
@@ -123,6 +127,9 @@ async def ingest_provider_activity(
         },
     )
     db.add(activity)
-    await db.commit()
-    await db.refresh(activity)
+    if auto_commit:
+        await db.commit()
+        await db.refresh(activity)
+    else:
+        await db.flush()
     return activity, True

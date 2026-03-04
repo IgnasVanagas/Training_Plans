@@ -1,2 +1,2 @@
-﻿WEB_URL=http://192.168.1.98:3000
-QR_IMAGE=https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=http%3A%2F%2F192.168.1.98%3A3000
+﻿WEB_URL=http://10.180.248.166:3000
+QR_IMAGE=https://api.qrserver.com/v1/create-qr-code/?size=360x360&data=http%3A%2F%2F10.180.248.166%3A3000

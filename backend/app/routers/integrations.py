@@ -592,8 +592,10 @@ async def _sync_provider_task(provider: str, user_id: int):
             strava_auto_backfill_delay_seconds = max(0.0, float(os.getenv("STRAVA_AUTO_BACKFILL_DELAY_SECONDS", "8")))
             strava_auto_backfill_max_phases = max(0, int(os.getenv("STRAVA_AUTO_BACKFILL_MAX_PHASES", "0")))
             strava_phase_index = 0
+            sync_progress_step = max(1, int(os.getenv("INTEGRATION_SYNC_PROGRESS_STEP", "5")))
+            ingest_commit_batch = max(1, int(os.getenv("INTEGRATION_SYNC_INGEST_COMMIT_BATCH", "20")))
             strava_recent_only_once = provider == "strava" and bool((state.cursor or {}).get("strava_recent_only_once"))
-            strava_no_auto_history = provider == "strava" and bool((state.cursor or {}).get("strava_no_auto_history", True))
+            strava_no_auto_history = provider == "strava" and bool((state.cursor or {}).get("strava_no_auto_history", False))
 
             async def _is_cancel_requested() -> bool:
                 latest_state = await db.scalar(select(ProviderSyncState).where(ProviderSyncState.id == state.id))
@@ -625,8 +627,10 @@ async def _sync_provider_task(provider: str, user_id: int):
 
             # Progress callback to update DB
             async def progress_callback(fetched_count: int):
-                # Update progress in DB every time? Or batch?
-                # Updating every request (10 items) is fine.
+                if fetched_count % sync_progress_step != 0:
+                    if await _is_cancel_requested():
+                        raise RuntimeError("SYNC_CANCELLED_BY_USER")
+                    return
                 suffix = ""
                 if provider == "strava":
                     requests_last_10m = (state.cursor or {}).get("strava_requests_last_10m")
@@ -726,12 +730,14 @@ async def _sync_provider_task(provider: str, user_id: int):
                     suffix = ""
                     if provider == "strava":
                         suffix = " Recent first; full history appears progressively."
-                    await db.execute(
-                        update(ProviderSyncState)
-                        .where(ProviderSyncState.id == state.id)
-                        .values(sync_progress=index + 1, sync_total=total_items, sync_message=f"Saving activity {index+1}/{total_items}...{suffix}")
-                    )
-                    await db.commit()
+                    should_write_progress = ((index + 1) % sync_progress_step == 0) or (index + 1 == total_items)
+                    if should_write_progress:
+                        await db.execute(
+                            update(ProviderSyncState)
+                            .where(ProviderSyncState.id == state.id)
+                            .values(sync_progress=index + 1, sync_total=total_items, sync_message=f"Saving activity {index+1}/{total_items}...{suffix}")
+                        )
+                        await db.commit()
 
                     should_enrich_this_activity = (
                         provider == "strava"
@@ -823,11 +829,14 @@ async def _sync_provider_task(provider: str, user_id: int):
                         average_watts=record.average_watts,
                         average_speed=record.average_speed,
                         payload=record.payload,
+                        auto_commit=False,
                     )
                     if created:
                         imported += 1
                     else:
                         duplicates += 1
+                    if (index + 1) % ingest_commit_batch == 0:
+                        await db.commit()
                     matched_dates.add(record.start_time.date())
                     if provider == "strava":
                         payload_obj = record.payload if isinstance(record.payload, dict) else {}
@@ -844,6 +853,8 @@ async def _sync_provider_task(provider: str, user_id: int):
                                         matched_dates.add(dt_date.fromisoformat(local_start_text[:10]))
                                     except ValueError:
                                         pass
+
+                await db.commit()
 
                 # Recompute planned-vs-actual matching for all touched dates in this phase.
                 if await _is_cancel_requested():
@@ -1123,9 +1134,10 @@ async def sync_provider_now(
         cursor.pop("cancel_requested", None)
         if requested_mode == "recent":
             cursor["strava_recent_only_once"] = True
+            cursor["strava_no_auto_history"] = True
         else:
             cursor.pop("strava_recent_only_once", None)
-        cursor["strava_no_auto_history"] = True
+            cursor.pop("strava_no_auto_history", None)
         state.cursor = cursor
     else:
         cursor = dict(state.cursor or {})

@@ -63,6 +63,33 @@ export const TrainingCalendar = ({
     draggedWorkout?: SavedWorkout | null,
     onWorkoutDrop?: (workout: SavedWorkout, date: Date) => void
 }) => {
+    const estimatePlannedDurationMinutesFromStructure = (nodes: any[]): number | undefined => {
+        if (!Array.isArray(nodes) || nodes.length === 0) return undefined;
+
+        const estimateNodeSeconds = (node: any): number => {
+            if (!node || typeof node !== 'object') return 0;
+            if (node.type === 'repeat') {
+                const repeats = Math.max(1, Number(node.repeats) || 1);
+                const childSeconds = Array.isArray(node.steps)
+                    ? node.steps.reduce((sum: number, child: any) => sum + estimateNodeSeconds(child), 0)
+                    : 0;
+                return childSeconds * repeats;
+            }
+            if (node.type !== 'block') return 0;
+            const durationType = node.duration?.type;
+            const rawValue = Number(node.duration?.value || 0);
+            if (!Number.isFinite(rawValue) || rawValue <= 0) return 0;
+
+            if (durationType === 'time') return rawValue;
+            if (durationType === 'distance') return rawValue * 0.2;
+            return 0;
+        };
+
+        const totalSeconds = nodes.reduce((sum: number, node: any) => sum + estimateNodeSeconds(node), 0);
+        if (totalSeconds <= 0) return undefined;
+        return Math.max(1, Math.round(totalSeconds / 60));
+    };
+
     const navigate = useNavigate();
     const isDark = useComputedColorScheme('light') === 'dark';
     const isMobileViewport = useMediaQuery('(max-width: 62em)');
@@ -111,6 +138,10 @@ export const TrainingCalendar = ({
     const [bulkApplying, setBulkApplying] = useState(false);
     const parsedInitialViewDate = useMemo(() => {
         if (!initialViewDate) return null;
+        if (/^\d{4}-\d{2}-\d{2}$/.test(initialViewDate)) {
+            const parsedDateOnly = parseDate(initialViewDate);
+            return Number.isNaN(parsedDateOnly.getTime()) ? null : parsedDateOnly;
+        }
         const parsed = new Date(initialViewDate);
         return Number.isNaN(parsed.getTime()) ? null : parsed;
     }, [initialViewDate]);
@@ -341,6 +372,13 @@ export const TrainingCalendar = ({
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['calendar'] });
             close();
+        },
+        onError: (error: any) => {
+            const status = error?.response?.status;
+            if (status === 404) {
+                queryClient.invalidateQueries({ queryKey: ['calendar'] });
+                close();
+            }
         }
     });
 
@@ -462,13 +500,18 @@ export const TrainingCalendar = ({
             return;
         }
         setSaveError(null);
+        const computedDuration = estimatePlannedDurationMinutesFromStructure(selectedEvent.structure as any[]);
+        const payload = {
+            ...selectedEvent,
+            planned_duration: computedDuration ?? selectedEvent.planned_duration,
+        };
         if (selectedEvent.id) {
-            updateMutation.mutate({ id: selectedEvent.id, data: selectedEvent });
+            updateMutation.mutate({ id: selectedEvent.id, data: payload });
             close();
         } else {
              // Create
              // @ts-ignore
-             createMutation.mutate(selectedEvent as CalendarEvent);
+             createMutation.mutate(payload as CalendarEvent);
         }
     };
 
@@ -595,6 +638,45 @@ export const TrainingCalendar = ({
         } catch (error) {
             console.error('Failed to download planned workout', error);
         }
+    };
+
+    const handleLibrarySelect = (workout: SavedWorkout) => {
+        if (!canEditWorkouts) {
+            return;
+        }
+
+        if (selectedEvent.date) {
+            const selectedDate = parseDate(selectedEvent.date);
+            const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            if (selectedDay < today) {
+                setDayCreateError('Creating workouts for yesterday or earlier is disabled.');
+                return;
+            }
+        }
+        if (!ensureAthleteSelectedForCreate()) {
+            return;
+        }
+
+        const targetAthleteId = selectedEvent.user_id || athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined);
+        const dateStr = selectedEvent.date || format(new Date(), 'yyyy-MM-dd');
+
+        const newEvent: CalendarEvent = {
+            title: workout.title,
+            date: dateStr,
+            sport_type: workout.sport_type,
+            structure: workout.structure,
+            description: workout.description,
+            is_planned: true,
+            user_id: targetAthleteId,
+            planned_duration: 60, // Default duration
+            planned_distance: undefined,
+            planned_intensity: undefined
+        };
+
+        createMutation.mutate(newEvent);
+        closeDayModal();
     };
 
     const formatTotalMinutes = (minutes: number) => {
@@ -1049,6 +1131,7 @@ export const TrainingCalendar = ({
                 ensureAthleteSelectedForCreate={ensureAthleteSelectedForCreate}
                 onOpenWorkoutBuilder={open}
                 onCreateQuickWorkout={handleCreateQuickWorkout}
+                onLibrarySelect={handleLibrarySelect}
                 dayCreateError={dayCreateError}
             />
 

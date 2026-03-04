@@ -593,6 +593,8 @@ class StravaConnector(ProviderConnector):
                     logger.info("Strava sync cancellation requested after page. Stopping.")
                     break
 
+        history_items_added = 0
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             should_collect_recent = not history_only_mode
             should_collect_history = not recent_only_mode
@@ -611,8 +613,16 @@ class StravaConnector(ProviderConnector):
             elif should_collect_recent:
                 incremental_max = int(os.getenv("STRAVA_SYNC_MAX_ACTIVITIES", "50"))
                 incremental_max = max(20, min(50, incremental_max))
-                # Always load newest pages first so today/yesterday never depend on cursor correctness.
+                incremental_overlap_seconds = max(0, int(os.getenv("STRAVA_INCREMENTAL_OVERLAP_SECONDS", "900")))
+                # Always load newest pages first so today/yesterday never depend on cursor correctness,
+                # but bound to records newer than our last sync cursor to avoid repeated duplicate scans.
                 incremental_params: dict[str, Any] = {"per_page": min(incremental_max, 50), "page": 1}
+                if after_epoch:
+                    try:
+                        incremental_after = max(0, int(after_epoch) - incremental_overlap_seconds)
+                        incremental_params["after"] = incremental_after
+                    except (TypeError, ValueError):
+                        pass
                 await collect_activity_summaries(
                     client,
                     params=incremental_params,
@@ -621,12 +631,14 @@ class StravaConnector(ProviderConnector):
                 )
 
             if should_collect_history and full_history_enabled and backfill_before_epoch:
+                    history_count_before = len(activities)
                     await collect_activity_summaries(
                         client,
                         params={"per_page": 30, "page": 1, "before": int(backfill_before_epoch)},
                         max_activities=len(activities) + backfill_batch_activities,
                         request_delay_seconds=max(0.0, backfill_request_delay_seconds),
                     )
+                    history_items_added = max(0, len(activities) - history_count_before)
 
         # Safety ordering: always process and save from newest -> oldest.
         activities.sort(key=lambda rec: rec.start_time, reverse=True)
@@ -638,11 +650,19 @@ class StravaConnector(ProviderConnector):
         if newest_start is not None:
             next_cursor["after_epoch"] = int(newest_start.replace(tzinfo=timezone.utc).timestamp())
         if oldest_start is not None:
-            next_cursor["backfill_before_epoch"] = int(oldest_start.replace(tzinfo=timezone.utc).timestamp())
+            oldest_epoch = int(oldest_start.replace(tzinfo=timezone.utc).timestamp())
+            existing_backfill = next_cursor.get("backfill_before_epoch")
+            if existing_backfill is not None:
+                try:
+                    next_cursor["backfill_before_epoch"] = min(int(existing_backfill), oldest_epoch)
+                except (TypeError, ValueError):
+                    next_cursor["backfill_before_epoch"] = oldest_epoch
+            else:
+                next_cursor["backfill_before_epoch"] = oldest_epoch
         if not initial_sync_done:
             next_cursor["initial_sync_done"] = True
 
-        if full_history_enabled and initial_sync_done and backfill_before_epoch and len(activities) == 0:
+        if should_collect_history and full_history_enabled and initial_sync_done and backfill_before_epoch and history_items_added == 0:
             next_cursor["full_backfill_once_done"] = True
             next_cursor.pop("backfill_before_epoch", None)
 

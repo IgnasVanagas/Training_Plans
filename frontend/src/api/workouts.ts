@@ -1,8 +1,8 @@
 import client from './client';
 import { WorkoutStructure, SavedWorkout } from '../types/workout';
 
-export const getWorkouts = async (): Promise<SavedWorkout[]> => {
-    const response = await client.get<SavedWorkout[]>('/workouts/');
+export const getWorkouts = async (params?: { limit?: number; skip?: number }): Promise<SavedWorkout[]> => {
+    const response = await client.get<SavedWorkout[]>('/workouts/', { params });
     return response.data;
 };
 

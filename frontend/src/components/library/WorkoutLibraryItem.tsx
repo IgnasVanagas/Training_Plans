@@ -11,9 +11,10 @@ interface WorkoutLibraryItemProps {
     onEdit: (e: React.MouseEvent, workout: SavedWorkout) => void;
     onDragStart: (e: React.DragEvent, workout: SavedWorkout) => void;
     onDragEnd?: (e: React.DragEvent) => void;
+    onSelect?: (workout: SavedWorkout) => void;
 }
 
-export const WorkoutLibraryItem = ({ workout, onToggleFavorite, onDelete, onEdit, onDragStart, onDragEnd }: WorkoutLibraryItemProps) => {
+export const WorkoutLibraryItem = ({ workout, onToggleFavorite, onDelete, onEdit, onDragStart, onDragEnd, onSelect }: WorkoutLibraryItemProps) => {
     const handleDragStart = (e: React.DragEvent) => {
         // Set drag data for HTML5 DnD
         e.dataTransfer.setData('application/json', JSON.stringify(workout));
@@ -26,14 +27,19 @@ export const WorkoutLibraryItem = ({ workout, onToggleFavorite, onDelete, onEdit
             withBorder 
             padding="sm" 
             radius="md" 
-            draggable 
+            draggable={!onSelect} // Disable drag if in select mode? Or keep both? Keeping drag might be confusing in modal. Let's start with drag enabled only if no onSelect? actually keep both.
             onDragStart={handleDragStart} 
             onDragEnd={onDragEnd}
-            style={{ cursor: 'grab', marginBottom: '8px' }}
+            onClick={() => onSelect?.(workout)}
+            style={{ 
+                cursor: onSelect ? 'pointer' : 'grab', 
+                marginBottom: '8px',
+                borderColor: onSelect ? 'var(--mantine-color-blue-filled)' : undefined // Highlight if selectable? Maybe just regular border.
+            }}
         >
             <Group justify="space-between" align="start" wrap="nowrap">
                 <Group gap="xs" style={{ flex: 1, minWidth: 0 }}>
-                    <IconGripVertical size={16} style={{ color: 'var(--mantine-color-gray-5)', flexShrink: 0 }} />
+                    {!onSelect && <IconGripVertical size={16} style={{ color: 'var(--mantine-color-gray-5)', flexShrink: 0 }} />}
                     <Stack gap={2} style={{ minWidth: 0 }}>
                         <Text fw={500} size="sm" truncate>{workout.title}</Text>
                         {workout.description && (

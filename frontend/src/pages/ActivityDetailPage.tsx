@@ -1669,49 +1669,6 @@ export const ActivityDetailPage = () => {
                                         </Table>
                                     </Paper>
                                 )}
-                             </Stack>
-                        </Grid.Col>
-                        
-                        {/* RIGHT COLUMN: Map, Feedback, Stats, Comments (4 cols) */}
-                        <Grid.Col span={{ base: 12, md: 4 }}>
-                            <Stack>
-                                {/* Feedback Panel - Prominent at top of sidebar */}
-                                <SessionFeedbackPanel 
-                                    activityId={Number(id)}
-                                    initialActivity={activity}
-                                    canEdit={me?.id === activity.athlete_id}
-                                />
-
-                                {/* Map */}
-                                {routePositions.length > 0 ? (
-                                    <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
-                                        <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
-                                            <TileLayer
-                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                            />
-                                            <Polyline positions={routePositions} color="blue" weight={4} />
-                                        </MapContainer>
-                                    </Paper>
-                                ) : (
-                                    <Paper
-                                        withBorder
-                                        p="xl"
-                                        radius="lg"
-                                        h={200}
-                                        bg={ui.surface}
-                                        style={{ borderColor: ui.border }}
-                                    >
-                                        <Stack align="center" justify="center" h="100%">
-                                            <IconMap size={40} color="gray" />
-                                            <Text c={ui.textDim}>No map data available (Virtual Ride or Indoor)</Text>
-                                        </Stack>
-                                    </Paper>
-                                )}
-                                
-                                <Box>
-                                    <CommentsPanel entityType="activity" entityId={Number(id)} athleteId={activity.athlete_id} />
-                                </Box>
 
                                 {/* Detailed Stats */}
                                 <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
@@ -1816,6 +1773,50 @@ export const ActivityDetailPage = () => {
                                          </Group>
                                     </Stack>
                                 </Paper>
+
+                             </Stack>
+                        </Grid.Col>
+                        
+                        {/* RIGHT COLUMN: Map, Feedback, Stats, Comments (4 cols) */}
+                        <Grid.Col span={{ base: 12, md: 4 }}>
+                            <Stack>
+                                {/* Feedback Panel - Prominent at top of sidebar */}
+                                <SessionFeedbackPanel 
+                                    activityId={Number(id)}
+                                    initialActivity={activity}
+                                    canEdit={me?.id === activity.athlete_id}
+                                />
+
+                                {/* Map */}
+                                {routePositions.length > 0 ? (
+                                    <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
+                                        <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
+                                            <TileLayer
+                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                            />
+                                            <Polyline positions={routePositions} color="blue" weight={4} />
+                                        </MapContainer>
+                                    </Paper>
+                                ) : (
+                                    <Paper
+                                        withBorder
+                                        p="xl"
+                                        radius="lg"
+                                        h={200}
+                                        bg={ui.surface}
+                                        style={{ borderColor: ui.border }}
+                                    >
+                                        <Stack align="center" justify="center" h="100%">
+                                            <IconMap size={40} color="gray" />
+                                            <Text c={ui.textDim}>No map data available (Virtual Ride or Indoor)</Text>
+                                        </Stack>
+                                    </Paper>
+                                )}
+                                
+                                <Box>
+                                    <CommentsPanel entityType="activity" entityId={Number(id)} athleteId={activity.athlete_id} />
+                                </Box>
                             </Stack>
                         </Grid.Col>
                     </Grid>

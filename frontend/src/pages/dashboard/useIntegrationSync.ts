@@ -27,6 +27,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
   const [cancelingProvider, setCancelingProvider] = useState<string | null>(null);
   const [syncingProvider, setSyncingProvider] = useState<string | null>(null);
   const autoSyncRequestedRef = useRef<Set<string>>(new Set());
+  const lastLiveRefreshAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (!syncingProvider) return;
@@ -55,6 +56,10 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
           queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
           queryClient.invalidateQueries({ queryKey: ["wellness-summary"] });
           queryClient.invalidateQueries({ queryKey: ["activities"] });
+          queryClient.invalidateQueries({ queryKey: ["calendar"] });
+          queryClient.invalidateQueries({ queryKey: ["zone-summary"] });
+          queryClient.invalidateQueries({ queryKey: ["training-status"] });
+          queryClient.invalidateQueries({ queryKey: ["training-status-history"] });
           return;
         }
 
@@ -71,6 +76,8 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
           });
           setSyncingProvider(null);
           queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
+          queryClient.invalidateQueries({ queryKey: ["calendar"] });
+          queryClient.invalidateQueries({ queryKey: ["activities"] });
           return;
         }
 
@@ -86,6 +93,17 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
             withCloseButton: false,
             position: "bottom-right",
           });
+
+          // Live-refresh key dashboards while sync is active so newly imported
+          // activities appear without manual page reload.
+          const now = Date.now();
+          if (now - lastLiveRefreshAtRef.current >= 8000) {
+            lastLiveRefreshAtRef.current = now;
+            queryClient.invalidateQueries({ queryKey: ["activities"] });
+            queryClient.invalidateQueries({ queryKey: ["calendar"] });
+            queryClient.invalidateQueries({ queryKey: ["zone-summary"] });
+            queryClient.invalidateQueries({ queryKey: ["training-status"] });
+          }
           return;
         }
 

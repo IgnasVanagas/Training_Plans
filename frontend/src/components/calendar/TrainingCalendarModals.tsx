@@ -1,8 +1,10 @@
 import { format } from 'date-fns';
 import { Activity, CheckCircle } from 'lucide-react';
-import { Alert, Box, Button, Container, Divider, Group, Modal, NumberInput, Paper, Select, Stack, Text } from '@mantine/core';
+import { Alert, Box, Button, Container, Divider, Group, Modal, NumberInput, Paper, Select, Stack, SegmentedControl, Text } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
+import { useState } from 'react';
 import { WorkoutEditor } from '../builder/WorkoutEditor';
+import { WorkoutLibrary } from '../library/WorkoutLibrary';
 import { CalendarEvent } from './types';
 import { formatMinutesHm } from './dateUtils';
 import { DayEventItem } from './TrainingCalendarEventRenderers';
@@ -28,10 +30,14 @@ export const DayDetailsModal = ({
   ensureAthleteSelectedForCreate,
   onOpenWorkoutBuilder,
   onCreateQuickWorkout,
+  onLibrarySelect,
   dayCreateError,
   activityColors,
   palette,
-}: any) => (
+}: any) => {
+  const [createMode, setCreateMode] = useState<'quick' | 'library'>('quick');
+
+  return (
   <Modal
     opened={opened}
     onClose={onClose}
@@ -86,9 +92,23 @@ export const DayDetailsModal = ({
                       setDayCreateError(null);
                     }}
                     searchable
+                    mb="xs"
                   />
                 )}
 
+                <SegmentedControl 
+                    value={createMode}
+                    onChange={(val: any) => setCreateMode(val)}
+                    data={[
+                        { label: 'Quick Workout', value: 'quick' },
+                        { label: 'Library', value: 'library' }
+                    ]}
+                    fullWidth
+                    mb="sm"
+                />
+
+                {createMode === 'quick' ? (
+                  <>
                 <Group grow>
                   <Select
                     label="Sport"
@@ -195,6 +215,19 @@ export const DayDetailsModal = ({
                     Add Quick Workout
                   </Button>
                 </Group>
+                  </>
+                ) : (
+                    <Box h={400} style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 4 }}>
+                         <WorkoutLibrary 
+                             onSelect={(workout) => {
+                                 if (!canEditWorkouts) return;
+                                 if (!ensureAthleteSelectedForCreate()) return;
+                                 onLibrarySelect(workout);
+                                 onClose();
+                             }}
+                         />
+                    </Box>
+                )}
 
                 {!canEditWorkouts && <Text c="dimmed" size="sm">Coach has disabled workout editing for your account.</Text>}
                 {dayCreateError && <Text c="red" size="sm">{dayCreateError}</Text>}
@@ -205,7 +238,8 @@ export const DayDetailsModal = ({
       })()}
     </Stack>
   </Modal>
-);
+  );
+};
 
 export const BulkEditModal = ({
   opened,

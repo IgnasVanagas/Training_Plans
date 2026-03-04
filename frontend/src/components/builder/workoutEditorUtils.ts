@@ -267,8 +267,15 @@ export const edgeColorFromZone = (zone: number) => {
 
 export const intensityPercentForStep = (step: ConcreteStep) => {
 	const metric = (step.target.metric as IntensityMetric | undefined) || 'percent_ftp';
+	const metricValue = step.target.value || step.target.max || 70;
+	if (metric === 'percent_ftp' || metric === 'percent_max_hr' || metric === 'percent_lthr' || metric === 'percent_threshold_pace') {
+		return Math.max(30, Math.min(140, metricValue));
+	}
+	if (metric === 'watts' || metric === 'np') {
+		return Math.max(30, Math.min(140, metricValue));
+	}
 	const zone = inferIntensityZone(step);
 	if (zone) return Math.min(140, Math.max(35, zone * 20));
 	if (metric === 'rpe_scale') return ((step.target.value || 5) / 10) * 100;
-	return Math.max(30, Math.min(140, step.target.value || step.target.max || 70));
+	return Math.max(30, Math.min(140, metricValue));
 };

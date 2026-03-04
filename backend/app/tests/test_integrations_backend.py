@@ -182,7 +182,8 @@ async def test_strava_incremental_sync_always_requests_latest_first(monkeypatch)
     assert result.activities[0].provider_activity_id == "1001"
     assert captured_params
     first_call = captured_params[0]
-    assert "after" not in first_call
+    assert "after" in first_call
+    assert int(first_call["after"]) <= 9999999999
     assert int(result.next_cursor.get("strava_requests_last_10m") or 0) >= 1
 
 

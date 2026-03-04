@@ -10,9 +10,10 @@ import { useNavigate } from 'react-router-dom';
 interface WorkoutLibraryProps {
     onDragStart?: (workout: SavedWorkout) => void;
     onDragEnd?: () => void;
+    onSelect?: (workout: SavedWorkout) => void;
 }
 
-export const WorkoutLibrary = ({ onDragStart, onDragEnd }: WorkoutLibraryProps) => {
+export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibraryProps) => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [search, setSearch] = useState('');
@@ -21,7 +22,7 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd }: WorkoutLibraryProps) 
 
     const { data: workouts, isLoading } = useQuery({
         queryKey: ['workouts'],
-        queryFn: getWorkouts
+        queryFn: () => getWorkouts({ limit: 500 })
     });
 
     const deleteMutation = useMutation({
@@ -142,6 +143,7 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd }: WorkoutLibraryProps) 
                                 onToggleFavorite={handleToggleFavorite}
                                 onDragStart={(e, w) => onDragStart?.(w)}
                                 onDragEnd={() => onDragEnd?.()}
+                                onSelect={onSelect ? () => onSelect(workout) : undefined}
                             />
                         ))}
                         {filteredWorkouts.length === 0 && (

@@ -44,20 +44,32 @@ const resolveIntensityAndDuration = (step: any): { intensity: number, duration: 
     // Intensity
     if (step.target) {
         const t = step.target;
-        if (t.type === 'heart_rate_zone' || t.type === 'power_zone' || t.type === 'power') {
+        
+        // Handle explicit metrics (percent_ftp, percent_max_hr, percent_threshold_pace)
+        if (t.metric === 'percent_ftp' && t.value) {
+            intensity = t.value / 100;
+        } else if (t.metric === 'percent_max_hr' && t.value) {
+            intensity = t.value / 100; // Rough proxy
+        } else if (t.metric === 'percent_threshold_pace' && t.value) {
+            // For pace, higher % usually means FASTER, which is higher intensity.
+            // 100% threshold pace is high intensity (1.0).
+            intensity = t.value / 100;
+        } else if (t.type === 'heart_rate_zone' || t.type === 'power_zone' || t.type === 'power') {
             // Map zone 1-5+ to 0.4-1.0+
             const z = t.zone || (t.min ? 3 : 1); // fallback
-            if (z <= 1) intensity = 0.4;
-            else if (z <= 2) intensity = 0.55;
-            else if (z <= 3) intensity = 0.75;
-            else if (z <= 4) intensity = 0.90;
+            if (z <= 1) intensity = 0.5;
+            else if (z <= 2) intensity = 0.65;
+            else if (z <= 3) intensity = 0.8;
+            else if (z <= 4) intensity = 0.95;
             else intensity = 1.0 + (z - 5) * 0.1;
         } else if (t.type === 'rpe') {
             intensity = (t.value || 5) / 10;
         } else if (t.type === 'pace') {
             // Fast pace = high intensity. 
-            // Without user threshold, hard to say. Assume 'work' = 0.8, 'recovery' = 0.5
-            intensity = step.category === 'work' ? 0.8 : 0.5;
+            // If we have metric, we handled it above.
+            // If pure pace (min/km), we can't know absolute intensity without athlete profile.
+            // Fallback to category
+            intensity = step.category === 'work' ? 0.85 : 0.5;
         }
     }
 

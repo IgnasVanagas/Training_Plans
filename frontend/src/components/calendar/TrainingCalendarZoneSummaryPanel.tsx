@@ -78,24 +78,40 @@ const getZonePalette = (zoneCount: number) => {
 
 const renderStackedZoneBar = (zoneValues: number[], zoneCount: number, height: number = 8, dayCellBorder: string) => {
     const safeZones = Array.from({ length: zoneCount }, (_, idx) => Math.max(0, zoneValues[idx] || 0));
-    const total = safeZones.reduce((acc, curr) => acc + curr, 0);
-    const showMixedPlaceholder = total === 0;
+    const nonZeroZones = safeZones
+        .map((seconds, idx) => ({ seconds, idx }))
+        .filter((entry) => entry.seconds > 0);
+    const total = nonZeroZones.reduce((acc, curr) => acc + curr.seconds, 0);
     const paletteForCount = getZonePalette(zoneCount);
+
+    if (total <= 0) {
+        return (
+            <Box>
+                <Box
+                    h={height}
+                    style={{
+                        borderRadius: 999,
+                        border: `1px solid ${dayCellBorder}`,
+                        background: 'transparent'
+                    }}
+                />
+            </Box>
+        );
+    }
 
     return (
         <Box>
             <Group gap={0} wrap="nowrap" style={{ borderRadius: 999, overflow: 'hidden', border: `1px solid ${dayCellBorder}` }}>
-                {safeZones.map((seconds, idx) => {
-                    const pct = showMixedPlaceholder ? (100 / zoneCount) : (seconds / total) * 100;
+                {nonZeroZones.map(({ seconds, idx }) => {
+                    const pct = (seconds / total) * 100;
                     return (
                         <Box
                             key={`stack-zone-${idx + 1}`}
                             h={height}
                             style={{
                                 width: `${pct}%`,
-                                minWidth: 3,
                                 background: paletteForCount[idx] || paletteForCount[paletteForCount.length - 1],
-                                opacity: showMixedPlaceholder ? 0.45 : 1
+                                opacity: 1
                             }}
                         />
                     );

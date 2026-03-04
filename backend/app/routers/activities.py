@@ -1825,6 +1825,7 @@ async def get_activities(
     end_date: str | None = None,
     athlete_id: int | None = None,
     include_load_metrics: bool = False,
+    sort_by: str = Query("created_at", pattern="^(created_at|ingested_at)$"),
     limit: int = 120,
     offset: int = 0,
     current_user: User = Depends(get_current_user),
@@ -1888,7 +1889,8 @@ async def get_activities(
         # Regular athlete, see only own
         query = query.where(Activity.athlete_id == current_user.id)
 
-    result = await db.execute(query.order_by(Activity.created_at.desc()).limit(limit).offset(offset))
+    order_expr = Activity.created_at.desc() if sort_by == "created_at" else Activity.id.desc()
+    result = await db.execute(query.order_by(order_expr).limit(limit).offset(offset))
     activities = result.scalars().all()
 
     profile_map: dict[int, Profile] = {}

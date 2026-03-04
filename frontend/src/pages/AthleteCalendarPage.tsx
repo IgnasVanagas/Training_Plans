@@ -1,5 +1,6 @@
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Container, Button, Group, Title, Text, Loader, Stack, Box } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
 import { TrainingCalendar } from "../components/TrainingCalendar";
@@ -12,6 +13,19 @@ export const AthleteCalendarPage = () => {
     const location = useLocation();
     const athleteId = Number(id);
     const navigationState = (location.state || {}) as { calendarDate?: string | null };
+    const initialCalendarDate = (() => {
+        const navEntry = (typeof window !== "undefined"
+            ? (window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)
+            : undefined);
+        const isReload = navEntry?.type === "reload";
+        if (isReload) return null;
+        return navigationState.calendarDate ?? null;
+    })();
+
+    useEffect(() => {
+        if (navigationState.calendarDate === undefined) return;
+        navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    }, [location.pathname, location.search, navigate, navigationState.calendarDate]);
 
     const { data: athlete, isLoading, isError } = useQuery({
         queryKey: ["athlete", athleteId],
@@ -44,7 +58,7 @@ export const AthleteCalendarPage = () => {
             </Group>
             
             <Box style={{ flex: 1, minHeight: 0 }}>
-                <TrainingCalendar athleteId={athleteId} initialViewDate={navigationState.calendarDate ?? null} />
+                <TrainingCalendar athleteId={athleteId} initialViewDate={initialCalendarDate} />
             </Box>
         </Container></AppSidebarLayout>
     );

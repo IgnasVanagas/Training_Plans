@@ -383,75 +383,84 @@ async def match_and_score(db: AsyncSession, user_id: int, target_date: date):
         await db.commit()
         return
 
-    # 2. Fetch Activities around target date and filter by effective activity day.
-    # Planned workouts must only be compared to activities from the same calendar day.
-    start_of_window = datetime.combine(target_date - timedelta(days=1), datetime.min.time())
-    end_of_window = datetime.combine(target_date + timedelta(days=1), datetime.max.time())
+    # 2. Fetch Activities for exactly that day (00:00 to 23:59 local time if possible, but simplest is date matches).
+    # NOTE: The user explicitly requested strict same-day comparison.
+    # Previous window `target_date +/- 1 day` is too broad for this requirement.
+    # Use exact date match on created_at.
+    
+    start_of_day = datetime.combine(target_date, datetime.min.time())
+    end_of_day = datetime.combine(target_date, datetime.max.time())
     
     stmt_activities = select(Activity).where(
         and_(
             Activity.athlete_id == user_id,
-            Activity.created_at >= start_of_window,
-            Activity.created_at <= end_of_window
+            Activity.created_at >= start_of_day,
+            Activity.created_at <= end_of_day
         )
     )
+
+    # User requirement: Only compare planned workout to activities created on the EXACT same day.
+    # The start/end window is now tight to target_date.
+    
     result_activities = await db.execute(stmt_activities)
     activities = [
         activity
         for activity in result_activities.scalars().all()
-        if not _is_activity_deleted(activity) and target_date in _activity_date_candidates(activity)
+        if not _is_activity_deleted(activity)
     ]
+
 
     profile = await db.scalar(select(Profile).where(Profile.user_id == user_id))
     lowest_recorded_rhr = await db.scalar(
         select(func.min(RHRDaily.resting_hr)).where(RHRDaily.user_id == user_id)
     )
     
+
     # 3. Sophisticated matching logic (one-to-one assignment by highest similarity score)
+    # Reset all existing matches for this day first to ensure we find the GLOBAL BEST configuration
+    for workout in planned_workouts:
+        workout.matched_activity_id = None
+        # Default fallback status
+        if target_date < date.today():
+             workout.compliance_status = ComplianceStatusEnum.missed
+        else:
+             workout.compliance_status = ComplianceStatusEnum.planned
+
     unmatched_pairs: list[tuple[float, PlannedWorkout, Activity]] = []
     for workout in planned_workouts:
         for activity in activities:
             score = _similarity_score(workout, activity)
             # Avoid low-confidence accidental matches.
             if score >= 0.45:
+                # Add unique identifier to ensure we can sort consistently
                 unmatched_pairs.append((score, workout, activity))
 
+    # Sort pairs by highest score first to prioritize "best fit"
     unmatched_pairs.sort(key=lambda item: item[0], reverse=True)
 
     assigned_workout_ids: set[int] = set()
     assigned_activity_ids: set[int] = set()
-    matched_by_workout_id: dict[int, Activity] = {}
-
+    
+    # Greedy assignment: best scores get locked in first.
+    # This ensures that if there are multiple workouts/activities, the best matches "win".
     for _score, workout, activity in unmatched_pairs:
         if workout.id in assigned_workout_ids or activity.id in assigned_activity_ids:
             continue
+            
+        # Lock match
         assigned_workout_ids.add(workout.id)
         assigned_activity_ids.add(activity.id)
-        matched_by_workout_id[workout.id] = activity
-
-    for workout in planned_workouts:
-        matched_activity = matched_by_workout_id.get(workout.id)
         
-        # Update Workout
-        if matched_activity:
-            workout.matched_activity_id = matched_activity.id
-            workout.compliance_status = _compliance_status_for_match(
-                workout,
-                matched_activity,
-                profile,
-                _safe_float(lowest_recorded_rhr, default=0.0),
-            )
-                 
-        else:
-            # No match
-            workout.matched_activity_id = None
-            if target_date < date.today():
-                workout.compliance_status = ComplianceStatusEnum.missed
-            else:
-                workout.compliance_status = ComplianceStatusEnum.planned
-                
+        workout.matched_activity_id = activity.id
+        workout.compliance_status = _compliance_status_for_match(
+            workout,
+            activity,
+            profile,
+            _safe_float(lowest_recorded_rhr, default=0.0),
+        )
         db.add(workout)
     
+    # Save all changes (including resets for unassigned workouts)
     await db.commit()
 
 
@@ -558,29 +567,33 @@ def _similarity_score(workout: PlannedWorkout, activity: Activity) -> float:
 
     split_score = _split_shape_similarity(_extract_planned_split_durations(workout), _extract_activity_split_durations(activity))
 
-    components: list[tuple[float, float]] = [
+    # Base factors
+    # Sport type match: 40%
+    # Duration accuracy: 40%
+    # Distance accuracy: 20%
+    # (Since date is strictly filtered to same day, we exclude it from "similarity")
+    
+    weighted_components: list[tuple[float, float]] = [
         (0.40, sport_score),
-        (0.35, duration_score),
-        (0.15, distance_score),
+        (0.40, duration_score),
+        (0.20, distance_score),
     ]
+
     if split_score is not None:
-        components.append((0.10, split_score))
+         weighted_components.append((0.15, split_score))
 
-    # Prefer same-calendar-day matches but allow nearby day when UTC/local boundaries shift.
-    day_gap = abs((activity.created_at.date() - workout.date).days) if activity.created_at else 0
-    if day_gap == 0:
-        date_score = 1.0
-    elif day_gap == 1:
-        date_score = 0.7
-    else:
-        date_score = 0.0
-    components.append((0.15, date_score))
-
-    total_weight = sum(weight for weight, _ in components)
-    if total_weight <= 0:
+    numerator = sum(w * v for w, v in weighted_components)
+    denominator = sum(w for w, v in weighted_components)
+    
+    if denominator <= 0:
         return 0.0
 
-    weighted_score = sum(weight * value for weight, value in components) / total_weight
+    weighted_score = numerator / denominator
+
+    # Strictly disqualify different days (though they should be filtered out already)
+    day_gap = abs((activity.created_at.date() - workout.date).days) if activity.created_at else 0
+    if day_gap > 0:
+        return 0.0
 
     # Small retention bonus for previously linked pair when still plausible.
     if workout.matched_activity_id and workout.matched_activity_id == activity.id:
