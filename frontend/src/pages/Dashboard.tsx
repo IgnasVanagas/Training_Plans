@@ -198,14 +198,14 @@ const Dashboard = () => {
 
   const requestEmailConfirmationMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post<{ message: string; verify_url?: string }>("/auth/request-email-confirmation");
+      const response = await api.post<{ message: string }>("/auth/request-email-confirmation");
       return response.data;
     },
     onSuccess: (data) => {
       notifications.show({
         color: "blue",
         title: "Verification email",
-        message: data.verify_url ? `${data.message}. Link: ${data.verify_url}` : data.message,
+        message: data.message,
       });
     },
     onError: (error) => {

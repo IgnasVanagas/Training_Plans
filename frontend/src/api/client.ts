@@ -1,5 +1,7 @@
 import axios from "axios";
 
+import { clearAuthSession } from "../utils/authSession";
+
 const requestTimeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS || 15000);
 
 const resolveApiBaseUrl = () => {
@@ -39,20 +41,11 @@ const api = axios.create({
   timeout: Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0 ? requestTimeoutMs : 15000,
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access_token");
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      localStorage.removeItem("access_token");
+      clearAuthSession();
       window.location.href = "/login";
     }
     return Promise.reject(error);

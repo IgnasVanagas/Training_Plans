@@ -18,6 +18,12 @@ git check-ignore -v .env frontend/.env backend/uploads/sample.fit frontend/dist
 
 Expected: each path is matched by `.gitignore`.
 
+Also confirm local helper files are ignored:
+
+```powershell
+git check-ignore -v mobile-last-url.txt backups/test.sql
+```
+
 ## 3) Start clean repo safely
 
 ```powershell
@@ -32,6 +38,7 @@ Before first commit, verify `git status` does **not** include:
 - `frontend/dist/`
 - `backend/uploads/`, `frontend/uploads/`, `uploads/`
 - activity files (`*.fit`, `*.gpx`, `*.tcx`)
+- `mobile-last-url.txt`
 
 ## 4) Secret scan before push
 
@@ -46,6 +53,11 @@ docker run --rm -v ${PWD}:/pwd trufflesecurity/trufflehog:latest filesystem /pwd
 ```
 
 Only push when scan is clean.
+
+## 4.1) Confirm secure debug defaults
+
+- Keep `EXPOSE_AUTH_DEBUG_LINKS=false` before publishing or deploying shared environments.
+- Set a real `SECRET_KEY` and `INTEGRATIONS_TOKEN_ENCRYPTION_KEY`; do not rely on placeholder values.
 
 ## 5) If a secret was committed accidentally
 

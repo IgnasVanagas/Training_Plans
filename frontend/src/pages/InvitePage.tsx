@@ -5,13 +5,14 @@ import InviteActions from "../components/invite/InviteActions";
 import InviteHeader from "../components/invite/InviteHeader";
 import InviteTokenCard from "../components/invite/InviteTokenCard";
 import api from "../api/client";
+import { hasAuthSession } from "../utils/authSession";
 
 const InvitePage = () => {
   const { token } = useParams();
   const navigate = useNavigate();
   const inviteTitle = "Join the Team";
   const inviteDescription = "You have been invited to join a coach's team.";
-  const accessToken = localStorage.getItem("access_token");
+  const hasSession = hasAuthSession();
 
   const acceptInviteMutation = useMutation({
     mutationFn: async () => {
@@ -47,7 +48,7 @@ const InvitePage = () => {
     if (!token) {
       return;
     }
-    if (!accessToken) {
+    if (!hasSession) {
       navigate(`/login?invite=${encodeURIComponent(token)}`);
       return;
     }
@@ -72,7 +73,7 @@ const InvitePage = () => {
           />
           
           <Text size="xs" c="dimmed" mt="lg">
-            {accessToken
+            {hasSession
               ? "Accept the invite to join the coach's team immediately."
               : "Sign in first, then accept this invitation."}
           </Text>

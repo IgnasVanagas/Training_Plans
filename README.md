@@ -113,6 +113,7 @@ Secrets/config:
 - `ALLOWED_ORIGINS` (comma-separated frontend origins)
 - `ALLOW_SELF_REGISTER_COACH` (default `false`)
 - `AUTH_COOKIE_SECURE` (set `true` in HTTPS production)
+- `EXPOSE_AUTH_DEBUG_LINKS` (default `false`; only enable for local development if you intentionally want reset/verification links returned in API responses)
 - `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REDIRECT_URI`, `STRAVA_WEBHOOK_VERIFY_TOKEN`
 - `POLAR_CLIENT_ID`, `POLAR_CLIENT_SECRET`, `POLAR_REDIRECT_URI`
 - `SUUNTO_CLIENT_ID`, `SUUNTO_CLIENT_SECRET`, `SUUNTO_REDIRECT_URI`
@@ -170,6 +171,7 @@ App startup is safe when credentials are missing (providers remain disabled/scaf
 ### Production Hardening Checklist
 
 - Use unique strong `INTEGRATIONS_TOKEN_ENCRYPTION_KEY` and rotate it via secret manager.
+- Do not rely on placeholder `SECRET_KEY` values; the app now falls back to an ephemeral runtime key, which is safer for public code but unsuitable for persistent deployments.
 - Enforce HTTPS-only redirect URIs and production callback domains.
 - Keep all non-approved providers behind `ENABLE_*` flags (default `false`).
 - Configure provider webhook secrets/verification and monitor webhook idempotency logs.

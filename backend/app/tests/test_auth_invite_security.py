@@ -192,19 +192,32 @@ async def test_verify_email_and_reset_password_flows():
 
 
 @pytest.mark.asyncio
-async def test_forgot_password_generic_message_and_link_for_existing_user():
+async def test_forgot_password_generic_message_without_link_by_default(monkeypatch):
+    monkeypatch.delenv("EXPOSE_AUTH_DEBUG_LINKS", raising=False)
     existing = User(id=8, email="exists@example.com", password_hash="x", role=RoleEnum.athlete, email_verified=True)
     db_existing = _FakeDB(scalar_results=[existing])
     out_existing = await auth_router.forgot_password(ForgotPasswordRequest(email="exists@example.com"), db_existing)
 
     assert out_existing["message"].startswith("If that email exists")
-    assert out_existing["reset_url"] is not None
-    assert "/login?reset=" in out_existing["reset_url"]
+    assert "reset_url" not in out_existing
 
     db_missing = _FakeDB(scalar_results=[None])
     out_missing = await auth_router.forgot_password(ForgotPasswordRequest(email="missing@example.com"), db_missing)
     assert out_missing["message"].startswith("If that email exists")
-    assert out_missing["reset_url"] is None
+    assert "reset_url" not in out_missing
+
+
+@pytest.mark.asyncio
+async def test_forgot_password_can_expose_debug_link_when_opted_in(monkeypatch):
+    monkeypatch.setenv("EXPOSE_AUTH_DEBUG_LINKS", "true")
+    existing = User(id=9, email="debug@example.com", password_hash="x", role=RoleEnum.athlete, email_verified=True)
+    db_existing = _FakeDB(scalar_results=[existing])
+
+    out_existing = await auth_router.forgot_password(ForgotPasswordRequest(email="debug@example.com"), db_existing)
+
+    assert out_existing["message"].startswith("If that email exists")
+    assert out_existing["reset_url"] is not None
+    assert "/login?reset=" in out_existing["reset_url"]
 
 
 def test_action_token_decode_rejects_wrong_purpose():

@@ -15,6 +15,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import appLogo from '../../uploads/favicon_Origami-removebg-preview.png';
+import { clearAuthSession } from '../utils/authSession';
 
 export const AppSidebarLayout = ({
   children,
@@ -73,7 +74,7 @@ export const AppSidebarLayout = ({
               size="xs"
               leftSection={<IconLogout size={14} />}
               onClick={() => {
-                localStorage.removeItem('access_token');
+                clearAuthSession();
                 window.location.href = '/login';
               }}
             >

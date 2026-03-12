@@ -24,6 +24,7 @@ import { IconAt, IconLock, IconUser, IconBuilding } from "@tabler/icons-react";
 import api from "../api/client";
 import appLogo from "../../uploads/favicon_Origami-removebg-preview.png";
 import { useI18n } from "../i18n/I18nProvider";
+import { hasAuthSession, markAuthSessionActive } from "../utils/authSession";
 
 type AuthResponse = {
   access_token: string;
@@ -54,8 +55,7 @@ const LoginPage = () => {
   const [info, setInfo] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    if (token) {
+    if (hasAuthSession()) {
       navigate("/dashboard", { replace: true });
     }
   }, [navigate]);
@@ -86,8 +86,8 @@ const LoginPage = () => {
       });
       return response.data;
     },
-    onSuccess: async (data) => {
-      localStorage.setItem("access_token", data.access_token);
+    onSuccess: async () => {
+      markAuthSessionActive();
       sessionStorage.setItem(STRAVA_LOGIN_RECENT_SYNC_FLAG, "1");
       if (inviteCode) {
         try {
@@ -117,8 +117,8 @@ const LoginPage = () => {
       });
       return response.data;
     },
-    onSuccess: (data) => {
-      localStorage.setItem("access_token", data.access_token);
+    onSuccess: () => {
+      markAuthSessionActive();
       navigate("/dashboard", { replace: true });
     },
     onError: (err) => setError(getErrorMessage(err))
@@ -133,11 +133,11 @@ const LoginPage = () => {
 
   const forgotPasswordMutation = useMutation({
     mutationFn: async (emailValue: string) => {
-      const response = await api.post<{ message: string; reset_url?: string }>("/auth/forgot-password", { email: emailValue });
+      const response = await api.post<{ message: string }>("/auth/forgot-password", { email: emailValue });
       return response.data;
     },
     onSuccess: (data) => {
-      setInfo(data.reset_url ? `${data.message} Reset link: ${data.reset_url}` : data.message);
+      setInfo(data.message);
       setIsForgotPassword(false);
     },
     onError: (err) => setError(getErrorMessage(err)),

@@ -6,9 +6,11 @@ import os
 
 from cryptography.fernet import Fernet
 
+from ..auth import SECRET_KEY
+
 
 def _build_fernet() -> Fernet:
-    token_secret = os.getenv("INTEGRATIONS_TOKEN_ENCRYPTION_KEY") or os.getenv("SECRET_KEY", "change_me")
+    token_secret = (os.getenv("INTEGRATIONS_TOKEN_ENCRYPTION_KEY") or "").strip() or SECRET_KEY
     key = base64.urlsafe_b64encode(hashlib.sha256(token_secret.encode("utf-8")).digest())
     return Fernet(key)
 

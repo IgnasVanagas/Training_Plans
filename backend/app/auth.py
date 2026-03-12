@@ -1,4 +1,6 @@
+import logging
 import os
+import secrets
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Union, Any
@@ -14,8 +16,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .database import get_db
 from .models import User, OrganizationMember
 
+logger = logging.getLogger(__name__)
+_INSECURE_SECRET_KEY_VALUES = {
+    "",
+    "change_me",
+    "change_me_in_production",
+    "your-secret-key-keep-it-secret",
+}
+
+
+def _load_secret_key() -> str:
+    configured_secret = (os.getenv("SECRET_KEY") or "").strip()
+    if configured_secret and configured_secret not in _INSECURE_SECRET_KEY_VALUES:
+        return configured_secret
+
+    logger.warning(
+        "SECRET_KEY is missing or uses a placeholder value; generating an ephemeral runtime key. "
+        "Set a strong SECRET_KEY for any persistent or shared environment."
+    )
+    return secrets.token_urlsafe(64)
+
+
 # Secret key settings
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-keep-it-secret")
+SECRET_KEY = _load_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 JWT_ISSUER = os.getenv("JWT_ISSUER", "endurance-platform")

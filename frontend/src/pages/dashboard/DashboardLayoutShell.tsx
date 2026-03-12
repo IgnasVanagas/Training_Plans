@@ -44,6 +44,7 @@ import {
 import appLogo from "../../../uploads/favicon_Origami-removebg-preview.png";
 import { useI18n } from "../../i18n/I18nProvider";
 import OfflineNotice from "../../components/common/OfflineNotice";
+import { clearAuthSession } from "../../utils/authSession";
 
 type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
 
@@ -241,7 +242,7 @@ const DashboardLayoutShell = ({
               color="red"
               leftSection={<IconLogout size={14} />}
               onClick={() => {
-                localStorage.removeItem("access_token");
+                clearAuthSession();
                 window.location.href = "/login";
               }}
             >

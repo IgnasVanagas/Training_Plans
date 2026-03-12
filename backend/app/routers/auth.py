@@ -17,6 +17,10 @@ from ..schemas import EmailTokenRequest, ForgotPasswordRequest, LoginRequest, Re
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _should_expose_auth_debug_links() -> bool:
+    return os.getenv("EXPOSE_AUTH_DEBUG_LINKS", "false").lower() in {"1", "true", "yes", "on"}
+
+
 def _set_auth_cookie(response: Response, token: str) -> None:
     secure_cookie = os.getenv("AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
     max_age_seconds = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")) * 60
@@ -133,9 +137,11 @@ async def request_email_confirmation(
         purpose="email_confirm",
         expires_minutes=int(os.getenv("EMAIL_CONFIRM_TOKEN_EXPIRE_MINUTES", "1440")),
     )
-    verify_url = _build_frontend_action_url(route="/login?verify=", token=token)
     message = "Verification email queued"
-    return {"message": message, "verify_url": verify_url}
+    response = {"message": message}
+    if _should_expose_auth_debug_links():
+        response["verify_url"] = _build_frontend_action_url(route="/login?verify=", token=token)
+    return response
 
 
 @router.post("/verify-email")
@@ -159,19 +165,17 @@ async def forgot_password(payload: ForgotPasswordRequest, db: AsyncSession = Dep
     email = str(payload.email).strip().lower()
     user = await db.scalar(select(User).where(User.email == email))
 
-    reset_url = None
-    if user:
+    response = {
+        "message": "If that email exists, password reset instructions have been sent.",
+    }
+    if user and _should_expose_auth_debug_links():
         token = create_action_token(
             subject=user.email,
             purpose="password_reset",
             expires_minutes=int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "30")),
         )
-        reset_url = _build_frontend_action_url(route="/login?reset=", token=token)
-
-    return {
-        "message": "If that email exists, password reset instructions have been sent.",
-        "reset_url": reset_url,
-    }
+        response["reset_url"] = _build_frontend_action_url(route="/login?reset=", token=token)
+    return response
 
 
 @router.post("/reset-password")
