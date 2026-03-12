@@ -1,4 +1,5 @@
-from typing import List, Optional
+import uuid
+from typing import Any, List, Optional
 from datetime import date, timedelta, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +36,166 @@ def _is_activity_deleted(activity: Activity) -> bool:
         if isinstance(meta, dict):
             return bool(meta.get("deleted"))
     return False
+
+
+def _estimate_planned_duration_minutes(structure: object) -> Optional[int]:
+    if not isinstance(structure, list) or len(structure) == 0:
+        return None
+
+    def _node_seconds(node: object) -> float:
+        if not isinstance(node, dict):
+            return 0.0
+
+        node_type = str(node.get("type") or "")
+        if node_type == "repeat":
+            repeats_raw = node.get("repeats")
+            try:
+                repeats = max(1, int(repeats_raw or 1))
+            except (TypeError, ValueError):
+                repeats = 1
+            steps = node.get("steps")
+            if not isinstance(steps, list):
+                return 0.0
+            child_total = sum(_node_seconds(step) for step in steps)
+            return child_total * repeats
+
+        if node_type != "block":
+            return 0.0
+
+        duration = node.get("duration")
+        if not isinstance(duration, dict):
+            return 0.0
+
+        duration_type = str(duration.get("type") or "")
+        value_raw = duration.get("value")
+        try:
+            value = float(value_raw or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+        if value <= 0:
+            return 0.0
+
+        if duration_type == "time":
+            return value
+
+        return 0.0
+
+    total_seconds = sum(_node_seconds(node) for node in structure)
+    if total_seconds <= 0:
+        return None
+    return max(1, int(round(total_seconds / 60.0)))
+
+
+def _extract_recurrence(workout: PlannedWorkout | None) -> Optional[dict[str, Any]]:
+    if workout is None:
+        return None
+    planning_context = workout.planning_context if isinstance(workout.planning_context, dict) else {}
+    recurrence = planning_context.get("recurrence") if isinstance(planning_context.get("recurrence"), dict) else None
+    return recurrence
+
+
+def _merge_planning_context(base_context: object, recurrence: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    next_context = dict(base_context) if isinstance(base_context, dict) else {}
+    if recurrence is None:
+        next_context.pop("recurrence", None)
+    else:
+        next_context["recurrence"] = recurrence
+    return next_context or None
+
+
+def _expand_weekly_recurrence_dates(start_date: date, recurrence: dict[str, Any]) -> list[date]:
+    interval_weeks = max(1, int(recurrence.get("interval_weeks") or 1))
+    weekdays = sorted({int(day) for day in recurrence.get("weekdays") or [start_date.weekday()]})
+    if not weekdays:
+        raise HTTPException(status_code=422, detail="Recurring workout rule requires at least one weekday")
+
+    for weekday in weekdays:
+        if weekday < 0 or weekday > 6:
+            raise HTTPException(status_code=422, detail="Recurring workout weekdays must be between 0 and 6")
+
+    span_weeks_raw = recurrence.get("span_weeks")
+    end_date_raw = recurrence.get("end_date")
+    if span_weeks_raw is None and end_date_raw is None:
+        raise HTTPException(status_code=422, detail="Recurring workout rule requires span_weeks or end_date")
+
+    if isinstance(end_date_raw, str):
+        try:
+            end_date = date.fromisoformat(end_date_raw)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Recurring workout end_date is invalid") from exc
+    else:
+        end_date = end_date_raw
+
+    if end_date is None:
+        span_weeks = max(1, int(span_weeks_raw or 1))
+        end_date = start_date + timedelta(days=(span_weeks * 7) - 1)
+
+    if end_date < start_date:
+        raise HTTPException(status_code=422, detail="Recurring workout end date must be on or after the first workout date")
+
+    exception_dates: set[date] = set()
+    for value in recurrence.get("exception_dates") or []:
+        if isinstance(value, str):
+            try:
+                exception_dates.add(date.fromisoformat(value))
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail="Recurring workout exception date is invalid") from exc
+        elif isinstance(value, date):
+            exception_dates.add(value)
+
+    anchor_week_start = start_date - timedelta(days=start_date.weekday())
+    dates: list[date] = []
+    cursor = start_date
+    while cursor <= end_date:
+        week_index = ((cursor - anchor_week_start).days // 7)
+        if week_index % interval_weeks == 0 and cursor.weekday() in weekdays and cursor not in exception_dates:
+            dates.append(cursor)
+        cursor += timedelta(days=1)
+
+    if not dates:
+        raise HTTPException(status_code=422, detail="Recurring workout rule produced no workout dates")
+    if len(dates) > 366:
+        raise HTTPException(status_code=422, detail="Recurring workout rule produced too many workouts")
+    return dates
+
+
+def _resolve_activity_local_date(activity: Activity) -> date:
+    """
+    Attempts to resolve the local start date from activity streams/metadata.
+    Falls back to UTC created_at if unavailable.
+    """
+    try:
+        if isinstance(activity.streams, dict):
+            provider = activity.streams.get("provider_payload", {})
+            if isinstance(provider, dict):
+                # Check summary or detail
+                candidates = []
+                summary = provider.get("summary")
+                if isinstance(summary, dict):
+                    candidates.append(summary.get("start_date_local"))
+                detail = provider.get("detail")
+                if isinstance(detail, dict):
+                    candidates.append(detail.get("start_date_local"))
+                
+                for candidate in candidates:
+                    if candidate and isinstance(candidate, str):
+                        # Format often: "2026-03-01T00:30:00Z" or similar
+                        # We just want the date part
+                        try:
+                            # Handle T separator
+                            dt_str = candidate.split("T")[0]
+                            return date.fromisoformat(dt_str)
+                        except ValueError:
+                            pass
+    except Exception:
+        pass
+    
+    # Fallback to created_at (UTC)
+    if activity.created_at:
+        return activity.created_at.date()
+    return date.today() # Should not happen if created_at is not null
+
 
 async def check_coach_access(coach_id: int, athlete_id: int, db: AsyncSession):
     """
@@ -81,7 +242,7 @@ async def get_calendar_events(
     target_user_ids = []
 
     if current_user.role == RoleEnum.coach and all_athletes:
-        # Fetch all linked athletes + self
+        # Fetch only linked athletes for the coach team calendar.
         # 1. Get coach orgs
         coach_orgs_subq = select(OrganizationMember.organization_id).where(
             OrganizationMember.user_id == current_user.id,
@@ -97,7 +258,6 @@ async def get_calendar_events(
         )
         res = await db.execute(subq)
         target_user_ids = list(res.scalars().all())
-        target_user_ids.append(current_user.id)
         
     else:
         target_id = current_user.id
@@ -125,13 +285,15 @@ async def get_calendar_events(
     # Range is safer. start_date is inclusive. end_date is inclusive (likely).
     # datetime created_at >= start_date 00:00 AND < end_date+1 00:00
     
-    start_dt = datetime.combine(start_date, datetime.min.time())
-    end_dt = datetime.combine(end_date, datetime.max.time())
+    # We expand the search window by +/- 1 day to catch activities 
+    # that might belong to the local date but are shifted in UTC.
+    search_start_dt = datetime.combine(start_date - timedelta(days=1), datetime.min.time())
+    search_end_dt = datetime.combine(end_date + timedelta(days=1), datetime.max.time())
     
     query_activities = select(Activity).where(
         and_(
-            Activity.created_at >= start_dt,
-            Activity.created_at <= end_dt,
+            Activity.created_at >= search_start_dt,
+            Activity.created_at <= search_end_dt,
             Activity.athlete_id.in_(target_user_ids)
         )
     )
@@ -185,25 +347,30 @@ async def get_calendar_events(
         if w.matched_activity_id is not None and w.matched_activity_id in visible_activity_ids:
             continue
         created_by_user_id, created_by_name, created_by_email = _creator_payload(w)
+        duration_minutes = _estimate_planned_duration_minutes(w.structure)
+        resolved_planned_duration = duration_minutes if duration_minutes is not None else w.planned_duration
         events.append(CalendarEvent(
             id=w.id,
             user_id=w.user_id,
             date=w.date,
             title=w.title,
             sport_type=w.sport_type,
-            duration=float(w.planned_duration) if w.planned_duration else None,
+            duration=float(resolved_planned_duration) if resolved_planned_duration else None,
             distance=w.planned_distance,
             is_planned=True,
             compliance_status=w.compliance_status,
             matched_activity_id=w.matched_activity_id,
             description=w.description,
             planned_intensity=w.planned_intensity,
-            planned_duration=w.planned_duration,
+            planned_duration=resolved_planned_duration,
             planned_distance=w.planned_distance,
             structure=w.structure,
             created_by_user_id=created_by_user_id,
             created_by_name=created_by_name,
             created_by_email=created_by_email,
+            season_plan_id=w.season_plan_id,
+            planning_context=w.planning_context,
+            recurrence=_extract_recurrence(w),
             start_time=datetime.combine(w.date, datetime.min.time())
         ))
 
@@ -215,10 +382,13 @@ async def get_calendar_events(
         created_by_user_id, created_by_name, created_by_email = (None, None, None)
         if matched_workout is not None:
             created_by_user_id, created_by_name, created_by_email = _creator_payload(matched_workout)
+        
+        display_date = _resolve_activity_local_date(a)
+
         events.append(CalendarEvent(
             id=a.id,
             user_id=a.athlete_id,
-            date=a.created_at.date(), 
+            date=display_date, 
             title=a.filename or "Activity",
             sport_type=a.sport,
             duration=((a.duration / 60) if a.duration else 0), 
@@ -234,6 +404,9 @@ async def get_calendar_events(
             created_by_user_id=created_by_user_id,
             created_by_name=created_by_name,
             created_by_email=created_by_email,
+            season_plan_id=matched_workout.season_plan_id if matched_workout else None,
+            planning_context=matched_workout.planning_context if matched_workout else None,
+            recurrence=_extract_recurrence(matched_workout),
             avg_hr=a.average_hr,
             avg_watts=a.average_watts,
             avg_speed=a.avg_speed,
@@ -244,6 +417,51 @@ async def get_calendar_events(
     events.sort(key=lambda x: x.start_time or datetime.combine(x.date, datetime.min.time()), reverse=True)
         
     return events
+
+
+@router.get("/recent-coach-workouts")
+async def recent_coach_workouts(
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the coach's most recently planned workouts, deduplicated by title."""
+    if current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Only coaches can access this endpoint")
+
+    stmt = (
+        select(PlannedWorkout)
+        .where(PlannedWorkout.created_by_user_id == current_user.id)
+        .order_by(PlannedWorkout.id.desc())
+        .limit(limit * 5)  # fetch extra to account for dedup
+    )
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    seen_titles: set[str] = set()
+    unique: list[dict] = []
+    for pw in rows:
+        key = (pw.title or "").strip().lower()
+        if key in seen_titles:
+            continue
+        seen_titles.add(key)
+        unique.append({
+            "id": pw.id,
+            "title": pw.title,
+            "description": pw.description,
+            "sport_type": pw.sport_type,
+            "structure": pw.structure or [],
+            "planned_duration": pw.planned_duration,
+            "date": pw.date.isoformat() if pw.date else None,
+            "tags": [],
+            "is_favorite": False,
+            "recurrence": _extract_recurrence(pw),
+        })
+        if len(unique) >= limit:
+            break
+
+    return unique
+
 
 @router.post("/", response_model=PlannedWorkoutOut)
 async def create_workout(
@@ -261,20 +479,62 @@ async def create_workout(
              await check_coach_access(current_user.id, athlete_id, db)
              target_user_id = athlete_id
 
-    new_workout = PlannedWorkout(
-        user_id=target_user_id,
-        created_by_user_id=current_user.id,
-        **workout_in.model_dump()
-    )
-    db.add(new_workout)
+    payload = workout_in.model_dump()
+    recurrence = payload.pop("recurrence", None)
+    estimated_duration = _estimate_planned_duration_minutes(payload.get("structure"))
+    if estimated_duration is not None:
+        payload["planned_duration"] = estimated_duration
+
+    occurrence_dates = [payload["date"]]
+    recurrence_payload: Optional[dict[str, Any]] = None
+    if isinstance(recurrence, dict):
+        occurrence_dates = _expand_weekly_recurrence_dates(payload["date"], recurrence)
+        recurrence_payload = {
+            "frequency": "weekly",
+            "interval_weeks": max(1, int(recurrence.get("interval_weeks") or 1)),
+            "weekdays": sorted({int(day) for day in recurrence.get("weekdays") or []}),
+            "span_weeks": recurrence.get("span_weeks"),
+            "end_date": occurrence_dates[-1].isoformat(),
+            "exception_dates": [
+                value.isoformat() if isinstance(value, date) else str(value)
+                for value in (recurrence.get("exception_dates") or [])
+            ],
+            "series_id": str(recurrence.get("series_id") or uuid.uuid4().hex),
+            "anchor_date": payload["date"].isoformat(),
+            "occurrences_total": len(occurrence_dates),
+        }
+
+    created_workouts: list[PlannedWorkout] = []
+    for index, workout_date in enumerate(occurrence_dates, start=1):
+        workout_payload = dict(payload)
+        workout_payload["date"] = workout_date
+        if recurrence_payload is not None:
+            workout_payload["planning_context"] = _merge_planning_context(
+                workout_payload.get("planning_context"),
+                {
+                    **recurrence_payload,
+                    "occurrence_index": index,
+                },
+            )
+
+        new_workout = PlannedWorkout(
+            user_id=target_user_id,
+            created_by_user_id=current_user.id,
+            **workout_payload
+        )
+        db.add(new_workout)
+        created_workouts.append(new_workout)
+
     await db.commit()
-    await db.refresh(new_workout)
-    
-    # Run compliance logic
-    await match_and_score(db, target_user_id, new_workout.date)
-    await db.refresh(new_workout)
-    
-    return new_workout
+    for workout in created_workouts:
+        await db.refresh(workout)
+
+    for workout_date in {workout.date for workout in created_workouts}:
+        await match_and_score(db, target_user_id, workout_date)
+
+    primary_workout = created_workouts[0]
+    await db.refresh(primary_workout)
+    return primary_workout
 
 @router.patch("/{workout_id}", response_model=PlannedWorkoutOut)
 async def update_workout(
@@ -303,6 +563,15 @@ async def update_workout(
             raise HTTPException(status_code=403, detail="Coach has not allowed workout editing")
 
     update_data = workout_update.model_dump(exclude_unset=True)
+    recurrence = update_data.pop("recurrence", None) if "recurrence" in update_data else None
+
+    if "structure" in update_data:
+        estimated_duration = _estimate_planned_duration_minutes(update_data.get("structure"))
+        if estimated_duration is not None:
+            update_data["planned_duration"] = estimated_duration
+
+    if "recurrence" in workout_update.model_fields_set:
+        workout.planning_context = _merge_planning_context(workout.planning_context, recurrence)
     
     original_date = workout.date
     new_date = update_data.get('date')
@@ -390,6 +659,8 @@ async def copy_workout(
         planned_duration=source_workout.planned_duration,
         planned_distance=source_workout.planned_distance,
         planned_intensity=source_workout.planned_intensity,
+        season_plan_id=source_workout.season_plan_id,
+        planning_context=source_workout.planning_context,
         compliance_status=ComplianceStatusEnum.planned
     )
     

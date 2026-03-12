@@ -351,6 +351,124 @@ def _extract_actual_split_rows(splits_metric, laps) -> list[dict]:
     return out
 
 
+def _parse_stream_timestamp(value) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    if raw.endswith("Z"):
+        raw = f"{raw[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _extract_actual_split_rows_from_planned_template(activity: Activity, planned_steps: list[dict]) -> list[dict]:
+    if not planned_steps:
+        return []
+
+    payload = _as_stream_payload(activity.streams)
+    raw_points = payload.get("data") if isinstance(payload.get("data"), list) else []
+    if not raw_points:
+        return []
+
+    normalized_points: list[dict[str, float | int | None]] = []
+    stream_start: datetime | None = None
+    fallback_total_s = _safe_number(getattr(activity, "duration", None), default=0.0)
+
+    for index, point in enumerate(raw_points):
+        if not isinstance(point, dict):
+            continue
+
+        elapsed_s: float | None = None
+        for key in ("elapsed_s", "elapsed_time", "time"):
+            candidate = point.get(key)
+            if candidate is None:
+                continue
+            parsed = _safe_number(candidate, default=-1.0)
+            if parsed >= 0:
+                elapsed_s = parsed
+                break
+
+        if elapsed_s is None:
+            point_ts = _parse_stream_timestamp(point.get("timestamp"))
+            if point_ts is not None:
+                if stream_start is None:
+                    stream_start = point_ts
+                elapsed_s = max(0.0, (point_ts - stream_start).total_seconds())
+
+        if elapsed_s is None:
+            elapsed_s = float(index)
+
+        normalized_points.append(
+            {
+                "elapsed_s": float(elapsed_s),
+                "distance_m": _safe_number(point.get("distance"), default=0.0),
+                "heart_rate": _safe_number(point.get("heart_rate"), default=-1.0),
+                "power": _safe_number(point.get("power"), default=-1.0),
+                "speed": _safe_number(point.get("speed"), default=-1.0),
+            }
+        )
+
+    if not normalized_points:
+        return []
+
+    normalized_points.sort(key=lambda item: float(item.get("elapsed_s") or 0.0))
+    derived_total_s = float(normalized_points[-1].get("elapsed_s") or 0.0)
+    total_actual_s = max(fallback_total_s, derived_total_s)
+    if total_actual_s <= 0:
+        return []
+
+    planned_total_s = sum(float(step.get("planned_duration_s") or 0.0) for step in planned_steps)
+    if planned_total_s <= 0:
+        return []
+
+    out: list[dict] = []
+    segment_start_s = 0.0
+    accumulated_ratio = 0.0
+
+    for index, step in enumerate(planned_steps):
+        planned_duration_s = float(step.get("planned_duration_s") or 0.0)
+        accumulated_ratio += planned_duration_s / planned_total_s
+        segment_end_s = total_actual_s if index == len(planned_steps) - 1 else total_actual_s * accumulated_ratio
+
+        segment_points = [
+            row
+            for row in normalized_points
+            if float(row.get("elapsed_s") or 0.0) >= segment_start_s
+            and (
+                float(row.get("elapsed_s") or 0.0) <= segment_end_s
+                if index == len(planned_steps) - 1
+                else float(row.get("elapsed_s") or 0.0) < segment_end_s
+            )
+        ]
+
+        distance_values = [float(row.get("distance_m") or 0.0) for row in segment_points if float(row.get("distance_m") or 0.0) > 0]
+        hr_values = [float(row.get("heart_rate") or 0.0) for row in segment_points if float(row.get("heart_rate") or -1.0) >= 0]
+        power_values = [float(row.get("power") or 0.0) for row in segment_points if float(row.get("power") or -1.0) >= 0]
+        speed_values = [float(row.get("speed") or 0.0) for row in segment_points if float(row.get("speed") or -1.0) >= 0]
+
+        out.append(
+            {
+                "split": index + 1,
+                "actual_duration_s": max(0.0, segment_end_s - segment_start_s),
+                "distance_m": max(distance_values) - min(distance_values) if len(distance_values) >= 2 else 0.0,
+                "avg_hr": (sum(hr_values) / len(hr_values)) if hr_values else None,
+                "avg_power": (sum(power_values) / len(power_values)) if power_values else None,
+                "avg_speed": (sum(speed_values) / len(speed_values)) if speed_values else None,
+                "source": "planned_template",
+            }
+        )
+        segment_start_s = segment_end_s
+
+    return out
+
+
 def _compute_normalized_power_watts_from_payload(payload: dict) -> float | None:
     stats = payload.get("stats") if isinstance(payload.get("stats"), dict) else {}
     direct = _safe_number(stats.get("normalized_power"), default=0.0)
@@ -620,6 +738,12 @@ def _build_planned_comparison_payload(
 
     planned_steps = _flatten_planned_time_steps(workout.structure)
     actual_splits = _extract_actual_split_rows(splits_metric, laps)
+    used_planned_template_splits = False
+    if planned_steps and (not actual_splits or len(actual_splits) != len(planned_steps)):
+        derived_splits = _extract_actual_split_rows_from_planned_template(activity, planned_steps)
+        if len(derived_splits) == len(planned_steps):
+            actual_splits = derived_splits
+            used_planned_template_splits = True
     intensity = _intensity_assessment(workout, activity, profile, stats)
 
     steady_zone_workout = _is_steady_zone_workout(workout)
@@ -646,6 +770,10 @@ def _build_planned_comparison_payload(
                     "delta_duration_pct": delta_pct,
                 }
             )
+
+    planned_steps_duration_min = sum(float(step.get("planned_duration_s") or 0.0) for step in planned_steps) / 60.0
+    if planned_steps_duration_min > 0:
+        planned_duration_min = planned_steps_duration_min
 
     duration_match_pct = (
         max(0.0, 100.0 - abs(actual_duration_min - planned_duration_min) / planned_duration_min * 100.0)
@@ -806,10 +934,21 @@ def _build_planned_comparison_payload(
                 "status_thresholds": status_thresholds,
             },
             "split_importance": split_importance,
+            "split_source": "planned_template" if used_planned_template_splits else ("provider" if actual_splits else "unavailable"),
             "split_note": (
-                "This is a steady zone workout; intensity adherence matters more than matching every auto-split."
-                if split_importance == "low"
-                else None
+                " ".join(
+                    note
+                    for note in [
+                        "This is a steady zone workout; intensity adherence matters more than matching every auto-split."
+                        if split_importance == "low"
+                        else None,
+                        "Actual splits were auto-derived from the planned workout because provider splits were unavailable or did not match the planned structure."
+                        if used_planned_template_splits
+                        else None,
+                    ]
+                    if note
+                )
+                or None
             ),
         },
         "intensity": intensity,
@@ -817,12 +956,13 @@ def _build_planned_comparison_payload(
     }
 
 
-def _activity_feedback_from_payload(payload: dict) -> tuple[int | None, str | None]:
+def _activity_feedback_from_payload(payload: dict) -> tuple[int | None, str | None, float | None]:
     if not isinstance(payload, dict):
-        return None, None
+        return None, None, None
     meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
     rpe_raw = meta.get("rpe")
     notes_raw = meta.get("notes")
+    lactate_raw = meta.get("lactate_mmol_l")
 
     rpe_value = None
     if rpe_raw is not None:
@@ -837,7 +977,16 @@ def _activity_feedback_from_payload(payload: dict) -> tuple[int | None, str | No
     if notes_value == "":
         notes_value = None
 
-    return rpe_value, notes_value
+    lactate_value = None
+    if lactate_raw is not None:
+        try:
+            parsed = float(lactate_raw)
+            if 0.0 <= parsed <= 40.0:
+                lactate_value = parsed
+        except (TypeError, ValueError):
+            pass
+
+    return rpe_value, notes_value, lactate_value
 
 
 def _is_activity_deleted(activity: Activity) -> bool:
@@ -1917,12 +2066,15 @@ async def get_activities(
         # Prefer new columns, fallback to streams (legacy)
         rpe = activity.rpe
         notes = activity.notes
-        if rpe is None or notes is None:
-            legacy_rpe, legacy_notes = _activity_feedback_from_payload(payload)
+        lactate_mmol_l = None
+        if rpe is None or notes is None or lactate_mmol_l is None:
+            legacy_rpe, legacy_notes, legacy_lactate = _activity_feedback_from_payload(payload)
             if rpe is None:
                 rpe = legacy_rpe
             if notes is None:
                 notes = legacy_notes
+            if lactate_mmol_l is None:
+                lactate_mmol_l = legacy_lactate
             
         out.append(
             ActivityOut(
@@ -1942,6 +2094,7 @@ async def get_activities(
                 anaerobic_load=anaerobic_load,
                 total_load_impact=total_load_impact,
                 rpe=rpe,
+                lactate_mmol_l=lactate_mmol_l,
                 notes=notes,
             )
         )
@@ -1958,11 +2111,25 @@ async def get_activity(
     
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
-        
-    if activity.athlete_id != current_user.id and current_user.role != "coach": # Allow coach? (Need to check if coach linked)
-         # Simplified permission check: Owner or Coach
-         # For now allow owner.
-         pass
+
+    if activity.athlete_id != current_user.id:
+        if current_user.role != RoleEnum.coach:
+            raise HTTPException(status_code=403, detail="Not authorized for this activity")
+
+        access_stmt = select(OrganizationMember).where(
+            OrganizationMember.user_id == activity.athlete_id,
+            OrganizationMember.status == 'active',
+            OrganizationMember.organization_id.in_(
+                select(OrganizationMember.organization_id).where(
+                    OrganizationMember.user_id == current_user.id,
+                    OrganizationMember.role == RoleEnum.coach.value,
+                    OrganizationMember.status == 'active'
+                )
+            )
+        )
+        access_res = await db.execute(access_stmt)
+        if access_res.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="Not authorized for this activity")
          
     # Extract data from stored JSON structure
     # Stored as { "data": [...], "power_curve": ..., "hr_zones": ... }
@@ -2073,6 +2240,8 @@ async def get_activity(
         else None
     )
         
+    legacy_rpe, legacy_notes, legacy_lactate = _activity_feedback_from_payload(stored_data)
+
     activity_response = ActivityDetail(
         id=activity.id,
         athlete_id=activity.athlete_id,
@@ -2103,8 +2272,9 @@ async def get_activity(
         aerobic_load=aerobic_load,
         anaerobic_load=anaerobic_load,
         total_load_impact=round(aerobic_load + anaerobic_load, 1),
-        rpe=activity.rpe if activity.rpe is not None else _activity_feedback_from_payload(stored_data)[0],
-        notes=activity.notes if activity.notes is not None else _activity_feedback_from_payload(stored_data)[1],
+        rpe=activity.rpe if activity.rpe is not None else legacy_rpe,
+        lactate_mmol_l=legacy_lactate,
+        notes=activity.notes if activity.notes is not None else legacy_notes,
     )
     return activity_response
 
@@ -2150,6 +2320,8 @@ async def update_activity_feedback(
         rpe_val = update_data.get("rpe")
         activity.rpe = rpe_val
         meta["rpe"] = rpe_val # Keep sync for now
+    if "lactate_mmol_l" in update_data:
+        meta["lactate_mmol_l"] = update_data.get("lactate_mmol_l")
     if "notes" in update_data:
         notes_val = update_data.get("notes")
         activity.notes = notes_val
@@ -2173,6 +2345,8 @@ async def update_activity_feedback(
             split_item = split_list[split_index]
             if not isinstance(split_item, dict):
                 continue
+            if "rpe" in annotation:
+                split_item["rpe"] = annotation.get("rpe")
             if "lactate_mmol_l" in annotation:
                 split_item["lactate_mmol_l"] = annotation.get("lactate_mmol_l")
             if "note" in annotation:

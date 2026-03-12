@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Button, Container, Group, Title, MultiSelect, Switch, Paper, Text, Stack, Alert } from '@mantine/core';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconDeviceFloppy, IconCheck } from '@tabler/icons-react';
+import { IconDeviceFloppy } from '@tabler/icons-react';
 import { WorkoutNode, SavedWorkout, WorkoutStructure } from '../../types/workout';
 import { WorkoutEditor } from './WorkoutEditor';
-import { getWorkout, createWorkout, updateWorkout } from '../../api/workouts';
+import { getWorkout, getWorkouts, createWorkout, updateWorkout } from '../../api/workouts';
 
 export const WorkoutBuilder = () => {
     const [searchParams] = useSearchParams();
@@ -25,13 +25,13 @@ export const WorkoutBuilder = () => {
     // Fetch all workouts to get available tags for autocomplete
     const { data: allWorkouts } = useQuery({
         queryKey: ['workouts'],
-        queryFn: () => getWorkouts().then(res => res || []), // Ensure array
+        queryFn: () => getWorkouts(),
         staleTime: 60000
     });
     
     const availableTags = React.useMemo(() => {
         const unique = new Set<string>(['Endurance', 'Intervals', 'Recovery', 'Tempo', 'VO2Max', 'Sprint', 'Technique']);
-        allWorkouts?.forEach(w => w.tags?.forEach(t => unique.add(t)));
+        allWorkouts?.forEach((w: SavedWorkout) => w.tags?.forEach((t: string) => unique.add(t)));
         return Array.from(unique).sort();
     }, [allWorkouts]);
 
@@ -111,8 +111,6 @@ export const WorkoutBuilder = () => {
                             value={tags}
                             onChange={setTags}
                             searchable
-                            creatable
-                            getCreateLabel={(query) => `+ Create ${query}`}
                             style={{ flex: 1 }}
                          />
                          <Switch 

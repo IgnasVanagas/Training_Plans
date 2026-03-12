@@ -25,6 +25,8 @@ export type User = {
   email: string;
   email_verified?: boolean;
   role: "coach" | "athlete" | "admin";
+  has_upcoming_coach_workout?: boolean;
+  next_coach_workout_date?: string | null;
   coaches?: Array<{
     id: number;
     email: string;

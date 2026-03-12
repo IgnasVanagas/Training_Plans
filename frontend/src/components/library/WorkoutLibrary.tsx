@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Stack, TextInput, MultiSelect, Button, Loader, Group, ActionIcon, ScrollArea, SegmentedControl, Text, Divider, Box } from '@mantine/core';
 import { IconSearch, IconFilter, IconPlus, IconX } from '@tabler/icons-react';
-import { getWorkouts, deleteWorkout, updateWorkout } from '../../api/workouts';
+import { getWorkouts, deleteWorkout, updateWorkout, getRecentCoachWorkouts, RecentCoachWorkout } from '../../api/workouts';
 import { SavedWorkout } from '../../types/workout';
 import { WorkoutLibraryItem } from './WorkoutLibraryItem';
 import { useNavigate } from 'react-router-dom';
@@ -18,11 +18,17 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
     const navigate = useNavigate();
     const [search, setSearch] = useState('');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
-    const [filterType, setFilterType] = useState<'all' | 'favorites'>('all');
+    const [filterType, setFilterType] = useState<'all' | 'recent' | 'saved'>('all');
 
     const { data: workouts, isLoading } = useQuery({
         queryKey: ['workouts'],
         queryFn: () => getWorkouts({ limit: 500 })
+    });
+
+    const { data: recentPlanned, isLoading: isLoadingRecent } = useQuery({
+        queryKey: ['recent-coach-workouts'],
+        queryFn: () => getRecentCoachWorkouts(20),
+        enabled: filterType === 'recent',
     });
 
     const deleteMutation = useMutation({
@@ -47,25 +53,51 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
     }, [workouts]);
 
     const filteredWorkouts = useMemo(() => {
+        if (filterType === 'recent') {
+            if (!recentPlanned) return [];
+            // Map recent planned workouts to SavedWorkout-like shape
+            let list: SavedWorkout[] = recentPlanned.map((rw) => ({
+                id: rw.id,
+                coach_id: 0,
+                title: rw.title,
+                description: rw.description ?? undefined,
+                sport_type: rw.sport_type,
+                structure: rw.structure,
+                tags: rw.tags,
+                is_favorite: rw.is_favorite,
+                created_at: rw.date ?? '',
+            }));
+            return list.filter(w => {
+                const matchesSearch = !search || w.title.toLowerCase().includes(search.toLowerCase()) ||
+                                      w.description?.toLowerCase().includes(search.toLowerCase());
+                return matchesSearch;
+            });
+        }
+
         if (!workouts) return [];
-        return workouts.filter(w => {
+        let list = [...workouts];
+
+        if (filterType === 'saved') {
+            list = list.filter(w => w.is_favorite);
+        }
+
+        return list.filter(w => {
             const matchesSearch = w.title.toLowerCase().includes(search.toLowerCase()) || 
                                   w.description?.toLowerCase().includes(search.toLowerCase());
             const matchesTags = selectedTags.length === 0 || 
                                 selectedTags.every(t => w.tags?.includes(t));
-            const matchesType = filterType === 'all' || (filterType === 'favorites' && w.is_favorite);
             
-            return matchesSearch && matchesTags && matchesType;
+            return matchesSearch && matchesTags;
         });
-    }, [workouts, search, selectedTags, filterType]);
+    }, [workouts, recentPlanned, search, selectedTags, filterType]);
 
     const handleCreate = () => {
-        navigate('/builder'); // Assumptions about route
+        navigate('/workouts/new');
     };
 
     const handleEdit = (e: React.MouseEvent, workout: SavedWorkout) => {
         e.stopPropagation();
-        navigate(`/builder?id=${workout.id}`); // Assumptions about route
+        navigate(`/workouts/new?id=${workout.id}`);
     };
 
     const handleDelete = (e: React.MouseEvent, id: number) => {
@@ -107,10 +139,11 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
                 fullWidth 
                 size="xs"
                 value={filterType}
-                onChange={(val) => setFilterType(val as 'all' | 'favorites')}
+                onChange={(val) => setFilterType(val as 'all' | 'recent' | 'saved')}
                 data={[
                     { label: 'All', value: 'all' },
-                    { label: 'Favorites', value: 'favorites' }
+                    { label: 'Recent', value: 'recent' },
+                    { label: 'Saved', value: 'saved' }
                 ]}
             />
 
@@ -130,7 +163,7 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
             <Divider />
 
             <ScrollArea flex={1} type="auto" offsetScrollbars>
-                {isLoading ? (
+                {(isLoading || (filterType === 'recent' && isLoadingRecent)) ? (
                     <Group justify="center" pt="xl"><Loader size="sm" /></Group>
                 ) : (
                     <Stack gap="xs">

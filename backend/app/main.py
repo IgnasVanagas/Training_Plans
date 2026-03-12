@@ -4,7 +4,7 @@ import os
 from sqlalchemy import text
 
 from .database import Base, engine
-from .routers import auth, users, activities, calendar, workouts, integrations, communications
+from .routers import auth, users, activities, calendar, workouts, integrations, communications, planning
 from .seed import seed_data
 
 app = FastAPI(title="Endurance Sports Management Platform")
@@ -33,8 +33,12 @@ async def on_startup() -> None:
         await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS hrv_ms DOUBLE PRECISION"))
         await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE"))
         await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER"))
+        await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS season_plan_id INTEGER"))
+        await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS planning_context JSONB"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_activities_athlete_created_at ON activities (athlete_id, created_at DESC)"))
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_planned_workouts_user_date ON planned_workouts (user_id, date)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_planned_workouts_season_plan_id ON planned_workouts (season_plan_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_season_plans_athlete_updated_at ON season_plans (athlete_id, updated_at DESC)"))
         await conn.execute(text("UPDATE planned_workouts SET created_by_user_id = user_id WHERE created_by_user_id IS NULL"))
         await conn.execute(text("UPDATE users SET email_verified = TRUE WHERE email_verified IS NULL"))
 
@@ -49,3 +53,4 @@ app.include_router(calendar.router)
 app.include_router(workouts.router)
 app.include_router(integrations.router)
 app.include_router(communications.router)
+app.include_router(planning.router)

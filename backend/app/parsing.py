@@ -111,6 +111,52 @@ def infer_sport(df):
         
     return 'unknown'
 
+
+def _haversine_distance_m(lat1, lon1, lat2, lon2):
+    if None in (lat1, lon1, lat2, lon2):
+        return 0.0
+    r = 6371000.0
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    a = math.sin(d_phi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2.0) ** 2
+    c = 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+    return r * c
+
+
+def _strip_xml_namespace(tag):
+    if not tag:
+        return ""
+    if "}" in tag:
+        return tag.split("}", 1)[1]
+    return str(tag)
+
+
+def _extract_gpx_extension_metrics(point):
+    aliases = {
+        "heart_rate": {"hr", "heart_rate", "heartrate"},
+        "cadence": {"cad", "cadence", "run_cadence"},
+        "power": {"power", "watts"},
+    }
+    out = {"heart_rate": None, "cadence": None, "power": None}
+
+    for extension in (point.extensions or []):
+        for node in extension.iter():
+            tag = _strip_xml_namespace(getattr(node, "tag", "")).lower()
+            text = (getattr(node, "text", None) or "").strip()
+            if not tag or not text:
+                continue
+            parsed = safe_float(text)
+            if parsed is None:
+                continue
+
+            for key, key_aliases in aliases.items():
+                if tag in key_aliases:
+                    out[key] = parsed
+
+    return out
+
 def parse_fit(file_path):
     # Try using fitdecode first as it handles Coros files and errors better
     try:
@@ -482,53 +528,121 @@ def parse_fit_decode(file_path):
     }
 
 def parse_gpx(file_path):
-    # ... existing implementation adapted to dataframe ...
-    with open(file_path, 'r') as gpx_file:
+    with open(file_path, 'r', encoding='utf-8') as gpx_file:
         gpx = gpxpy.parse(gpx_file)
-        
+
     start_time = None
     time_bounds = gpx.get_time_bounds()
     if time_bounds:
         start_time = time_bounds.start_time
 
     data_points = []
+    cumulative_distance = 0.0
+    total_ascent = 0.0
+
     for track in gpx.tracks:
         for segment in track.segments:
+            prev_lat = None
+            prev_lon = None
+            prev_alt = None
+            prev_time = None
             for point in segment.points:
+                ext_metrics = _extract_gpx_extension_metrics(point)
+
+                segment_distance = _haversine_distance_m(prev_lat, prev_lon, point.latitude, point.longitude)
+                if segment_distance < 0:
+                    segment_distance = 0.0
+                cumulative_distance += segment_distance
+
+                if prev_alt is not None and point.elevation is not None:
+                    ascent_delta = point.elevation - prev_alt
+                    if ascent_delta > 0:
+                        total_ascent += ascent_delta
+
+                speed = None
+                if prev_time and point.time:
+                    delta_s = (point.time - prev_time).total_seconds()
+                    if delta_s and delta_s > 0:
+                        speed = segment_distance / delta_s
+
                 r_data = {
                     'timestamp': point.time,
                     'lat': point.latitude,
                     'lon': point.longitude,
-                    'altitude': point.elevation
+                    'altitude': point.elevation,
+                    'distance': cumulative_distance,
+                    'speed': speed,
+                    'heart_rate': ext_metrics['heart_rate'],
+                    'cadence': ext_metrics['cadence'],
+                    'power': ext_metrics['power'],
                 }
-                # Check extensions for HR/Cadence/Power if GPX 1.1 with extensions
-                # ... skipping complex XML parsing for extensions for MVP ...
                 data_points.append(r_data)
+
+                prev_lat = point.latitude
+                prev_lon = point.longitude
+                prev_alt = point.elevation
+                prev_time = point.time
 
     if not data_points:
         return None
-        
+
     df = pd.DataFrame(data_points)
-    
+
+    distance_total = safe_float(df['distance'].max()) if 'distance' in df.columns else None
+    if not distance_total:
+        distance_total = safe_float(gpx.length_2d())
+
+    duration_total = safe_float(gpx.get_duration())
+    if (duration_total is None or duration_total <= 0) and 'timestamp' in df.columns and len(df) > 1:
+        try:
+            duration_total = safe_float((df['timestamp'].iloc[-1] - df['timestamp'].iloc[0]).total_seconds())
+        except Exception:
+            duration_total = None
+
+    avg_speed = None
+    if duration_total and duration_total > 0 and distance_total:
+        avg_speed = distance_total / duration_total
+    elif 'speed' in df.columns:
+        avg_speed = safe_float(df['speed'].mean())
+
+    sport = infer_sport(df)
+
     summary = {
-        "distance": safe_float(gpx.length_2d()),
-        "duration": safe_float(gpx.get_duration()),
-        "avg_speed": 0, # Calc properly
-        "average_hr": 0,
-        "average_watts": 0
+        "distance": distance_total,
+        "duration": duration_total,
+        "avg_speed": safe_float(avg_speed),
+        "average_hr": safe_float(df['heart_rate'].mean()) if 'heart_rate' in df.columns else 0,
+        "average_watts": safe_float(df['power'].mean()) if 'power' in df.columns else 0,
+        "max_hr": safe_float(df['heart_rate'].max()) if 'heart_rate' in df.columns else 0,
+        "max_speed": safe_float(df['speed'].max()) if 'speed' in df.columns else 0,
+        "max_watts": safe_float(df['power'].max()) if 'power' in df.columns else 0,
+        "avg_cadence": safe_float(df['cadence'].mean()) if 'cadence' in df.columns else 0,
+        "max_cadence": safe_float(df['cadence'].max()) if 'cadence' in df.columns else 0,
+        "total_elevation_gain": safe_float(total_ascent),
+        "total_calories": 0,
     }
-    
-    # Calculate simple speed if needed
-    
+
+    power_curve = calculate_power_curve(df)
+    if sport == 'running' and 'power' in df.columns:
+        p_mean = df['power'].fillna(0).mean()
+        if p_mean < 10:
+            power_curve = None
+
+    hr_zones = calculate_hr_zones(df)
+    pace_curve = calculate_pace_curve(df)
+    splits_metric = calculate_metric_splits(df)
+
     df['timestamp'] = df['timestamp'].astype(str)
-    
+
     return {
         "summary": summary,
         "streams": clean_streams(df),
-        "sport": "other",
-        "power_curve": None,
-        "hr_zones": None,
-        "pace_curve": None,
+        "sport": sport,
+        "power_curve": power_curve,
+        "hr_zones": hr_zones,
+        "pace_curve": pace_curve,
+        "laps": [],
+        "splits_metric": splits_metric,
         "start_time": start_time
     }
 

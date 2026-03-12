@@ -302,6 +302,8 @@ class AthleteOut(BaseModel):
     id: int
     email: EmailStr
     profile: Optional[ProfileOut] = None
+    has_upcoming_coach_workout: bool = False
+    next_coach_workout_date: Optional[dt_date] = None
 
     class Config:
         from_attributes = True
@@ -339,6 +341,7 @@ class ActivityBase(BaseModel):
     anaerobic_load: Optional[float] = None
     total_load_impact: Optional[float] = None
     rpe: Optional[int] = None
+    lactate_mmol_l: Optional[float] = None
     notes: Optional[str] = None
 
 class ActivityOut(ActivityBase):
@@ -368,14 +371,40 @@ class ActivityDetail(ActivityOut):
 class SplitAnnotationUpdate(BaseModel):
     split_type: str = Field(pattern="^(metric|laps)$")
     split_index: int = Field(ge=0)
+    rpe: Optional[int] = Field(default=None, ge=1, le=10)
     lactate_mmol_l: Optional[float] = Field(default=None, ge=0.0, le=40.0)
     note: Optional[str] = Field(default=None, max_length=400)
 
 
 class ActivityUpdate(BaseModel):
     rpe: Optional[int] = Field(default=None, ge=1, le=10)
+    lactate_mmol_l: Optional[float] = Field(default=None, ge=0.0, le=40.0)
     notes: Optional[str] = Field(default=None, max_length=2000)
     split_annotations: Optional[List[SplitAnnotationUpdate]] = None
+
+
+class WorkoutRecurrenceRule(BaseModel):
+    frequency: Literal['weekly'] = 'weekly'
+    interval_weeks: int = Field(default=1, ge=1, le=12)
+    weekdays: List[int] = Field(min_length=1, max_length=7)
+    span_weeks: Optional[int] = Field(default=None, ge=1, le=104)
+    end_date: Optional[dt_date] = None
+    exception_dates: List[dt_date] = Field(default_factory=list)
+    series_id: Optional[str] = Field(default=None, max_length=64)
+    anchor_date: Optional[dt_date] = None
+    occurrence_index: Optional[int] = Field(default=None, ge=1)
+    occurrences_total: Optional[int] = Field(default=None, ge=1)
+
+    @field_validator('weekdays')
+    @classmethod
+    def validate_weekdays(cls, value: List[int]) -> List[int]:
+        normalized = sorted({int(day) for day in value})
+        if not normalized:
+            raise ValueError('At least one weekday is required')
+        for day in normalized:
+            if day < 0 or day > 6:
+                raise ValueError('Weekdays must use 0-6, where 0 is Monday')
+        return normalized
 
 class PlannedWorkoutBase(BaseModel):
     date: dt_date
@@ -386,6 +415,9 @@ class PlannedWorkoutBase(BaseModel):
     planned_distance: Optional[float] = None
     planned_intensity: Optional[str] = None
     structure: Optional[List[Union['ConcreteStep', 'RepeatStep']]] = None
+    season_plan_id: Optional[int] = None
+    planning_context: Optional[dict[str, Any]] = None
+    recurrence: Optional[WorkoutRecurrenceRule] = None
 
 
 class PlannedWorkoutCreate(PlannedWorkoutBase):
@@ -400,6 +432,9 @@ class PlannedWorkoutUpdate(BaseModel):
     planned_distance: Optional[float] = None
     planned_intensity: Optional[str] = None
     structure: Optional[List[Union['ConcreteStep', 'RepeatStep']]] = None
+    season_plan_id: Optional[int] = None
+    planning_context: Optional[dict[str, Any]] = None
+    recurrence: Optional[WorkoutRecurrenceRule] = None
 
 class PlannedWorkoutOut(PlannedWorkoutBase):
     id: int
@@ -437,6 +472,9 @@ class CalendarEvent(BaseModel):
     created_by_user_id: Optional[int] = None
     created_by_name: Optional[str] = None
     created_by_email: Optional[str] = None
+    season_plan_id: Optional[int] = None
+    planning_context: Optional[dict[str, Any]] = None
+    recurrence: Optional[WorkoutRecurrenceRule] = None
     
     # Activity specific
     filename: Optional[str] = None
@@ -509,6 +547,86 @@ class StructuredWorkoutOut(StructuredWorkoutCreate):
 RepeatStep.model_rebuild()
 PlannedWorkoutBase.model_rebuild()
 CalendarEvent.model_rebuild()
+
+
+class PlannerTargetMetric(BaseModel):
+    metric: str
+    value: Union[str, float]
+    unit: Optional[str] = None
+
+
+class PlannerGoalRace(BaseModel):
+    name: str
+    date: dt_date
+    priority: Literal['A', 'B', 'C'] = 'C'
+    notes: Optional[str] = None
+    target_metrics: List[PlannerTargetMetric] = Field(default_factory=list)
+
+
+class PlannerConstraint(BaseModel):
+    name: Optional[str] = None
+    kind: Literal['injury', 'travel', 'sickness', 'unavailable']
+    start_date: dt_date
+    end_date: dt_date
+    severity: Literal['low', 'moderate', 'high'] = 'moderate'
+    impact: Literal['reduce', 'avoid_intensity', 'rest'] = 'reduce'
+    notes: Optional[str] = None
+
+
+class PeriodizationConfig(BaseModel):
+    weekly_hours_target: float = Field(default=8.0, ge=1.0, le=40.0)
+    longest_session_minutes: int = Field(default=180, ge=30, le=600)
+    training_days_per_week: int = Field(default=5, ge=2, le=7)
+    recovery_week_frequency: int = Field(default=4, ge=2, le=6)
+    taper_profile: Literal['short', 'standard', 'extended'] = 'standard'
+
+
+class SeasonPlanBase(BaseModel):
+    name: str
+    sport_type: str
+    season_start: dt_date
+    season_end: dt_date
+    notes: Optional[str] = None
+    target_metrics: List[PlannerTargetMetric] = Field(default_factory=list)
+    goal_races: List[PlannerGoalRace] = Field(default_factory=list)
+    constraints: List[PlannerConstraint] = Field(default_factory=list)
+    periodization: PeriodizationConfig = Field(default_factory=PeriodizationConfig)
+
+
+class SeasonPlanSaveRequest(SeasonPlanBase):
+    id: Optional[int] = None
+
+
+class SeasonPlanOut(SeasonPlanBase):
+    id: int
+    athlete_id: int
+    coach_id: Optional[int] = None
+    generated_summary: Optional[dict[str, Any]] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SeasonPlanPreviewOut(BaseModel):
+    countdowns: List[dict[str, Any]] = Field(default_factory=list)
+    season_blocks: List[dict[str, Any]] = Field(default_factory=list)
+    macro_cycles: List[dict[str, Any]] = Field(default_factory=list)
+    meso_cycles: List[dict[str, Any]] = Field(default_factory=list)
+    micro_cycles: List[dict[str, Any]] = Field(default_factory=list)
+    generated_workouts: List[dict[str, Any]] = Field(default_factory=list)
+    summary: dict[str, Any] = Field(default_factory=dict)
+
+
+class SeasonPlanApplyResponse(BaseModel):
+    plan_id: int
+    athlete_id: int
+    created_count: int
+    replaced_count: int
+    skipped_count: int
+    preserved_manual_count: int
+    preview: SeasonPlanPreviewOut
 
 
 class ProviderStatusOut(BaseModel):

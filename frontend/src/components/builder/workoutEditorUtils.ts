@@ -85,7 +85,7 @@ export const sectionAccentColor: Record<StepCategory, string> = {
 
 export const sectionHeaderText: Record<StepCategory, string> = {
 	warmup: 'Warm Up',
-	work: 'Main Set',
+	work: 'Training',
 	recovery: 'Recovery',
 	cooldown: 'Cool Down'
 };
@@ -178,13 +178,56 @@ export const createDefaultTarget = (): TargetConfig => ({
 	max: 75
 });
 
-export const createDefaultBlock = (category: StepCategory = 'work'): ConcreteStep => ({
-	id: randomId(),
-	type: 'block',
-	category,
-	duration: { type: 'time', value: 300 },
-	target: createDefaultTarget()
-});
+const defaultZoneForCategory: Record<StepCategory, number> = {
+	warmup: 1,
+	work: 2,
+	recovery: 1,
+	cooldown: 1
+};
+
+const defaultDurationForCategory: Record<StepCategory, number> = {
+	warmup: 600,
+	work: 300,
+	recovery: 300,
+	cooldown: 600
+};
+
+export const powerZoneRanges: Array<[number, number, number]> = [[1, 50, 55], [2, 56, 75], [3, 76, 90], [4, 91, 105], [5, 106, 120], [6, 121, 150], [7, 151, 200]];
+export const hrZoneRanges: Array<[number, number, number]> = [[1, 50, 60], [2, 61, 70], [3, 71, 80], [4, 81, 90], [5, 91, 100]];
+
+export const createDefaultBlock = (category: StepCategory = 'work'): ConcreteStep => {
+	const zone = defaultZoneForCategory[category];
+	const pwr = powerZoneRanges[zone - 1];
+	return {
+		id: randomId(),
+		type: 'block',
+		category,
+		duration: { type: 'time', value: defaultDurationForCategory[category] },
+		target: { type: 'power', metric: 'percent_ftp', value: Math.round((pwr[1] + pwr[2]) / 2), unit: '%', zone, min: pwr[1], max: pwr[2] }
+	};
+};
+
+export const createZoneBlock = (category: StepCategory, zone: number, sport: 'cycling' | 'running' = 'cycling'): ConcreteStep => {
+	const duration = defaultDurationForCategory[category];
+	if (sport === 'running') {
+		const hr = hrZoneRanges[Math.min(zone, 5) - 1];
+		return {
+			id: randomId(),
+			type: 'block',
+			category,
+			duration: { type: 'time', value: duration },
+			target: { type: 'heart_rate_zone', metric: 'percent_max_hr', value: Math.round((hr[1] + hr[2]) / 2), unit: '%', zone: hr[0], min: hr[1], max: hr[2] }
+		};
+	}
+	const pwr = powerZoneRanges[Math.min(zone, 7) - 1];
+	return {
+		id: randomId(),
+		type: 'block',
+		category,
+		duration: { type: 'time', value: duration },
+		target: { type: 'power', metric: 'percent_ftp', value: Math.round((pwr[1] + pwr[2]) / 2), unit: '%', zone: pwr[0], min: pwr[1], max: pwr[2] }
+	};
+};
 
 export const createDefaultRepeat = (): RepeatStep => ({
 	id: randomId(),

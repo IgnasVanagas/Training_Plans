@@ -1,19 +1,160 @@
 import { format } from 'date-fns';
 import { Activity, CheckCircle } from 'lucide-react';
-import { Alert, Box, Button, Container, Divider, Group, Modal, NumberInput, Paper, Select, Stack, SegmentedControl, Text } from '@mantine/core';
+import { Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, Stack, SegmentedControl, Text } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { WorkoutEditor } from '../builder/WorkoutEditor';
 import { WorkoutLibrary } from '../library/WorkoutLibrary';
-import { CalendarEvent } from './types';
-import { formatMinutesHm } from './dateUtils';
+import { CalendarEvent, WorkoutRecurrenceRule } from './types';
+import { formatMinutesHm, parseDate } from './dateUtils';
 import { DayEventItem } from './TrainingCalendarEventRenderers';
+import { useI18n } from '../../i18n/I18nProvider';
+
+const weekdayOptions = (t: (value: string) => string) => [
+  { value: '0', label: t('Monday') || 'Monday' },
+  { value: '1', label: t('Tuesday') || 'Tuesday' },
+  { value: '2', label: t('Wednesday') || 'Wednesday' },
+  { value: '3', label: t('Thursday') || 'Thursday' },
+  { value: '4', label: t('Friday') || 'Friday' },
+  { value: '5', label: t('Saturday') || 'Saturday' },
+  { value: '6', label: t('Sunday') || 'Sunday' },
+];
+
+const buildDefaultRecurrence = (dateValue?: string): WorkoutRecurrenceRule => {
+  const parsedDate = dateValue ? parseDate(dateValue) : new Date();
+  const weekday = Number.isNaN(parsedDate.getTime()) ? new Date().getDay() : parsedDate.getDay();
+  const normalizedWeekday = (weekday + 6) % 7;
+  return {
+    frequency: 'weekly',
+    interval_weeks: 1,
+    weekdays: [normalizedWeekday],
+    span_weeks: 12,
+    exception_dates: [],
+  };
+};
+
+const RecurringWorkoutFields = ({
+  selectedEvent,
+  setSelectedEvent,
+  disabled,
+}: {
+  selectedEvent: Partial<CalendarEvent>;
+  setSelectedEvent: (next: Partial<CalendarEvent>) => void;
+  disabled?: boolean;
+}) => {
+  const { t } = useI18n();
+  const recurrence = selectedEvent.recurrence || null;
+  const mode = recurrence ? 'weekly' : 'once';
+
+  return (
+    <Paper withBorder p="sm" radius="md">
+      <Stack gap="sm">
+        <Group justify="space-between" align="flex-end">
+          <Box>
+            <Text fw={600}>{t('Repeat workout') || 'Repeat workout'}</Text>
+            <Text size="xs" c="dimmed">
+              {t('Create a weekly series and skip specific dates when needed.') || 'Create a weekly series and skip specific dates when needed.'}
+            </Text>
+          </Box>
+          <SegmentedControl
+            value={mode}
+            onChange={(value) => {
+              if (value === 'once') {
+                setSelectedEvent({ ...selectedEvent, recurrence: undefined });
+                return;
+              }
+              setSelectedEvent({
+                ...selectedEvent,
+                recurrence: recurrence || buildDefaultRecurrence(selectedEvent.date),
+              });
+            }}
+            data={[
+              { label: t('One-time') || 'One-time', value: 'once' },
+              { label: t('Weekly') || 'Weekly', value: 'weekly' },
+            ]}
+            disabled={disabled}
+          />
+        </Group>
+
+        {recurrence && (
+          <>
+            <MultiSelect
+              label={t('Weekdays') || 'Weekdays'}
+              data={weekdayOptions(t)}
+              value={(recurrence.weekdays || []).map((value) => String(value))}
+              onChange={(value) => setSelectedEvent({
+                ...selectedEvent,
+                recurrence: {
+                  ...recurrence,
+                  weekdays: value.map((item) => Number(item)).sort((left, right) => left - right),
+                },
+              })}
+              searchable={false}
+              clearable={false}
+              disabled={disabled}
+            />
+
+            <Group grow>
+              <NumberInput
+                label={t('Repeat every (weeks)') || 'Repeat every (weeks)'}
+                min={1}
+                max={12}
+                value={recurrence.interval_weeks || 1}
+                onChange={(value) => setSelectedEvent({
+                  ...selectedEvent,
+                  recurrence: {
+                    ...recurrence,
+                    interval_weeks: Math.max(1, typeof value === 'number' ? value : Number(value || 1)),
+                  },
+                })}
+                disabled={disabled}
+              />
+
+              <NumberInput
+                label={t('Total weeks') || 'Total weeks'}
+                min={1}
+                max={104}
+                value={recurrence.span_weeks || 12}
+                onChange={(value) => setSelectedEvent({
+                  ...selectedEvent,
+                  recurrence: {
+                    ...recurrence,
+                    span_weeks: Math.max(1, typeof value === 'number' ? value : Number(value || 12)),
+                  },
+                })}
+                disabled={disabled}
+              />
+            </Group>
+
+            <DatePickerInput
+              type="multiple"
+              label={t('Exception dates') || 'Exception dates'}
+              description={t('Skip these dates without breaking the series.') || 'Skip these dates without breaking the series.'}
+              value={(recurrence.exception_dates || []).map((value) => new Date(value))}
+              onChange={(value) => setSelectedEvent({
+                ...selectedEvent,
+                recurrence: {
+                  ...recurrence,
+                  exception_dates: value
+                    .filter((item): item is Date => item instanceof Date && !Number.isNaN(item.getTime()))
+                    .map((item) => format(item, 'yyyy-MM-dd')),
+                },
+              })}
+              disabled={disabled}
+            />
+          </>
+        )}
+      </Stack>
+    </Paper>
+  );
+};
 
 export const DayDetailsModal = ({
   opened,
   onClose,
   selectedDayTitle,
   dayEvents,
+  selectedDateRange,
   isDark,
   athleteId,
   viewDate,
@@ -28,6 +169,8 @@ export const DayDetailsModal = ({
   setQuickWorkout,
   canEditWorkouts,
   ensureAthleteSelectedForCreate,
+  onQuickPlanningAction,
+  planningActionPending,
   onOpenWorkoutBuilder,
   onCreateQuickWorkout,
   onLibrarySelect,
@@ -35,7 +178,33 @@ export const DayDetailsModal = ({
   activityColors,
   palette,
 }: any) => {
+  const { t } = useI18n();
   const [createMode, setCreateMode] = useState<'quick' | 'library'>('quick');
+  const isRangeSelection = Boolean(
+    selectedDateRange?.startDate &&
+    selectedDateRange?.endDate &&
+    selectedDateRange.startDate !== selectedDateRange.endDate,
+  );
+
+  const planningOptions = useMemo(() => {
+    const items = [
+      { label: t('Travel') || 'Travel', action: { type: 'constraint', kind: 'travel', label: t('Travel') || 'Travel', severity: 'moderate', impact: 'reduce' } },
+      { label: t('Sickness') || 'Sickness', action: { type: 'constraint', kind: 'sickness', label: t('Sickness') || 'Sickness', severity: 'high', impact: 'rest' } },
+      { label: t('Injury') || 'Injury', action: { type: 'constraint', kind: 'injury', label: t('Injury') || 'Injury', severity: 'high', impact: 'rest' } },
+      { label: t('Holiday') || 'Holiday', action: { type: 'constraint', kind: 'unavailable', label: t('Holiday') || 'Holiday', severity: 'moderate', impact: 'reduce' } },
+    ];
+
+    if (isRangeSelection) {
+      return items;
+    }
+
+    return [
+      { label: t('A race') || 'A race', action: { type: 'goal_race', priority: 'A', label: t('A race') || 'A race' } },
+      { label: t('B race') || 'B race', action: { type: 'goal_race', priority: 'B', label: t('B race') || 'B race' } },
+      { label: t('C race') || 'C race', action: { type: 'goal_race', priority: 'C', label: t('C race') || 'C race' } },
+      ...items,
+    ];
+  }, [isRangeSelection, t]);
 
   return (
   <Modal
@@ -55,9 +224,7 @@ export const DayDetailsModal = ({
 
         return (
           <>
-            {dayEvents.length === 0 ? (
-              <Text c="dimmed" size="sm" ta="center" py="md">No activities for this day.</Text>
-            ) : (
+            {dayEvents.length > 0 && (
               dayEvents.map((evt: CalendarEvent) => (
                 <DayEventItem
                   key={evt.id ?? `${evt.date}-${evt.title}`}
@@ -79,12 +246,11 @@ export const DayDetailsModal = ({
 
             {!isPastCreationDate && (
               <>
-                <Divider label="Create" labelPosition="center" />
 
                 {coachNeedsAthleteSelection && (
                   <Select
-                    label="Assign to Athlete"
-                    placeholder="Select athlete"
+                    label={t('Assign to Athlete') || 'Assign to Athlete'}
+                    placeholder={t('Select athlete') || 'Select athlete'}
                     data={athleteOptions}
                     value={selectedEvent.user_id?.toString()}
                     onChange={(val) => {
@@ -96,140 +262,175 @@ export const DayDetailsModal = ({
                   />
                 )}
 
-                <SegmentedControl 
-                    value={createMode}
-                    onChange={(val: any) => setCreateMode(val)}
-                    data={[
-                        { label: 'Quick Workout', value: 'quick' },
-                        { label: 'Library', value: 'library' }
-                    ]}
-                    fullWidth
-                    mb="sm"
-                />
+                <Stack gap="xs" mb="sm">
+                  <Text fw={600}>{t('Calendar actions') || 'Calendar actions'}</Text>
+                  <Text size="sm" c="dimmed">
+                    {isRangeSelection
+                      ? (t('Save this date range as travel, sickness, injury, or holiday for planning.') || 'Save this date range as travel, sickness, injury, or holiday for planning.')
+                      : (t('Add a goal race or availability marker directly from the calendar.') || 'Add a goal race or availability marker directly from the calendar.')}
+                  </Text>
+                  <Group gap="xs">
+                    {planningOptions.map((option) => (
+                      <Button
+                        key={option.label}
+                        variant="light"
+                        size="xs"
+                        onClick={() => onQuickPlanningAction(option.action)}
+                        loading={planningActionPending}
+                        disabled={!canEditWorkouts || planningActionPending}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                  </Group>
+                </Stack>
 
-                {createMode === 'quick' ? (
+                {!isRangeSelection && (
                   <>
-                <Group grow>
-                  <Select
-                    label="Sport"
-                    data={['Cycling', 'Running']}
-                    value={quickWorkout.sport_type}
-                    onChange={(value) => {
-                      if (!value) return;
-                      const zoneMax = value === 'Running' ? 5 : 7;
-                      const nextZone = Math.min(quickWorkout.zone, zoneMax);
-                      setQuickWorkout({ ...quickWorkout, sport_type: value, zone: nextZone });
-                    }}
-                  />
-                  <NumberInput
-                    label="Zone"
-                    min={1}
-                    max={quickWorkout.sport_type === 'Running' ? 5 : 7}
-                    value={quickWorkout.zone}
-                    onChange={(value) => {
-                      const numericValue = typeof value === 'number' ? value : Number(value || 1);
-                      const zoneMax = quickWorkout.sport_type === 'Running' ? 5 : 7;
-                      setQuickWorkout({ ...quickWorkout, zone: Math.max(1, Math.min(zoneMax, numericValue)) });
-                    }}
-                  />
-                </Group>
+                    <Divider my="xs" />
 
-                <Group grow>
-                  <Select
-                    label="Quick Workout Type"
-                    data={[
-                      { value: 'time', label: 'Time in Zone' },
-                      { value: 'distance', label: 'Distance in Zone (km)' },
-                    ]}
-                    value={quickWorkout.mode}
-                    onChange={(value) => {
-                      if (!value) return;
-                      setQuickWorkout({ ...quickWorkout, mode: value as 'time' | 'distance' });
-                    }}
-                  />
+                    <SegmentedControl 
+                        value={createMode}
+                        onChange={(val: any) => setCreateMode(val)}
+                        data={[
+                            { label: t('Create Workout') || 'Create Workout', value: 'quick' },
+                            { label: t('Library') || 'Library', value: 'library' }
+                        ]}
+                        fullWidth
+                        mb="sm"
+                    />
 
-                  {quickWorkout.mode === 'time' ? (
-                    <Group grow align="end">
-                      <NumberInput
-                        label="Hours"
-                        min={0}
-                        step={1}
-                        value={Math.floor((quickWorkout.minutes || 0) / 60)}
+                    <RecurringWorkoutFields
+                      selectedEvent={selectedEvent}
+                      setSelectedEvent={setSelectedEvent}
+                      disabled={!canEditWorkouts}
+                    />
+
+                    {createMode === 'quick' ? (
+                      <>
+                    <Group grow>
+                      <Select
+                        label={t('Sport') || 'Sport'}
+                        data={['Cycling', 'Running']}
+                        value={quickWorkout.sport_type}
                         onChange={(value) => {
-                          const hours = Math.max(0, typeof value === 'number' ? value : Number(value || 0));
-                          const currentMinutesRemainder = Math.max(0, (quickWorkout.minutes || 0) % 60);
-                          const totalMinutes = Math.max(5, Math.round(hours * 60 + currentMinutesRemainder));
-                          setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                          if (!value) return;
+                          const zoneMax = value === 'Running' ? 5 : 7;
+                          const nextZone = Math.min(quickWorkout.zone, zoneMax);
+                          setQuickWorkout({ ...quickWorkout, sport_type: value, zone: nextZone });
                         }}
                       />
                       <NumberInput
-                        label="Minutes"
-                        min={0}
-                        max={59}
-                        step={5}
-                        value={Math.max(0, (quickWorkout.minutes || 0) % 60)}
-                        description={formatMinutesHm(quickWorkout.minutes)}
+                        label={t('Zone') || 'Zone'}
+                        min={1}
+                        max={quickWorkout.sport_type === 'Running' ? 5 : 7}
+                        value={quickWorkout.zone}
                         onChange={(value) => {
-                          const mins = Math.max(0, Math.min(59, typeof value === 'number' ? value : Number(value || 0)));
-                          const currentHours = Math.floor((quickWorkout.minutes || 0) / 60);
-                          const totalMinutes = Math.max(5, Math.round(currentHours * 60 + mins));
-                          setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                          const numericValue = typeof value === 'number' ? value : Number(value || 1);
+                          const zoneMax = quickWorkout.sport_type === 'Running' ? 5 : 7;
+                          setQuickWorkout({ ...quickWorkout, zone: Math.max(1, Math.min(zoneMax, numericValue)) });
                         }}
                       />
                     </Group>
-                  ) : (
-                    <NumberInput
-                      label="Distance (km)"
-                      min={1}
-                      step={0.5}
-                      value={quickWorkout.distanceKm}
-                      onChange={(value) => {
-                        const numericValue = typeof value === 'number' ? value : Number(value || 0);
-                        setQuickWorkout({ ...quickWorkout, distanceKm: Math.max(1, numericValue) });
-                      }}
-                    />
-                  )}
-                </Group>
 
-                <Group grow>
-                  <Button
-                    leftSection={<Activity size={16} />}
-                    variant="subtle"
-                    c="#E95A12"
-                    onClick={() => {
-                      if (!canEditWorkouts) return;
-                      if (!ensureAthleteSelectedForCreate()) return;
-                      onClose();
-                      onOpenWorkoutBuilder();
-                    }}
-                    disabled={!canEditWorkouts}
-                  >
-                    Open Workout Builder
-                  </Button>
+                    <Group grow>
+                      <Select
+                        label={t('Quick Workout Type') || 'Quick Workout Type'}
+                        data={[
+                          { value: 'time', label: t('Time in Zone') || 'Time in Zone' },
+                          { value: 'distance', label: t('Distance in Zone (km)') || 'Distance in Zone (km)' },
+                        ]}
+                        value={quickWorkout.mode}
+                        onChange={(value) => {
+                          if (!value) return;
+                          setQuickWorkout({ ...quickWorkout, mode: value as 'time' | 'distance' });
+                        }}
+                      />
 
-                  <Button
-                    onClick={onCreateQuickWorkout}
-                    disabled={!canEditWorkouts}
-                    styles={{ root: { background: '#E95A12', border: 'none' } }}
-                  >
-                    Add Quick Workout
-                  </Button>
-                </Group>
+                      {quickWorkout.mode === 'time' ? (
+                        <Group grow align="end">
+                          <NumberInput
+                            label={t('Hours') || 'Hours'}
+                            min={0}
+                            step={1}
+                            value={Math.floor((quickWorkout.minutes || 0) / 60)}
+                            onChange={(value) => {
+                              const hours = Math.max(0, typeof value === 'number' ? value : Number(value || 0));
+                              const currentMinutesRemainder = Math.max(0, (quickWorkout.minutes || 0) % 60);
+                              const totalMinutes = Math.max(5, Math.round(hours * 60 + currentMinutesRemainder));
+                              setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                            }}
+                          />
+                          <NumberInput
+                            label={t('Minutes') || 'Minutes'}
+                            min={0}
+                            max={59}
+                            step={5}
+                            value={Math.max(0, (quickWorkout.minutes || 0) % 60)}
+                            description={formatMinutesHm(quickWorkout.minutes)}
+                            onChange={(value) => {
+                              const mins = Math.max(0, Math.min(59, typeof value === 'number' ? value : Number(value || 0)));
+                              const currentHours = Math.floor((quickWorkout.minutes || 0) / 60);
+                              const totalMinutes = Math.max(5, Math.round(currentHours * 60 + mins));
+                              setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                            }}
+                          />
+                        </Group>
+                      ) : (
+                        <NumberInput
+                          label={t('Distance (km)') || 'Distance (km)'}
+                          min={1}
+                          step={0.5}
+                          value={quickWorkout.distanceKm}
+                          onChange={(value) => {
+                            const numericValue = typeof value === 'number' ? value : Number(value || 0);
+                            setQuickWorkout({ ...quickWorkout, distanceKm: Math.max(1, numericValue) });
+                          }}
+                        />
+                      )}
+                    </Group>
+
+                    <Group grow>
+                      <Button
+                        leftSection={<Activity size={16} />}
+                        variant="subtle"
+                        c="#E95A12"
+                        onClick={() => {
+                          if (!canEditWorkouts) return;
+                          if (!ensureAthleteSelectedForCreate()) return;
+                          onClose();
+                          onOpenWorkoutBuilder();
+                        }}
+                        disabled={!canEditWorkouts}
+                      >
+                        {t('Open Workout Builder') || 'Open Workout Builder'}
+                      </Button>
+
+                      <Button
+                        onClick={onCreateQuickWorkout}
+                        disabled={!canEditWorkouts}
+                        styles={{ root: { background: '#E95A12', border: 'none' } }}
+                      >
+                        {t('Add Workout') || 'Add Workout'}
+                      </Button>
+                    </Group>
+                      </>
+                    ) : (
+                        <Box h={400} style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 4 }}>
+                             <WorkoutLibrary 
+                                 onSelect={(workout) => {
+                                     if (!canEditWorkouts) return;
+                                     if (!ensureAthleteSelectedForCreate()) return;
+                                     onLibrarySelect(workout);
+                                     onClose();
+                                 }}
+                             />
+                        </Box>
+                    )}
                   </>
-                ) : (
-                    <Box h={400} style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 4 }}>
-                         <WorkoutLibrary 
-                             onSelect={(workout) => {
-                                 if (!canEditWorkouts) return;
-                                 if (!ensureAthleteSelectedForCreate()) return;
-                                 onLibrarySelect(workout);
-                                 onClose();
-                             }}
-                         />
-                    </Box>
                 )}
 
-                {!canEditWorkouts && <Text c="dimmed" size="sm">Coach has disabled workout editing for your account.</Text>}
+                {!canEditWorkouts && <Text c="dimmed" size="sm">{t('Coach has disabled workout editing for your account.') || 'Coach has disabled workout editing for your account.'}</Text>}
                 {dayCreateError && <Text c="red" size="sm">{dayCreateError}</Text>}
               </>
             )}
@@ -326,11 +527,14 @@ export const WorkoutEditModal = ({
   canEditWorkouts,
   deleteMutation,
   handleSave,
-}: any) => (
+}: any) => {
+  const { t } = useI18n();
+
+  return (
   <Modal
     opened={opened}
     onClose={onClose}
-    title={selectedEvent.id ? 'Edit Workout' : 'Plan Workout'}
+    title={selectedEvent.id ? (t('Edit Workout') || 'Edit Workout') : (t('Plan Workout') || 'Plan Workout')}
     size="90%"
     centered
     styles={{
@@ -345,8 +549,8 @@ export const WorkoutEditModal = ({
         <Group grow>
           {athleteOptions.length > 0 && (
             <Select
-              label="Assign to Athlete"
-              placeholder="Select athlete"
+              label={t('Assign to Athlete') || 'Assign to Athlete'}
+              placeholder={t('Select athlete') || 'Select athlete'}
               data={athleteOptions}
               value={selectedEvent.user_id?.toString()}
               onChange={(val) => setSelectedEvent({ ...selectedEvent, user_id: val ? Number(val) : undefined })}
@@ -355,7 +559,7 @@ export const WorkoutEditModal = ({
           )}
 
           <DatePickerInput
-            label="Date"
+            label={t('Date') || 'Date'}
             value={selectedEvent.date ? new Date(selectedEvent.date) : null}
             onChange={(value: Date | null) => {
               if (!value) return;
@@ -363,6 +567,23 @@ export const WorkoutEditModal = ({
             }}
           />
         </Group>
+
+        {!selectedEvent.id && (
+          <RecurringWorkoutFields
+            selectedEvent={selectedEvent}
+            setSelectedEvent={setSelectedEvent}
+            disabled={!canEditWorkouts}
+          />
+        )}
+
+        {selectedEvent.id && selectedEvent.recurrence && (
+          <Paper withBorder p="sm" radius="md">
+            <Text fw={600}>{t('Recurring workout') || 'Recurring workout'}</Text>
+            <Text size="xs" c="dimmed">
+              {(t('This workout belongs to a weekly series. Editing here changes only this occurrence, so you can use it as an exception.') || 'This workout belongs to a weekly series. Editing here changes only this occurrence, so you can use it as an exception.')}
+            </Text>
+          </Paper>
+        )}
       </Stack>
 
       <WorkoutEditor
@@ -406,10 +627,10 @@ export const WorkoutEditModal = ({
               deleteMutation.mutate(selectedEvent.id);
             }}
           >
-            Delete Workout
+            {t('Delete Workout') || 'Delete Workout'}
           </Button>
         )}
-        <Button variant="default" onClick={onClose}>Cancel</Button>
+        <Button variant="default" onClick={onClose}>{t('Cancel') || 'Cancel'}</Button>
         <Button
           onClick={handleSave}
           leftSection={<CheckCircle size={16} />}
@@ -420,9 +641,10 @@ export const WorkoutEditModal = ({
             border: 'none',
           }}
         >
-          Save Workout
+          {t('Save Workout') || 'Save Workout'}
         </Button>
       </Group>
     </Paper>
   </Modal>
-);
+  );
+};

@@ -1,9 +1,9 @@
 import React, { useMemo } from 'react';
 import { Box, useMantineTheme, Tooltip } from '@mantine/core';
-import { WorkoutStructure, ConcreteStep, RepeatStep, Step } from '../../types/workout';
+import { ConcreteStep, RepeatStep, WorkoutNode } from '../../types/workout';
 
 interface WorkoutPreviewGraphProps {
-    structure: Step[];
+    structure: WorkoutNode[];
     sportType?: string;
     height?: number;
     showGrid?: boolean;
@@ -76,7 +76,7 @@ const resolveIntensityAndDuration = (step: any): { intensity: number, duration: 
     return { intensity, duration, label };
 };
 
-const flattenStructure = (steps: Step[]): GraphSegment[] => {
+const flattenStructure = (steps: WorkoutNode[]): GraphSegment[] => {
     let segments: GraphSegment[] = [];
     if (!steps) return segments;
     

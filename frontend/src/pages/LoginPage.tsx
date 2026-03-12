@@ -353,18 +353,16 @@ const LoginPage = () => {
                     </Group>
                     
                     <Select
-                    label="I am a"
-                    value={inviteCode ? "athlete" : role}
-                    leftSection={<IconUser style={{ width: rem(20), height: rem(20) }} />}
-                    data={inviteCode
-                      ? [{ value: "athlete", label: "Athlete" }]
-                      : [
-                          { value: "athlete", label: "Athlete" },
-                          { value: "coach", label: "Coach" }
+                        label={t("I am a")}
+                        value={role}
+                        leftSection={<IconUser style={{ width: rem(20), height: rem(20) }} />}
+                        data={[
+                            { value: "athlete", label: t("Athlete") || "Athlete" },
+                            { value: "coach", label: t("Coach") || "Coach" }
                         ]}
-                    onChange={(value) => setRole(value || "athlete")}
-                    size="lg"
-                    disabled={Boolean(inviteCode)}
+                        onChange={(value) => setRole(value || "athlete")}
+                        size="md"
+                        disabled={!!inviteCode}
                     />
                     <TextInput
                     label="Organization Name"

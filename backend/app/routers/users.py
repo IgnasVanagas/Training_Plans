@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import date as dt_date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, or_
@@ -8,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user, get_password_hash, verify_password
 from ..database import get_db
-from ..models import CoachAthleteLink, RoleEnum, User, Profile, Organization, OrganizationMember
+from ..models import CoachAthleteLink, RoleEnum, User, Profile, Organization, OrganizationMember, PlannedWorkout
 from ..schemas import AthleteOut, InviteLinkResponse, InviteByEmailRequest, InviteByEmailResponse, UserOut, ProfileUpdate, OrganizationOut, OrganizationUpdate, JoinOrganization, JoinOrganizationRequest, InvitationRespondRequest, OrganizationCreate, AthletePermissionOut, AthletePermissionUpdate, AthletePermissionSettings, ChangePasswordRequest, CoachSummaryOut, OrganizationDiscoverOut, OrganizationDiscoverItemOut, OrganizationCoachOut
 from ..services.permissions import get_shared_org_ids, get_athlete_permissions, set_athlete_permissions_for_shared_orgs
 
@@ -46,6 +47,82 @@ def _normalize_user_for_response(user: User | None) -> None:
     if user is None:
         return
     _normalize_profile_for_response(user.profile)
+
+
+def _build_next_coach_workout_lookup(rows: list[tuple[int, dt_date]]) -> dict[int, dt_date]:
+    lookup: dict[int, dt_date] = {}
+    for athlete_id, workout_date in rows:
+        if athlete_id not in lookup:
+            lookup[athlete_id] = workout_date
+    return lookup
+
+
+async def _annotate_athletes_with_upcoming_workout_status(
+    db: AsyncSession,
+    coach_id: int,
+    athletes: list[User],
+    horizon_days: int = 7,
+) -> None:
+    athlete_ids = [athlete.id for athlete in athletes]
+    if not athlete_ids:
+        return
+
+    today = dt_date.today()
+    end_date = today + timedelta(days=horizon_days)
+    result = await db.execute(
+        select(PlannedWorkout.user_id, PlannedWorkout.date)
+        .where(
+            PlannedWorkout.created_by_user_id == coach_id,
+            PlannedWorkout.user_id.in_(athlete_ids),
+            PlannedWorkout.date >= today,
+            PlannedWorkout.date <= end_date,
+        )
+        .order_by(PlannedWorkout.user_id.asc(), PlannedWorkout.date.asc())
+    )
+    lookup = _build_next_coach_workout_lookup(result.all())
+
+    for athlete in athletes:
+        next_workout_date = lookup.get(athlete.id)
+        athlete.has_upcoming_coach_workout = next_workout_date is not None
+        athlete.next_coach_workout_date = next_workout_date
+
+
+def _apply_profile_update_to_user(target_user: User, profile_update: ProfileUpdate) -> None:
+    if not target_user.profile:
+        target_user.profile = Profile(user_id=target_user.id)
+
+    update_data = profile_update.model_dump(exclude_unset=True)
+    sports_in_payload = "sports" in update_data
+    zones_in_payload = "zone_settings" in update_data
+    auto_sync_in_payload = "auto_sync_integrations" in update_data
+    incoming_sports = update_data.pop("sports", None)
+    incoming_zone_settings = update_data.pop("zone_settings", None)
+    incoming_auto_sync_integrations = update_data.pop("auto_sync_integrations", None)
+
+    for field, value in update_data.items():
+        setattr(target_user.profile, field, value)
+
+    if sports_in_payload or zones_in_payload:
+        existing_sports, existing_zone_settings, existing_auto_sync = _extract_profile_sports_and_zones(target_user.profile.sports)
+        merged_sports = incoming_sports if sports_in_payload else existing_sports
+        merged_zone_settings = incoming_zone_settings if zones_in_payload else existing_zone_settings
+        merged_auto_sync = incoming_auto_sync_integrations if auto_sync_in_payload else existing_auto_sync
+        target_user.profile.sports = {
+            "items": merged_sports,
+            "zone_settings": merged_zone_settings,
+            "integration_settings": {
+                "auto_sync_integrations": bool(merged_auto_sync),
+            },
+        }
+    elif auto_sync_in_payload:
+        existing_sports, existing_zone_settings, _ = _extract_profile_sports_and_zones(target_user.profile.sports)
+        target_user.profile.sports = {
+            "items": existing_sports,
+            "zone_settings": existing_zone_settings,
+            "integration_settings": {
+                "auto_sync_integrations": bool(incoming_auto_sync_integrations),
+            },
+        }
 
 
 async def _get_athlete_coach_summaries(db: AsyncSession, athlete: User) -> list[CoachSummaryOut]:
@@ -151,6 +228,7 @@ async def get_athletes(
     athletes = result.scalars().all()
     for athlete in athletes:
         _normalize_user_for_response(athlete)
+    await _annotate_athletes_with_upcoming_workout_status(db, current_user.id, athletes)
     return athletes
 
 
@@ -274,7 +352,40 @@ async def get_athlete_details(
          raise HTTPException(status_code=404, detail="Athlete not found in your organizations")
 
     _normalize_user_for_response(athlete)
+    await _annotate_athletes_with_upcoming_workout_status(db, current_user.id, [athlete])
 
+    return athlete
+
+
+@router.put('/athletes/{athlete_id}/profile', response_model=AthleteOut)
+async def update_athlete_profile_endpoint(
+    athlete_id: int,
+    profile_update: ProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> AthleteOut:
+    if current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail='Only coaches can update athlete profiles')
+
+    shared_org_ids = await get_shared_org_ids(db, current_user.id, athlete_id)
+    if not shared_org_ids:
+        raise HTTPException(status_code=403, detail='Not authorized to update this athlete profile')
+
+    athlete = await db.scalar(
+        select(User)
+        .where(User.id == athlete_id)
+        .options(selectinload(User.profile))
+    )
+    if not athlete:
+        raise HTTPException(status_code=404, detail='Athlete not found')
+
+    _apply_profile_update_to_user(athlete, profile_update)
+    db.add(athlete)
+    await db.commit()
+    await db.refresh(athlete)
+
+    _normalize_user_for_response(athlete)
+    await _annotate_athletes_with_upcoming_workout_status(db, current_user.id, [athlete])
     return athlete
 
 
@@ -667,44 +778,7 @@ async def update_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
-    # Ensure profile exists
-    if not current_user.profile:
-        current_user.profile = Profile(user_id=current_user.id)
-        db.add(current_user.profile)
-    
-    update_data = profile_update.model_dump(exclude_unset=True)
-    sports_in_payload = "sports" in update_data
-    zones_in_payload = "zone_settings" in update_data
-    auto_sync_in_payload = "auto_sync_integrations" in update_data
-    incoming_sports = update_data.pop("sports", None)
-    incoming_zone_settings = update_data.pop("zone_settings", None)
-    incoming_auto_sync_integrations = update_data.pop("auto_sync_integrations", None)
-
-    # Update fields
-    for field, value in update_data.items():
-        setattr(current_user.profile, field, value)
-
-    if sports_in_payload or zones_in_payload:
-        existing_sports, existing_zone_settings, existing_auto_sync = _extract_profile_sports_and_zones(current_user.profile.sports)
-        merged_sports = incoming_sports if sports_in_payload else existing_sports
-        merged_zone_settings = incoming_zone_settings if zones_in_payload else existing_zone_settings
-        merged_auto_sync = incoming_auto_sync_integrations if auto_sync_in_payload else existing_auto_sync
-        current_user.profile.sports = {
-            "items": merged_sports,
-            "zone_settings": merged_zone_settings,
-            "integration_settings": {
-                "auto_sync_integrations": bool(merged_auto_sync),
-            },
-        }
-    elif auto_sync_in_payload:
-        existing_sports, existing_zone_settings, _ = _extract_profile_sports_and_zones(current_user.profile.sports)
-        current_user.profile.sports = {
-            "items": existing_sports,
-            "zone_settings": existing_zone_settings,
-            "integration_settings": {
-                "auto_sync_integrations": bool(incoming_auto_sync_integrations),
-            },
-        }
+    _apply_profile_update_to_user(current_user, profile_update)
 
     await db.commit()
     await db.refresh(current_user)

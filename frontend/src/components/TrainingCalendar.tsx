@@ -6,7 +6,10 @@ import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { notifications } from '@mantine/notifications';
 import api from '../api/client';
+import { getLatestSeasonPlan, PlannerConstraint, saveSeasonPlan } from '../api/planning';
+import { useI18n } from '../i18n/I18nProvider';
 import { SavedWorkout } from '../types/workout';
 import { Group, Stack, Text, Box, useComputedColorScheme, Paper, Badge } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -20,7 +23,7 @@ import { resolveActivityAccentColor } from './calendar/activityStyling';
 import { BulkEditModal, DayDetailsModal, WorkoutEditModal } from './calendar/TrainingCalendarModals';
 import TrainingCalendarZoneSummaryPanel from './calendar/TrainingCalendarZoneSummaryPanel';
 import { buildTrainingCalendarStyles } from './calendar/trainingCalendarStyles';
-import OrigamiLoadingAnimation from './common/OrigamiLoadingAnimation';
+import { CalendarWeekSkeleton, CalendarMonthSkeleton } from './common/SkeletonScreens';
 import {
     AthletePermissionsResponse,
     CalendarEvent,
@@ -31,6 +34,7 @@ import {
     buildQuickWorkoutStructure,
     buildQuickWorkoutZoneDetails,
 } from './calendar/quickWorkout';
+import { athleteLabel, normalizePlan } from './planner/seasonPlanUtils';
 import { readSnapshot, writeSnapshot } from '../utils/localSnapshot';
 
 // Setup Localizer
@@ -47,6 +51,19 @@ const DnDCalendar = withDragAndDrop(Calendar);
 // Constants for exact alignment
 const WEEKDAY_HEADER_HEIGHT = 36;
 const WEEKLY_TOTALS_PANEL_WIDTH = 324;
+
+type CalendarPlanningAction =
+    | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string }
+    | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string; severity: PlannerConstraint['severity']; impact: PlannerConstraint['impact'] };
+
+const buildDateRangeTitle = (start: Date, end: Date) => {
+    const startKey = format(start, 'yyyy-MM-dd');
+    const endKey = format(end, 'yyyy-MM-dd');
+    if (startKey === endKey) {
+        return format(start, 'MMMM do, yyyy');
+    }
+    return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+};
 
 export const TrainingCalendar = ({ 
     athleteId, 
@@ -91,6 +108,7 @@ export const TrainingCalendar = ({
     };
 
     const navigate = useNavigate();
+    const { t } = useI18n();
     const isDark = useComputedColorScheme('light') === 'dark';
     const isMobileViewport = useMediaQuery('(max-width: 62em)');
     const palette = isDark ? ORIGAMI_THEME.dark : ORIGAMI_THEME.light;
@@ -290,7 +308,7 @@ export const TrainingCalendar = ({
 
         const byDate = new Map<string, any[]>();
         events.forEach((event: any) => {
-            const dateKey = event.resource?.date;
+            const dateKey = event.resource?.date || event.date;
             if (!dateKey) return;
             const list = byDate.get(dateKey) || [];
             list.push(event);
@@ -382,6 +400,96 @@ export const TrainingCalendar = ({
         }
     });
 
+    const planningActionMutation = useMutation({
+        mutationFn: async (action: CalendarPlanningAction) => {
+            if (!canEditWorkouts) {
+                throw new Error(t('Coach has disabled workout editing for your account.') || 'Coach has disabled workout editing for your account.');
+            }
+            if (!ensureAthleteSelectedForCreate()) {
+                throw new Error(t('Please select an athlete first.') || 'Please select an athlete first.');
+            }
+            if (!selectedDateRange) {
+                throw new Error(t('Please select a date first.') || 'Please select a date first.');
+            }
+
+            const targetAthleteId = selectedEvent.user_id || athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined) || me?.id;
+            if (!targetAthleteId) {
+                throw new Error(t('Choose athlete') || 'Choose athlete');
+            }
+
+            const targetAthlete = athleteById.get(targetAthleteId) || (me?.id === targetAthleteId ? me : undefined);
+            const sportType = targetAthlete?.profile?.main_sport || me?.profile?.main_sport || 'Cycling';
+            const existingPlan = await getLatestSeasonPlan(targetAthleteId);
+            const nextPlan = normalizePlan(existingPlan, sportType, athleteLabel(targetAthlete));
+
+            if (!existingPlan) {
+                nextPlan.target_metrics = [];
+                nextPlan.goal_races = [];
+                nextPlan.constraints = [];
+            }
+
+            nextPlan.season_start = nextPlan.season_start <= selectedDateRange.startDate ? nextPlan.season_start : selectedDateRange.startDate;
+            nextPlan.season_end = nextPlan.season_end >= selectedDateRange.endDate ? nextPlan.season_end : selectedDateRange.endDate;
+
+            if (action.type === 'goal_race') {
+                const nextRace = {
+                    name: `${action.label} ${format(parseDate(selectedDateRange.startDate), 'MMM d')}`,
+                    date: selectedDateRange.startDate,
+                    priority: action.priority,
+                    notes: '',
+                    target_metrics: [],
+                };
+                const existingRaceIndex = nextPlan.goal_races.findIndex((race) => race.date === selectedDateRange.startDate);
+                nextPlan.goal_races = existingRaceIndex >= 0
+                    ? nextPlan.goal_races.map((race, index) => index === existingRaceIndex ? { ...race, ...nextRace } : race)
+                    : [...nextPlan.goal_races, nextRace];
+                nextPlan.goal_races.sort((left, right) => left.date.localeCompare(right.date));
+            } else {
+                const nextConstraint = {
+                    name: action.label,
+                    kind: action.kind,
+                    start_date: selectedDateRange.startDate,
+                    end_date: selectedDateRange.endDate,
+                    severity: action.severity,
+                    impact: action.impact,
+                    notes: '',
+                };
+                const existingConstraintIndex = nextPlan.constraints.findIndex((constraint) => (
+                    constraint.kind === action.kind &&
+                    constraint.start_date === selectedDateRange.startDate &&
+                    constraint.end_date === selectedDateRange.endDate
+                ));
+                nextPlan.constraints = existingConstraintIndex >= 0
+                    ? nextPlan.constraints.map((constraint, index) => index === existingConstraintIndex ? { ...constraint, ...nextConstraint } : constraint)
+                    : [...nextPlan.constraints, nextConstraint];
+                nextPlan.constraints.sort((left, right) => {
+                    const dateCompare = left.start_date.localeCompare(right.start_date);
+                    if (dateCompare !== 0) return dateCompare;
+                    return left.kind.localeCompare(right.kind);
+                });
+            }
+
+            return saveSeasonPlan(nextPlan, targetAthleteId);
+        },
+        onSuccess: (_data, action) => {
+            setDayCreateError(null);
+            void queryClient.invalidateQueries({ queryKey: ['season-plan'] });
+            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+            closeDayModal();
+            notifications.show({
+                color: 'green',
+                title: t('Saved to season plan') || 'Saved to season plan',
+                message: action.type === 'goal_race'
+                    ? `${action.label} ${t('saved on calendar date') || 'saved on calendar date'}`
+                    : `${action.label} ${t('saved for selected dates') || 'saved for selected dates'}`,
+            });
+        },
+        onError: (error: any) => {
+            setDayCreateError(error?.response?.data?.detail || error?.message || (t('Could not save to season plan') || 'Could not save to season plan'));
+        },
+    });
+
     const onEventDrop = useCallback(async ({ event, start }: any) => {
         if (!canEditWorkouts) return;
         const dateStr = format(start, 'yyyy-MM-dd');
@@ -409,7 +517,8 @@ export const TrainingCalendar = ({
                  description: draggedWorkout.description,
                  is_planned: true,
                  user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
-                 planned_duration: 60 // Default or calculate from structure?
+                 planned_duration: 60, // Default or calculate from structure?
+                 recurrence: null,
              };
              // Use existing create mutation
              createMutation.mutate(newEvent);
@@ -421,6 +530,7 @@ export const TrainingCalendar = ({
     const [dayEvents, setDayEvents] = useState<CalendarEvent[]>([]);
     const [dayModalOpen, { open: openDayModal, close: closeDayModal }] = useDisclosure(false);
     const [selectedDayTitle, setSelectedDayTitle] = useState("");
+    const [selectedDateRange, setSelectedDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
     const [dayCreateError, setDayCreateError] = useState<string | null>(null);
     const [quickWorkout, setQuickWorkout] = useState({
         sport_type: 'Cycling',
@@ -437,7 +547,8 @@ export const TrainingCalendar = ({
             planned_duration: 60,
             title: 'New Workout',
             is_planned: true,
-            user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined)
+            user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
+            recurrence: undefined,
         });
         open();
     }, [open, athleteId, athletes]);
@@ -450,6 +561,16 @@ export const TrainingCalendar = ({
 
             setDayEvents(dayEvts.map((e: any) => e.resource));
             setSelectedDayTitle(format(dateValue, 'MMMM do, yyyy'));
+            setSelectedDateRange({ startDate: dateStr, endDate: dateStr });
+            setSelectedEvent({
+                date: dateStr,
+                sport_type: 'Cycling',
+                planned_duration: 60,
+                title: 'New Workout',
+                user_id: athleteId || undefined,
+                structure: [],
+                recurrence: undefined,
+            });
             setDayCreateError(null);
             openDayModal();
             return;
@@ -524,20 +645,30 @@ export const TrainingCalendar = ({
             preferredUnits={me?.profile?.preferred_units}
          />
         ), [activityColors, isDark, me?.profile?.preferred_units, palette]);
-    const handleSlotSelection = useCallback(({ start }: any) => {
-        const dateStr = format(start, 'yyyy-MM-dd');
-        const dayEvts = events.filter((e: any) => e.resource.date === dateStr);
+    const handleSlotSelection = useCallback(({ start, slots }: any) => {
+        const slotDates = (Array.isArray(slots) && slots.length > 0 ? slots : [start])
+            .map((value: Date | string) => typeof value === 'string' ? new Date(value) : value)
+            .filter((value: Date) => !Number.isNaN(value.getTime()))
+            .sort((left: Date, right: Date) => left.getTime() - right.getTime());
+
+        const startDate = slotDates[0] || (typeof start === 'string' ? new Date(start) : start);
+        const endDate = slotDates[slotDates.length - 1] || startDate;
+        const startDateStr = format(startDate, 'yyyy-MM-dd');
+        const endDateStr = format(endDate, 'yyyy-MM-dd');
+        const selectedEvents = events.filter((e: any) => e.resource.date >= startDateStr && e.resource.date <= endDateStr);
         
-        setDayEvents(dayEvts.map((e: any) => e.resource));
-        setSelectedDayTitle(format(start, 'MMMM do, yyyy'));
+        setDayEvents(selectedEvents.map((e: any) => e.resource));
+        setSelectedDayTitle(buildDateRangeTitle(startDate, endDate));
+        setSelectedDateRange({ startDate: startDateStr, endDate: endDateStr });
 
         setSelectedEvent({ 
-            date: dateStr,
+            date: startDateStr,
             sport_type: 'Cycling', 
             planned_duration: 60,
             title: 'New Workout',
             user_id: athleteId || undefined,
-            structure: []
+            structure: [],
+            recurrence: undefined,
         });
 
         setDayCreateError(null);
@@ -551,7 +682,7 @@ export const TrainingCalendar = ({
         });
         
         openDayModal();
-    }, [events, openDayModal, athleteId, athletes]);
+    }, [events, openDayModal, athleteId]);
 
     const coachNeedsAthleteSelection = Boolean(
         me?.role === 'coach' &&
@@ -616,7 +747,8 @@ export const TrainingCalendar = ({
             ),
             user_id: targetAthleteId,
             structure,
-            is_planned: true
+            is_planned: true,
+            recurrence: selectedEvent.recurrence || undefined,
         };
 
         createMutation.mutate(payload);
@@ -672,12 +804,17 @@ export const TrainingCalendar = ({
             user_id: targetAthleteId,
             planned_duration: 60, // Default duration
             planned_distance: undefined,
-            planned_intensity: undefined
+            planned_intensity: undefined,
+            recurrence: selectedEvent.recurrence || undefined,
         };
 
         createMutation.mutate(newEvent);
         closeDayModal();
     };
+
+    const handleQuickPlanningAction = useCallback((action: CalendarPlanningAction) => {
+        planningActionMutation.mutate(action);
+    }, [planningActionMutation]);
 
     const formatTotalMinutes = (minutes: number) => {
         const total = Math.max(0, Math.round(minutes));
@@ -957,12 +1094,12 @@ export const TrainingCalendar = ({
         <Stack
             p={isMobileViewport ? 6 : 10}
             gap={0}
-            h={isMobileViewport ? 'auto' : 'calc(100vh - 132px)'}
+            h="100%"
             bg={palette.background}
             maw={2480}
             mx="auto"
             w="100%"
-            style={{ overflow: isMobileViewport ? 'visible' : 'hidden' }}
+            style={{ overflow: 'hidden', minHeight: 0 }}
         >
             <style>{calendarStyles}</style>
             
@@ -978,11 +1115,9 @@ export const TrainingCalendar = ({
             
             <Group align="stretch" gap={8} wrap={isMobileViewport ? 'wrap' : 'nowrap'} style={{ flex: 1, minHeight: 0 }}>
                 {currentView === 'week' ? (
-                    <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, padding: isMobileViewport ? 6 : 10, overflowY: 'auto' }}>
+                    <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, minHeight: 0, padding: isMobileViewport ? 6 : 10, overflowY: 'auto' }}>
                         {isInitialCalendarLoading ? (
-                            <Paper withBorder p="md" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder }}>
-                                <OrigamiLoadingAnimation label="Loading calendar..." minHeight={300} />
-                            </Paper>
+                            <CalendarWeekSkeleton />
                         ) : (
                         <Stack gap="sm">
                             <Paper withBorder p="sm" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder }}>
@@ -1041,6 +1176,13 @@ export const TrainingCalendar = ({
                                             <Text size={isMobileViewport ? 'sm' : 'md'} c={palette.textDim}>
                                                 {distanceKm > 0 ? `${distanceKm.toFixed(1)}km` : '-'} · {metricText}{hrText ? ` · ${hrText}` : ''}
                                             </Text>
+                                            {resource.is_planned && resource.planning_context?.phase && (
+                                                <Text size="xs" c={palette.textDim}>
+                                                    {resource.planning_context.phase.toUpperCase()}
+                                                    {resource.planning_context.countdown_days != null ? ` · ${resource.planning_context.countdown_days}d` : ''}
+                                                    {resource.planning_context.anchor_race?.name ? ` · ${resource.planning_context.anchor_race.name}` : ''}
+                                                </Text>
+                                            )}
                                             {resource.is_planned && resource.created_by_name && (
                                                 <Text size="xs" c={palette.textDim}>Created by {resource.created_by_name}</Text>
                                             )}
@@ -1053,13 +1195,11 @@ export const TrainingCalendar = ({
                     </Box>
                 ) : (
                     <>
-                        <Box ref={monthGridRef} className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, overflowX: isMobileViewport ? 'auto' : 'hidden' }}>
+                        <Box ref={monthGridRef} className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowX: isMobileViewport ? 'auto' : 'hidden' }}>
                             {isInitialCalendarLoading ? (
-                                <Paper withBorder p="md" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder, margin: 10 }}>
-                                    <OrigamiLoadingAnimation label="Loading calendar..." minHeight={360} />
-                                </Paper>
+                                <CalendarMonthSkeleton />
                             ) : (
-                                <Box style={{ minWidth: isMobileViewport ? 760 : 0 }}>
+                                <Box style={{ minWidth: isMobileViewport ? 760 : 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
                                     <DnDCalendar
                                         localizer={localizer}
                                         events={calendarEvents}
@@ -1110,6 +1250,7 @@ export const TrainingCalendar = ({
                 onClose={closeDayModal}
                 selectedDayTitle={selectedDayTitle}
                 dayEvents={dayEvents}
+                selectedDateRange={selectedDateRange}
                 isDark={isDark}
                 activityColors={activityColors}
                 palette={palette}
@@ -1129,6 +1270,8 @@ export const TrainingCalendar = ({
                 setQuickWorkout={setQuickWorkout}
                 canEditWorkouts={canEditWorkouts}
                 ensureAthleteSelectedForCreate={ensureAthleteSelectedForCreate}
+                onQuickPlanningAction={handleQuickPlanningAction}
+                planningActionPending={planningActionMutation.isPending}
                 onOpenWorkoutBuilder={open}
                 onCreateQuickWorkout={handleCreateQuickWorkout}
                 onLibrarySelect={handleLibrarySelect}

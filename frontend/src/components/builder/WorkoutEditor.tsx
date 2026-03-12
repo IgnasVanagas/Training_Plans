@@ -17,12 +17,15 @@ import {
 	Textarea,
 	useComputedColorScheme
 } from '@mantine/core';
-import { ChevronDown, ChevronRight, Clock3, GripVertical, Info, Minus, Plus, Route, Rows3, Trash2, Zap } from 'lucide-react';
-import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
+import { Clock3, GripVertical, Info, Minus, Plus, Route, Rows3, Trash2, Zap } from 'lucide-react';
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, closestCenter, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { ConcreteStep, StepCategory, TargetConfig, WorkoutNode } from '../../types/workout';
-import { createDefaultBlock, createDefaultRepeat, createStarterPreset, durationTypeOptions, edgeColorFromZone, estimateTotals, flattenBlocks, formatHms, formatPace, formatSecondsHm, hrZoneRows, inferIntensityZone, intensityPercentForStep, intensityTypeOptions, metricMeta, metricOptions, nodeCategory, normalizePaceSeconds, paceZoneRows, parseHms, parsePaceInput, powerZoneRows, randomId, sectionAccentColor, sectionHeaderText, sectionHeaderTint, type IntensityMetric, type ZoneRow } from './workoutEditorUtils';
+import { createDefaultBlock, createDefaultRepeat, createStarterPreset, createZoneBlock, durationTypeOptions, edgeColorFromZone, estimateTotals, flattenBlocks, formatHms, formatPace, formatSecondsHm, hrZoneRanges, hrZoneRows, inferIntensityZone, intensityPercentForStep, intensityTypeOptions, metricMeta, metricOptions, normalizePaceSeconds, paceZoneRows, parseHms, parsePaceInput, powerZoneRanges, powerZoneRows, randomId, sectionAccentColor, sectionHeaderText, type IntensityMetric, type ZoneRow } from './workoutEditorUtils';
+
+import type { Modifier } from '@dnd-kit/core';
+const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 
 interface WorkoutEditorProps {
 	structure: WorkoutNode[];
@@ -54,11 +57,70 @@ interface DragHandleProps {
 
 const SortableRootItem = ({ id, children }: { id: string; children: (dragHandle: DragHandleProps) => React.ReactNode }) => {
 	const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id });
+	const smoothTransform = transform ? { ...transform, scaleX: 1, scaleY: 1 } : null;
 	return (
-		<Box ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition: transition || 'transform 220ms cubic-bezier(0.2, 0, 0, 1)', zIndex: isDragging ? 12 : 1 }}>
+		<Box ref={setNodeRef} style={{
+			transform: CSS.Transform.toString(smoothTransform),
+			transition: transition || 'transform 200ms cubic-bezier(0.25, 1, 0.5, 1)',
+			zIndex: isDragging ? 12 : 1,
+			opacity: isDragging ? 0.4 : 1,
+		}}>
 			{children({ attributes, listeners, setActivatorNodeRef, isDragging })}
 		</Box>
 	);
+};
+
+const RepeatDropZone = ({ repeatId, isDark }: { repeatId: string; isDark: boolean }) => {
+	const { setNodeRef, isOver } = useDroppable({ id: `repeat-dropzone-${repeatId}` });
+	return (
+		<Box
+			ref={setNodeRef}
+			style={{
+				minHeight: 28,
+				borderRadius: 8,
+				border: `2px dashed ${isOver ? '#6E4BF3' : 'rgba(148, 163, 184, 0.25)'}`,
+				background: isOver ? 'rgba(110, 75, 243, 0.08)' : 'transparent',
+				transition: 'all 200ms ease',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+			}}
+		>
+			<Text size="xs" c="dimmed">{isOver ? 'Drop here' : 'Drag items here'}</Text>
+		</Box>
+	);
+};
+
+const RootDropZone = ({ isDark }: { isDark: boolean }) => {
+	const { setNodeRef, isOver } = useDroppable({ id: 'root-dropzone' });
+	return (
+		<Box
+			ref={setNodeRef}
+			style={{
+				minHeight: 28,
+				borderRadius: 8,
+				border: `2px dashed ${isOver ? '#E95A12' : 'rgba(148, 163, 184, 0.2)'}`,
+				background: isOver ? 'rgba(233, 90, 18, 0.06)' : 'transparent',
+				transition: 'all 200ms ease',
+				display: 'flex',
+				alignItems: 'center',
+				justifyContent: 'center',
+			}}
+		>
+			<Text size="xs" c="dimmed">{isOver ? 'Drop here' : 'Drop here to move to root'}</Text>
+		</Box>
+	);
+};
+
+const findNodeById = (nodes: WorkoutNode[], id: string): WorkoutNode | null => {
+	for (const node of nodes) {
+		if (node.id === id) return node;
+		if (node.type === 'repeat') {
+			const found = findNodeById(node.steps, id);
+			if (found) return found;
+		}
+	}
+	return null;
 };
 
 export const WorkoutEditor = ({
@@ -84,11 +146,22 @@ export const WorkoutEditor = ({
 	const textDim = isDark ? '#94A3B8' : '#475569';
 	const totals = useMemo(() => estimateTotals(structure), [structure]);
 	const blocks = useMemo(() => flattenBlocks(structure), [structure]);
+	const allSortableIds = useMemo(() => {
+		const ids: string[] = [];
+		for (const node of structure) {
+			ids.push(node.id);
+			if (node.type === 'repeat') {
+				for (const step of node.steps) ids.push(step.id);
+			}
+		}
+		return ids;
+	}, [structure]);
 	const [zoneView, setZoneView] = useState<'power' | 'heart_rate_zone' | 'pace'>('power');
 	const [activeStepId, setActiveStepId] = useState<string | null>(null);
 	const [durationDrafts, setDurationDrafts] = useState<Record<string, string>>({});
-	const [collapsedSections, setCollapsedSections] = useState<Record<StepCategory, boolean>>({ warmup: false, work: false, recovery: false, cooldown: false });
-	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 2 } }));
+	const [activeDragId, setActiveDragId] = useState<string | null>(null);
+	const [hoveredBarIdx, setHoveredBarIdx] = useState<number | null>(null);
+	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 	const normalizedSport = sportType?.toLowerCase().includes('run') ? 'running' : 'cycling';
 	const pZones = useMemo(() => powerZoneRows(athleteProfile?.ftp), [athleteProfile?.ftp]);
 	const hZones = useMemo(() => hrZoneRows(athleteProfile?.max_hr), [athleteProfile?.max_hr]);
@@ -131,13 +204,122 @@ export const WorkoutEditor = ({
 
 	const addNode = (node: WorkoutNode) => onChange([...structure, node]);
 
-	const onRootDragEnd = (event: DragEndEvent) => {
+	const onRootDragStart = (event: DragStartEvent) => setActiveDragId(String(event.active.id));
+
+	const findContainer = (nodeId: string): { containerId: string; index: number } | null => {
+		const rootIdx = structure.findIndex((n) => n.id === nodeId);
+		if (rootIdx >= 0) return { containerId: 'root', index: rootIdx };
+		for (const node of structure) {
+			if (node.type === 'repeat') {
+				const childIdx = node.steps.findIndex((s) => s.id === nodeId);
+				if (childIdx >= 0) return { containerId: node.id, index: childIdx };
+			}
+		}
+		return null;
+	};
+
+	const onUnifiedDragEnd = (event: DragEndEvent) => {
+		setActiveDragId(null);
 		const { active, over } = event;
 		if (!over || active.id === over.id) return;
-		const oldIndex = structure.findIndex((node) => node.id === String(active.id));
-		const newIndex = structure.findIndex((node) => node.id === String(over.id));
-		if (oldIndex < 0 || newIndex < 0) return;
-		onChange(arrayMove(structure, oldIndex, newIndex));
+		const activeId = String(active.id);
+		const overId = String(over.id);
+
+		// Check if dropping onto a repeat block's dropzone
+		const dropzoneMatch = overId.match(/^repeat-dropzone-(.+)$/);
+		const activeLocation = findContainer(activeId);
+		if (!activeLocation) return;
+
+		if (overId === 'root-dropzone') {
+			if (activeLocation.containerId === 'root') return;
+			const draggedNode = findNodeById(structure, activeId);
+			if (!draggedNode) return;
+			let next = structure.map((n) => {
+				if (n.type === 'repeat' && n.id === activeLocation.containerId) {
+					return { ...n, steps: n.steps.filter((s) => s.id !== activeId) };
+				}
+				return n;
+			});
+			next.push(draggedNode);
+			onChange(next);
+			return;
+		}
+
+		if (dropzoneMatch) {
+			const repeatId = dropzoneMatch[1];
+			const draggedNode = findNodeById(structure, activeId);
+			if (!draggedNode) return;
+			let next = structure.map((n) => {
+				if (n.type === 'repeat' && n.id === activeLocation.containerId) {
+					return { ...n, steps: n.steps.filter((s) => s.id !== activeId) };
+				}
+				return n;
+			});
+			if (activeLocation.containerId === 'root') {
+				next = next.filter((n) => n.id !== activeId);
+			}
+			next = next.map((n) => {
+				if (n.id === repeatId && n.type === 'repeat') {
+					return { ...n, steps: [...n.steps, draggedNode] };
+				}
+				return n;
+			});
+			onChange(next);
+			return;
+		}
+
+		const overLocation = findContainer(overId);
+		if (!overLocation) return;
+
+		if (activeLocation.containerId === overLocation.containerId) {
+			// Same container reorder
+			if (activeLocation.containerId === 'root') {
+				const oldIdx = structure.findIndex((n) => n.id === activeId);
+				const newIdx = structure.findIndex((n) => n.id === overId);
+				if (oldIdx >= 0 && newIdx >= 0) onChange(arrayMove(structure, oldIdx, newIdx));
+			} else {
+				const repeat = structure.find((n) => n.id === activeLocation.containerId);
+				if (!repeat || repeat.type !== 'repeat') return;
+				const repeatIdx = structure.indexOf(repeat);
+				const oldIdx = repeat.steps.findIndex((s) => s.id === activeId);
+				const newIdx = repeat.steps.findIndex((s) => s.id === overId);
+				if (oldIdx >= 0 && newIdx >= 0) {
+					onChange(updateNodeAt(structure, repeatIdx, { ...repeat, steps: arrayMove(repeat.steps, oldIdx, newIdx) }));
+				}
+			}
+		} else {
+			// Cross-container move
+			const draggedNode = findNodeById(structure, activeId);
+			if (!draggedNode) return;
+			let next = structure.map((n) => {
+				if (n.type === 'repeat' && n.id === activeLocation.containerId) {
+					return { ...n, steps: n.steps.filter((s) => s.id !== activeId) };
+				}
+				return n;
+			});
+			if (activeLocation.containerId === 'root') {
+				next = next.filter((n) => n.id !== activeId);
+			}
+			if (overLocation.containerId === 'root') {
+				const overIdx = next.findIndex((n) => n.id === overId);
+				if (overIdx >= 0) {
+					next.splice(overIdx, 0, draggedNode);
+				} else {
+					next.push(draggedNode);
+				}
+			} else {
+				next = next.map((n) => {
+					if (n.id === overLocation.containerId && n.type === 'repeat') {
+						const overIdx = n.steps.findIndex((s) => s.id === overId);
+						const newSteps = [...n.steps];
+						newSteps.splice(overIdx >= 0 ? overIdx : newSteps.length, 0, draggedNode);
+						return { ...n, steps: newSteps };
+					}
+					return n;
+				});
+			}
+			onChange(next);
+		}
 	};
 
 	const absoluteHint = (target: TargetConfig) => {
@@ -175,16 +357,20 @@ export const WorkoutEditor = ({
 	};
 
 	const profileBars = useMemo(() => {
-		if (!blocks.length) return [] as Array<{ width: number; height: number; color: string; x: number }>;
+		if (!blocks.length) return [] as Array<{ width: number; height: number; color: string; x: number; tooltip: string }>;
 		const durations = blocks.map((step) => (step.duration.type === 'time' ? Math.max(60, step.duration.value || 0) : 300));
 		const total = durations.reduce((acc, item) => acc + item, 0);
 		let cursor = 0;
 		return blocks.map((step, index) => {
 			const width = (durations[index] / total) * 600;
 			const level = intensityPercentForStep(step);
-			const barHeight = Math.max(0.2, Math.min(1, level / 140)) * 82;
+			const barHeight = Math.max(0.2, Math.min(1, level / 140)) * 110;
 			const zone = inferIntensityZone(step);
-			const out = { width, height: barHeight, color: edgeColorFromZone(zone), x: cursor };
+			const durationText = step.duration.type === 'time' ? formatHms(step.duration.value) : step.duration.type === 'distance' ? `${step.duration.value || 0}m` : 'lap';
+			const metric = (step.target.metric as IntensityMetric | undefined) || 'percent_ftp';
+			const intensityText = metric === 'hr_zone' ? `Z${step.target.zone || '?'}` : `${step.target.value || step.target.max || '-'}${metricMeta[metric].defaultUnit}`;
+			const tooltip = `${sectionHeaderText[step.category]} · ${durationText} · ${intensityText}`;
+			const out = { width, height: barHeight, color: edgeColorFromZone(zone), x: cursor, tooltip };
 			cursor += width;
 			return out;
 		});
@@ -284,7 +470,7 @@ export const WorkoutEditor = ({
 								size="xs"
 								variant="unstyled"
 								value={step.category}
-								data={[{ value: 'warmup', label: 'Warm Up' }, { value: 'work', label: 'Main Set' }, { value: 'recovery', label: 'Recovery' }, { value: 'cooldown', label: 'Cool Down' }]}
+								data={[{ value: 'warmup', label: 'Warm Up' }, { value: 'work', label: 'Training' }, { value: 'recovery', label: 'Recovery' }, { value: 'cooldown', label: 'Cool Down' }]}
 								onChange={(value) => value && onNodesChange(updateNodeAt(nodes, index, { ...step, category: value as StepCategory }))}
 								w={120}
 							/>
@@ -394,39 +580,79 @@ export const WorkoutEditor = ({
 		);
 	};
 
-	const renderNode = (node: WorkoutNode, index: number, nodes: WorkoutNode[], onNodesChange: (nextNodes: WorkoutNode[]) => void, dragHandle?: DragHandleProps): React.ReactNode => {
-		if (node.type === 'repeat') {
-			return (
-				<Paper key={node.id} withBorder p="sm" radius="md" bg={cardBg} style={{ border: `1px solid ${cardBorder}`, borderLeft: `6px solid ${accentSecondary}` }}>
-					<Stack gap="sm">
-						<Group justify="space-between" align="center">
-							<Group gap="xs" align="center">
-								<ActionIcon variant="subtle" color="gray" size="sm" style={{ cursor: dragHandle ? 'grab' : 'default' }} ref={dragHandle?.setActivatorNodeRef} {...(dragHandle?.attributes || {})} {...(dragHandle?.listeners || {})}>
-									<GripVertical size={15} />
-								</ActionIcon>
-								<Text size="sm" fw={600}>Repeat Block</Text>
-							</Group>
-							<Group gap="xs">
-								<ActionIcon variant="subtle" onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, repeats: Math.max(1, node.repeats - 1) }))}><Minus size={14} /></ActionIcon>
-								<Badge variant="light" style={{ background: isDark ? 'rgba(110, 75, 243, 0.18)' : 'rgba(110, 75, 243, 0.10)', color: accentSecondary }}>{node.repeats}</Badge>
-								<ActionIcon variant="subtle" onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, repeats: node.repeats + 1 }))}><Plus size={14} /></ActionIcon>
-								<ActionIcon variant="subtle" color="red" onClick={() => onNodesChange(removeNodeAt(nodes, index))}><Trash2 size={16} /></ActionIcon>
-							</Group>
+	const renderRepeatBlock = (node: WorkoutNode & { type: 'repeat' }, index: number, nodes: WorkoutNode[], onNodesChange: (nextNodes: WorkoutNode[]) => void, dragHandle?: DragHandleProps): React.ReactNode => {
+		return (
+			<Paper key={node.id} withBorder p="sm" radius="md" bg={cardBg} style={{ border: `1px solid ${cardBorder}`, borderLeft: `6px solid ${accentSecondary}` }}>
+				<Stack gap="sm">
+					<Group justify="space-between" align="center">
+						<Group gap="xs" align="center">
+							<Box
+								ref={dragHandle?.setActivatorNodeRef}
+								{...(dragHandle?.attributes || {})}
+								{...(dragHandle?.listeners || {})}
+								style={{ width: 24, height: 28, borderRadius: 6, cursor: dragHandle ? 'grab' : 'default', border: `1px solid ${cardBorder}`, background: isDark ? 'rgba(51,65,85,0.7)' : 'rgba(241,245,249,0.95)' }}
+							>
+								<GripVertical size={14} style={{ margin: 7, color: textDim }} />
+							</Box>
+							<Text size="sm" fw={600}>Repeat Block</Text>
 						</Group>
+						<Group gap="xs">
+							<ActionIcon variant="subtle" onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, repeats: Math.max(1, node.repeats - 1) }))}><Minus size={14} /></ActionIcon>
+							<Badge variant="light" style={{ background: isDark ? 'rgba(110, 75, 243, 0.18)' : 'rgba(110, 75, 243, 0.10)', color: accentSecondary }}>{node.repeats}</Badge>
+							<ActionIcon variant="subtle" onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, repeats: node.repeats + 1 }))}><Plus size={14} /></ActionIcon>
+							<ActionIcon variant="subtle" color="red" onClick={() => onNodesChange(removeNodeAt(nodes, index))}><Trash2 size={16} /></ActionIcon>
+						</Group>
+					</Group>
+					<SortableContext items={node.steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
 						<Stack gap="xs">
-							{node.steps.map((nestedNode, nestedIndex) => renderNode(nestedNode, nestedIndex, node.steps, (nextNestedSteps) => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: nextNestedSteps }))))}
+							{node.steps.map((nestedNode, nestedIndex) => {
+								if (nestedNode.type === 'repeat') {
+									return (
+										<SortableRootItem key={nestedNode.id} id={nestedNode.id}>
+											{(handle) => renderRepeatBlock(nestedNode as any, nestedIndex, node.steps, (nextSteps) => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: nextSteps })), handle)}
+										</SortableRootItem>
+									);
+								}
+								return (
+									<SortableRootItem key={nestedNode.id} id={nestedNode.id}>
+										{(handle) => renderConcrete(nestedNode as ConcreteStep, nestedIndex, node.steps, (nextSteps) => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: nextSteps })), handle)}
+									</SortableRootItem>
+								);
+							})}
+							<RepeatDropZone repeatId={node.id} isDark={isDark} />
 						</Stack>
-						<Group justify="flex-end">
-							<Button size="xs" variant="subtle" c={accentPrimary} leftSection={<Plus size={14} />} onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: [...node.steps, createDefaultBlock('work')] }))}>Add Step</Button>
-						</Group>
-					</Stack>
-				</Paper>
-			);
-		}
+					</SortableContext>
+					<Group gap="xs" justify="flex-end">
+						<Menu shadow="md" width={220} position="bottom-end">
+							<Menu.Target>
+								<Button size="xs" variant="subtle" c={accentPrimary} leftSection={<Plus size={14} />}>Add Step</Button>
+							</Menu.Target>
+							<Menu.Dropdown>
+								<Menu.Item onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: [...node.steps, createDefaultBlock('warmup')] }))}>Warm Up (Z1)</Menu.Item>
+								<Menu.Label>Training</Menu.Label>
+								{(normalizedSport === 'cycling' ? powerZoneRanges : hrZoneRanges).map(([z, lo, hi]) => (
+									<Menu.Item key={`repeat-add-z${z}`} onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: [...node.steps, createZoneBlock('work', z, normalizedSport)] }))}>
+										Training Z{z} ({lo}–{hi}%)
+									</Menu.Item>
+								))}
+								<Menu.Divider />
+								<Menu.Item onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: [...node.steps, createDefaultBlock('recovery')] }))}>Recovery (Z1)</Menu.Item>
+								<Menu.Item onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: [...node.steps, createDefaultBlock('cooldown')] }))}>Cool Down (Z1)</Menu.Item>
+								<Menu.Item onClick={() => onNodesChange(updateNodeAt(nodes, index, { ...node, steps: [...node.steps, createDefaultRepeat()] }))}>Repeat Block</Menu.Item>
+							</Menu.Dropdown>
+						</Menu>
+					</Group>
+				</Stack>
+			</Paper>
+		);
+	};
+
+	const renderNode = (node: WorkoutNode, index: number, nodes: WorkoutNode[], onNodesChange: (nextNodes: WorkoutNode[]) => void, dragHandle?: DragHandleProps): React.ReactNode => {
+		if (node.type === 'repeat') return renderRepeatBlock(node as any, index, nodes, onNodesChange, dragHandle);
 		return renderConcrete(node, index, nodes, onNodesChange, dragHandle);
 	};
 
-	const sectionOrder: StepCategory[] = ['warmup', 'work', 'recovery', 'cooldown'];
+	const activeDragNode = activeDragId ? findNodeById(structure, activeDragId) : null;
 
 	return (
 		<Paper bg={panelBg} p="md" radius="md" withBorder style={{ borderColor: cardBorder, fontFamily: '"Inter", sans-serif' }}>
@@ -447,13 +673,19 @@ export const WorkoutEditor = ({
 
 						<Group justify="space-between" align="center" mt={4}>
 							<Group gap="xs"><Info size={14} color={textDim} /><Text size="sm" c="dimmed">Select a block, then click a zone for instant fill.</Text></Group>
-							<Menu shadow="md" width={180}>
+							<Menu shadow="md" width={220} position="bottom-end">
 								<Menu.Target><Button variant="subtle" size="xs" c={accentPrimary} leftSection={<Plus size={14} />}>Add</Button></Menu.Target>
 								<Menu.Dropdown>
-									<Menu.Item onClick={() => addNode(createDefaultBlock('warmup'))}>Warm Up</Menu.Item>
-									<Menu.Item onClick={() => addNode(createDefaultBlock('work'))}>Main Set</Menu.Item>
-									<Menu.Item onClick={() => addNode(createDefaultBlock('recovery'))}>Recovery</Menu.Item>
-									<Menu.Item onClick={() => addNode(createDefaultBlock('cooldown'))}>Cool Down</Menu.Item>
+									<Menu.Item onClick={() => addNode(createDefaultBlock('warmup'))}>Warm Up (Z1)</Menu.Item>
+									<Menu.Label>Training</Menu.Label>
+									{(normalizedSport === 'cycling' ? powerZoneRanges : hrZoneRanges).map(([z, lo, hi]) => (
+										<Menu.Item key={`add-z${z}`} onClick={() => addNode(createZoneBlock('work', z, normalizedSport))}>
+											Training Z{z} ({lo}–{hi}%)
+										</Menu.Item>
+									))}
+									<Menu.Divider />
+									<Menu.Item onClick={() => addNode(createDefaultBlock('recovery'))}>Recovery (Z1)</Menu.Item>
+									<Menu.Item onClick={() => addNode(createDefaultBlock('cooldown'))}>Cool Down (Z1)</Menu.Item>
 									<Menu.Item onClick={() => addNode(createDefaultRepeat())}>Repeat Block</Menu.Item>
 								</Menu.Dropdown>
 							</Menu>
@@ -474,40 +706,27 @@ export const WorkoutEditor = ({
 								</Stack>
 							</Paper>
 						) : (
-							<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onRootDragEnd}>
-								<SortableContext items={structure.map((node) => node.id)} strategy={verticalListSortingStrategy}>
+							<DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={onRootDragStart} onDragEnd={onUnifiedDragEnd} modifiers={[restrictToVerticalAxis]}>
+								<SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
 									<Stack gap="sm">
-										{sectionOrder.map((section) => {
-											const sectionNodes = structure.filter((node) => nodeCategory(node) === section);
-											if (!sectionNodes.length) return null;
-											return (
-													<Paper key={`section-${section}`} radius="md" p="xs" withBorder style={{ background: sectionHeaderTint[section], borderColor: cardBorder }}>
-													<Group justify="space-between" mb={6}>
-														<Group gap={6}>
-															<ActionIcon size="sm" variant="subtle" onClick={() => setCollapsedSections((prev) => ({ ...prev, [section]: !prev[section] }))}>
-																{collapsedSections[section] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-															</ActionIcon>
-															<Text size="sm" fw={700}>{sectionHeaderText[section]}</Text>
-														</Group>
-														<Badge variant="light" radius={4} style={{ color: isDark ? '#E2E8F0' : '#334155' }}>{sectionNodes.length}</Badge>
-													</Group>
-													{!collapsedSections[section] && (
-														<Stack gap="xs">
-															{sectionNodes.map((node) => {
-																const originalIndex = structure.findIndex((row) => row.id === node.id);
-																return (
-																	<SortableRootItem key={node.id} id={node.id}>
-																		{(dragHandle) => renderNode(node, originalIndex, structure, onChange, dragHandle)}
-																	</SortableRootItem>
-																);
-															})}
-														</Stack>
-													)}
-												</Paper>
-											);
-										})}
+										{structure.map((node, index) => (
+											<SortableRootItem key={node.id} id={node.id}>
+												{(dragHandle) => renderNode(node, index, structure, onChange, dragHandle)}
+											</SortableRootItem>
+										))}
+										{structure.some((n) => n.type === 'repeat') && <RootDropZone isDark={isDark} />}
 									</Stack>
 								</SortableContext>
+								<DragOverlay dropAnimation={{ duration: 200, easing: 'cubic-bezier(0.25, 1, 0.5, 1)' }}>
+									{activeDragNode ? (
+										<Paper withBorder p="sm" radius="md" bg={cardBg} style={{ border: `1px solid ${cardBorder}`, borderLeft: `6px solid ${activeDragNode.type === 'repeat' ? accentSecondary : sectionAccentColor[(activeDragNode as ConcreteStep).category]}`, boxShadow: '0 8px 24px rgba(0,0,0,0.18)', opacity: 0.92 }}>
+											<Group gap="xs">
+												<GripVertical size={14} color={textDim} />
+												<Text size="sm" fw={600}>{activeDragNode.type === 'repeat' ? `Repeat Block (×${activeDragNode.repeats})` : sectionHeaderText[(activeDragNode as ConcreteStep).category]}</Text>
+											</Group>
+										</Paper>
+									) : null}
+								</DragOverlay>
 							</DndContext>
 						)}
 
@@ -516,10 +735,53 @@ export const WorkoutEditor = ({
 								<Text size="sm">Estimate <Text span fw={700}>{formatSecondsHm(totals.totalSeconds)}</Text> <Text span fw={700}>{totals.totalDistanceKm.toFixed(2)} km</Text></Text>
 								<Text size="xs" fw={600}>Structured Workout Preview</Text>
 							</Group>
-							<svg width="100%" viewBox="0 0 600 90" preserveAspectRatio="none" aria-label="Structured Workout Preview">
-								<rect x="0" y="0" width="600" height="90" fill={isDark ? 'rgba(15,23,42,0.65)' : 'rgba(241,245,249,0.9)'} />
-								{profileBars.map((bar, idx) => <rect key={`preview-${idx}`} x={bar.x} y={90 - bar.height} width={Math.max(2, bar.width - 1)} height={bar.height} fill={bar.color} rx="2" />)}
-							</svg>
+							<Box style={{ position: 'relative' }}>
+								<svg width="100%" viewBox="0 0 600 120" preserveAspectRatio="none" aria-label="Structured Workout Preview">
+									<rect x="0" y="0" width="600" height="120" fill={isDark ? 'rgba(15,23,42,0.65)' : 'rgba(241,245,249,0.9)'} />
+									{profileBars.map((bar, idx) => (
+										<rect key={`preview-${idx}`} x={bar.x} y={120 - bar.height} width={Math.max(2, bar.width - 1)} height={bar.height} fill={bar.color} rx="2" style={{ transition: 'opacity 150ms ease' }} opacity={hoveredBarIdx === idx ? 0.7 : 1} />
+									))}
+								</svg>
+								<Box style={{ position: 'absolute', inset: 0 }} onMouseLeave={() => setHoveredBarIdx(null)}>
+									{profileBars.map((bar, idx) => {
+										const pctLeft = (bar.x / 600) * 100;
+										const pctWidth = (bar.width / 600) * 100;
+										const pctTop = ((120 - bar.height) / 120) * 100;
+										return (
+											<Box
+												key={`hit-${idx}`}
+												onMouseEnter={() => setHoveredBarIdx(idx)}
+												style={{ position: 'absolute', left: `${pctLeft}%`, width: `${pctWidth}%`, top: 0, height: '100%', cursor: 'default' }}
+											>
+												<Box
+													style={{
+														position: 'absolute',
+														bottom: `calc(${100 - pctTop}% + 8px)`,
+														left: '50%',
+														transform: 'translateX(-50%)',
+														whiteSpace: 'nowrap',
+														padding: '5px 12px',
+														borderRadius: 8,
+														fontSize: 12,
+														fontWeight: 600,
+														lineHeight: 1.4,
+														pointerEvents: 'none',
+														zIndex: 20,
+														opacity: hoveredBarIdx === idx ? 1 : 0,
+														transition: 'opacity 120ms ease',
+														background: isDark ? 'rgba(15, 23, 42, 0.94)' : 'rgba(255, 255, 255, 0.97)',
+														color: isDark ? '#E2E8F0' : '#0F172A',
+														border: `1px solid ${cardBorder}`,
+														boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.45)' : '0 4px 14px rgba(15,23,42,0.12)',
+													}}
+												>
+													{bar.tooltip}
+												</Box>
+											</Box>
+										);
+									})}
+								</Box>
+							</Box>
 						</Paper>
 					</Stack>
 				</Box>

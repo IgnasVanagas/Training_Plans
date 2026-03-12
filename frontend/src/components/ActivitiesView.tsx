@@ -9,7 +9,7 @@ import '@mantine/dates/styles.css';
 import ActivityUploadPanel from './dashboard/ActivityUploadPanel';
 import { ORIGAMI_ACTIVITY_COLORS } from './calendar/theme';
 import { resolveActivityAccentColor, resolveActivityPillLabel } from './calendar/activityStyling';
-import OrigamiLoadingAnimation from './common/OrigamiLoadingAnimation';
+import { ActivitiesListSkeleton } from './common/SkeletonScreens';
 import { readSnapshot, writeSnapshot } from '../utils/localSnapshot';
 
 type Activity = {
@@ -197,9 +197,7 @@ export function ActivitiesView({
 
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" verticalSpacing="sm">
             {isInitialActivitiesLoading && (
-                <Paper withBorder p="lg" radius="lg" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
-                    <OrigamiLoadingAnimation label="Loading activities..." minHeight={220} />
-                </Paper>
+                <ActivitiesListSkeleton count={6} />
             )}
             {visibleActivities.map((act) => {
                 const accentColor = resolveActivityAccentColor(

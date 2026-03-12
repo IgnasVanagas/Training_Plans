@@ -46,7 +46,7 @@ export const AthleteCalendarPage = () => {
     );
 
     return (
-        <AppSidebarLayout activeNav="plan"><Container size="xl" p="md" style={{ height: 'calc(100vh - 92px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <AppSidebarLayout activeNav="plan"><Container size="xl" p="md" style={{ height: 'calc(100dvh - 92px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <Group mb="md">
                 <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate("/")}>
                    Back

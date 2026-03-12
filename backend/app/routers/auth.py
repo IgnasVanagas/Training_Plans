@@ -34,9 +34,6 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 @router.post("/register", response_model=TokenResponse)
 async def register(payload: UserCreate, response: Response, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     email = str(payload.email).strip().lower()
-    allow_self_register_coach = os.getenv("ALLOW_SELF_REGISTER_COACH", "false").lower() in {"1", "true", "yes", "on"}
-    if payload.role.value == "coach" and not allow_self_register_coach:
-        raise HTTPException(status_code=403, detail="Coach self-registration is disabled")
 
     result = await db.execute(select(User).where(User.email == email))
     if result.scalar_one_or_none():

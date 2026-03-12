@@ -253,9 +253,16 @@ export const DayEventItem = ({
       )}
       {r.is_planned && r.id && (
         <Group justify="space-between" mt={6}>
-          <Text size="xs" c={palette.textDim}>
-            {r.created_by_name ? `Created by ${r.created_by_name}` : ""}
-          </Text>
+          <Box>
+            <Text size="xs" c={palette.textDim}>
+              {r.created_by_name ? `Created by ${r.created_by_name}` : ""}
+            </Text>
+            {r.planning_context?.phase && (
+              <Text size="xs" c={palette.textDim}>
+                {`${r.planning_context.phase.toUpperCase()}${r.planning_context.countdown_days != null ? ` • ${r.planning_context.countdown_days}d` : ""}`}
+              </Text>
+            )}
+          </Box>
           <Button
             size="xs"
             variant="subtle"

@@ -36,7 +36,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Coach Notes": "Trenerio pastabos",
     "Custom": "Pasirinktinis",
     "Warm Up": "Apšilimas",
-    "Main Set": "Pagrindinė dalis",
+    "Training": "Treniruotė",
     "Recovery": "Atsistatymas",
     "Cool Down": "Atvėsimas",
     "Repeat Block": "Kartojimo blokas",
@@ -192,6 +192,18 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Allow edit workouts": "Leisti redaguoti treniruotes",
     "Allow delete workouts": "Leisti trinti treniruotes",
     "Control whether each athlete can delete activities, edit workouts, and delete workouts.": "Valdykite, ar kiekvienas atletas gali trinti veiklas, redaguoti ir trinti treniruotes.",
+    "Athlete Zone Settings": "Atletų zonų nustatymai",
+    "Adjust athlete heart rate, power, and pace zones.": "Koreguokite atleto širdies ritmo, galios ir tempo zonas.",
+    "Choose Athlete": "Pasirinkite atletą",
+    "Select an athlete": "Pasirinkite atletą",
+    "No athletes available for zone editing.": "Nėra atletų, kuriems būtų galima redaguoti zonas.",
+    "Threshold Metrics": "Slenkstiniai rodikliai",
+    "Save Athlete Zones": "Išsaugoti atleto zonas",
+    "Athlete zones updated": "Atleto zonos atnaujintos",
+    "Training zone settings saved.": "Treniruočių zonų nustatymai išsaugoti.",
+    "Could not save athlete zones": "Nepavyko išsaugoti atleto zonų",
+    "Needs Plan": "Reikia plano",
+    "Planned": "Suplanuota",
     "Invite existing athletes by email, or share a join link for new signups.": "Pakvieskite esamus atletus el. paštu arba bendrinkite prisijungimo nuorodą naujoms registracijoms.",
     "Athlete workouts, messages, and communication updates.": "Atletų treniruotės, žinutės ir komunikacijos atnaujinimai.",
     "New planned workouts, coach messages, and communication updates.": "Naujos suplanuotos treniruotės, trenerio žinutės ir komunikacijos atnaujinimai.",
@@ -206,6 +218,91 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "pending": "laukiama",
     "Drop your activity file here": "Nutempkite savo veiklos failą čia",
     "or click to browse files from your device": "arba spauskite, kad pasirinktumėte failą iš įrenginio",
+    "Season Planner": "Sezono planuotojas",
+    "Close Planner": "Uždaryti planuotoją",
+    "Goal and Race Framework": "Tikslų ir varžybų struktūra",
+    "Set race priorities, target metrics, countdowns, and taper orchestration.": "Nustatykite varžybų prioritetus, tikslinius rodiklius, atgalinį skaičiavimą ir taper valdymą.",
+    "Plan name": "Plano pavadinimas",
+    "Season start": "Sezono pradžia",
+    "Season end": "Sezono pabaiga",
+    "Planner notes": "Planavimo pastabos",
+    "Season target metrics": "Sezono tiksliniai rodikliai",
+    "Add metric": "Pridėti rodiklį",
+    "Target value": "Tikslinė reikšmė",
+    "Goal races": "Tikslinės varžybos",
+    "A races drive peak/taper logic, B races get mini peaks, C races stay supportive.": "A varžybos formuoja piką ir taper logiką, B varžyboms taikomi mažesni pikai, o C varžybos išlieka palaikančios.",
+    "Add race": "Pridėti varžybas",
+    "Race": "Varžybos",
+    "Race name": "Varžybų pavadinimas",
+    "Race date": "Varžybų data",
+    "Priority": "Prioritetas",
+    "Race notes": "Varžybų pastabos",
+    "Race target metrics": "Varžybų tiksliniai rodikliai",
+    "Add race metric": "Pridėti varžybų rodiklį",
+    "Availability and constraints": "Prieinamumas ir apribojimai",
+    "Travel, sickness, injury, and unavailable windows reduce load or force recovery weeks.": "Kelionės, liga, trauma ir neprieinamumo laikotarpiai sumažina krūvį arba verčia pereiti į atsistatymo savaites.",
+    "Add constraint": "Pridėti apribojimą",
+    "No constraints yet": "Apribojimų dar nėra",
+    "Constraint": "Apribojimas",
+    "Label": "Pavadinimas",
+    "Type": "Tipas",
+    "Injury": "Trauma",
+    "Travel": "Kelionė",
+    "Sickness": "Liga",
+    "Unavailable": "Neprieinama",
+    "Start": "Pradžia",
+    "End": "Pabaiga",
+    "Severity": "Sunkumas",
+    "Low": "Mažas",
+    "Moderate": "Vidutinis",
+    "High": "Didelis",
+    "Impact": "Poveikis",
+    "Reduce load": "Mažinti krūvį",
+    "Avoid intensity": "Vengti intensyvumo",
+    "Rest only": "Tik poilsis",
+    "Constraint notes": "Apribojimo pastabos",
+    "Periodization settings": "Periodizacijos nustatymai",
+    "Weekly hours target": "Tikslinės savaitės valandos",
+    "Longest session minutes": "Ilgiausia sesija minutėmis",
+    "Training days per week": "Treniruočių dienos per savaitę",
+    "Recovery week frequency": "Atsistatymo savaitės dažnis",
+    "Taper profile": "Taper profilis",
+    "Short": "Trumpas",
+    "Standard": "Standartinis",
+    "Extended": "Išplėstas",
+    "Generate and apply": "Generuoti ir pritaikyti",
+    "Replace prior generated workouts": "Pakeisti anksčiau sugeneruotas treniruotes",
+    "Keep prior generated workouts": "Palikti anksčiau sugeneruotas treniruotes",
+    "Preview periodization": "Peržiūrėti periodizaciją",
+    "Save framework": "Išsaugoti struktūrą",
+    "Apply to calendar": "Pritaikyti kalendoriui",
+    "Weeks": "Savaitės",
+    "Races": "Varžybos",
+    "Constraints": "Apribojimai",
+    "Generated workouts": "Sugeneruotos treniruotės",
+    "Race countdowns": "Varžybų atgalinis skaičiavimas",
+    "No races configured": "Varžybos nesukonfigūruotos",
+    "Taper starts": "Taper prasideda",
+    "Season blocks": "Sezono blokai",
+    "Meso cycles": "Mezo ciklai",
+    "weeks": "savaitės",
+    "Micro cycles": "Mikro ciklai",
+    "Generated workouts sample": "Sugeneruotų treniruočių pavyzdys",
+    "Session": "Sesija",
+    "Phase": "Fazė",
+    "Intensity": "Intensyvumas",
+    "Duration": "Trukmė",
+    "Season framework saved": "Sezono struktūra išsaugota",
+    "Race priorities and cycle settings are stored.": "Varžybų prioritetai ir ciklų nustatymai išsaugoti.",
+    "Save the framework first": "Pirmiausia išsaugokite struktūrą",
+    "Season plan applied": "Sezono planas pritaikytas",
+    "workouts generated": "treniruotės sugeneruotos",
+    "days skipped": "dienos praleistos",
+    "Choose athlete": "Pasirinkite atletą",
+    "Could not preview plan": "Nepavyko peržiūrėti plano",
+    "Could not save plan": "Nepavyko išsaugoti plano",
+    "Could not apply plan": "Nepavyko pritaikyti plano",
+    "Loading saved framework": "Įkeliama išsaugota struktūra",
     "How did this session feel? A short note helps your coach tune your next workout.": "Kaip jautėtės šioje sesijoje? Trumpa pastaba padeda treneriui pakoreguoti kitą treniruotę.",
     "RPE, mood, soreness (optional)": "RPE, nuotaika, skausmingumas (nebūtina)",
     "Loading calendar...": "Įkeliamas kalendorius...",
@@ -238,9 +335,15 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Split Annotations": "Atkarpų anotacijos",
     "Execution status info": "Vykdymo būsenos informacija",
     "Workout Execution Status": "Treniruotės įvykdymo būsena",
+    "Session Feedback": "Sesijos grįžtamasis ryšys",
     "RPE": "RPE",
     "Notes": "Pastabos",
+    "RPE (1-10)": "RPE (1-10)",
+    "Rate of Perceived Exertion": "Jaučiamo krūvio įvertinimas",
+    "Lactate (mmol/L)": "Laktatas (mmol/L)",
+    "Optional post-session lactate reading": "Pasirenkamas laktato rodmuo po sesijos",
     "How did this session feel?": "Kaip jautėtės šioje sesijoje?",
+    "No notes provided.": "Pastabų nepateikta.",
     "Focus Mode": "Fokusavimo režimas",
     "Heart Rate": "Širdies ritmas",
     "Pace": "Tempas",
@@ -273,6 +376,48 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Increase 1 minute": "Padidinti 1 min.",
     "Add Step": "Pridėti žingsnį"
     ,"Organizations": "Organizacijos"
+    ,"Your Team": "Jūsų komanda"
+    ,"Team Calendar": "Komandos kalendorius"
+    ,"Recent": "Naujausi"
+    ,"Create Workout": "Sukurti treniruotę"
+    ,"Add Workout": "Pridėti treniruotę"
+    ,"Edit Workout": "Redaguoti treniruotę"
+    ,"Plan Workout": "Planuoti treniruotę"
+    ,"Save Workout": "Išsaugoti treniruotę"
+    ,"Delete Workout": "Ištrinti treniruotę"
+    ,"Library": "Biblioteka"
+    ,"Open Workout Builder": "Atidaryti treniruotės kūrėją"
+    ,"Repeat workout": "Kartoti treniruotę"
+    ,"Create a weekly series and skip specific dates when needed.": "Sukurkite savaitinę seriją ir prireikus praleiskite konkrečias datas."
+    ,"One-time": "Vienkartinė"
+    ,"Weekly": "Kas savaitę"
+    ,"Weekdays": "Savaitės dienos"
+    ,"Repeat every (weeks)": "Kartoti kas (savaites)"
+    ,"Total weeks": "Iš viso savaičių"
+    ,"Exception dates": "Išimčių datos"
+    ,"Skip these dates without breaking the series.": "Praleiskite šias datas nenutraukdami serijos."
+    ,"This workout belongs to a weekly series. Editing here changes only this occurrence, so you can use it as an exception.": "Ši treniruotė priklauso savaitinei serijai. Redagavimas čia keičia tik šį įvykį, todėl galite jį naudoti kaip išimtį."
+    ,"Monday": "Pirmadienis"
+    ,"Tuesday": "Antradienis"
+    ,"Wednesday": "Trečiadienis"
+    ,"Thursday": "Ketvirtadienis"
+    ,"Friday": "Penktadienis"
+    ,"Saturday": "Šeštadienis"
+    ,"Sunday": "Sekmadienis"
+    ,"Holiday": "Atostogos"
+    ,"A race": "A varžybos"
+    ,"B race": "B varžybos"
+    ,"C race": "C varžybos"
+    ,"Calendar actions": "Kalendoriaus veiksmai"
+    ,"Add a goal race or availability marker directly from the calendar.": "Pridėkite tikslines varžybas arba prieinamumo žymą tiesiai iš kalendoriaus."
+    ,"Save this date range as travel, sickness, injury, or holiday for planning.": "Išsaugokite šį datų intervalą kaip kelionę, ligą, traumą ar atostogas planavimui."
+    ,"Saved to season plan": "Išsaugota sezono plane"
+    ,"saved on calendar date": "išsaugota pasirinktai kalendoriaus dienai"
+    ,"saved for selected dates": "išsaugota pasirinktoms datoms"
+    ,"Could not save to season plan": "Nepavyko išsaugoti sezono plane"
+    ,"Please select a date first.": "Pirmiausia pasirinkite datą."
+    ,"Please select an athlete first.": "Pirmiausia pasirinkite atletą."
+    ,"RPE, lactate, and personal notes.": "RPE, laktatas ir asmeninės pastabos."
     ,"Search clubs": "Ieškoti klubų"
     ,"Coaches": "Treneriai"
     ,"None listed": "Nenurodyta"
@@ -297,6 +442,63 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Request sent": "Užklausa išsiųsta"
     ,"Could not send request": "Nepavyko išsiųsti užklausos"
     ,"Message failed": "Žinutės išsiųsti nepavyko"
+    ,"Coach Split-Screen Analysis": "Trenerio padalinto ekrano analizė"
+    ,"Compare two workouts, weeks, or months side by side with the same analysis model.": "Palyginkite dvi treniruotes, savaites ar mėnesius greta naudodami tą patį analizės modelį."
+    ,"Workouts": "Treniruotės"
+    ,"Months": "Mėnesiai"
+    ,"Side A": "Pusė A"
+    ,"Side B": "Pusė B"
+    ,"Loading comparison data...": "Kraunami palyginimo duomenys..."
+    ,"Select both sides to compare.": "Pasirinkite abi puses palyginimui."
+    ,"No training data exists for the current selection.": "Dabartiniam pasirinkimui treniruočių duomenų nėra."
+    ,"Contrast Summary": "Skirtumų santrauka"
+    ,"Duration change": "Trukmės pokytis"
+    ,"Distance change": "Atstumo pokytis"
+    ,"Load difference": "Krūvio skirtumas"
+    ,"RPE shift": "RPE pokytis"
+    ,"Split count": "Atkarpų skaičius"
+    ,"Feedback coverage change": "Grįžtamojo ryšio aprėpties pokytis"
+    ,"Running zone focus": "Bėgimo zonų akcentas"
+    ,"Cycling zone focus": "Dviračio zonų akcentas"
+    ,"Unknown athlete": "Nežinomas atletas"
+    ,"sessions loaded": "sesijų įkelta"
+    ,"Total time": "Bendras laikas"
+    ,"Active days": "Aktyvios dienos"
+    ,"Average session": "Vidutinė sesija"
+    ,"Densest day": "Tankiausia diena"
+    ,"Average power / pace": "Vidutinė galia / tempas"
+    ,"Average RPE": "Vidutinis RPE"
+    ,"Average lactate": "Vidutinis laktatas"
+    ,"Estimated FTP": "Numatomas FTP"
+    ,"Estimated LT2 Pace": "Numatomas LT2 tempas"
+    ,"Feedback coverage": "Grįžtamojo ryšio aprėptis"
+    ,"Notes coverage": "Pastabų aprėptis"
+    ,"Lactate coverage": "Laktato aprėptis"
+    ,"Sport mix": "Sporto pasiskirstymas"
+    ,"No sport mix data": "Nėra sporto pasiskirstymo duomenų"
+    ,"Running zones": "Bėgimo zonos"
+    ,"Cycling zones": "Dviračio zonos"
+    ,"Weekday distribution": "Dienų pasiskirstymas"
+    ,"Longest session": "Ilgiausia sesija"
+    ,"Key sessions": "Pagrindinės sesijos"
+    ,"No sessions in this selection": "Šiame pasirinkime sesijų nėra"
+    ,"Load": "Krūvis"
+    ,"Workout": "Treniruotė"
+    ,"Split comparison": "Atkarpų palyginimas"
+    ,"Delta": "Pokytis"
+    ,"Execution": "Įvykdymas"
+    ,"Average Pace": "Vidutinis tempas"
+    ,"Average Power": "Vidutinė galia"
+    ,"Load Impact": "Krūvio poveikis"
+    ,"Feedback": "Grįžtamasis ryšys"
+    ,"Elevation Gain": "Sukauptas pakilimas"
+    ,"Calories": "Kalorijos"
+    ,"Peak 5s Power": "Piko 5 s galia"
+    ,"Peak 1min Power": "Piko 1 min. galia"
+    ,"Peak 5min Power": "Piko 5 min. galia"
+    ,"Peak 20min Power": "Piko 20 min. galia"
+    ,"Best 20min Pace Proxy": "Geriausio 20 min. tempo aproksimacija"
+    ,"Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.": "Treneriai gali lyginti tą patį atletą per du laikotarpius arba du atletus greta naudodami tą patį analizės modelį."
     ,"You are offline. Last synced data is shown; new actions will continue when connection returns.": "Esate neprisijungę. Rodomi paskutiniai sinchronizuoti duomenys; nauji veiksmai bus tęsiami, kai ryšys sugrįš."
   }
 };
@@ -327,7 +529,7 @@ export const tokenTranslations: Record<Language, Array<[RegExp, string]>> = {
     [/\bDecline\b/g, "Atmesti"],
     [/\bApprove\b/g, "Patvirtinti"],
     [/\bWarm Up\b/g, "Apšilimas"],
-    [/\bMain Set\b/g, "Pagrindinė dalis"],
+    [/\bTraining\b/g, "Treniruotė"],
     [/\bRecovery\b/g, "Atsistatymas"],
     [/\bCool Down\b/g, "Atvėsimas"],
     [/\bIntegrations\b/g, "Integracijos"],

@@ -1,11 +1,43 @@
 import { WorkoutNode } from "../../types/workout";
 
+export interface WorkoutRecurrenceRule {
+  frequency?: 'weekly';
+  interval_weeks?: number;
+  weekdays: number[];
+  span_weeks?: number | null;
+  end_date?: string | null;
+  exception_dates?: string[];
+  series_id?: string;
+  anchor_date?: string | null;
+  occurrence_index?: number;
+  occurrences_total?: number;
+}
+
 export interface CalendarEvent {
   id?: number;
   user_id?: number;
   created_by_user_id?: number;
   created_by_name?: string;
   created_by_email?: string;
+  season_plan_id?: number;
+  recurrence?: WorkoutRecurrenceRule | null;
+  planning_context?: {
+    phase?: string;
+    focus?: string;
+    week_index?: number;
+    countdown_days?: number | null;
+    anchor_race?: {
+      name?: string;
+      date?: string;
+      priority?: string;
+    } | null;
+    constraints?: Array<{
+      kind?: string;
+      severity?: string;
+      impact?: string;
+      name?: string;
+    }>;
+  };
   title: string;
   date: string;
   is_more_indicator?: boolean;

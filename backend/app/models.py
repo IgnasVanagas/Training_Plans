@@ -38,6 +38,8 @@ class PlannedWorkout(Base):
     planned_distance = Column(Float, nullable=True) # km
     planned_intensity = Column(String(50), nullable=True)
     structure = Column(JSONB, nullable=True)
+    season_plan_id = Column(Integer, ForeignKey("season_plans.id"), nullable=True)
+    planning_context = Column(JSONB, nullable=True)
     
     # Execution / Feedback
     rpe = Column(Float, nullable=True) # 1-10
@@ -48,6 +50,7 @@ class PlannedWorkout(Base):
     user = relationship("User", back_populates="planned_workouts", foreign_keys=[user_id])
     created_by = relationship("User", foreign_keys=[created_by_user_id], back_populates="created_planned_workouts")
     matched_activity = relationship("Activity", back_populates="matched_workout")
+    season_plan = relationship("SeasonPlan", back_populates="planned_workouts")
 
 
 class OrganizationMember(Base):
@@ -91,6 +94,8 @@ class User(Base):
     activities = relationship("Activity", back_populates="athlete")
     planned_workouts = relationship("PlannedWorkout", foreign_keys="PlannedWorkout.user_id", back_populates="user")
     created_planned_workouts = relationship("PlannedWorkout", foreign_keys="PlannedWorkout.created_by_user_id", back_populates="created_by")
+    season_plans = relationship("SeasonPlan", foreign_keys="SeasonPlan.athlete_id", back_populates="athlete")
+    created_season_plans = relationship("SeasonPlan", foreign_keys="SeasonPlan.coach_id", back_populates="coach")
     
     created_structured_workouts = relationship("StructuredWorkout", back_populates="coach")
 
@@ -175,6 +180,30 @@ class StructuredWorkout(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     coach = relationship("User", back_populates="created_structured_workouts")
+
+
+class SeasonPlan(Base):
+    __tablename__ = "season_plans"
+
+    id = Column(Integer, primary_key=True, index=True)
+    athlete_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    coach_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    name = Column(String(200), nullable=False)
+    sport_type = Column(String(50), nullable=False)
+    season_start = Column(Date, nullable=False)
+    season_end = Column(Date, nullable=False)
+    notes = Column(Text, nullable=True)
+    target_metrics = Column(JSONB, nullable=True, default=list)
+    goal_races = Column(JSONB, nullable=True, default=list)
+    constraints = Column(JSONB, nullable=True, default=list)
+    periodization = Column(JSONB, nullable=True, default=dict)
+    generated_summary = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    athlete = relationship("User", foreign_keys=[athlete_id], back_populates="season_plans")
+    coach = relationship("User", foreign_keys=[coach_id], back_populates="created_season_plans")
+    planned_workouts = relationship("PlannedWorkout", back_populates="season_plan")
 
 
 class ProviderConnection(Base):

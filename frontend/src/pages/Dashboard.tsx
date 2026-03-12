@@ -1,4 +1,4 @@
-import { Container, Modal, Select, Text, useComputedColorScheme, Button, Flex, Box, Group } from "@mantine/core";
+import { Container, Modal, Select, Text, useComputedColorScheme, Button, Flex, Box, Group, Stack, Skeleton } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -9,9 +9,9 @@ import { IconBooks, IconX } from "@tabler/icons-react";
 import api from "../api/client";
 import { getWellnessSummary, listIntegrationProviders, logManualWellness } from "../api/integrations";
 import { ActivitiesView } from "../components/ActivitiesView";
-import OrigamiLoadingAnimation from "../components/common/OrigamiLoadingAnimation";
 import { TrainingCalendar } from "../components/TrainingCalendar";
 import { WorkoutLibrary } from "../components/library/WorkoutLibrary";
+import SeasonPlannerDrawer from "../components/planner/SeasonPlannerDrawer";
 import { SavedWorkout } from "../types/workout";
 import { MetricHistoryModal } from "../components/dashboard/MetricHistoryModal";
 import ActivityUploadPanel from "../components/dashboard/ActivityUploadPanel";
@@ -21,6 +21,7 @@ import DashboardLayoutShell from "./dashboard/DashboardLayoutShell";
 import DashboardNotificationsTab from "./dashboard/DashboardNotificationsTab";
 import DashboardOrganizationsTab from "./dashboard/DashboardOrganizationsTab";
 import DashboardSettingsTab from "./dashboard/DashboardSettingsTab";
+import { useI18n } from "../i18n/I18nProvider";
 import {
   ActivityFeedRow,
   AthletePermissions,
@@ -71,6 +72,7 @@ const Dashboard = () => {
   const [calendarViewDate] = useState<string | null>(initialCalendarViewDate);
   const [selectedMetric, setSelectedMetric] = useState<MetricKey | null>(null);
   const [showLibrary, setShowLibrary] = useState(false);
+  const [plannerOpened, setPlannerOpened] = useState(false);
   const [draggedWorkout, setDraggedWorkout] = useState<SavedWorkout | null>(null);
   const [uploadModalOpened, setUploadModalOpened] = useState(false);
   const [profileMetricHistory, setProfileMetricHistory] = useState<ProfileMetricSnapshot[]>([]);
@@ -98,6 +100,7 @@ const Dashboard = () => {
 
   const queryClient = useQueryClient();
   const isDark = useComputedColorScheme("light") === "dark";
+  const { t } = useI18n();
 
   const meQuery = useQuery({
     queryKey: ["me"],
@@ -141,26 +144,7 @@ const Dashboard = () => {
       staleTime: 1000 * 60 * 5,
     });
 
-    void queryClient.prefetchQuery({
-      queryKey: [
-        "calendar",
-        "month",
-        format(monthStartVisible, "yyyy-MM-dd"),
-        format(monthEndVisible, "yyyy-MM-dd"),
-        athleteIdNum,
-        false,
-      ],
-      queryFn: async () => {
-        const params = new URLSearchParams({
-          start_date: format(monthStartVisible, "yyyy-MM-dd"),
-          end_date: format(monthEndVisible, "yyyy-MM-dd"),
-        });
-        if (athleteIdNum) params.set("athlete_id", String(athleteIdNum));
-        const res = await api.get(`/calendar/?${params.toString()}`);
-        return res.data;
-      },
-      staleTime: 1000 * 60 * 5,
-    });
+
   }, [meQuery.data, queryClient, selectedAthleteId]);
 
   const {
@@ -261,6 +245,29 @@ const Dashboard = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+
+  const athleteProfileUpdateMutation = useMutation({
+    mutationFn: async (vars: { athleteId: number; updatedProfile: Profile }) => {
+      const response = await api.put<User>(`/users/athletes/${vars.athleteId}/profile`, vars.updatedProfile);
+      return response.data;
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["athletes"] });
+      queryClient.invalidateQueries({ queryKey: ["athlete", vars.athleteId] });
+      notifications.show({
+        color: "green",
+        title: t("Athlete zones updated") || "Athlete zones updated",
+        message: t("Training zone settings saved.") || "Training zone settings saved.",
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: t("Could not save athlete zones") || "Could not save athlete zones",
+        message: extractApiErrorMessage(error),
+      });
     },
   });
 
@@ -533,6 +540,14 @@ const Dashboard = () => {
       : me.email;
   }, [me]);
 
+  const organizationName = useMemo(() => {
+    if (!me || me.role !== "coach") return null;
+    const activeMembership = me.organization_memberships?.find(
+      (m) => m.status === "active" || m.role === "coach"
+    );
+    return activeMembership?.organization?.name || null;
+  }, [me]);
+
   const handleSaveDailyMetric = () => {
     if (!selectedMetric || (selectedMetric !== "hrv" && selectedMetric !== "rhr")) return;
     if (!manualMetricDate || manualMetricValue === "" || !Number.isFinite(Number(manualMetricValue))) {
@@ -555,7 +570,15 @@ const Dashboard = () => {
   if (meQuery.isLoading) {
     return (
       <Container size="md" my={60}>
-        <OrigamiLoadingAnimation label="Loading dashboard..." minHeight={220} />
+        <Stack gap="md">
+          <Skeleton height={40} width="40%" />
+          <Group grow>
+            <Skeleton height={100} radius="lg" />
+            <Skeleton height={100} radius="lg" />
+            <Skeleton height={100} radius="lg" />
+          </Group>
+          <Skeleton height={250} radius="lg" />
+        </Stack>
       </Container>
     );
   }
@@ -569,25 +592,27 @@ const Dashboard = () => {
   }
 
   const headerRight = me.role === "coach" ? (
-    <Select
-      placeholder="Filter by Athlete"
-      data={[
-        { value: "", label: "All Athletes" },
-        ...(athletesQuery.data || []).map((athlete) => {
-          const p = athlete.profile;
-          const label = (p?.first_name || p?.last_name)
-            ? `${p.first_name || ""} ${p.last_name || ""}`.trim()
-            : athlete.email;
-          return { value: athlete.id.toString(), label };
-        }),
-      ]}
-      value={selectedAthleteId ?? ""}
-      onChange={(val) => setSelectedAthleteId(val === "" ? null : val)}
-      searchable
-      allowDeselect={false}
-      w={isMobile ? 170 : 220}
-      mr={isMobile ? 0 : "md"}
-    />
+    isMobile ? (
+      <Select
+        placeholder="Filter by Athlete"
+        data={[
+          { value: "", label: "All Athletes" },
+          ...(athletesQuery.data || []).map((athlete) => {
+            const p = athlete.profile;
+            const label = (p?.first_name || p?.last_name)
+              ? `${p.first_name || ""} ${p.last_name || ""}`.trim()
+              : athlete.email;
+            return { value: athlete.id.toString(), label };
+          }),
+        ]}
+        value={selectedAthleteId ?? ""}
+        onChange={(val) => setSelectedAthleteId(val === "" ? null : val)}
+        searchable
+        allowDeselect={false}
+        w={170}
+        mr={0}
+      />
+    ) : null
   ) : null;
 
   return (
@@ -599,6 +624,11 @@ const Dashboard = () => {
       setActiveTab={setActiveTab}
       headerRight={headerRight}
       onQuickAddActivity={me.role !== "coach" ? () => setUploadModalOpened(true) : undefined}
+      role={me.role}
+      athletes={athletesQuery.data || []}
+      selectedAthleteId={selectedAthleteId}
+      onSelectAthlete={setSelectedAthleteId}
+      organizationName={organizationName}
     >
       <Container size="xl" px={{ base: 0, sm: "md" }}>
         <Modal
@@ -632,8 +662,15 @@ const Dashboard = () => {
             showUploadSection={false}
           />
         ) : activeTab === "plan" ? (
-          <Flex direction="column" gap="xs" h="calc(100vh - 140px)">
+          <Flex direction="column" gap="xs" style={{ height: 'calc(100dvh - 140px)' }}>
              <Group justify="flex-end">
+              <Button
+                variant={plannerOpened ? "light" : "outline"}
+                size="xs"
+                onClick={() => setPlannerOpened(!plannerOpened)}
+              >
+                {plannerOpened ? (t("Close Planner") || "Close Planner") : (t("Season Planner") || "Season Planner")}
+              </Button>
                 <Button 
                     variant={showLibrary ? "light" : "outline"}
                     size="xs"
@@ -703,6 +740,10 @@ const Dashboard = () => {
             onUpdateAthletePermission={(athleteId, permissions) =>
               updateAthletePermissionMutation.mutate({ athleteId, permissions })
             }
+            savingAthleteProfileId={athleteProfileUpdateMutation.isPending ? athleteProfileUpdateMutation.variables?.athleteId ?? null : null}
+            onSaveAthleteProfile={(athleteId, updatedProfile) =>
+              athleteProfileUpdateMutation.mutate({ athleteId, updatedProfile })
+            }
           />
         ) : me.role === "coach" ? (
           <DashboardCoachHome
@@ -744,6 +785,15 @@ const Dashboard = () => {
           />
         )}
       </Container>
+      {me ? (
+        <SeasonPlannerDrawer
+          opened={plannerOpened}
+          onClose={() => setPlannerOpened(false)}
+          me={me}
+          athletes={athletesQuery.data || []}
+          selectedAthleteId={athleteIdNum}
+        />
+      ) : null}
     </DashboardLayoutShell>
   );
 };

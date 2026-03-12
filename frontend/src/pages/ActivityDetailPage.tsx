@@ -9,7 +9,7 @@ import api from "../api/client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
-import OrigamiLoadingAnimation from "../components/common/OrigamiLoadingAnimation";
+import { ActivityDetailSkeleton } from "../components/common/SkeletonScreens";
 import { readSnapshot, writeSnapshot } from "../utils/localSnapshot";
 import { CommentsPanel } from "../components/activityDetail/CommentsPanel";
 import { SessionFeedbackPanel } from "../components/activityDetail/SessionFeedbackPanel";
@@ -51,6 +51,7 @@ type ActivityDetail = {
     anaerobic_load?: number;
     total_load_impact?: number;
     rpe?: number | null;
+    lactate_mmol_l?: number | null;
     notes?: string | null;
     planned_comparison?: {
         workout_id: number;
@@ -96,8 +97,23 @@ type ActivityDetail = {
         } | null;
         splits?: Array<{
             split: number;
-            planned?: { planned_duration_s?: number | null; category?: string | null } | null;
-            actual?: { actual_duration_s?: number | null } | null;
+            planned?: {
+                planned_duration_s?: number | null;
+                category?: string | null;
+                target?: {
+                    type?: string | null;
+                    value?: number | null;
+                    min?: number | null;
+                    max?: number | null;
+                    zone?: number | null;
+                } | null;
+            } | null;
+            actual?: {
+                actual_duration_s?: number | null;
+                avg_hr?: number | null;
+                avg_power?: number | null;
+                avg_speed?: number | null;
+            } | null;
             delta_duration_s?: number | null;
             delta_duration_pct?: number | null;
         }>;
@@ -167,7 +183,7 @@ export const ActivityDetailPage = () => {
     const [activityRpe, setActivityRpe] = useState<number | null>(null);
     const [activityNotes, setActivityNotes] = useState('');
     const [splitAnnotationsOpen, setSplitAnnotationsOpen] = useState(false);
-    const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { lactate_mmol_l: number | null; note: string }>>({});
+    const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }>>({});
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [showDangerZone, setShowDangerZone] = useState(false);
@@ -228,7 +244,7 @@ export const ActivityDetailPage = () => {
     });
 
     const updateActivityMutation = useMutation({
-        mutationFn: async (payload: { rpe?: number | null; notes?: string | null; split_annotations?: Array<{ split_type: 'metric' | 'laps'; split_index: number; lactate_mmol_l?: number | null; note?: string | null }> }) => {
+        mutationFn: async (payload: { rpe?: number | null; lactate_mmol_l?: number | null; notes?: string | null; split_annotations?: Array<{ split_type: 'metric' | 'laps'; split_index: number; rpe?: number | null; lactate_mmol_l?: number | null; note?: string | null }> }) => {
             const res = await api.patch<ActivityDetail>(`/activities/${id}`, payload);
             return res.data;
         },
@@ -831,9 +847,10 @@ export const ActivityDetailPage = () => {
     }, [activity?.id, activity?.rpe, activity?.notes]);
 
     useEffect(() => {
-        const initial: Record<number, { lactate_mmol_l: number | null; note: string }> = {};
+        const initial: Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }> = {};
         splitsToDisplayWithPower.forEach((split: any, idx: number) => {
             initial[idx] = {
+                rpe: typeof split?.rpe === 'number' ? split.rpe : null,
                 lactate_mmol_l: typeof split?.lactate_mmol_l === 'number' ? split.lactate_mmol_l : null,
                 note: typeof split?.note === 'string' ? split.note : ''
             };
@@ -969,7 +986,7 @@ export const ActivityDetailPage = () => {
     }, [focusMode, focusObjective, visibleSeries, supportsPaceSeries]);
 
 
-    if (isLoading) return <Container my={60}><OrigamiLoadingAnimation label="Loading activity..." minHeight={220} /></Container>;
+    if (isLoading) return <ActivityDetailSkeleton />;
     if (isError || !activity) return <Container my={60}><Text c="red">Error loading activity.</Text></Container>;
 
     const sportName = (activity.sport || '').toLowerCase();
@@ -1174,18 +1191,73 @@ export const ActivityDetailPage = () => {
                                             <Table.Th>Split</Table.Th>
                                             <Table.Th>Planned</Table.Th>
                                             <Table.Th>Actual</Table.Th>
-                                            <Table.Th>Delta</Table.Th>
-                                            <Table.Th>Delta %</Table.Th>
+                                            <Table.Th>Planned Intensity</Table.Th>
+                                            <Table.Th>Actual Intensity</Table.Th>
                                         </Table.Tr>
                                     </Table.Thead>
                                     <Table.Tbody>
                                         {activity.planned_comparison.splits.slice(0, 20).map((row) => (
                                             <Table.Tr key={`cmp-split-${row.split}`}>
                                                 <Table.Td>{row.split}</Table.Td>
-                                                <Table.Td>{row.planned?.planned_duration_s ? formatDuration(row.planned.planned_duration_s) : '-'}</Table.Td>
-                                                <Table.Td>{row.actual?.actual_duration_s ? formatDuration(row.actual.actual_duration_s) : '-'}</Table.Td>
-                                                <Table.Td>{row.delta_duration_s ? `${(row.delta_duration_s / 60).toFixed(1)} min` : '0.0 min'}</Table.Td>
-                                                <Table.Td>{row.delta_duration_pct != null ? `${Math.round(row.delta_duration_pct)}%` : '-'}</Table.Td>
+                                                <Table.Td>{row.planned?.planned_duration_s ? formatDuration(row.planned.planned_duration_s, true) : '-'}</Table.Td>
+                                                <Table.Td>{row.actual?.actual_duration_s ? formatDuration(row.actual.actual_duration_s, true) : '-'}</Table.Td>
+                                                <Table.Td>
+                                                    {(() => {
+                                                        const p = row.planned;
+                                                        if (!p?.target) return '-';
+                                                        const t = p.target;
+                                                        
+                                                        // Prioritize exact value
+                                                        if (t.value != null) {
+                                                            const val = Number(t.value);
+                                                            if (val > 0) {
+                                                                if (t.type === 'heart_rate') return `${Math.round(val)} bpm`;
+                                                                if (t.type === 'power') return `${Math.round(val)} W`;
+                                                                if (t.type === 'pace') {
+                                                                    // Helper to format s/km
+                                                                    const formatSecondsPerKm = (seconds: number) => {
+                                                                        const m = Math.floor(seconds / 60);
+                                                                        const s = Math.round(seconds % 60);
+                                                                        return `${m}:${s.toString().padStart(2, '0')}/km`;
+                                                                    };
+                                                                    // Heuristic: values > 20 differ from m/s (usually < 10)
+                                                                    if (val > 20) return formatSecondsPerKm(val);
+                                                                    return formatPace(val);
+                                                                }
+                                                                return `${Math.round(val)}`;
+                                                            }
+                                                        }
+
+                                                        // Range fallback
+                                                        if (t.min && t.max) {
+                                                            if (t.type === 'heart_rate') return `${t.min}-${t.max} bpm`;
+                                                            if (t.type === 'power') return `${t.min}-${t.max} W`;
+                                                            if (t.type === 'pace') return `${formatPace(Number(t.min))} - ${formatPace(Number(t.max))}`;
+                                                        }
+                                                        
+                                                        // Zone fallback
+                                                        if (t.zone) return `Zone ${t.zone}`;
+                                                        
+                                                        return '-';
+                                                    })()}
+                                                </Table.Td>
+                                                <Table.Td>
+                                                     {(() => {
+                                                        const actual = row.actual;
+                                                        if (!actual) return '-';
+                                                        const type = row.planned?.target?.type;
+                                                        if (type === 'heart_rate') return actual.avg_hr ? `${Math.round(actual.avg_hr)} bpm` : '-';
+                                                        if (type === 'power') return actual.avg_power ? `${Math.round(actual.avg_power)} W` : '-';
+                                                        // Pace target often used in running
+                                                        if (type === 'pace' && actual.avg_speed) return formatPace(actual.avg_speed);
+                                                        
+                                                        // Fallback priority
+                                                        if (activity.sport === 'running' && actual.avg_speed) return formatPace(actual.avg_speed);
+                                                        if (actual.avg_power) return `${Math.round(actual.avg_power)} W`;
+                                                        if (actual.avg_hr) return `${Math.round(actual.avg_hr)} bpm`;
+                                                        return '-';
+                                                     })()}
+                                                </Table.Td>
                                             </Table.Tr>
                                         ))}
                                     </Table.Tbody>
@@ -1637,7 +1709,7 @@ export const ActivityDetailPage = () => {
                                                                     : `${((split.distance || 0) / 1000).toFixed(2)} km`}
                                                             </Table.Td>
                                                         )}
-                                                        {visibleSplitStats.duration && <Table.Td>{formatDuration(split.duration)}</Table.Td>}
+                                                        {visibleSplitStats.duration && <Table.Td>{formatDuration(split.duration, true)}</Table.Td>}
                                                         {visibleSplitStats.pace_or_speed && (
                                                             <Table.Td>
                                                                 {isRunningActivity
@@ -1867,6 +1939,7 @@ export const ActivityDetailPage = () => {
                             <Table.Thead>
                                 <Table.Tr>
                                     <Table.Th>Split</Table.Th>
+                                    <Table.Th>RPE</Table.Th>
                                     <Table.Th>Lactate (mmol/L)</Table.Th>
                                     <Table.Th>Note</Table.Th>
                                 </Table.Tr>
@@ -1877,6 +1950,22 @@ export const ActivityDetailPage = () => {
                                         <Table.Td>{split.split || idx + 1}</Table.Td>
                                         <Table.Td>
                                             <NumberInput
+                                                min={1}
+                                                max={10}
+                                                allowDecimal={false}
+                                                value={splitAnnotations[idx]?.rpe ?? undefined}
+                                                onChange={(value) => setSplitAnnotations((prev) => ({
+                                                    ...prev,
+                                                    [idx]: {
+                                                        rpe: typeof value === 'number' ? value : null,
+                                                        lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null,
+                                                        note: prev[idx]?.note ?? ''
+                                                    }
+                                                }))}
+                                            />
+                                        </Table.Td>
+                                        <Table.Td>
+                                            <NumberInput
                                                 min={0}
                                                 max={40}
                                                 decimalScale={1}
@@ -1884,6 +1973,7 @@ export const ActivityDetailPage = () => {
                                                 onChange={(value) => setSplitAnnotations((prev) => ({
                                                     ...prev,
                                                     [idx]: {
+                                                        rpe: prev[idx]?.rpe ?? null,
                                                         lactate_mmol_l: typeof value === 'number' ? value : null,
                                                         note: prev[idx]?.note ?? ''
                                                     }
@@ -1899,6 +1989,7 @@ export const ActivityDetailPage = () => {
                                                 onChange={(e) => setSplitAnnotations((prev) => ({
                                                     ...prev,
                                                     [idx]: {
+                                                        rpe: prev[idx]?.rpe ?? null,
                                                         lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null,
                                                         note: e.currentTarget.value
                                                     }
@@ -1918,6 +2009,7 @@ export const ActivityDetailPage = () => {
                                     const split_annotations = Object.entries(splitAnnotations).map(([index, value]) => ({
                                         split_type: splitType as 'metric' | 'laps',
                                         split_index: Number(index),
+                                        rpe: value.rpe,
                                         lactate_mmol_l: value.lactate_mmol_l,
                                         note: value.note?.trim() ? value.note.trim() : null,
                                     }));

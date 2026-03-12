@@ -25,6 +25,8 @@ export const buildTrainingCalendarStyles = ({
                     border: none !important;
                     background: transparent;
                     height: 100% !important;
+                    display: flex !important;
+                    flex-direction: column !important;
                 }
                 .rbc-month-header {
                     min-height: ${weekdayHeaderHeight}px;
@@ -43,7 +45,7 @@ export const buildTrainingCalendarStyles = ({
                     background: transparent !important;
                     border-top: 1px solid ${palette.dayCellBorder} !important;
                     overflow: hidden !important;
-                    min-height: 96px !important;
+                    min-height: 0 !important;
                     flex: 1 1 0 !important;
                 }
                 .rbc-month-row:first-of-type {
@@ -71,7 +73,7 @@ export const buildTrainingCalendarStyles = ({
                 .rbc-row-content {
                     z-index: 4;
                     padding-bottom: 1px;
-                    min-height: 24px !important;
+                    min-height: 0 !important;
                 }
                 .rbc-row-segment {
                     padding: 1px 2px !important;

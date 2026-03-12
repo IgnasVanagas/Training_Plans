@@ -1,3 +1,5 @@
+import { endOfWeek, format, startOfWeek } from 'date-fns';
+
 type AthleteLike = {
   id: number;
   email: string;
@@ -36,6 +38,17 @@ export const parseMonthLabel = (monthKey: string) => {
   const [year, month] = monthKey.split('-').map(Number);
   const dt = new Date(year, (month || 1) - 1, 1);
   return dt.toLocaleDateString([], { month: 'long', year: 'numeric' });
+};
+
+export const toWeekKey = (isoDate: string) => {
+  const dt = new Date(isoDate);
+  return format(startOfWeek(dt, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+};
+
+export const parseWeekLabel = (weekKey: string) => {
+  const start = new Date(`${weekKey}T00:00:00`);
+  const end = endOfWeek(start, { weekStartsOn: 1 });
+  return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
 };
 
 export const safeNum = (value: any) => (typeof value === 'number' && Number.isFinite(value) ? value : 0);

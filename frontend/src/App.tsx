@@ -65,6 +65,14 @@ const App = () => {
             }
           />
           <Route
+            path="/builder"
+            element={
+              <ProtectedRoute>
+                <WorkoutBuilderPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/dashboard/activities/:id"
             element={
               <ProtectedRoute>

@@ -311,9 +311,15 @@ const DashboardCoachHome = ({
                       </Group>
                     </Table.Td>
                     <Table.Td>
-                      <ThemeIcon color="teal" size="xs" variant="light" radius="xl">
-                        <IconCheck size={10} />
-                      </ThemeIcon>
+                      {athlete.has_upcoming_coach_workout ? (
+                        <Badge color="teal" variant="light">
+                          {athlete.next_coach_workout_date ? `${t("Planned") || "Planned"} ${athlete.next_coach_workout_date}` : (t("Planned") || "Planned")}
+                        </Badge>
+                      ) : (
+                        <Badge color="orange" variant="light">
+                          {t("Needs Plan") || "Needs Plan"}
+                        </Badge>
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 ))}
