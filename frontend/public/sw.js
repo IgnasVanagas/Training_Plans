@@ -24,6 +24,9 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+  const isHttpRequest = url.protocol === "http:" || url.protocol === "https:";
+  if (!isHttpRequest) return;
+  const isSameOrigin = url.origin === self.location.origin;
 
   const isHtmlNavigation = request.mode === "navigate";
   const isApiRequest = url.pathname.startsWith("/calendar") || url.pathname.startsWith("/activities") || url.pathname.startsWith("/communications") || url.pathname.startsWith("/users/me");
@@ -32,8 +35,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          if (isSameOrigin && response && response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone)).catch(() => undefined);
+          }
           return response;
         })
         .catch(async () => {
@@ -48,8 +53,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          if (response && response.ok) {
+            const responseClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone)).catch(() => undefined);
+          }
           return response;
         })
         .catch(async () => {
@@ -69,9 +76,9 @@ self.addEventListener("fetch", (event) => {
       if (cached) return cached;
       return fetch(request)
         .then((response) => {
-          if (response && response.status === 200 && response.type === "basic") {
+          if (isSameOrigin && response && response.status === 200 && response.type === "basic") {
             const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone)).catch(() => undefined);
           }
           return response;
         });
