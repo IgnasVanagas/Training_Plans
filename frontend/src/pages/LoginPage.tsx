@@ -87,8 +87,8 @@ const LoginPage = () => {
       });
       return response.data;
     },
-    onSuccess: async () => {
-      markAuthSessionActive();
+    onSuccess: async (data) => {
+      markAuthSessionActive(data.access_token);
       sessionStorage.setItem(STRAVA_LOGIN_RECENT_SYNC_FLAG, "1");
       if (inviteCode) {
         try {
@@ -118,8 +118,8 @@ const LoginPage = () => {
       });
       return response.data;
     },
-    onSuccess: () => {
-      markAuthSessionActive();
+    onSuccess: (data) => {
+      markAuthSessionActive(data.access_token);
       navigate("/dashboard", { replace: true });
     },
     onError: (err) => setError(getErrorMessage(err))

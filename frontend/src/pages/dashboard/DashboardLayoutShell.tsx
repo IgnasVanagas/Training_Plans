@@ -244,7 +244,7 @@ const DashboardLayoutShell = ({
               leftSection={<IconLogout size={14} />}
               onClick={() => {
                 clearAuthSession();
-                window.location.href = "/login";
+                window.location.replace("/");
               }}
             >
               {t("Sign Out")}

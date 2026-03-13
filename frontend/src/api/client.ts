@@ -1,6 +1,6 @@
 import axios from "axios";
 
-import { clearAuthSession } from "../utils/authSession";
+import { clearAuthSession, getAuthToken } from "../utils/authSession";
 
 const requestTimeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS || 15000);
 
@@ -41,12 +41,21 @@ const api = axios.create({
   timeout: Number.isFinite(requestTimeoutMs) && requestTimeoutMs > 0 ? requestTimeoutMs : 15000,
 });
 
+api.interceptors.request.use((config) => {
+  const token = getAuthToken();
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
       clearAuthSession();
-      window.location.href = "/login";
+      window.location.replace("/");
     }
     return Promise.reject(error);
   }
