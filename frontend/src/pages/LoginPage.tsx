@@ -25,7 +25,7 @@ import api from "../api/client";
 import { useI18n } from "../i18n/I18nProvider";
 import { hasAuthSession, markAuthSessionActive } from "../utils/authSession";
 
-const appLogo = "/favicon.svg";
+const appLogo = "/origami-logo.png";
 
 type AuthResponse = {
   access_token: string;

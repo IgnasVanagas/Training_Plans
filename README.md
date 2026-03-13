@@ -33,6 +33,7 @@ Important production values:
 
 - `FRONTEND_BASE_URL`: your frontend public URL, for example `https://training-plans-frontend.onrender.com`
 - `ALLOWED_ORIGINS`: your frontend public URL, or a comma-separated list if you have multiple allowed origins
+- `AUTH_COOKIE_SAMESITE`: use `none` when frontend and backend are on separate HTTPS origins such as different Render services
 - `VITE_API_URL`: your backend public URL, for example `https://training-plans-backend.onrender.com`
 - `STRAVA_REDIRECT_URI`: must match your backend public callback URL, for example `https://training-plans-backend.onrender.com/integrations/strava/callback`
 

@@ -16,7 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import { clearAuthSession } from '../utils/authSession';
 
-const appLogo = '/favicon.svg';
+const appLogo = '/origami-logo.png';
 
 export const AppSidebarLayout = ({
   children,

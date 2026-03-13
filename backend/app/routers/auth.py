@@ -23,6 +23,9 @@ def _should_expose_auth_debug_links() -> bool:
 
 def _set_auth_cookie(response: Response, token: str) -> None:
     secure_cookie = os.getenv("AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
+    same_site_cookie = (os.getenv("AUTH_COOKIE_SAMESITE") or "lax").strip().lower()
+    if same_site_cookie not in {"lax", "strict", "none"}:
+        same_site_cookie = "lax"
     max_age_seconds = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")) * 60
     response.set_cookie(
         key="access_token",
@@ -30,7 +33,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         max_age=max_age_seconds,
         httponly=True,
         secure=secure_cookie,
-        samesite="lax",
+        samesite=same_site_cookie,
         path="/",
     )
 

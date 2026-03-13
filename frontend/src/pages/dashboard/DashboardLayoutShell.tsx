@@ -45,7 +45,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import OfflineNotice from "../../components/common/OfflineNotice";
 import { clearAuthSession } from "../../utils/authSession";
 
-const appLogo = "/favicon.svg";
+const appLogo = "/origami-logo.png";
 
 type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
 

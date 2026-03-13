@@ -10,7 +10,7 @@ import App from "./App";
 import { I18nProvider } from "./i18n/I18nProvider";
 import AppErrorBoundary from "./components/common/AppErrorBoundary";
 
-const faviconPath = "/favicon.svg";
+const faviconPath = "/origami-favicon.png";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -90,7 +90,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
 
 const faviconLink = document.querySelector("link[rel='icon']") || document.createElement("link");
 faviconLink.setAttribute("rel", "icon");
-faviconLink.setAttribute("type", "image/svg+xml");
+faviconLink.setAttribute("type", "image/png");
 faviconLink.setAttribute("href", faviconPath);
 if (!faviconLink.parentElement) {
   document.head.appendChild(faviconLink);
@@ -99,7 +99,7 @@ if (!faviconLink.parentElement) {
 const shortcutIconLink =
   document.querySelector("link[rel='shortcut icon']") || document.createElement("link");
 shortcutIconLink.setAttribute("rel", "shortcut icon");
-shortcutIconLink.setAttribute("type", "image/svg+xml");
+shortcutIconLink.setAttribute("type", "image/png");
 shortcutIconLink.setAttribute("href", faviconPath);
 if (!shortcutIconLink.parentElement) {
   document.head.appendChild(shortcutIconLink);
