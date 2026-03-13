@@ -11,6 +11,8 @@ async def wait_for_db() -> None:
         print("DATABASE_URL is not set")
         sys.exit(1)
 
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
     if database_url.startswith("postgresql+asyncpg://"):
         database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 

@@ -26,6 +26,11 @@ app.add_middleware(
 )
 
 
+@app.get("/health", tags=["health"])
+async def healthcheck() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
     async with engine.begin() as conn:

@@ -19,6 +19,29 @@ docker-compose up --build
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:8000/docs
 
+## Render deployment
+
+This repository now includes [render.yaml](render.yaml) for Render Blueprint deploys from the repo root.
+
+Recommended layout on Render:
+
+- Static site for the frontend from `frontend/`
+- Docker web service for the backend from `backend/`
+- Managed Postgres database
+
+Important production values:
+
+- `FRONTEND_BASE_URL`: your frontend public URL, for example `https://training-plans-frontend.onrender.com`
+- `ALLOWED_ORIGINS`: your frontend public URL, or a comma-separated list if you have multiple allowed origins
+- `VITE_API_URL`: your backend public URL, for example `https://training-plans-backend.onrender.com`
+- `STRAVA_REDIRECT_URI`: must match your backend public callback URL, for example `https://training-plans-backend.onrender.com/integrations/strava/callback`
+
+Notes:
+
+- The backend accepts Render Postgres connection strings and normalizes them for SQLAlchemy async usage.
+- Uploaded activity files are stored under `/app/uploads`, so the Render backend service attaches a persistent disk there.
+- `AUTO_SEED_DEMO` should remain `false` in production unless you intentionally want demo data.
+
 ## Safe GitHub publishing
 
 Before creating your first public commit/push, follow `PUBLISHING_CHECKLIST.md`.
