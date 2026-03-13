@@ -22,9 +22,10 @@ import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { IconAt, IconLock, IconUser, IconBuilding } from "@tabler/icons-react";
 import api from "../api/client";
-import appLogo from "../../uploads/favicon_Origami-removebg-preview.png";
 import { useI18n } from "../i18n/I18nProvider";
 import { hasAuthSession, markAuthSessionActive } from "../utils/authSession";
+
+const appLogo = "/favicon.svg";
 
 type AuthResponse = {
   access_token: string;

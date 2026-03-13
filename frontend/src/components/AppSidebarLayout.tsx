@@ -14,8 +14,9 @@ import {
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
-import appLogo from '../../uploads/favicon_Origami-removebg-preview.png';
 import { clearAuthSession } from '../utils/authSession';
+
+const appLogo = '/favicon.svg';
 
 export const AppSidebarLayout = ({
   children,

@@ -41,10 +41,11 @@ import {
   IconUserCircle,
   IconUsersGroup,
 } from "@tabler/icons-react";
-import appLogo from "../../../uploads/favicon_Origami-removebg-preview.png";
 import { useI18n } from "../../i18n/I18nProvider";
 import OfflineNotice from "../../components/common/OfflineNotice";
 import { clearAuthSession } from "../../utils/authSession";
+
+const appLogo = "/favicon.svg";
 
 type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
 
