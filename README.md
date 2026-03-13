@@ -41,6 +41,7 @@ Notes:
 - The backend accepts Render Postgres connection strings and normalizes them for SQLAlchemy async usage.
 - Uploaded activity files are stored under `/app/uploads`, so the Render backend service attaches a persistent disk there.
 - `AUTO_SEED_DEMO` should remain `false` in production unless you intentionally want demo data.
+- A root-level [Dockerfile](Dockerfile) is included as a fallback so a default Render Docker web service can still build the backend from the repo root.
 
 ## Safe GitHub publishing
 
