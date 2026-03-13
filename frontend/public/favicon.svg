@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title>Origami Plans</title>
+  <rect width="64" height="64" rx="16" fill="#0b0f14"/>
+  <path d="M13 43 32 12l7 20-12 5-14 6Z" fill="#00c3f5"/>
+  <path d="M32 12 52 22 39 32Z" fill="#94e8ff"/>
+  <path d="M27 37 39 32l10 19Z" fill="#008ab0"/>
+  <circle cx="45.5" cy="22.5" r="2.5" fill="#0b0f14" opacity=".25"/>
+</svg>
