@@ -14,11 +14,30 @@ def _normalize_async_database_url(database_url: str) -> str:
     return normalized
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
 DATABASE_URL = _normalize_async_database_url(
     os.getenv("DATABASE_URL", "postgresql+asyncpg://app:app@db:5432/endurance")
 )
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=max(0, _env_int("DB_POOL_RECYCLE_SECONDS", 900)),
+    pool_size=max(1, _env_int("DB_POOL_SIZE", 5)),
+    max_overflow=max(0, _env_int("DB_MAX_OVERFLOW", 10)),
+    pool_timeout=max(1, _env_int("DB_POOL_TIMEOUT_SECONDS", 30)),
+    pool_use_lifo=True,
+)
 AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
@@ -28,4 +47,8 @@ Base = declarative_base()
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise

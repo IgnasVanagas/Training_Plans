@@ -51,6 +51,11 @@ async def on_startup() -> None:
         await seed_data()
 
 
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    await engine.dispose()
+
+
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(activities.router)
