@@ -8,7 +8,8 @@ import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import api from '../api/client';
-import { getLatestSeasonPlan, PlannerConstraint, saveSeasonPlan } from '../api/planning';
+import { Award, Bandage, CalendarOff, HeartPulse, Medal, Plane, Trophy } from 'lucide-react';
+import { getLatestSeasonPlan, PlannerConstraint, saveSeasonPlan, SeasonPlan } from '../api/planning';
 import { useI18n } from '../i18n/I18nProvider';
 import { SavedWorkout } from '../types/workout';
 import { Group, Stack, Text, Box, useComputedColorScheme, Paper, Badge } from '@mantine/core';
@@ -55,6 +56,61 @@ const WEEKLY_TOTALS_PANEL_WIDTH = 324;
 type CalendarPlanningAction =
     | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string }
     | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string; severity: PlannerConstraint['severity']; impact: PlannerConstraint['impact'] };
+
+type CalendarPlanningMarker =
+    | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string }
+    | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string };
+
+type PendingPlanningMarker = {
+    requestId: string;
+    athleteId: number;
+    action: CalendarPlanningAction;
+    startDate: string;
+    endDate: string;
+};
+
+type PlanningActionMutationInput = {
+    action: CalendarPlanningAction;
+    targetAthleteId: number;
+    targetAthlete: any;
+    dateRange: { startDate: string; endDate: string };
+};
+
+const buildPlanningMarkerVisual = (marker: CalendarPlanningMarker) => {
+    if (marker.type === 'goal_race') {
+        if (marker.priority === 'A') {
+            return { Icon: Trophy, color: '#DC2626', shortLabel: 'A', title: marker.label };
+        }
+        if (marker.priority === 'B') {
+            return { Icon: Medal, color: '#D97706', shortLabel: 'B', title: marker.label };
+        }
+        return { Icon: Award, color: '#2563EB', shortLabel: 'C', title: marker.label };
+    }
+
+    if (marker.kind === 'travel') {
+        return { Icon: Plane, color: '#0EA5E9', shortLabel: '', title: marker.label };
+    }
+    if (marker.kind === 'sickness') {
+        return { Icon: HeartPulse, color: '#DC2626', shortLabel: '', title: marker.label };
+    }
+    if (marker.kind === 'injury') {
+        return { Icon: Bandage, color: '#F97316', shortLabel: '', title: marker.label };
+    }
+    return { Icon: CalendarOff, color: '#7C3AED', shortLabel: '', title: marker.label };
+};
+
+const sortCalendarRows = (rows: any[]) => {
+    return [...rows].sort((left, right) => {
+        const leftTime = left?.start instanceof Date ? left.start.getTime() : 0;
+        const rightTime = right?.start instanceof Date ? right.start.getTime() : 0;
+        if (rightTime !== leftTime) {
+            return rightTime - leftTime;
+        }
+        const leftId = String(left?.resource?.id ?? '');
+        const rightId = String(right?.resource?.id ?? '');
+        return rightId.localeCompare(leftId);
+    });
+};
 
 const buildDateRangeTitle = (start: Date, end: Date) => {
     const startKey = format(start, 'yyyy-MM-dd');
@@ -176,6 +232,21 @@ export const TrainingCalendar = ({
         });
         return map;
     }, [athletes]);
+
+    const [optimisticPlanningMarkers, setOptimisticPlanningMarkers] = useState<PendingPlanningMarker[]>([]);
+
+    const calendarSeasonPlanAthleteId = useMemo(() => {
+        if (allAthletes) return null;
+        if (athleteId) return athleteId;
+        return me?.id ?? null;
+    }, [allAthletes, athleteId, me?.id]);
+
+    const { data: calendarSeasonPlan } = useQuery({
+        queryKey: ['season-plan', calendarSeasonPlanAthleteId],
+        enabled: Boolean(calendarSeasonPlanAthleteId),
+        queryFn: () => getLatestSeasonPlan(calendarSeasonPlanAthleteId),
+        staleTime: 1000 * 60,
+    });
 
     useEffect(() => {
         if (parsedInitialViewDate) {
@@ -299,6 +370,137 @@ export const TrainingCalendar = ({
         refetchOnMount: 'always',
     });
 
+    const buildCalendarDisplayResource = useCallback((resource: CalendarEvent): CalendarEvent => {
+        let title = resource.title;
+        if (allAthletes && resource.user_id) {
+            const athlete = athleteById.get(resource.user_id);
+            if (athlete) {
+                const profile = athlete.profile;
+                const name = (profile?.first_name || profile?.last_name)
+                    ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+                    : athlete.email;
+                title = `${name}: ${title}`;
+            }
+        }
+        return { ...resource, title };
+    }, [allAthletes, athleteById]);
+
+    const buildCalendarEventEnvelope = useCallback((resource: CalendarEvent) => {
+        const displayResource = buildCalendarDisplayResource(resource);
+        const eventDate = parseDate(displayResource.date);
+        return {
+            ...displayResource,
+            start: eventDate,
+            end: eventDate,
+            allDay: true,
+            resource: displayResource,
+        };
+    }, [buildCalendarDisplayResource]);
+
+    const calendarQueryContainsDate = useCallback((queryKey: readonly unknown[], dateKey: string) => {
+        const start = typeof queryKey?.[2] === 'string' ? queryKey[2] : null;
+        const end = typeof queryKey?.[3] === 'string' ? queryKey[3] : null;
+        if (!start || !end) return true;
+        return dateKey >= start && dateKey <= end;
+    }, []);
+
+    const snapshotCalendarQueries = useCallback(() => {
+        return queryClient.getQueriesData<any[]>({ queryKey: ['calendar'] });
+    }, [queryClient]);
+
+    const restoreCalendarSnapshots = useCallback((snapshots: Array<[readonly unknown[], any[] | undefined]>) => {
+        snapshots.forEach(([queryKey, data]) => {
+            queryClient.setQueryData(queryKey, data);
+        });
+    }, [queryClient]);
+
+    const upsertCalendarResourceInQueries = useCallback((resource: CalendarEvent, previousId?: number | string) => {
+        const envelope = buildCalendarEventEnvelope(resource);
+        snapshotCalendarQueries().forEach(([queryKey, current]) => {
+            if (!Array.isArray(current)) return;
+
+            let next = current.filter((row: any) => (
+                row?.resource?.id !== resource.id
+                && row?.resource?.id !== previousId
+            ));
+
+            if (calendarQueryContainsDate(queryKey, resource.date)) {
+                next = sortCalendarRows([envelope, ...next]);
+            }
+
+            queryClient.setQueryData(queryKey, next);
+        });
+    }, [buildCalendarEventEnvelope, calendarQueryContainsDate, queryClient, snapshotCalendarQueries]);
+
+    const removeCalendarResourceFromQueries = useCallback((resourceId: number | string) => {
+        snapshotCalendarQueries().forEach(([queryKey, current]) => {
+            if (!Array.isArray(current)) return;
+            queryClient.setQueryData(
+                queryKey,
+                current.filter((row: any) => row?.resource?.id !== resourceId),
+            );
+        });
+    }, [queryClient, snapshotCalendarQueries]);
+
+    const buildNextSeasonPlanForAction = useCallback((
+        basePlanRaw: SeasonPlan | null | undefined,
+        targetAthlete: any,
+        action: CalendarPlanningAction,
+        dateRange: { startDate: string; endDate: string },
+    ) => {
+        const sportType = targetAthlete?.profile?.main_sport || me?.profile?.main_sport || 'Cycling';
+        const nextPlan = normalizePlan(basePlanRaw || null, sportType, athleteLabel(targetAthlete));
+
+        if (!basePlanRaw) {
+            nextPlan.target_metrics = [];
+            nextPlan.goal_races = [];
+            nextPlan.constraints = [];
+        }
+
+        nextPlan.season_start = nextPlan.season_start <= dateRange.startDate ? nextPlan.season_start : dateRange.startDate;
+        nextPlan.season_end = nextPlan.season_end >= dateRange.endDate ? nextPlan.season_end : dateRange.endDate;
+
+        if (action.type === 'goal_race') {
+            const nextRace = {
+                name: `${action.label} ${format(parseDate(dateRange.startDate), 'MMM d')}`,
+                date: dateRange.startDate,
+                priority: action.priority,
+                notes: '',
+                target_metrics: [],
+            };
+            const existingRaceIndex = nextPlan.goal_races.findIndex((race) => race.date === dateRange.startDate);
+            nextPlan.goal_races = existingRaceIndex >= 0
+                ? nextPlan.goal_races.map((race, index) => index === existingRaceIndex ? { ...race, ...nextRace } : race)
+                : [...nextPlan.goal_races, nextRace];
+            nextPlan.goal_races.sort((left, right) => left.date.localeCompare(right.date));
+            return nextPlan;
+        }
+
+        const nextConstraint = {
+            name: action.label,
+            kind: action.kind,
+            start_date: dateRange.startDate,
+            end_date: dateRange.endDate,
+            severity: action.severity,
+            impact: action.impact,
+            notes: '',
+        };
+        const existingConstraintIndex = nextPlan.constraints.findIndex((constraint) => (
+            constraint.kind === action.kind
+            && constraint.start_date === dateRange.startDate
+            && constraint.end_date === dateRange.endDate
+        ));
+        nextPlan.constraints = existingConstraintIndex >= 0
+            ? nextPlan.constraints.map((constraint, index) => index === existingConstraintIndex ? { ...constraint, ...nextConstraint } : constraint)
+            : [...nextPlan.constraints, nextConstraint];
+        nextPlan.constraints.sort((left, right) => {
+            const dateCompare = left.start_date.localeCompare(right.start_date);
+            if (dateCompare !== 0) return dateCompare;
+            return left.kind.localeCompare(right.kind);
+        });
+        return nextPlan;
+    }, [me?.profile?.main_sport]);
+
     const isInitialCalendarLoading = (eventsLoading || eventsFetching) && events.length === 0;
 
     const calendarEvents = useMemo(() => {
@@ -364,138 +566,168 @@ export const TrainingCalendar = ({
         staleTime: 1000 * 60,
     });
 
+    const [dayEvents, setDayEvents] = useState<CalendarEvent[]>([]);
+    const [dayModalOpen, { open: openDayModal, close: closeDayModal }] = useDisclosure(false);
+    const [selectedDayTitle, setSelectedDayTitle] = useState('');
+    const [selectedDateRange, setSelectedDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
+    const [dayCreateError, setDayCreateError] = useState<string | null>(null);
+    const [quickWorkout, setQuickWorkout] = useState({
+        sport_type: 'Cycling',
+        zone: 2,
+        mode: 'time' as 'time' | 'distance',
+        minutes: 45,
+        distanceKm: 10,
+    });
+
     const createMutation = useMutation({
         mutationFn: (newWorkout: CalendarEvent) => {
-             let url = '/calendar/';
-             // Prioritize the user_id set in the form (Dropdown), fall back to prop athleteId
-             const targetId = newWorkout.user_id || athleteId;
-             if (targetId) url += `?athlete_id=${targetId}`;
-             return api.post(url, newWorkout);
+            let url = '/calendar/';
+            const targetId = newWorkout.user_id || athleteId;
+            if (targetId) url += `?athlete_id=${targetId}`;
+            return api.post(url, newWorkout);
         },
-        onSuccess: () => {
-             queryClient.invalidateQueries({ queryKey: ['calendar'] });
-             close();
-        }
+        onMutate: async (newWorkout: CalendarEvent) => {
+            setSaveError(null);
+            await queryClient.cancelQueries({ queryKey: ['calendar'] });
+            const snapshots = snapshotCalendarQueries();
+            const tempId = -Date.now();
+            upsertCalendarResourceInQueries({
+                ...newWorkout,
+                id: tempId,
+                is_planned: true,
+                compliance_status: 'planned',
+            });
+            close();
+            return { snapshots, tempId };
+        },
+        onSuccess: (response: any, _vars, context) => {
+            upsertCalendarResourceInQueries({ ...(response.data || response), is_planned: true }, context?.tempId);
+            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+        },
+        onError: (error: any, _vars, context) => {
+            if (context?.snapshots) {
+                restoreCalendarSnapshots(context.snapshots);
+            }
+            const message = error?.response?.data?.detail || error?.message || 'Could not create workout';
+            setSaveError(message);
+            notifications.show({
+                color: 'red',
+                title: t('Could not save workout') || 'Could not save workout',
+                message,
+            });
+        },
     });
 
     const updateMutation = useMutation({
-        mutationFn: (vars: { id: number, data: Partial<CalendarEvent> }) => api.patch(`/calendar/${vars.id}`, vars.data),
-        onSuccess: () => {
-             queryClient.invalidateQueries({ queryKey: ['calendar'] });
-        }
+        mutationFn: (vars: { id: number; data: Partial<CalendarEvent> }) => api.patch(`/calendar/${vars.id}`, vars.data),
+        onMutate: async (vars: { id: number; data: Partial<CalendarEvent> }) => {
+            setSaveError(null);
+            await queryClient.cancelQueries({ queryKey: ['calendar'] });
+            const snapshots = snapshotCalendarQueries();
+            const existing = events.find((event: any) => event?.resource?.id === vars.id)?.resource as CalendarEvent | undefined;
+            if (existing) {
+                upsertCalendarResourceInQueries({ ...existing, ...vars.data, is_planned: true }, vars.id);
+            }
+            return { snapshots, existing };
+        },
+        onSuccess: (response: any, vars, context) => {
+            upsertCalendarResourceInQueries({ ...(context?.existing || {}), ...(response.data || response), is_planned: true }, vars.id);
+            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+        },
+        onError: (error: any, _vars, context) => {
+            if (context?.snapshots) {
+                restoreCalendarSnapshots(context.snapshots);
+            }
+            const message = error?.response?.data?.detail || error?.message || 'Could not update workout';
+            setSaveError(message);
+            notifications.show({
+                color: 'red',
+                title: t('Could not save workout') || 'Could not save workout',
+                message,
+            });
+        },
     });
 
     const deleteMutation = useMutation({
         mutationFn: (id: number) => api.delete(`/calendar/${id}`),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['calendar'] });
+        onMutate: async (id: number) => {
+            await queryClient.cancelQueries({ queryKey: ['calendar'] });
+            const snapshots = snapshotCalendarQueries();
+            removeCalendarResourceFromQueries(id);
             close();
+            return { snapshots };
         },
-        onError: (error: any) => {
+        onSuccess: () => {
+            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+        },
+        onError: (error: any, id, context) => {
             const status = error?.response?.status;
             if (status === 404) {
-                queryClient.invalidateQueries({ queryKey: ['calendar'] });
+                void queryClient.invalidateQueries({ queryKey: ['calendar'] });
                 close();
+                return;
             }
-        }
+            if (context?.snapshots) {
+                restoreCalendarSnapshots(context.snapshots);
+            }
+            notifications.show({
+                color: 'red',
+                title: t('Could not delete workout') || 'Could not delete workout',
+                message: error?.response?.data?.detail || error?.message || 'Please try again.',
+            });
+        },
     });
 
     const planningActionMutation = useMutation({
-        mutationFn: async (action: CalendarPlanningAction) => {
-            if (!canEditWorkouts) {
-                throw new Error(t('Coach has disabled workout editing for your account.') || 'Coach has disabled workout editing for your account.');
-            }
-            if (!ensureAthleteSelectedForCreate()) {
-                throw new Error(t('Please select an athlete first.') || 'Please select an athlete first.');
-            }
-            if (!selectedDateRange) {
-                throw new Error(t('Please select a date first.') || 'Please select a date first.');
-            }
-
-            const targetAthleteId = selectedEvent.user_id || athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined) || me?.id;
-            if (!targetAthleteId) {
-                throw new Error(t('Choose athlete') || 'Choose athlete');
-            }
-
-            const targetAthlete = athleteById.get(targetAthleteId) || (me?.id === targetAthleteId ? me : undefined);
-            const sportType = targetAthlete?.profile?.main_sport || me?.profile?.main_sport || 'Cycling';
-            const existingPlan = await getLatestSeasonPlan(targetAthleteId);
-            const nextPlan = normalizePlan(existingPlan, sportType, athleteLabel(targetAthlete));
-
-            if (!existingPlan) {
-                nextPlan.target_metrics = [];
-                nextPlan.goal_races = [];
-                nextPlan.constraints = [];
-            }
-
-            nextPlan.season_start = nextPlan.season_start <= selectedDateRange.startDate ? nextPlan.season_start : selectedDateRange.startDate;
-            nextPlan.season_end = nextPlan.season_end >= selectedDateRange.endDate ? nextPlan.season_end : selectedDateRange.endDate;
-
-            if (action.type === 'goal_race') {
-                const nextRace = {
-                    name: `${action.label} ${format(parseDate(selectedDateRange.startDate), 'MMM d')}`,
-                    date: selectedDateRange.startDate,
-                    priority: action.priority,
-                    notes: '',
-                    target_metrics: [],
-                };
-                const existingRaceIndex = nextPlan.goal_races.findIndex((race) => race.date === selectedDateRange.startDate);
-                nextPlan.goal_races = existingRaceIndex >= 0
-                    ? nextPlan.goal_races.map((race, index) => index === existingRaceIndex ? { ...race, ...nextRace } : race)
-                    : [...nextPlan.goal_races, nextRace];
-                nextPlan.goal_races.sort((left, right) => left.date.localeCompare(right.date));
-            } else {
-                const nextConstraint = {
-                    name: action.label,
-                    kind: action.kind,
-                    start_date: selectedDateRange.startDate,
-                    end_date: selectedDateRange.endDate,
-                    severity: action.severity,
-                    impact: action.impact,
-                    notes: '',
-                };
-                const existingConstraintIndex = nextPlan.constraints.findIndex((constraint) => (
-                    constraint.kind === action.kind &&
-                    constraint.start_date === selectedDateRange.startDate &&
-                    constraint.end_date === selectedDateRange.endDate
-                ));
-                nextPlan.constraints = existingConstraintIndex >= 0
-                    ? nextPlan.constraints.map((constraint, index) => index === existingConstraintIndex ? { ...constraint, ...nextConstraint } : constraint)
-                    : [...nextPlan.constraints, nextConstraint];
-                nextPlan.constraints.sort((left, right) => {
-                    const dateCompare = left.start_date.localeCompare(right.start_date);
-                    if (dateCompare !== 0) return dateCompare;
-                    return left.kind.localeCompare(right.kind);
-                });
-            }
-
-            return saveSeasonPlan(nextPlan, targetAthleteId);
+        mutationFn: async (input: PlanningActionMutationInput) => {
+            const cachedPlan = queryClient.getQueryData<SeasonPlan | null>(['season-plan', input.targetAthleteId]);
+            const existingPlan = cachedPlan ?? await getLatestSeasonPlan(input.targetAthleteId);
+            const nextPlan = buildNextSeasonPlanForAction(existingPlan, input.targetAthlete, input.action, input.dateRange);
+            return saveSeasonPlan(nextPlan, input.targetAthleteId);
         },
-        onSuccess: (_data, action) => {
+        onMutate: async (input: PlanningActionMutationInput) => {
+            const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             setDayCreateError(null);
-            void queryClient.invalidateQueries({ queryKey: ['season-plan'] });
+            setOptimisticPlanningMarkers((current) => [...current, {
+                requestId,
+                athleteId: input.targetAthleteId,
+                action: input.action,
+                startDate: input.dateRange.startDate,
+                endDate: input.dateRange.endDate,
+            }]);
+            closeDayModal();
+            return { requestId };
+        },
+        onSuccess: (data, input, context) => {
+            setOptimisticPlanningMarkers((current) => current.filter((item) => item.requestId !== context?.requestId));
+            queryClient.setQueryData(['season-plan', input.targetAthleteId], data);
+            void queryClient.invalidateQueries({ queryKey: ['season-plan', input.targetAthleteId] });
             void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
-            closeDayModal();
             notifications.show({
                 color: 'green',
                 title: t('Saved to season plan') || 'Saved to season plan',
-                message: action.type === 'goal_race'
-                    ? `${action.label} ${t('saved on calendar date') || 'saved on calendar date'}`
-                    : `${action.label} ${t('saved for selected dates') || 'saved for selected dates'}`,
+                message: input.action.type === 'goal_race'
+                    ? `${input.action.label} ${t('saved on calendar date') || 'saved on calendar date'}`
+                    : `${input.action.label} ${t('saved for selected dates') || 'saved for selected dates'}`,
             });
         },
-        onError: (error: any) => {
-            setDayCreateError(error?.response?.data?.detail || error?.message || (t('Could not save to season plan') || 'Could not save to season plan'));
+        onError: (error: any, _input, context) => {
+            setOptimisticPlanningMarkers((current) => current.filter((item) => item.requestId !== context?.requestId));
+            notifications.show({
+                color: 'red',
+                title: t('Could not save to season plan') || 'Could not save to season plan',
+                message: error?.response?.data?.detail || error?.message || (t('Could not save to season plan') || 'Could not save to season plan'),
+            });
         },
     });
 
     const onEventDrop = useCallback(async ({ event, start }: any) => {
         if (!canEditWorkouts) return;
         const dateStr = format(start, 'yyyy-MM-dd');
-        // Prevent moving completed activities for now? Or allow?
-        // Let's allow if the backend supports it (Activity update), but currently backend only supports PlannedWorkout update.
-        // So check is_planned
         if (!event.resource.is_planned) return;
 
         if (event.resource.date !== dateStr && event.resource.id) {
@@ -507,38 +739,23 @@ export const TrainingCalendar = ({
         if (!canEditWorkouts) return;
         const startDate = typeof start === 'string' ? new Date(start) : start;
         if (draggedWorkout) {
-             const dateStr = format(startDate, 'yyyy-MM-dd');
-             // Create planned workout from template
-             const newEvent: CalendarEvent = {
-                 title: draggedWorkout.title,
-                 date: dateStr,
-                 sport_type: draggedWorkout.sport_type,
-                 structure: draggedWorkout.structure,
-                 description: draggedWorkout.description,
-                 is_planned: true,
-                 user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
-                 planned_duration: 60, // Default or calculate from structure?
-                 recurrence: null,
-             };
-             // Use existing create mutation
-             createMutation.mutate(newEvent);
-             
-             if (onWorkoutDrop) onWorkoutDrop(draggedWorkout, startDate);
+            const dateStr = format(startDate, 'yyyy-MM-dd');
+            const newEvent: CalendarEvent = {
+                title: draggedWorkout.title,
+                date: dateStr,
+                sport_type: draggedWorkout.sport_type,
+                structure: draggedWorkout.structure,
+                description: draggedWorkout.description,
+                is_planned: true,
+                user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
+                planned_duration: 60,
+                recurrence: null,
+            };
+            createMutation.mutate(newEvent);
+
+            if (onWorkoutDrop) onWorkoutDrop(draggedWorkout, startDate);
         }
     }, [draggedWorkout, onWorkoutDrop, canEditWorkouts, athleteId, athletes, createMutation]);
-
-    const [dayEvents, setDayEvents] = useState<CalendarEvent[]>([]);
-    const [dayModalOpen, { open: openDayModal, close: closeDayModal }] = useDisclosure(false);
-    const [selectedDayTitle, setSelectedDayTitle] = useState("");
-    const [selectedDateRange, setSelectedDateRange] = useState<{ startDate: string; endDate: string } | null>(null);
-    const [dayCreateError, setDayCreateError] = useState<string | null>(null);
-    const [quickWorkout, setQuickWorkout] = useState({
-        sport_type: 'Cycling',
-        zone: 2,
-        mode: 'time' as 'time' | 'distance',
-        minutes: 45,
-        distanceKm: 10
-    });
 
     const handleSelectSlot = useCallback(({ start }: any) => {
         setSelectedEvent({ 
@@ -700,6 +917,34 @@ export const TrainingCalendar = ({
         return true;
     };
 
+    const buildPlanningActionInput = useCallback((action: CalendarPlanningAction): PlanningActionMutationInput | null => {
+        if (!canEditWorkouts) {
+            setDayCreateError(t('Coach has disabled workout editing for your account.') || 'Coach has disabled workout editing for your account.');
+            return null;
+        }
+        if (!ensureAthleteSelectedForCreate()) {
+            return null;
+        }
+        if (!selectedDateRange) {
+            setDayCreateError(t('Please select a date first.') || 'Please select a date first.');
+            return null;
+        }
+
+        const targetAthleteId = selectedEvent.user_id || athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined) || me?.id;
+        if (!targetAthleteId) {
+            setDayCreateError(t('Choose athlete') || 'Choose athlete');
+            return null;
+        }
+
+        const targetAthlete = athleteById.get(targetAthleteId) || (me?.id === targetAthleteId ? me : undefined);
+        return {
+            action,
+            targetAthleteId,
+            targetAthlete,
+            dateRange: selectedDateRange,
+        };
+    }, [athleteId, athleteById, athletes, canEditWorkouts, ensureAthleteSelectedForCreate, me, selectedDateRange, selectedEvent.user_id, t]);
+
     const handleCreateQuickWorkout = () => {
         if (!canEditWorkouts) {
             return;
@@ -812,9 +1057,70 @@ export const TrainingCalendar = ({
         closeDayModal();
     };
 
+    const planningMarkersByDate = useMemo(() => {
+        const byDate = new Map<string, CalendarPlanningMarker[]>();
+
+        const addMarker = (dateKey: string, marker: CalendarPlanningMarker) => {
+            const existing = byDate.get(dateKey) || [];
+            byDate.set(dateKey, [...existing, marker]);
+        };
+
+        const addConstraintRange = (startDate: string, endDate: string, marker: CalendarPlanningMarker) => {
+            let cursor = parseDate(startDate);
+            const end = parseDate(endDate);
+            while (cursor <= end) {
+                addMarker(format(cursor, 'yyyy-MM-dd'), marker);
+                const next = new Date(cursor);
+                next.setDate(cursor.getDate() + 1);
+                cursor = next;
+            }
+        };
+
+        (calendarSeasonPlan?.goal_races || []).forEach((race) => {
+            addMarker(race.date, {
+                type: 'goal_race',
+                priority: race.priority,
+                label: race.name || `${race.priority} race`,
+            });
+        });
+
+        (calendarSeasonPlan?.constraints || []).forEach((constraint) => {
+            addConstraintRange(constraint.start_date, constraint.end_date, {
+                type: 'constraint',
+                kind: constraint.kind,
+                label: constraint.name || constraint.kind,
+            });
+        });
+
+        optimisticPlanningMarkers
+            .filter((marker) => marker.athleteId === calendarSeasonPlanAthleteId)
+            .forEach((marker) => {
+                if (marker.action.type === 'goal_race') {
+                    addMarker(marker.startDate, {
+                        type: 'goal_race',
+                        priority: marker.action.priority,
+                        label: marker.action.label,
+                    });
+                    return;
+                }
+
+                addConstraintRange(marker.startDate, marker.endDate, {
+                    type: 'constraint',
+                    kind: marker.action.kind,
+                    label: marker.action.label,
+                });
+            });
+
+        return byDate;
+    }, [calendarSeasonPlan, calendarSeasonPlanAthleteId, optimisticPlanningMarkers]);
+
     const handleQuickPlanningAction = useCallback((action: CalendarPlanningAction) => {
-        planningActionMutation.mutate(action);
-    }, [planningActionMutation]);
+        const input = buildPlanningActionInput(action);
+        if (!input) {
+            return;
+        }
+        planningActionMutation.mutate(input);
+    }, [buildPlanningActionInput, planningActionMutation]);
 
     const formatTotalMinutes = (minutes: number) => {
         const total = Math.max(0, Math.round(minutes));
@@ -1046,34 +1352,78 @@ export const TrainingCalendar = ({
             : activeAthlete.email)
         : (me?.profile?.first_name ? `${me.profile.first_name} ${me.profile.last_name || ''}`.trim() : me?.email);
 
+    const handleCloseDayModal = useCallback(() => {
+        setDayCreateError(null);
+        setSelectedDateRange(null);
+        closeDayModal();
+    }, [closeDayModal]);
+
     // Custom Date Header for Calendar Cells
     const CustomDateHeader = useCallback(({ date }: { date: Date, label: string }) => {
         const isToday = date.toDateString() === new Date().toDateString();
+        const dateKey = format(date, 'yyyy-MM-dd');
+        const markers = planningMarkersByDate.get(dateKey) || [];
         return (
-            <Group justify="space-between" align="flex-start" p={4} h="100%">
-                 <Text 
-                    size="xs" 
-                    fw={700}
-                    style={{
-                        color: isToday ? activityColors.default : palette.textDim,
-                        opacity: isToday ? 1 : 0.72,
-                        transition: 'color 0.2s ease',
-                        cursor: 'default'
-                    }}
-                    onMouseEnter={(e) => {
-                        e.currentTarget.style.color = palette.textMain;
-                        e.currentTarget.style.opacity = '1';
-                    }}
-                    onMouseLeave={(e) => {
-                        e.currentTarget.style.color = isToday ? activityColors.default : palette.textDim;
-                        e.currentTarget.style.opacity = isToday ? '1' : '0.72';
-                    }}
-                >
-                    {format(date, 'MMM d').toUpperCase()}
-                </Text>
-            </Group>
+            <Stack gap={4} p={4} h="100%" justify="space-between">
+                <Group justify="space-between" align="flex-start" wrap="nowrap">
+                    <Text 
+                        size="xs" 
+                        fw={700}
+                        style={{
+                            color: isToday ? activityColors.default : palette.textDim,
+                            opacity: isToday ? 1 : 0.72,
+                            transition: 'color 0.2s ease',
+                            cursor: 'default'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = palette.textMain;
+                            e.currentTarget.style.opacity = '1';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color = isToday ? activityColors.default : palette.textDim;
+                            e.currentTarget.style.opacity = isToday ? '1' : '0.72';
+                        }}
+                    >
+                        {format(date, 'MMM d').toUpperCase()}
+                    </Text>
+                </Group>
+                {markers.length > 0 && (
+                    <Group gap={4} wrap="nowrap">
+                        {markers.slice(0, 3).map((marker, index) => {
+                            const visual = buildPlanningMarkerVisual(marker);
+                            const Icon = visual.Icon;
+                            return (
+                                <Group
+                                    key={`${dateKey}-${marker.label}-${index}`}
+                                    gap={2}
+                                    wrap="nowrap"
+                                    title={visual.title}
+                                    style={{
+                                        borderRadius: 999,
+                                        padding: '1px 5px',
+                                        background: isDark ? 'rgba(15, 23, 42, 0.78)' : 'rgba(255, 255, 255, 0.88)',
+                                        border: `1px solid ${visual.color}55`,
+                                        color: visual.color,
+                                        width: 'fit-content',
+                                    }}
+                                >
+                                    <Icon size={10} />
+                                    {visual.shortLabel ? (
+                                        <Text size="8px" fw={800} c={visual.color} style={{ lineHeight: 1 }}>
+                                            {visual.shortLabel}
+                                        </Text>
+                                    ) : null}
+                                </Group>
+                            );
+                        })}
+                        {markers.length > 3 && (
+                            <Text size="9px" fw={700} c={palette.textDim}>+{markers.length - 3}</Text>
+                        )}
+                    </Group>
+                )}
+            </Stack>
         );
-    }, [activityColors.default, palette.textDim, palette.textMain]);
+    }, [activityColors.default, isDark, palette.textDim, palette.textMain, planningMarkersByDate]);
 
     const calendarComponents = useMemo(() => ({
         event: RealEventComponent,
@@ -1082,7 +1432,28 @@ export const TrainingCalendar = ({
         }
     }), [CustomDateHeader, RealEventComponent]);
 
-    const emptyDayPropGetter = useCallback(() => ({ style: {} }), []);
+    const calendarDayPropGetter = useCallback((date: Date) => {
+        const classNames: string[] = [];
+        const dateKey = format(date, 'yyyy-MM-dd');
+
+        if (selectedDateRange) {
+            if (dateKey >= selectedDateRange.startDate && dateKey <= selectedDateRange.endDate) {
+                classNames.push('calendar-day-selected');
+            }
+            if (dateKey === selectedDateRange.startDate) {
+                classNames.push('calendar-day-selected-start');
+            }
+            if (dateKey === selectedDateRange.endDate) {
+                classNames.push('calendar-day-selected-end');
+            }
+        }
+
+        if (planningMarkersByDate.has(dateKey)) {
+            classNames.push('calendar-day-has-planning-marker');
+        }
+
+        return classNames.length > 0 ? { className: classNames.join(' ') } : { style: {} };
+    }, [planningMarkersByDate, selectedDateRange]);
 
     const calendarStyles = useMemo(() => buildTrainingCalendarStyles({
         isDark,
@@ -1217,7 +1588,7 @@ export const TrainingCalendar = ({
                                         date={viewDate}
                                         popup
                                         components={calendarComponents}
-                                        dayPropGetter={emptyDayPropGetter}
+                                        dayPropGetter={calendarDayPropGetter}
                                     />
                                 </Box>
                             )}
@@ -1247,7 +1618,7 @@ export const TrainingCalendar = ({
             
             <DayDetailsModal
                 opened={dayModalOpen}
-                onClose={closeDayModal}
+                onClose={handleCloseDayModal}
                 selectedDayTitle={selectedDayTitle}
                 dayEvents={dayEvents}
                 selectedDateRange={selectedDateRange}

@@ -41,6 +41,7 @@ def _load_secret_key() -> str:
 SECRET_KEY = _load_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
 JWT_ISSUER = os.getenv("JWT_ISSUER", "endurance-platform")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "endurance-client")
 
@@ -73,6 +74,38 @@ def create_access_token(subject: Union[str, Any], expires_delta: Optional[timede
     }
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+
+def create_refresh_token(subject: Union[str, Any]) -> str:
+    now = datetime.utcnow()
+    expire = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode = {
+        "exp": expire,
+        "iat": now,
+        "nbf": now,
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
+        "jti": str(uuid.uuid4()),
+        "sub": str(subject),
+        "typ": "refresh",
+    }
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_refresh_token(token: str) -> str:
+    payload = jwt.decode(
+        token,
+        SECRET_KEY,
+        algorithms=[ALGORITHM],
+        audience=JWT_AUDIENCE,
+        issuer=JWT_ISSUER,
+    )
+    if payload.get("typ") != "refresh":
+        raise JWTError("invalid token type")
+    subject = payload.get("sub")
+    if not subject:
+        raise JWTError("missing subject")
+    return str(subject)
 
 
 def create_action_token(*, subject: str, purpose: str, expires_minutes: int = 60) -> str:

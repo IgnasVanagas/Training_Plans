@@ -3,13 +3,13 @@ import os
 import asyncio
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from jose import JWTError
 
-from ..auth import create_access_token, create_action_token, decode_action_token, get_current_user, get_password_hash, verify_password
+from ..auth import create_access_token, create_refresh_token, decode_refresh_token, create_action_token, decode_action_token, get_current_user, get_password_hash, verify_password, REFRESH_TOKEN_EXPIRE_DAYS
 from ..database import get_db
 from ..models import Organization, Profile, User, OrganizationMember
 from ..schemas import EmailTokenRequest, ForgotPasswordRequest, LoginRequest, ResetPasswordRequest, TokenResponse, UserCreate
@@ -29,6 +29,23 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     max_age_seconds = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")) * 60
     response.set_cookie(
         key="access_token",
+        value=token,
+        max_age=max_age_seconds,
+        httponly=True,
+        secure=secure_cookie,
+        samesite=same_site_cookie,
+        path="/",
+    )
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    secure_cookie = os.getenv("AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
+    same_site_cookie = (os.getenv("AUTH_COOKIE_SAMESITE") or "lax").strip().lower()
+    if same_site_cookie not in {"lax", "strict", "none"}:
+        same_site_cookie = "lax"
+    max_age_seconds = REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+    response.set_cookie(
+        key="refresh_token",
         value=token,
         max_age=max_age_seconds,
         httponly=True,
@@ -102,7 +119,9 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
         raise HTTPException(status_code=400, detail="Email already registered")
 
     token = create_access_token(subject=str(user.id))
+    refresh = create_refresh_token(subject=str(user.id))
     _set_auth_cookie(response, token)
+    _set_refresh_cookie(response, refresh)
     return TokenResponse(access_token=token)
 
 
@@ -116,14 +135,41 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     token = create_access_token(subject=str(user.id))
+    refresh = create_refresh_token(subject=str(user.id))
     _set_auth_cookie(response, token)
+    _set_refresh_cookie(response, refresh)
     return TokenResponse(access_token=token)
 
 
 @router.post("/logout")
 async def logout(response: Response) -> dict:
     response.delete_cookie(key="access_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/")
     return {"message": "Logged out"}
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(request: Request, response: Response, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No refresh token")
+
+    try:
+        user_id = decode_refresh_token(refresh_token)
+    except JWTError:
+        response.delete_cookie(key="refresh_token", path="/")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    user = await db.scalar(select(User).where(User.id == int(user_id)))
+    if not user:
+        response.delete_cookie(key="refresh_token", path="/")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    new_access = create_access_token(subject=str(user.id))
+    new_refresh = create_refresh_token(subject=str(user.id))
+    _set_auth_cookie(response, new_access)
+    _set_refresh_cookie(response, new_refresh)
+    return TokenResponse(access_token=new_access)
 
 
 def _build_frontend_action_url(*, route: str, token: str) -> str:

@@ -54,9 +54,22 @@ export const buildTrainingCalendarStyles = ({
                 .rbc-day-bg {
                     background: transparent !important;
                     border-left: 1px solid ${palette.dayCellBorder} !important;
+                    transition: background-color 0.16s ease, box-shadow 0.16s ease;
                 }
                 .rbc-day-bg:first-of-type {
                    border-left: none !important;
+                }
+                .rbc-day-bg.calendar-day-selected {
+                    background: ${isDark ? 'rgba(59, 130, 246, 0.18)' : 'rgba(59, 130, 246, 0.14)'} !important;
+                    box-shadow: inset 0 0 0 1px ${isDark ? 'rgba(96, 165, 250, 0.45)' : 'rgba(59, 130, 246, 0.30)'};
+                }
+                .rbc-day-bg.calendar-day-selected-start,
+                .rbc-day-bg.calendar-day-selected-end {
+                    background: ${isDark ? 'rgba(37, 99, 235, 0.24)' : 'rgba(37, 99, 235, 0.18)'} !important;
+                    box-shadow: inset 0 0 0 2px ${isDark ? 'rgba(96, 165, 250, 0.72)' : 'rgba(37, 99, 235, 0.44)'};
+                }
+                .rbc-day-bg.calendar-day-has-planning-marker:not(.calendar-day-selected):not(.calendar-day-selected-start):not(.calendar-day-selected-end) {
+                    background: ${isDark ? 'rgba(15, 23, 42, 0.08)' : 'rgba(148, 163, 184, 0.06)'} !important;
                 }
                 .rbc-date-cell {
                     padding: 4px 6px 2px !important;

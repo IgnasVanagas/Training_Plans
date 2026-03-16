@@ -13,7 +13,7 @@ allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http:/
 allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
 allowed_origin_regex = os.getenv(
     "ALLOWED_ORIGIN_REGEX",
-    r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$",
+    r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|^https://[a-zA-Z0-9-]+\.onrender\.com$",
 )
 
 app.add_middleware(

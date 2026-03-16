@@ -83,6 +83,7 @@ export const AppSidebarLayout = ({
               size="xs"
               leftSection={<IconLogout size={14} />}
               onClick={() => {
+                api.post('/auth/logout').catch(() => {});
                 clearAuthSession();
                 window.location.replace('/');
               }}

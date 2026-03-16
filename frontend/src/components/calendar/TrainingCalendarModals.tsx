@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { Activity, CheckCircle } from 'lucide-react';
+import { Activity, Award, Bandage, CalendarOff, CheckCircle, HeartPulse, Medal, Plane, Trophy } from 'lucide-react';
 import { Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, Stack, SegmentedControl, Text } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMemo, useState } from 'react';
@@ -188,10 +188,10 @@ export const DayDetailsModal = ({
 
   const planningOptions = useMemo(() => {
     const items = [
-      { label: t('Travel') || 'Travel', action: { type: 'constraint', kind: 'travel', label: t('Travel') || 'Travel', severity: 'moderate', impact: 'reduce' } },
-      { label: t('Sickness') || 'Sickness', action: { type: 'constraint', kind: 'sickness', label: t('Sickness') || 'Sickness', severity: 'high', impact: 'rest' } },
-      { label: t('Injury') || 'Injury', action: { type: 'constraint', kind: 'injury', label: t('Injury') || 'Injury', severity: 'high', impact: 'rest' } },
-      { label: t('Holiday') || 'Holiday', action: { type: 'constraint', kind: 'unavailable', label: t('Holiday') || 'Holiday', severity: 'moderate', impact: 'reduce' } },
+      { label: t('Travel') || 'Travel', icon: Plane, action: { type: 'constraint', kind: 'travel', label: t('Travel') || 'Travel', severity: 'moderate', impact: 'reduce' } },
+      { label: t('Sickness') || 'Sickness', icon: HeartPulse, action: { type: 'constraint', kind: 'sickness', label: t('Sickness') || 'Sickness', severity: 'high', impact: 'rest' } },
+      { label: t('Injury') || 'Injury', icon: Bandage, action: { type: 'constraint', kind: 'injury', label: t('Injury') || 'Injury', severity: 'high', impact: 'rest' } },
+      { label: t('Holiday') || 'Holiday', icon: CalendarOff, action: { type: 'constraint', kind: 'unavailable', label: t('Holiday') || 'Holiday', severity: 'moderate', impact: 'reduce' } },
     ];
 
     if (isRangeSelection) {
@@ -199,9 +199,9 @@ export const DayDetailsModal = ({
     }
 
     return [
-      { label: t('A race') || 'A race', action: { type: 'goal_race', priority: 'A', label: t('A race') || 'A race' } },
-      { label: t('B race') || 'B race', action: { type: 'goal_race', priority: 'B', label: t('B race') || 'B race' } },
-      { label: t('C race') || 'C race', action: { type: 'goal_race', priority: 'C', label: t('C race') || 'C race' } },
+      { label: t('A race') || 'A race', icon: Trophy, action: { type: 'goal_race', priority: 'A', label: t('A race') || 'A race' } },
+      { label: t('B race') || 'B race', icon: Medal, action: { type: 'goal_race', priority: 'B', label: t('B race') || 'B race' } },
+      { label: t('C race') || 'C race', icon: Award, action: { type: 'goal_race', priority: 'C', label: t('C race') || 'C race' } },
       ...items,
     ];
   }, [isRangeSelection, t]);
@@ -275,6 +275,7 @@ export const DayDetailsModal = ({
                         key={option.label}
                         variant="light"
                         size="xs"
+                        leftSection={<option.icon size={14} />}
                         onClick={() => onQuickPlanningAction(option.action)}
                         loading={planningActionPending}
                         disabled={!canEditWorkouts || planningActionPending}

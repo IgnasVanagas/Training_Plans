@@ -1,6 +1,6 @@
-import axios from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
-import { clearAuthSession, getAuthToken } from "../utils/authSession";
+import { clearAuthSession, getAuthToken, markAuthSessionActive } from "../utils/authSession";
 
 const requestTimeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS || 15000);
 
@@ -50,13 +50,64 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+let isRefreshing = false;
+let refreshSubscribers: Array<(token: string) => void> = [];
+
+function onTokenRefreshed(token: string) {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+}
+
+function addRefreshSubscriber(cb: (token: string) => void) {
+  refreshSubscribers.push(cb);
+}
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      clearAuthSession();
-      window.location.replace("/");
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      // Don't attempt refresh for the refresh endpoint itself
+      if (originalRequest.url?.includes("/auth/refresh")) {
+        clearAuthSession();
+        window.location.replace("/");
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        // Another refresh is in progress — queue this request
+        return new Promise((resolve) => {
+          addRefreshSubscriber((newToken: string) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+            resolve(api(originalRequest));
+          });
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const { data } = await axios.post(
+          `${api.defaults.baseURL}/auth/refresh`,
+          {},
+          { withCredentials: true },
+        );
+        const newToken = data.access_token;
+        markAuthSessionActive(newToken);
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        onTokenRefreshed(newToken);
+        return api(originalRequest);
+      } catch {
+        clearAuthSession();
+        window.location.replace("/");
+        return Promise.reject(error);
+      } finally {
+        isRefreshing = false;
+      }
     }
+
     return Promise.reject(error);
   }
 );

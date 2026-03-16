@@ -45,6 +45,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import OfflineNotice from "../../components/common/OfflineNotice";
 import SupportContactButton from "../../components/common/SupportContactButton";
 import { clearAuthSession } from "../../utils/authSession";
+import api from "../../api/client";
 
 const appLogo = "/origami-logo.png";
 
@@ -253,6 +254,7 @@ const DashboardLayoutShell = ({
               color="red"
               leftSection={<IconLogout size={14} />}
               onClick={() => {
+                api.post("/auth/logout").catch(() => {});
                 clearAuthSession();
                 window.location.replace("/");
               }}
