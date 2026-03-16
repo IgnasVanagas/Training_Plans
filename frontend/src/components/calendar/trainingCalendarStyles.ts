@@ -56,6 +56,10 @@ export const buildTrainingCalendarStyles = ({
                     border-left: 1px solid ${palette.dayCellBorder} !important;
                     transition: background-color 0.16s ease, box-shadow 0.16s ease;
                 }
+                .rbc-day-bg.rbc-selected-cell {
+                    background: ${isDark ? 'rgba(59, 130, 246, 0.14)' : 'rgba(59, 130, 246, 0.10)'} !important;
+                    box-shadow: inset 0 0 0 1px ${isDark ? 'rgba(96, 165, 250, 0.35)' : 'rgba(59, 130, 246, 0.22)'};
+                }
                 .rbc-day-bg:first-of-type {
                    border-left: none !important;
                 }
