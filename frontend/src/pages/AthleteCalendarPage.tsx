@@ -3,11 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { Container, Button, Group, Title, Text, Loader, Stack, Box } from "@mantine/core";
 import { IconArrowLeft } from "@tabler/icons-react";
+import SupportContactButton from "../components/common/SupportContactButton";
 import { TrainingCalendar } from "../components/TrainingCalendar";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import api from "../api/client";
+import { useI18n } from "../i18n/I18nProvider";
 
 export const AthleteCalendarPage = () => {
+    const { t } = useI18n();
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const location = useLocation();
@@ -39,8 +42,13 @@ export const AthleteCalendarPage = () => {
     if (isError) return (
          <AppSidebarLayout activeNav="plan"><Container mt="xl">
             <Stack align="center">
-                <Text c="red">Athlete not found or access denied.</Text>
-                <Button onClick={() => navigate("/")} variant="outline">Back to Dashboard</Button>
+                <Text c="red">{t("Athlete not found or access denied.")}</Text>
+                <SupportContactButton
+                    buttonText={t("Contact support")}
+                    pageLabel="Athlete calendar"
+                    errorMessage={t("Athlete not found or access denied.")}
+                />
+                <Button onClick={() => navigate("/")} variant="outline">{t("Back to Dashboard")}</Button>
             </Stack>
          </Container></AppSidebarLayout>
     );

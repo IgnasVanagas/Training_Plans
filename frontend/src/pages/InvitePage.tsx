@@ -1,6 +1,7 @@
 import { Alert, Center, Container, Paper, Text } from "@mantine/core";
 import { useMutation } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
+import SupportContactButton from "../components/common/SupportContactButton";
 import InviteActions from "../components/invite/InviteActions";
 import InviteHeader from "../components/invite/InviteHeader";
 import InviteTokenCard from "../components/invite/InviteTokenCard";
@@ -63,7 +64,12 @@ const InvitePage = () => {
           <InviteTokenCard token={token} />
           {acceptInviteMutation.isError && (
             <Alert color="red" mb="md" title="Invitation error">
-              {getErrorMessage()}
+              <Text size="sm" mb="xs">{getErrorMessage()}</Text>
+              <SupportContactButton
+                size="xs"
+                pageLabel="Invite"
+                errorMessage={getErrorMessage()}
+              />
             </Alert>
           )}
           <InviteActions

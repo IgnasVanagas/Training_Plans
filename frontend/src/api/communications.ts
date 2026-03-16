@@ -59,6 +59,21 @@ export type NotificationsFeedOut = {
   items: NotificationItemOut[];
 };
 
+export type SupportRequestCreate = {
+  name?: string;
+  email: string;
+  subject?: string;
+  message: string;
+  page_url?: string;
+  error_message?: string;
+  bot_trap?: string;
+  client_elapsed_ms: number;
+};
+
+export type SupportRequestResponse = {
+  message: string;
+};
+
 export const getThread = async (entityType: string, entityId: number | string, athleteId?: number) => {
   const params = athleteId ? { athlete_id: athleteId } : undefined;
   const response = await client.get<CommunicationThreadOut>(
@@ -108,5 +123,10 @@ export const getCommunicationHistory = async (athleteId: number, limit: number =
     `/communications/history/${athleteId}`,
     { params: { limit } }
   );
+  return response.data;
+};
+
+export const sendSupportRequest = async (payload: SupportRequestCreate) => {
+  const response = await client.post<SupportRequestResponse>("/communications/support", payload);
   return response.data;
 };

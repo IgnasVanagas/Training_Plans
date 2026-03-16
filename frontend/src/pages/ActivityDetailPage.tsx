@@ -10,6 +10,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
 import { ActivityDetailSkeleton } from "../components/common/SkeletonScreens";
+import SupportContactButton from "../components/common/SupportContactButton";
+import { useI18n } from "../i18n/I18nProvider";
 import { readSnapshot, writeSnapshot } from "../utils/localSnapshot";
 import { CommentsPanel } from "../components/activityDetail/CommentsPanel";
 import { SessionFeedbackPanel } from "../components/activityDetail/SessionFeedbackPanel";
@@ -121,6 +123,7 @@ type ActivityDetail = {
 };
 
 export const ActivityDetailPage = () => {
+    const { t } = useI18n();
     const { id } = useParams();
     const navigate = useNavigate();
     const location = useLocation();
@@ -987,7 +990,20 @@ export const ActivityDetailPage = () => {
 
 
     if (isLoading) return <ActivityDetailSkeleton />;
-    if (isError || !activity) return <Container my={60}><Text c="red">Error loading activity.</Text></Container>;
+    if (isError || !activity) {
+        return (
+            <Container my={60}>
+                <Stack align="flex-start" gap="xs">
+                    <Text c="red">{t("Error loading activity.")}</Text>
+                    <SupportContactButton
+                        buttonText={t("Contact support")}
+                        pageLabel="Activity detail"
+                        errorMessage={t("Error loading activity.")}
+                    />
+                </Stack>
+            </Container>
+        );
+    }
 
     const sportName = (activity.sport || '').toLowerCase();
     const isRunningActivity = sportName.includes('run');

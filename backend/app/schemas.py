@@ -253,6 +253,42 @@ class InviteByEmailResponse(BaseModel):
     message: str
 
 
+class SupportRequestCreate(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=120)
+    email: EmailStr
+    subject: Optional[str] = Field(default=None, max_length=160)
+    message: str = Field(min_length=10, max_length=4000)
+    page_url: Optional[str] = Field(default=None, max_length=600)
+    error_message: Optional[str] = Field(default=None, max_length=1000)
+    bot_trap: Optional[str] = Field(default=None, max_length=255)
+    client_elapsed_ms: int = Field(default=0, ge=0, le=300000)
+
+    @field_validator("name", "subject", "page_url", "error_message", "bot_trap")
+    @classmethod
+    def trim_optional_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+    @field_validator("email")
+    @classmethod
+    def normalize_support_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+    @field_validator("message")
+    @classmethod
+    def validate_support_message(cls, value: str) -> str:
+        cleaned = value.strip()
+        if len(cleaned) < 10:
+            raise ValueError("message must be at least 10 characters")
+        return cleaned
+
+
+class SupportRequestResponse(BaseModel):
+    message: str
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=10)

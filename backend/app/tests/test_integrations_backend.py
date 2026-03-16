@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 from datetime import datetime
+from urllib.parse import parse_qs, urlparse
 
 import pytest
+from fastapi import HTTPException
+from starlette.requests import Request
 
 from app.integrations.connectors.strava import StravaConnector
 from app.integrations.ingest import ingest_provider_activity
 from app.integrations.service import build_event_key, merge_cursor
+from app.routers import integrations as integrations_router
 
 
 class _FakeResponse:
-    def __init__(self, payload):
+    def __init__(self, payload, *, status_code: int = 200, headers: dict | None = None):
         self._payload = payload
+        self.status_code = status_code
+        self.headers = headers or {}
 
     def raise_for_status(self):
         return None
@@ -58,6 +64,129 @@ async def test_strava_token_exchange_and_refresh(monkeypatch):
     assert exchanged.access_token == "new-access"
     assert refreshed.refresh_token == "new-refresh"
     assert exchanged.external_athlete_id == "12345"
+
+
+def test_strava_authorize_url_requests_required_scopes(monkeypatch):
+    monkeypatch.setenv("STRAVA_CLIENT_ID", "cid")
+    monkeypatch.setenv("STRAVA_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("STRAVA_REDIRECT_URI", "http://localhost/callback")
+
+    connector = StravaConnector()
+    authorize_url = connector.authorize_url("state-123")
+    query = parse_qs(urlparse(authorize_url).query)
+
+    assert query["approval_prompt"] == ["auto"]
+    requested_scopes = query["scope"][0].split(",")
+    assert requested_scopes == ["read", "activity:read", "activity:read_all"]
+    assert connector.missing_required_scopes(["read", "activity:read_all"]) == ["activity:read"]
+
+
+@pytest.mark.asyncio
+async def test_strava_deauthorize_posts_access_token(monkeypatch):
+    import app.integrations.connectors.strava as strava_module
+
+    captured_params = {}
+
+    class _FakeDeauthClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def post(self, _url, params=None, data=None):
+            captured_params.update(params or {})
+            return _FakeResponse({"access_token": "revoked"})
+
+    monkeypatch.setattr(strava_module.httpx, "AsyncClient", _FakeDeauthClient)
+    connector = StravaConnector()
+
+    response = await connector.deauthorize("access-123")
+
+    assert captured_params == {"access_token": "access-123"}
+    assert response["access_token"] == "revoked"
+
+
+@pytest.mark.asyncio
+async def test_strava_ensure_webhook_subscription_creates_when_missing(monkeypatch):
+    import app.integrations.connectors.strava as strava_module
+
+    calls: list[tuple[str, dict | None]] = []
+
+    class _FakeWebhookClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def get(self, _url, params=None):
+            calls.append(("get", dict(params or {})))
+            return _FakeResponse([])
+
+        async def post(self, _url, data=None, params=None):
+            calls.append(("post", dict(data or params or {})))
+            return _FakeResponse({"id": 999, "callback_url": "https://api.example.com/integrations/strava/webhook"})
+
+        async def delete(self, _url, params=None):
+            calls.append(("delete", dict(params or {})))
+            return _FakeResponse({}, status_code=204)
+
+    monkeypatch.setenv("STRAVA_CLIENT_ID", "cid")
+    monkeypatch.setenv("STRAVA_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("STRAVA_REDIRECT_URI", "http://localhost/callback")
+    monkeypatch.setenv("STRAVA_WEBHOOK_CALLBACK_URL", "https://api.example.com/integrations/strava/webhook")
+    monkeypatch.setenv("STRAVA_WEBHOOK_VERIFY_TOKEN", "verify-me")
+    monkeypatch.setattr(strava_module.httpx, "AsyncClient", _FakeWebhookClient)
+
+    connector = StravaConnector()
+    result = await connector.ensure_webhook_subscription()
+
+    assert result["status"] == "created"
+    assert calls[0][0] == "get"
+    assert calls[1][0] == "post"
+    assert calls[1][1]["verify_token"] == "verify-me"
+
+
+def _make_webhook_request(query_string: str) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/integrations/strava/webhook",
+            "query_string": query_string.encode("utf-8"),
+            "headers": [],
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_strava_webhook_challenge_validates_verify_token(monkeypatch):
+    monkeypatch.setenv("STRAVA_CLIENT_ID", "cid")
+    monkeypatch.setenv("STRAVA_CLIENT_SECRET", "secret")
+    monkeypatch.setenv("STRAVA_REDIRECT_URI", "http://localhost/callback")
+    monkeypatch.setenv("STRAVA_WEBHOOK_VERIFY_TOKEN", "verify-me")
+
+    ok_response = await integrations_router.provider_webhook_challenge(
+        "strava",
+        _make_webhook_request("hub.verify_token=verify-me&hub.challenge=abc123&hub.mode=subscribe"),
+    )
+
+    assert ok_response == {"hub.challenge": "abc123"}
+
+    with pytest.raises(HTTPException) as exc:
+        await integrations_router.provider_webhook_challenge(
+            "strava",
+            _make_webhook_request("hub.verify_token=wrong&hub.challenge=abc123&hub.mode=subscribe"),
+        )
+
+    assert exc.value.status_code == 400
 
 
 class _FakeSession:

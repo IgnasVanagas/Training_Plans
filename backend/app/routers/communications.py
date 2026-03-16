@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date as dt_date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,10 +32,40 @@ from ..schemas import (
     OrganizationChatMessageCreate,
     OrganizationChatMessageOut,
     OrganizationCoachChatMessageOut,
+    SupportRequestCreate,
+    SupportRequestResponse,
 )
 from ..services.permissions import get_shared_org_ids
+from ..services.support import (
+    SupportDeliveryError,
+    SupportSubmissionBlocked,
+    send_support_email,
+    validate_support_request,
+)
 
 router = APIRouter(prefix="/communications", tags=["communications"])
+
+
+@router.post("/support", response_model=SupportRequestResponse, status_code=status.HTTP_202_ACCEPTED)
+async def submit_support_request(
+    payload: SupportRequestCreate,
+    request: Request,
+) -> SupportRequestResponse:
+    client_host = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
+    try:
+        validate_support_request(payload, client_host=client_host, user_agent=user_agent)
+        await send_support_email(payload, client_host=client_host, user_agent=user_agent)
+    except SupportSubmissionBlocked as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SupportDeliveryError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Support is temporarily unavailable. Please try again later.",
+        ) from exc
+
+    return SupportRequestResponse(message="Support request sent.")
 
 
 async def _require_active_org_membership(

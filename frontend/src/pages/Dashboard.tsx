@@ -15,6 +15,7 @@ import SeasonPlannerDrawer from "../components/planner/SeasonPlannerDrawer";
 import { SavedWorkout } from "../types/workout";
 import { MetricHistoryModal } from "../components/dashboard/MetricHistoryModal";
 import ActivityUploadPanel from "../components/dashboard/ActivityUploadPanel";
+import SupportContactButton from "../components/common/SupportContactButton";
 import DashboardAthleteHome from "./dashboard/DashboardAthleteHome";
 import DashboardCoachHome from "./dashboard/DashboardCoachHome";
 import DashboardLayoutShell from "./dashboard/DashboardLayoutShell";
@@ -584,9 +585,24 @@ const Dashboard = () => {
   }
 
   if (meQuery.isError || !me) {
+    const dashboardErrorMessage = meQuery.isError
+      ? extractApiErrorMessage(meQuery.error)
+      : t("Unable to load dashboard.");
     return (
       <Container size="md" my={60}>
-        <Text c="red">Unable to load dashboard.</Text>
+        <Stack gap="xs" align="flex-start">
+          <Text c="red">{t("Unable to load dashboard.")}</Text>
+          <Text size="sm" c="dimmed">{t(dashboardErrorMessage)}</Text>
+          <SupportContactButton
+            buttonText={t("Contact support")}
+            email={meQuery.data?.email ?? null}
+            name={(meQuery.data?.profile?.first_name || meQuery.data?.profile?.last_name)
+              ? `${meQuery.data?.profile?.first_name || ""} ${meQuery.data?.profile?.last_name || ""}`.trim()
+              : null}
+            pageLabel="Dashboard"
+            errorMessage={dashboardErrorMessage}
+          />
+        </Stack>
       </Container>
     );
   }
@@ -625,6 +641,7 @@ const Dashboard = () => {
       headerRight={headerRight}
       onQuickAddActivity={me.role !== "coach" ? () => setUploadModalOpened(true) : undefined}
       role={me.role}
+      supportEmail={me.email}
       athletes={athletesQuery.data || []}
       selectedAthleteId={selectedAthleteId}
       onSelectAthlete={setSelectedAthleteId}

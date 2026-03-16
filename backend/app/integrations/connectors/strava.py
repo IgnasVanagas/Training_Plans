@@ -33,7 +33,7 @@ class StravaConnector(ProviderConnector):
     provider = "strava"
     display_name = "Strava"
     docs_url = "https://developers.strava.com/docs/"
-    required_scopes = ["read", "activity:read_all"]
+    required_scopes = ["read", "activity:read", "activity:read_all"]
 
     def __init__(self) -> None:
         self.client_id = os.getenv("STRAVA_CLIENT_ID")
@@ -46,13 +46,55 @@ class StravaConnector(ProviderConnector):
     def is_configured(self) -> bool:
         return bool(self.client_id and self.client_secret and self.redirect_uri)
 
+    def _parse_scopes(self, raw_scopes: Any) -> list[str]:
+        if isinstance(raw_scopes, str):
+            candidates = raw_scopes.split(",")
+        elif isinstance(raw_scopes, (list, tuple, set)):
+            candidates = list(raw_scopes)
+        else:
+            candidates = []
+
+        scopes: list[str] = []
+        seen: set[str] = set()
+        for candidate in candidates:
+            scope = str(candidate or "").strip()
+            if not scope or scope in seen:
+                continue
+            scopes.append(scope)
+            seen.add(scope)
+        return scopes
+
+    def requested_scopes(self) -> list[str]:
+        configured = self._parse_scopes(os.getenv("STRAVA_SCOPES", "read,activity:read,activity:read_all"))
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for scope in [*self.required_scopes, *configured]:
+            if scope in seen:
+                continue
+            ordered.append(scope)
+            seen.add(scope)
+        return ordered
+
+    def missing_required_scopes(self, granted_scopes: Any) -> list[str]:
+        granted = set(self._parse_scopes(granted_scopes))
+        return [scope for scope in self.required_scopes if scope not in granted]
+
+    def webhook_callback_url(self) -> str:
+        return str(os.getenv("STRAVA_WEBHOOK_CALLBACK_URL", "")).strip()
+
+    def webhook_verify_token(self) -> str:
+        return str(os.getenv("STRAVA_WEBHOOK_VERIFY_TOKEN", "")).strip()
+
+    def is_webhook_configured(self) -> bool:
+        return bool(self.client_id and self.client_secret and self.webhook_callback_url() and self.webhook_verify_token())
+
     def authorize_url(self, state: str) -> str:
         params = {
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
             "response_type": "code",
-            "approval_prompt": "force",
-            "scope": os.getenv("STRAVA_SCOPES", "read,activity:read_all"),
+            "approval_prompt": os.getenv("STRAVA_OAUTH_APPROVAL_PROMPT", "auto"),
+            "scope": ",".join(self.requested_scopes()),
             "state": state,
         }
         return f"https://www.strava.com/oauth/authorize?{urlencode(params)}"
@@ -98,6 +140,86 @@ class StravaConnector(ProviderConnector):
             "refresh_token": refresh_token,
         }
         return await self._exchange(payload)
+
+    async def deauthorize(self, access_token: str) -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                "https://www.strava.com/oauth/deauthorize",
+                params={"access_token": access_token},
+            )
+            if response.status_code == 401:
+                return {"status": "already_deauthorized"}
+            response.raise_for_status()
+            payload = response.json()
+        return payload if isinstance(payload, dict) else {"status": "deauthorized"}
+
+    async def list_webhook_subscriptions(self) -> list[dict[str, Any]]:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                "https://www.strava.com/api/v3/push_subscriptions",
+                params={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return payload if isinstance(payload, list) else []
+
+    async def create_webhook_subscription(self) -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.post(
+                "https://www.strava.com/api/v3/push_subscriptions",
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "callback_url": self.webhook_callback_url(),
+                    "verify_token": self.webhook_verify_token(),
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        return payload if isinstance(payload, dict) else {"status": "created"}
+
+    async def delete_webhook_subscription(self, subscription_id: int | str) -> None:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.delete(
+                f"https://www.strava.com/api/v3/push_subscriptions/{subscription_id}",
+                params={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+            )
+            if response.status_code not in {200, 204, 404}:
+                response.raise_for_status()
+
+    async def ensure_webhook_subscription(self) -> dict[str, Any]:
+        if not self.is_webhook_configured():
+            return {"status": "not_configured"}
+
+        callback_url = self.webhook_callback_url()
+        subscriptions = await self.list_webhook_subscriptions()
+        matching = next(
+            (
+                subscription for subscription in subscriptions
+                if str(subscription.get("callback_url") or "").strip() == callback_url
+            ),
+            None,
+        )
+        if matching is not None:
+            return {"status": "existing", "subscription": matching}
+
+        if subscriptions:
+            replace_existing = os.getenv("STRAVA_REPLACE_EXISTING_WEBHOOK_SUBSCRIPTION", "false").lower() in {"1", "true", "yes", "on"}
+            if not replace_existing:
+                raise RuntimeError("A different Strava webhook subscription is already registered for this app.")
+            for subscription in subscriptions:
+                subscription_id = subscription.get("id")
+                if subscription_id is not None:
+                    await self.delete_webhook_subscription(subscription_id)
+
+        created = await self.create_webhook_subscription()
+        return {"status": "created", "subscription": created}
 
     def _rolling_curve(self, values: list[float], windows: dict[str, int]) -> dict[str, float]:
         if not values:
@@ -445,6 +567,45 @@ class StravaConnector(ProviderConnector):
             activity_id,
             start_time,
             request_debug_callback=request_debug_callback,
+        )
+
+    async def fetch_activity_summary(
+        self,
+        *,
+        access_token: str,
+        activity_id: str,
+        request_debug_callback=None,
+    ) -> ProviderActivityRecord | None:
+        headers = {"Authorization": f"Bearer {access_token}"}
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await self._get_with_retry(
+                client,
+                url=f"https://www.strava.com/api/v3/activities/{activity_id}",
+                headers=headers,
+                context=f"activity summary {activity_id}",
+                request_debug_callback=request_debug_callback,
+            )
+            if response.status_code in {401, 404}:
+                return None
+            response.raise_for_status()
+            payload = response.json() if isinstance(response.json(), dict) else {}
+
+        start_iso = payload.get("start_date") or payload.get("start_date_local")
+        if not start_iso:
+            return None
+        start_time = datetime.fromisoformat(str(start_iso).replace("Z", "+00:00")).replace(tzinfo=None)
+
+        return ProviderActivityRecord(
+            provider_activity_id=str(payload.get("id") or activity_id),
+            name=payload.get("name") or f"Strava activity {activity_id}",
+            start_time=start_time,
+            duration_s=float(payload.get("moving_time") or payload.get("elapsed_time") or 0),
+            distance_m=float(payload.get("distance") or 0),
+            sport=(payload.get("sport_type") or payload.get("type") or "other").lower(),
+            average_hr=float(payload.get("average_heartrate")) if payload.get("average_heartrate") is not None else None,
+            average_watts=float(payload.get("average_watts")) if payload.get("average_watts") is not None else None,
+            average_speed=float(payload.get("average_speed")) if payload.get("average_speed") is not None else None,
+            payload={"summary": payload},
         )
 
     async def fetch_activities(self, *, access_token: str, cursor: dict[str, Any] | None, progress_callback=None, should_cancel=None) -> SyncResult:

@@ -121,6 +121,37 @@ const renderStackedZoneBar = (zoneValues: number[], zoneCount: number, height: n
     );
 };
 
+const createPeriodZones = () => ({
+    running: {
+        activityCount: 0,
+        zoneSecondsByMetric: {
+            hr: Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>,
+            pace: Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>
+        }
+    },
+    cycling: {
+        activityCount: 0,
+        zoneSecondsByMetric: {
+            hr: Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>,
+            power: Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>
+        }
+    }
+});
+
+const hasAnyZoneValues = (zoneMap?: Record<string, number>) => {
+    if (!zoneMap) return false;
+    return Object.values(zoneMap).some((value) => Number(value || 0) > 0);
+};
+
+const hasAnyPeriodZoneValues = (zones: ReturnType<typeof createPeriodZones>) => {
+    return [
+        zones.running.zoneSecondsByMetric.hr,
+        zones.running.zoneSecondsByMetric.pace,
+        zones.cycling.zoneSecondsByMetric.hr,
+        zones.cycling.zoneSecondsByMetric.power,
+    ].some((zoneMap) => hasAnyZoneValues(zoneMap));
+};
+
 export default function TrainingCalendarZoneSummaryPanel({
     monthlyOpenSignal,
     zoneSummary,
@@ -147,6 +178,18 @@ export default function TrainingCalendarZoneSummaryPanel({
     const hasZoneSeconds = (source?: Record<string, number>) => {
         if (!source) return false;
         return Object.values(source).some((value) => Number(value || 0) > 0);
+    };
+
+    const buildZoneSummaryParams = (referenceDate: Date) => {
+        const params = new URLSearchParams();
+        params.set('reference_date', format(referenceDate, 'yyyy-MM-dd'));
+        params.set('week_start_day', weekStartDay === 0 ? 'sunday' : 'monday');
+        if (athleteId) {
+            params.set('athlete_id', athleteId.toString());
+        } else if (allAthletes) {
+            params.set('all_athletes', 'true');
+        }
+        return params;
     };
 
     const buildEnhancedMetrics = (activityEvents: any[], detailByActivityId: Map<number, any>) => {
@@ -271,22 +314,7 @@ export default function TrainingCalendarZoneSummaryPanel({
     };
 
     const aggregateZonesForPeriod = (activities: ActivityZoneSummary[], periodStart: Date, periodEnd: Date) => {
-        const result = {
-            running: {
-                activityCount: 0,
-                zoneSecondsByMetric: {
-                    hr: Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>,
-                    pace: Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>
-                }
-            },
-            cycling: {
-                activityCount: 0,
-                zoneSecondsByMetric: {
-                    hr: Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>,
-                    power: Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>
-                }
-            }
-        };
+        const result = createPeriodZones();
 
         activities.forEach((activity) => {
             const actDate = parseDate(activity.date);
@@ -355,30 +383,31 @@ export default function TrainingCalendarZoneSummaryPanel({
             .map((week) => week.key);
     }, [weeksInMonth, completedEvents]);
 
+    const boundaryWeeksWithActivities = useMemo(() => {
+        return weeksInMonth.filter((week) => {
+            if (week.start >= monthStart && week.end <= monthEnd) {
+                return false;
+            }
+            return weeksWithActivities.includes(week.key);
+        });
+    }, [monthEnd, monthStart, weeksInMonth, weeksWithActivities]);
+
     const supplementalSnapshotKey = useMemo(() => {
         const scope = athleteId ? `athlete:${athleteId}` : (allAthletes ? 'all' : 'self');
         return `zone-week-range-activities-supplemental:${scope}:${weekStartDay}:${monthStart.toISOString().slice(0, 10)}:${monthEnd.toISOString().slice(0, 10)}`;
     }, [allAthletes, athleteId, monthEnd, monthStart, weekStartDay]);
 
     const { data: supplementalWeekZoneActivities = [] } = useQuery({
-        queryKey: ['zone-week-range-activities-supplemental', athleteId, allAthletes, weekStartDay, ...weeksWithActivities],
-        enabled: weeksWithActivities.length > 0,
+        queryKey: ['zone-week-range-activities-supplemental', athleteId, allAthletes, weekStartDay, ...boundaryWeeksWithActivities.map((week) => week.key)],
+        enabled: boundaryWeeksWithActivities.length > 0,
         staleTime: 1000 * 60 * 5,
         initialData: () => readSnapshot<ActivityZoneSummary[]>(supplementalSnapshotKey) || [],
         queryFn: async () => {
             const byId = new Map<number, ActivityZoneSummary>();
 
             await Promise.all(
-                weeksWithActivities.map(async (weekKey) => {
-                    const params = new URLSearchParams();
-                    params.set('reference_date', weekKey);
-                    params.set('week_start_day', weekStartDay === 0 ? 'sunday' : 'monday');
-                    if (athleteId) {
-                        params.set('athlete_id', athleteId.toString());
-                    } else if (allAthletes) {
-                        params.set('all_athletes', 'true');
-                    }
-
+                boundaryWeeksWithActivities.map(async (week) => {
+                    const params = buildZoneSummaryParams(week.start);
                     const res = await api.get<ZoneSummaryResponse>(`/activities/zone-summary?${params.toString()}`);
                     (res.data.athletes || []).forEach((summary) => {
                         (summary.weekly_activity_zones || []).forEach((activity) => {
@@ -424,43 +453,44 @@ export default function TrainingCalendarZoneSummaryPanel({
         return byId;
     }, [athletes, me]);
 
-    const aggregateSummaryZones = (period: 'weekly' | 'monthly') => {
-        const running = {
-            activityCount: 0,
-            zoneSecondsByMetric: {
-                hr: Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>,
-                pace: Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>
-            }
-        };
-        const cycling = {
-            activityCount: 0,
-            zoneSecondsByMetric: {
-                hr: Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>,
-                power: Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>
-            }
-        };
+    const aggregateSummaryZones = (period: 'weekly' | 'monthly', sourceSummaries: typeof summaries = summaries) => {
+        const result = createPeriodZones();
 
-        summaries.forEach((summary) => {
+        sourceSummaries.forEach((summary) => {
             const source = period === 'weekly' ? summary.weekly : summary.monthly;
-            running.activityCount += source.sports.running.activities_count || 0;
-            cycling.activityCount += source.sports.cycling.activities_count || 0;
+            result.running.activityCount += source.sports.running.activities_count || 0;
+            result.cycling.activityCount += source.sports.cycling.activities_count || 0;
             const runningByMetric = source.sports.running.zone_seconds_by_metric || {};
             const cyclingByMetric = source.sports.cycling.zone_seconds_by_metric || {};
             for (let zone = 1; zone <= 5; zone += 1) {
-                running.zoneSecondsByMetric.hr[`Z${zone}`] += getZoneSeconds(runningByMetric.hr as Record<string, number>, zone)
+                result.running.zoneSecondsByMetric.hr[`Z${zone}`] += getZoneSeconds(runningByMetric.hr as Record<string, number>, zone)
                     || getZoneSeconds(source.sports.running.zone_seconds as Record<string, number>, zone);
-                cycling.zoneSecondsByMetric.hr[`Z${zone}`] += getZoneSeconds(cyclingByMetric.hr as Record<string, number>, zone)
+                result.cycling.zoneSecondsByMetric.hr[`Z${zone}`] += getZoneSeconds(cyclingByMetric.hr as Record<string, number>, zone)
                     || getZoneSeconds(source.sports.cycling.zone_seconds as Record<string, number>, zone);
             }
             for (let zone = 1; zone <= 7; zone += 1) {
-                running.zoneSecondsByMetric.pace[`Z${zone}`] += getZoneSeconds(runningByMetric.pace as Record<string, number>, zone)
+                result.running.zoneSecondsByMetric.pace[`Z${zone}`] += getZoneSeconds(runningByMetric.pace as Record<string, number>, zone)
                     || getZoneSeconds(source.sports.running.zone_seconds as Record<string, number>, zone);
-                cycling.zoneSecondsByMetric.power[`Z${zone}`] += getZoneSeconds(cyclingByMetric.power as Record<string, number>, zone)
+                result.cycling.zoneSecondsByMetric.power[`Z${zone}`] += getZoneSeconds(cyclingByMetric.power as Record<string, number>, zone)
                     || getZoneSeconds(source.sports.cycling.zone_seconds as Record<string, number>, zone);
             }
         });
 
-        return { running, cycling };
+        return result;
+    };
+
+    const matchesWeekSummary = (periodStart: Date, periodEnd: Date) => {
+        const summaryWeekStart = zoneSummary?.week?.start_date;
+        const summaryWeekEnd = zoneSummary?.week?.end_date;
+        if (!summaryWeekStart || !summaryWeekEnd) return false;
+        return format(periodStart, 'yyyy-MM-dd') === summaryWeekStart && format(periodEnd, 'yyyy-MM-dd') === summaryWeekEnd;
+    };
+
+    const matchesMonthSummary = (periodStart: Date, periodEnd: Date) => {
+        const summaryMonthStart = zoneSummary?.month?.start_date;
+        const summaryMonthEnd = zoneSummary?.month?.end_date;
+        if (!summaryMonthStart || !summaryMonthEnd) return false;
+        return format(periodStart, 'yyyy-MM-dd') === summaryMonthStart && format(periodEnd, 'yyyy-MM-dd') === summaryMonthEnd;
     };
 
     const openMoreModal = async (
@@ -488,7 +518,13 @@ export default function TrainingCalendarZoneSummaryPanel({
         });
 
         const metrics = calculateMetrics(scopedEvents);
-        let zones = aggregateZonesForPeriod(scopedKnownActivities, periodStart, periodEnd);
+        const isWholeMonthPeriod = matchesMonthSummary(periodStart, periodEnd);
+        const isCurrentSummaryWeek = matchesWeekSummary(periodStart, periodEnd);
+        let zones = isWholeMonthPeriod
+            ? aggregateSummaryZones('monthly')
+            : isCurrentSummaryWeek
+                ? aggregateSummaryZones('weekly')
+                : aggregateZonesForPeriod(scopedKnownActivities, periodStart, periodEnd);
 
         const initialActivities: DetailActivity[] = scopedEvents
             .map((event: any) => {
@@ -515,249 +551,56 @@ export default function TrainingCalendarZoneSummaryPanel({
             metrics: { ...metrics, aerobicLoad: 0, anaerobicLoad: 0 },
             zones,
             activities: initialActivities,
-            partialData: true,
-            partialDataMessage: 'Data is still syncing from Strava. Showing available activities and current totals; values will expand as sync completes.',
-            isLoading: true,
-        });
-
-        try {
-        const detailByActivityId = new Map<number, any>();
-
-        const perActivityZones = new Map<number, { sport: string; zoneSecondsByMetric: Record<string, Record<string, number> | undefined> }>();
-
-        const knownByActivityId = new Map<number, ActivityZoneSummary>(
-            scopedKnownActivities
-                .map((activity) => {
-                    const activityId = toActivityIdKey(activity.activity_id);
-                    return activityId !== null ? [activityId, activity] : null;
-                })
-                .filter((entry): entry is [number, ActivityZoneSummary] => Boolean(entry))
-        );
-
-        knownByActivityId.forEach((known, activityId) => {
-            perActivityZones.set(activityId, {
-                sport: known.sport,
-                zoneSecondsByMetric: {
-                    ...(known.zone_seconds_by_metric || {})
-                }
-            });
-        });
-
-        const hasAnyMetricSeconds = (data?: Record<string, number>) => {
-            if (!data) return false;
-            return Object.values(data).some((value) => Number(value || 0) > 0);
-        };
-
-        const needsDerivedZones = (resource: CalendarEvent, known?: ActivityZoneSummary) => {
-            if (!resource.id || !known) return true;
-            const normalizedSport = normalizeSport(known.sport || resource.sport_type || '');
-            const byMetric = known.zone_seconds_by_metric || {};
-            if (normalizedSport === 'running') {
-                const hasHr = hasAnyMetricSeconds(byMetric.hr);
-                const hasPace = hasAnyMetricSeconds(byMetric.pace);
-                return !hasHr || !hasPace;
-            }
-            if (normalizedSport === 'cycling') {
-                const hasHr = hasAnyMetricSeconds(byMetric.hr);
-                const hasPower = hasAnyMetricSeconds(byMetric.power);
-                return !hasHr || !hasPower;
-            }
-            return true;
-        };
-
-        const fallbackCandidates = scopedEvents.filter((event: any) => {
-            const resource = event.resource as CalendarEvent;
-            if (!resource.id) return false;
-            const known = knownByActivityId.get(resource.id);
-            return needsDerivedZones(resource, known);
-        });
-
-        const detailFetchIds = Array.from(new Set(
-            fallbackCandidates
-                .map((event: any) => toActivityIdKey((event.resource as CalendarEvent).id))
-                .filter((activityId): activityId is number => activityId !== null)
-        )).slice(0, 16);
-
-        await Promise.all(
-            detailFetchIds.map(async (activityId) => {
-                try {
-                    const detailRes = await api.get(`/activities/${activityId}`);
-                    detailByActivityId.set(activityId, detailRes.data);
-                } catch {
-                    // Keep graceful degradation when detail endpoint fails for some activities
-                }
-            })
-        );
-
-        if (fallbackCandidates.length > 0) {
-            fallbackCandidates.forEach((event: any) => {
-                const resource = event.resource as CalendarEvent;
-                const activityId = toActivityIdKey(resource.id);
-                if (activityId === null) return;
-                const detail = detailByActivityId.get(activityId);
-                if (!detail) return;
-                const profile = athleteProfileById.get(resource.user_id || -1);
-                const derived = deriveZonesFromActivityDetail(detail, profile);
-                perActivityZones.set(activityId, {
-                    sport: derived.sport,
-                    zoneSecondsByMetric: derived.zoneSecondsByMetric || {}
-                });
-            });
-        }
-
-        zones = {
-            running: {
-                activityCount: 0,
-                zoneSecondsByMetric: {
-                    hr: Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>,
-                    pace: Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>
-                }
-            },
-            cycling: {
-                activityCount: 0,
-                zoneSecondsByMetric: {
-                    hr: Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>,
-                    power: Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>
-                }
-            }
-        };
-
-        scopedEvents.forEach((event: any) => {
-            const resource = event.resource as CalendarEvent;
-            const activityId = toActivityIdKey(resource.id);
-            if (activityId === null) return;
-            const known = knownByActivityId.get(activityId);
-            const mapped = perActivityZones.get(activityId);
-            const normalizedSport = normalizeSport(mapped?.sport || known?.sport || resource.sport_type || '');
-
-            if (normalizedSport === 'running') {
-                zones.running.activityCount += 1;
-                const fallbackZoneSource = known?.zone_seconds || {};
-                const hrSource = pickZoneSource(mapped?.zoneSecondsByMetric?.hr, known?.zone_seconds_by_metric?.hr, fallbackZoneSource);
-                const paceSource = pickZoneSource(mapped?.zoneSecondsByMetric?.pace, known?.zone_seconds_by_metric?.pace, hrSource, fallbackZoneSource);
-                for (let zone = 1; zone <= 5; zone += 1) {
-                    const key = `Z${zone}`;
-                    zones.running.zoneSecondsByMetric.hr[key] += getZoneSeconds(hrSource, zone);
-                }
-                for (let zone = 1; zone <= 7; zone += 1) {
-                    const key = `Z${zone}`;
-                    zones.running.zoneSecondsByMetric.pace[key] += getZoneSeconds(paceSource, zone);
-                }
-            }
-
-            if (normalizedSport === 'cycling') {
-                zones.cycling.activityCount += 1;
-                const fallbackZoneSource = known?.zone_seconds || {};
-                const hrSource = pickZoneSource(mapped?.zoneSecondsByMetric?.hr, known?.zone_seconds_by_metric?.hr, fallbackZoneSource);
-                const powerSource = pickZoneSource(mapped?.zoneSecondsByMetric?.power, known?.zone_seconds_by_metric?.power, hrSource, fallbackZoneSource);
-                for (let zone = 1; zone <= 5; zone += 1) {
-                    const key = `Z${zone}`;
-                    zones.cycling.zoneSecondsByMetric.hr[key] += getZoneSeconds(hrSource, zone);
-                }
-                for (let zone = 1; zone <= 7; zone += 1) {
-                    const key = `Z${zone}`;
-                    zones.cycling.zoneSecondsByMetric.power[key] += getZoneSeconds(powerSource, zone);
-                }
-            }
-        });
-
-        const hasPerActivityZoneSeconds = [
-            ...Object.values(zones.running.zoneSecondsByMetric.hr),
-            ...Object.values(zones.running.zoneSecondsByMetric.pace),
-            ...Object.values(zones.cycling.zoneSecondsByMetric.hr),
-            ...Object.values(zones.cycling.zoneSecondsByMetric.power)
-        ].some((value) => Number(value || 0) > 0);
-
-        if (!hasPerActivityZoneSeconds) {
-            const periodStartKey = format(periodStart, 'yyyy-MM-dd');
-            const periodEndKey = format(periodEnd, 'yyyy-MM-dd');
-            const monthStartKey = format(monthStart, 'yyyy-MM-dd');
-            const monthEndKey = format(monthEnd, 'yyyy-MM-dd');
-            const summaryWeekStart = zoneSummary?.week?.start_date;
-            const summaryWeekEnd = zoneSummary?.week?.end_date;
-
-            if (periodStartKey === monthStartKey && periodEndKey === monthEndKey) {
-                zones = aggregateSummaryZones('monthly');
-            } else if (summaryWeekStart && summaryWeekEnd && periodStartKey === summaryWeekStart && periodEndKey === summaryWeekEnd) {
-                zones = aggregateSummaryZones('weekly');
-            }
-        }
-
-        const activities: DetailActivity[] = scopedEvents
-            .map((event: any) => {
-                const resource = event.resource as CalendarEvent;
-                const distanceKm = resource.distance || 0;
-                const durationMin = resource.duration || 0;
-                const isRunning = (resource.sport_type || '').toLowerCase().includes('run');
-                const knownZones = resource.id ? perActivityZones.get(resource.id) : null;
-                const resolvedSport = normalizeSport(knownZones?.sport || resource.sport_type || '');
-                const zoneCount = zoneCountForSport(resolvedSport);
-                const defaultMetricZones = resolvedSport === 'running'
-                    ? (knownZones?.zoneSecondsByMetric?.hr || {})
-                    : (knownZones?.zoneSecondsByMetric?.power || {});
-                return {
-                    id: resource.id,
-                    date: event.start as Date,
-                    sport: resource.sport_type || 'Activity',
-                    distanceKm,
-                    durationMin,
-                    avgHr: resource.avg_hr,
-                    avgPaceMinPerKm: isRunning && distanceKm > 0 ? (durationMin / distanceKm) : null,
-                    zoneSeconds: defaultMetricZones,
-                    zoneCount
-                };
-            })
-            .sort((a: DetailActivity, b: DetailActivity) => b.date.getTime() - a.date.getTime());
-
-        const hasMissingStreamData = scopedEvents.some((event: any) => {
-            const resource = event.resource as CalendarEvent;
-            const activityId = toActivityIdKey(resource.id);
-            if (activityId === null) return true;
-
-            const detail = detailByActivityId.get(activityId);
-            if (!detail) return true;
-
-            const streamPoints = Array.isArray(detail?.streams)
-                ? detail.streams
-                : (Array.isArray(detail?.streams?.data) ? detail.streams.data : []);
-
-            return !Array.isArray(streamPoints) || streamPoints.length === 0;
-        });
-
-        const isPartialData = scopedEvents.length > 0 && hasMissingStreamData;
-        const enhancedMetrics = buildEnhancedMetrics(scopedEvents, detailByActivityId);
-
-        setZoneDetailModal({
-            title,
-            metrics: { ...metrics, ...enhancedMetrics, ...computeLoadsFromZones(zones) },
-            zones,
-            activities,
-            partialData: isPartialData,
-            partialDataMessage: isPartialData
-                ? 'Some activities in this period still do not have stream data. Values will update as stream sync completes.'
-                : undefined,
+            partialData: false,
+            partialDataMessage: undefined,
             isLoading: false,
         });
+
+        if (hasAnyPeriodZoneValues(zones) || isWholeMonthPeriod || isCurrentSummaryWeek) {
+            setZoneDetailModal((current) => current ? {
+                ...current,
+                metrics: { ...current.metrics, ...computeLoadsFromZones(zones) },
+                zones,
+                partialData: false,
+                partialDataMessage: undefined,
+                isLoading: false,
+            } : current);
+            return;
+        }
+
+        const isWeeklyPeriod = format(periodEnd, 'yyyy-MM-dd') === format(endOfWeek(periodStart, { weekStartsOn: weekStartDay === 0 ? 0 : 1 }), 'yyyy-MM-dd');
+        if (!isWeeklyPeriod) {
+            setZoneDetailModal((current) => current ? {
+                ...current,
+                metrics: { ...current.metrics, ...computeLoadsFromZones(zones) },
+                partialData: true,
+                partialDataMessage: 'No zone data is available for this period yet.',
+                isLoading: false,
+            } : current);
+            return;
+        }
+
+        try {
+            const params = buildZoneSummaryParams(periodStart);
+            const res = await api.get<ZoneSummaryResponse>(`/activities/zone-summary?${params.toString()}`);
+            zones = aggregateSummaryZones('weekly', res.data.athletes || []);
+
+            setZoneDetailModal((current) => current ? {
+                ...current,
+                metrics: { ...current.metrics, ...computeLoadsFromZones(zones) },
+                zones,
+                partialData: !hasAnyPeriodZoneValues(zones),
+                partialDataMessage: hasAnyPeriodZoneValues(zones) ? undefined : 'No zone data is available for this period yet.',
+                isLoading: false,
+            } : current);
         } catch {
-            setZoneDetailModal((current) => {
-                if (!current) {
-                    return {
-                        title,
-                        metrics: { ...metrics, aerobicLoad: 0, anaerobicLoad: 0 },
-                        zones,
-                        activities: initialActivities,
-                        partialData: true,
-                        partialDataMessage: 'Data is still syncing from Strava. Showing available activities and current totals; values will expand as sync completes.',
-                        isLoading: false,
-                    };
-                }
-                return {
-                    ...current,
-                    partialData: true,
-                    partialDataMessage: 'Data is still syncing from Strava. Showing available activities and current totals; values will expand as sync completes.',
-                    isLoading: false,
-                };
-            });
+            setZoneDetailModal((current) => current ? {
+                ...current,
+                metrics: { ...current.metrics, ...computeLoadsFromZones(zones) },
+                partialData: true,
+                partialDataMessage: 'Detailed zone data is unavailable right now. Showing totals from loaded activities.',
+                isLoading: false,
+            } : current);
         }
     };
 
@@ -772,7 +615,7 @@ export default function TrainingCalendarZoneSummaryPanel({
         return byId;
     }, [scopedKnownActivities]);
 
-    const buildWeeklyDistribution = (activityEvents: any[], metricMode: 'hr' | 'performance') => {
+    const buildWeeklyDistribution = (activityEvents: any[], metricMode: 'hr' | 'performance', week: WeekRange) => {
         const zoneCount = metricMode === 'hr' ? 5 : 7;
         const totals = Array.from({ length: zoneCount }, () => 0);
         activityEvents.forEach((event: any) => {
@@ -799,6 +642,30 @@ export default function TrainingCalendarZoneSummaryPanel({
                 totals[zone - 1] += getZoneSeconds(source, zone);
             }
         });
+
+        if (totals.some((value) => value > 0)) {
+            return { totals, zoneCount };
+        }
+
+        if (matchesWeekSummary(week.start, week.end)) {
+            const summaryZones = aggregateSummaryZones('weekly');
+            for (let zone = 1; zone <= zoneCount; zone += 1) {
+                if (metricMode === 'hr') {
+                    totals[zone - 1] = getZoneSeconds(summaryZones.running.zoneSecondsByMetric.hr, zone)
+                        + getZoneSeconds(summaryZones.cycling.zoneSecondsByMetric.hr, zone);
+                    continue;
+                }
+
+                const performanceTotal = getZoneSeconds(summaryZones.running.zoneSecondsByMetric.pace, zone)
+                    + getZoneSeconds(summaryZones.cycling.zoneSecondsByMetric.power, zone);
+
+                totals[zone - 1] = performanceTotal > 0
+                    ? performanceTotal
+                    : getZoneSeconds(summaryZones.running.zoneSecondsByMetric.hr, zone)
+                        + getZoneSeconds(summaryZones.cycling.zoneSecondsByMetric.hr, zone);
+            }
+        }
+
         return { totals, zoneCount };
     };
 
@@ -870,7 +737,7 @@ export default function TrainingCalendarZoneSummaryPanel({
                     const weekMetrics = calculateMetrics(weekEvents);
 
                     const accentColor = resolveWeekAccentColor(weekEvents.map((evt: any) => evt.resource as CalendarEvent), activityColors);
-                    const { totals: weekZones, zoneCount: weekZoneCount } = buildWeeklyDistribution(weekEvents, weeklyZoneMetricMode);
+                    const { totals: weekZones, zoneCount: weekZoneCount } = buildWeeklyDistribution(weekEvents, weeklyZoneMetricMode, week);
                     const weekAvgHr = formatAvgHr(weekMetrics.avgHr);
 
                     return (

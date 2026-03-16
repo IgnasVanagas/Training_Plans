@@ -211,6 +211,173 @@ def _frontend_callback_url(*, provider: str, status: str, message: str | None = 
     return f"{frontend_base_url}{callback_path}?{urlencode(query)}"
 
 
+async def _disconnect_provider_connection(
+    db: AsyncSession,
+    *,
+    connection: ProviderConnection,
+    reason: str,
+    last_error: str | None = None,
+) -> None:
+    connection.encrypted_access_token = None
+    connection.encrypted_refresh_token = None
+    connection.token_expires_at = None
+    connection.status = "disconnected"
+    connection.last_error = last_error
+    await db.commit()
+    await log_integration_audit(
+        db,
+        user_id=connection.user_id,
+        provider=connection.provider,
+        action="disconnect",
+        status="warning" if last_error else "ok",
+        message=reason,
+    )
+
+
+async def _find_strava_connection_by_owner_id(db: AsyncSession, owner_id: str) -> ProviderConnection | None:
+    return await db.scalar(
+        select(ProviderConnection).where(
+            ProviderConnection.provider == "strava",
+            ProviderConnection.external_athlete_id == owner_id,
+        )
+    )
+
+
+async def _mark_strava_activity_deleted(db: AsyncSession, *, user_id: int, provider_activity_id: str) -> int:
+    rows = await db.execute(
+        select(Activity).where(
+            Activity.athlete_id == user_id,
+            Activity.file_type == "provider",
+        )
+    )
+    updated = 0
+    matched_dates: set[dt_date] = set()
+    for activity in rows.scalars().all():
+        payload = _as_stream_payload(activity.streams)
+        meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
+        if str(meta.get("source_provider") or "") != "strava":
+            continue
+        if str(meta.get("source_activity_id") or "") != provider_activity_id:
+            continue
+        meta.update({
+            "deleted": True,
+            "deleted_at": datetime.utcnow().isoformat(),
+            "deleted_by": "strava_webhook",
+        })
+        payload["_meta"] = meta
+        activity.streams = payload
+        db.add(activity)
+        updated += 1
+        matched_dates.add(activity.created_at.date())
+    if updated > 0:
+        await db.commit()
+        for match_date in sorted(matched_dates):
+            await match_and_score(db, user_id, match_date)
+    return updated
+
+
+async def _queue_strava_recent_sync_from_webhook(db: AsyncSession, *, user_id: int, reason: str) -> str:
+    state = await get_or_create_sync_state(db, user_id=user_id, provider="strava")
+    cursor = dict(state.cursor or {})
+    cursor.pop("cancel_requested", None)
+    cursor["strava_recent_only_once"] = True
+    cursor["strava_no_auto_history"] = True
+    state.cursor = cursor
+
+    if getattr(state, "sync_status", "idle") == "syncing":
+        state.sync_message = reason
+        await db.commit()
+        return "sync_already_running"
+
+    state.sync_status = "syncing"
+    state.sync_message = reason
+    state.sync_progress = 0
+    state.sync_total = 0
+    state.last_error = None
+    await db.commit()
+    asyncio.create_task(_sync_provider_task("strava", user_id))
+    return "sync_queued"
+
+
+async def _process_strava_webhook_event(db: AsyncSession, payload: dict) -> dict:
+    owner_id = str(payload.get("owner_id") or "").strip()
+    object_type = str(payload.get("object_type") or "").strip().lower()
+    aspect_type = str(payload.get("aspect_type") or "").strip().lower()
+    updates = payload.get("updates") if isinstance(payload.get("updates"), dict) else {}
+
+    if not owner_id:
+        return {"status": "ignored", "reason": "missing_owner_id"}
+
+    connection = await _find_strava_connection_by_owner_id(db, owner_id)
+    if not connection:
+        return {"status": "ignored", "reason": "owner_not_connected", "owner_id": owner_id}
+
+    if object_type == "athlete" and str(updates.get("authorized") or "").lower() == "false":
+        await _disconnect_provider_connection(
+            db,
+            connection=connection,
+            reason="Strava athlete deauthorized the application.",
+            last_error="Disconnected by Strava deauthorization webhook.",
+        )
+        return {"status": "deauthorized", "user_id": connection.user_id}
+
+    if object_type != "activity":
+        return {"status": "ignored", "reason": "unsupported_object", "object_type": object_type}
+
+    object_id = str(payload.get("object_id") or "").strip()
+    if not object_id:
+        return {"status": "ignored", "reason": "missing_object_id"}
+
+    if aspect_type == "delete":
+        deleted_count = await _mark_strava_activity_deleted(db, user_id=connection.user_id, provider_activity_id=object_id)
+        return {"status": "activity_deleted", "deleted_count": deleted_count, "user_id": connection.user_id}
+
+    sync_status = await _queue_strava_recent_sync_from_webhook(
+        db,
+        user_id=connection.user_id,
+        reason=f"Webhook received for Strava activity {object_id}; refreshing recent activities.",
+    )
+    return {"status": sync_status, "user_id": connection.user_id, "activity_id": object_id, "aspect_type": aspect_type}
+
+
+async def _process_provider_webhook_event(provider: str, event_id: int) -> None:
+    async with AsyncSessionLocal() as db:
+        event = await db.scalar(select(ProviderWebhookEvent).where(ProviderWebhookEvent.id == event_id))
+        if not event:
+            return
+
+        try:
+            payload = event.payload if isinstance(event.payload, dict) else {}
+            if provider == "strava":
+                result = await _process_strava_webhook_event(db, payload)
+            else:
+                connector = get_connector(provider)
+                result = await connector.handle_webhook(payload, {})
+
+            event.status = "processed"
+            event.processed_at = datetime.utcnow()
+            event.last_error = None
+            await db.commit()
+
+            owner_id = payload.get("owner_id") if isinstance(payload, dict) else None
+            if provider == "strava" and owner_id is not None:
+                connection = await _find_strava_connection_by_owner_id(db, str(owner_id))
+                if connection:
+                    await log_integration_audit(
+                        db,
+                        user_id=connection.user_id,
+                        provider=provider,
+                        action="webhook_processed",
+                        status="ok",
+                        message=str(result),
+                    )
+        except Exception as exc:
+            event.status = "failed"
+            event.processed_at = datetime.utcnow()
+            event.last_error = str(exc)
+            await db.commit()
+
+
 def _ensure_provider(provider: str) -> str:
     key = provider.lower()
     if key not in {
@@ -392,6 +559,7 @@ async def provider_callback(
     provider: str,
     code: str | None = None,
     state: str | None = None,
+    scope: str | None = None,
     error: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
@@ -424,6 +592,22 @@ async def provider_callback(
 
     user_id = int(state_payload.get("sub"))
     exchange = await connector.exchange_token(code)
+    granted_scopes = connector._parse_scopes(scope) if provider == "strava" and scope else exchange.scopes
+    if provider == "strava":
+        missing_scopes = connector.missing_required_scopes(granted_scopes)
+        if missing_scopes:
+            if exchange.access_token:
+                try:
+                    await connector.deauthorize(exchange.access_token)
+                except Exception:
+                    pass
+            detail = f"Missing required Strava scopes: {', '.join(missing_scopes)}"
+            if _wants_json(request):
+                raise HTTPException(status_code=400, detail=detail)
+            return RedirectResponse(
+                url=_frontend_callback_url(provider=provider, status="failed", message=f"missing_scopes:{','.join(missing_scopes)}"),
+                status_code=302,
+            )
 
     connection = await get_connection(db, user_id=user_id, provider=provider)
     if not connection:
@@ -434,11 +618,33 @@ async def provider_callback(
     connection.encrypted_access_token = encrypt_token(exchange.access_token)
     connection.encrypted_refresh_token = encrypt_token(exchange.refresh_token)
     connection.token_expires_at = exchange.expires_at
-    connection.scopes = exchange.scopes
+    connection.scopes = granted_scopes
     connection.status = "connected"
     connection.last_error = None
 
     await db.commit()
+    if provider == "strava" and connector.is_webhook_configured():
+        try:
+            webhook_result = await connector.ensure_webhook_subscription()
+            await log_integration_audit(
+                db,
+                user_id=user_id,
+                provider=provider,
+                action="webhook_subscription_ensure",
+                status="ok",
+                message=str(webhook_result),
+            )
+        except Exception as exc:
+            connection.last_error = f"Strava webhook subscription not ensured: {exc}"
+            await db.commit()
+            await log_integration_audit(
+                db,
+                user_id=user_id,
+                provider=provider,
+                action="webhook_subscription_ensure",
+                status="warning",
+                message=str(exc),
+            )
     await log_integration_audit(
         db,
         user_id=user_id,
@@ -462,24 +668,25 @@ async def disconnect_provider(
     db: AsyncSession = Depends(get_db),
 ):
     provider = _ensure_provider(provider)
+    connector = get_connector(provider)
     connection = await get_connection(db, user_id=current_user.id, provider=provider)
     if not connection:
         raise HTTPException(status_code=404, detail="Provider connection not found")
 
-    connection.encrypted_access_token = None
-    connection.encrypted_refresh_token = None
-    connection.token_expires_at = None
-    connection.status = "disconnected"
-    connection.last_error = None
+    disconnect_warning: str | None = None
+    if provider == "strava" and connection.encrypted_access_token:
+        access_token = decrypt_token(connection.encrypted_access_token)
+        if access_token:
+            try:
+                await connector.deauthorize(access_token)
+            except Exception as exc:
+                disconnect_warning = f"Strava deauthorization failed remotely: {exc}"
 
-    await db.commit()
-    await log_integration_audit(
+    await _disconnect_provider_connection(
         db,
-        user_id=current_user.id,
-        provider=provider,
-        action="disconnect",
-        status="ok",
-        message="Disconnected by user",
+        connection=connection,
+        reason="Disconnected by user",
+        last_error=disconnect_warning,
     )
     return {"provider": provider, "status": "disconnected"}
 
@@ -1202,7 +1409,13 @@ async def sync_poll_all(
 async def provider_webhook_challenge(provider: str, request: Request):
     provider = _ensure_provider(provider)
     if provider == "strava":
+        connector = get_connector(provider)
         params = request.query_params
+        verify_token = params.get("hub.verify_token")
+        if verify_token != connector.webhook_verify_token():
+            raise HTTPException(status_code=400, detail="Invalid Strava webhook verify token")
+        if params.get("hub.mode") != "subscribe":
+            raise HTTPException(status_code=400, detail="Invalid Strava webhook subscription mode")
         challenge = params.get("hub.challenge")
         if challenge:
             return {"hub.challenge": challenge}
@@ -1210,7 +1423,12 @@ async def provider_webhook_challenge(provider: str, request: Request):
 
 
 @router.post("/{provider}/webhook")
-async def provider_webhook(provider: str, request: Request, db: AsyncSession = Depends(get_db)):
+async def provider_webhook(
+    provider: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     provider = _ensure_provider(provider)
     payload = await request.json()
     headers = {k.lower(): v for k, v in request.headers.items()}
@@ -1229,13 +1447,8 @@ async def provider_webhook(provider: str, request: Request, db: AsyncSession = D
         await db.rollback()
         return {"status": "duplicate_ignored", "event_key": event_key}
 
-    connector = get_connector(provider)
-    result = await connector.handle_webhook(payload, headers)
-
-    event.status = "processed"
-    event.processed_at = datetime.utcnow()
-    await db.commit()
-    return {"status": "processed", "event_key": event_key, "result": result}
+    background_tasks.add_task(_process_provider_webhook_event, provider, event.id)
+    return {"status": "accepted", "event_key": event_key}
 
 
 @router.post("/{provider}/bridge/wellness")

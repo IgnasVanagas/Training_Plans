@@ -60,6 +60,7 @@ async def ingest_provider_activity(
         duplicate_streams = getattr(duplicate, "streams", None)
         existing_streams = duplicate_streams if isinstance(duplicate_streams, dict) else {}
         existing_points = existing_streams.get("data") if isinstance(existing_streams.get("data"), list) else []
+        existing_meta = existing_streams.get("_meta") if isinstance(existing_streams.get("_meta"), dict) else {}
 
         should_enrich = (
             getattr(duplicate, "file_type", None) == "provider"
@@ -68,6 +69,30 @@ async def ingest_provider_activity(
                 or (not existing_streams.get("laps") and laps)
             )
         )
+
+        if getattr(duplicate, "file_type", None) == "provider":
+            duplicate.filename = name or duplicate.filename
+            duplicate.sport = sport or duplicate.sport
+            duplicate.created_at = ts
+            duplicate.duration = duration_s if duration_s is not None else duplicate.duration
+            duplicate.distance = distance_m if distance_m is not None else duplicate.distance
+            duplicate.avg_speed = average_speed if average_speed is not None else duplicate.avg_speed
+            duplicate.average_hr = average_hr if average_hr is not None else duplicate.average_hr
+            duplicate.average_watts = average_watts if average_watts is not None else duplicate.average_watts
+
+            merged_streams = dict(existing_streams)
+            merged_streams["provider_payload"] = payload or merged_streams.get("provider_payload") or {}
+            merged_meta = dict(existing_meta)
+            merged_meta.update({
+                "deleted": False,
+                "source_provider": provider,
+                "source_activity_id": provider_activity_id,
+                "fingerprint_v1": fingerprint,
+                "import_channel": "integration_sync",
+            })
+            merged_streams["_meta"] = merged_meta
+            duplicate.streams = merged_streams
+            db.add(duplicate)
 
         if should_enrich:
             duplicate.streams = {
@@ -89,11 +114,11 @@ async def ingest_provider_activity(
                 },
             }
             db.add(duplicate)
-            if auto_commit:
-                await db.commit()
-                await db.refresh(duplicate)
-            else:
-                await db.flush()
+        if auto_commit:
+            await db.commit()
+            await db.refresh(duplicate)
+        else:
+            await db.flush()
         return duplicate, False
 
     activity = Activity(

@@ -14,6 +14,7 @@ import {
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
+import SupportContactButton from './common/SupportContactButton';
 import { clearAuthSession } from '../utils/authSession';
 
 const appLogo = '/origami-logo.png';
@@ -65,6 +66,13 @@ export const AppSidebarLayout = ({
             <Title order={3} visibleFrom="xs">Origami Plans</Title>
           </Group>
           <Group gap="xs">
+            <SupportContactButton
+              iconOnly={isMobile}
+              variant="light"
+              size={isMobile ? 'lg' : 'sm'}
+              email={me?.email ?? null}
+              name={meDisplayName}
+            />
             <Avatar color="blue" radius="xl"><IconUser size="1rem" /></Avatar>
             <div>
               <Text size="sm" fw={500}>{meDisplayName}</Text>

@@ -43,6 +43,7 @@ import {
 } from "@tabler/icons-react";
 import { useI18n } from "../../i18n/I18nProvider";
 import OfflineNotice from "../../components/common/OfflineNotice";
+import SupportContactButton from "../../components/common/SupportContactButton";
 import { clearAuthSession } from "../../utils/authSession";
 
 const appLogo = "/origami-logo.png";
@@ -67,6 +68,7 @@ type Props = {
   onQuickAddActivity?: () => void;
   children: ReactNode;
   role?: "coach" | "athlete" | "admin";
+  supportEmail?: string | null;
   athletes?: SidebarAthlete[];
   selectedAthleteId?: string | null;
   onSelectAthlete?: (athleteId: string | null) => void;
@@ -83,6 +85,7 @@ const DashboardLayoutShell = ({
   onQuickAddActivity,
   children,
   role,
+  supportEmail,
   athletes,
   selectedAthleteId,
   onSelectAthlete,
@@ -165,6 +168,13 @@ const DashboardLayoutShell = ({
       </Group>
       <Group gap="xs" wrap="nowrap">
         {headerRight}
+        <SupportContactButton
+          iconOnly={isMobile}
+          variant="subtle"
+          size={isMobile ? "lg" : "sm"}
+          email={supportEmail}
+          name={meDisplayName}
+        />
         <Tooltip label={isDark ? t("Switch to light mode") : t("Switch to dark mode")}>
           <ActionIcon
             variant="subtle"

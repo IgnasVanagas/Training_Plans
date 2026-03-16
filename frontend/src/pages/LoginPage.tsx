@@ -22,6 +22,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { IconAt, IconLock, IconUser, IconBuilding } from "@tabler/icons-react";
 import api from "../api/client";
+import SupportContactButton from "../components/common/SupportContactButton";
 import { useI18n } from "../i18n/I18nProvider";
 import { hasAuthSession, markAuthSessionActive } from "../utils/authSession";
 
@@ -218,7 +219,7 @@ const LoginPage = () => {
         <Center mb="xl">
             <img src={appLogo} alt="Origami Plans" width={88} height={88} />
         </Center>
-        <Group justify="center" mb="sm">
+        <Group justify="center" mb="sm" gap="sm">
           <SegmentedControl
             size="xs"
             value={language}
@@ -227,6 +228,12 @@ const LoginPage = () => {
               { value: "en", label: "EN" },
               { value: "lt", label: "LT" },
             ]}
+          />
+          <SupportContactButton
+            size="xs"
+            variant="light"
+            email={email || null}
+            name={`${firstName} ${lastName}`.trim() || null}
           />
         </Group>
         <Title ta="center" order={1} mb="sm" style={{ fontFamily: "greycliff cf, sans-serif", fontSize: rem(28) }}>
@@ -245,7 +252,17 @@ const LoginPage = () => {
             <Stack>
                 {error && (
                 <Alert variant="light" color="red" title="Error">
-                    {error}
+                    <Stack gap="xs">
+                      <Text size="sm">{error}</Text>
+                      <SupportContactButton
+                        size="xs"
+                        buttonText={t("Contact support")}
+                        email={email || null}
+                        name={`${firstName} ${lastName}`.trim() || null}
+                        pageLabel="Login"
+                        errorMessage={error}
+                      />
+                    </Stack>
                 </Alert>
                 )}
 
