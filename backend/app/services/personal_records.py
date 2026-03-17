@@ -203,28 +203,33 @@ async def get_personal_records(
 
 
 def _agg_cycling_prs(activities: list) -> dict:
-    """``{window: {value, activity_id, date}}`` -- highest power per window."""
-    bests: dict = {}
+    """``{window: [{value, activity_id, date}, ...]}`` -- top 3 power per window."""
+    all_vals: dict = {}
     for act in activities:
         efforts = _stored_efforts(act)
         if efforts:
             for e in efforts:
                 w = e.get("window")
                 v = e.get("power", 0)
-                if w and v and v > 0 and (w not in bests or v > bests[w]["value"]):
-                    bests[w] = _pr_entry(v, act)
+                if w and v and v > 0:
+                    all_vals.setdefault(w, []).append(_pr_entry(v, act))
         else:
-            # fall back to legacy power_curve dict
             pc = _streams_key(act, "power_curve")
             if isinstance(pc, dict):
                 for w, v in pc.items():
-                    if v and v > 0 and (w not in bests or v > bests[w]["value"]):
-                        bests[w] = _pr_entry(v, act)
+                    if v and v > 0:
+                        all_vals.setdefault(w, []).append(_pr_entry(v, act))
+    # keep top 3 per window (highest power)
+    bests: dict = {}
+    for w, entries in all_vals.items():
+        entries.sort(key=lambda x: x["value"], reverse=True)
+        bests[w] = entries[:3]
     return bests
 
 
 def _agg_running_prs(activities: list) -> dict:
-    bests: dict = {}
+    """``{distance: [{value, activity_id, date}, ...]}`` -- top 3 times per distance."""
+    all_vals: dict = {}
     for act in activities:
         efforts = _stored_efforts(act)
         if not efforts:
@@ -232,8 +237,13 @@ def _agg_running_prs(activities: list) -> dict:
         for e in efforts:
             d = e.get("distance")
             v = e.get("time_seconds", 0)
-            if d and v and v > 0 and (d not in bests or v < bests[d]["value"]):
-                bests[d] = _pr_entry(v, act)
+            if d and v and v > 0:
+                all_vals.setdefault(d, []).append(_pr_entry(v, act))
+    # keep top 3 per distance (lowest time)
+    bests: dict = {}
+    for d, entries in all_vals.items():
+        entries.sort(key=lambda x: x["value"])
+        bests[d] = entries[:3]
     return bests
 
 
@@ -242,22 +252,27 @@ def _agg_running_prs(activities: list) -> dict:
 # ===================================================================
 async def get_activity_prs(
     db: AsyncSession, activity: Activity
-) -> dict[str, bool]:
+) -> dict[str, int]:
+    """Return ``{effort_key: rank}`` where rank is 1 (PR), 2, or 3."""
     sport = (activity.sport or "").lower()
     if sport not in ("cycling", "running"):
         return {}
 
     all_prs = await get_personal_records(db, activity.athlete_id, sport)
-    flags: dict[str, bool] = {}
+    flags: dict[str, int] = {}
 
     if sport == "cycling":
-        for w, info in all_prs.get("power", {}).items():
-            if info.get("activity_id") == activity.id:
-                flags[w] = True
+        for w, entries in all_prs.get("power", {}).items():
+            for rank, info in enumerate(entries, 1):
+                if info.get("activity_id") == activity.id:
+                    flags[w] = rank
+                    break
     elif sport == "running":
-        for d, info in all_prs.get("best_efforts", {}).items():
-            if info.get("activity_id") == activity.id:
-                flags[d] = True
+        for d, entries in all_prs.get("best_efforts", {}).items():
+            for rank, info in enumerate(entries, 1):
+                if info.get("activity_id") == activity.id:
+                    flags[d] = rank
+                    break
 
     return flags
 

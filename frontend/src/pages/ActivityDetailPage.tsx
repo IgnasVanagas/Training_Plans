@@ -2,7 +2,7 @@ import { ActionIcon, AppShell, Box, Button, Card, Container, Grid, Group, Paper,
 import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Brush } from 'recharts';
 import { MapContainer, TileLayer, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
@@ -44,7 +44,7 @@ type ActivityDetail = {
     distance?: string; meters?: number; time_seconds?: number;
     avg_hr?: number | null; elevation?: number;
   }> | null;
-  personal_records: Record<string, boolean> | null;
+  personal_records: Record<string, number> | null;
   laps: any[] | null;
   splits_metric: any[] | null;
   max_hr?: number;
@@ -263,6 +263,16 @@ export const ActivityDetailPage = () => {
             queryClient.setQueryData(['activity', id], updated);
             queryClient.invalidateQueries({ queryKey: ['activities'] });
             queryClient.invalidateQueries({ queryKey: ['calendar'] });
+        }
+    });
+
+    const reparseMutation = useMutation({
+        mutationFn: async () => {
+            await api.post(`/activities/${id}/reparse`);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['activity', id] });
+            queryClient.invalidateQueries({ queryKey: ['activities'] });
         }
     });
     
@@ -1438,9 +1448,9 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.heart_rate && (
                                                         <Box h={160} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis dataKey="heart_rate" orientation="right" domain={['dataMin - 5', 'dataMax + 5']} width={40} tick={{fontSize: 10}} />
                                                                     <Tooltip 
                                                                         {...sharedTooltipProps}
@@ -1456,9 +1466,9 @@ export const ActivityDetailPage = () => {
                                                     {isRunningActivity && focusSeries.pace && (
                                                         <Box h={160} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis 
                                                                         dataKey="pace" 
                                                                         orientation="right" 
@@ -1485,9 +1495,9 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.power && (
                                                         <Box h={160} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis dataKey="power" orientation="right" width={40} tick={{fontSize: 10}} />
                                                                     <Tooltip 
                                                                         {...sharedTooltipProps}
@@ -1503,9 +1513,9 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.cadence && (
                                                         <Box h={120} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis dataKey="cadence" orientation="right" domain={['dataMin - 10', 'dataMax + 10']} width={40} tick={{fontSize: 10}} />
                                                                     <Tooltip 
                                                                         {...sharedTooltipProps}
@@ -1521,9 +1531,9 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.altitude && (
                                                         <Box h={120} w="100%">
                                                             <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} hide />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
                                                                     <YAxis dataKey="altitude" orientation="right" domain={['dataMin', 'dataMax']} width={40} tick={{fontSize: 10}} />
                                                                     <Tooltip 
                                                                         {...sharedTooltipProps}
@@ -1536,14 +1546,14 @@ export const ActivityDetailPage = () => {
                                                         </Box>
                                                     )}
                                                     
-                                                    {/* Shared Axis at bottom */}
-                                                    <Box h={30} w="100%">
+                                                    {/* Shared Axis with Brush at bottom */}
+                                                    <Box h={60} w="100%">
                                                          <ResponsiveContainer>
-                                                            <AreaChart data={chartData} syncId="activityGraph" syncMethod="value" margin={{ top: 0, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                <XAxis type="number" dataKey="distance_km" domain={["dataMin", "dataMax"]} orientation="bottom" tick={{fontSize: 10}} tickFormatter={(val) => val.toFixed(1) + (me?.profile?.preferred_units === 'imperial' ? ' mi' : ' km')} />
+                                                            <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 0, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} orientation="bottom" tick={{fontSize: 10}} tickFormatter={(val) => { const m = Math.floor(val); const s = Math.round((val - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
                                                                 <YAxis hide domain={[0, 1]} />
-                                                                {/* Transparent area to enforce X Axis points */}
-                                                                <Area dataKey="distance_km" fill="none" stroke="none" /> 
+                                                                <Area dataKey="time_min" fill="none" stroke="none" />
+                                                                <Brush dataKey="time_min" height={20} stroke="#8884d8" tickFormatter={(val) => { const m = Math.floor(val); const s = Math.round((val - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
                                                             </AreaChart>
                                                          </ResponsiveContainer>
                                                     </Box>
@@ -1680,6 +1690,7 @@ export const ActivityDetailPage = () => {
 
                                         {/* Best Efforts Table */}
                                         {effortsSplitsView === 'efforts' && activity.best_efforts?.length ? (
+                                            <>
                                             <Table striped highlightOnHover withTableBorder withColumnBorders>
                                                 <Table.Thead>
                                                     <Table.Tr>
@@ -1696,12 +1707,13 @@ export const ActivityDetailPage = () => {
                                                 <Table.Tbody>
                                                     {activity.best_efforts.map((effort, idx) => {
                                                         const key = effort.window || effort.distance || String(idx);
-                                                        const isPR = activity.personal_records?.[key] === true;
+                                                        const prRank = activity.personal_records?.[key];
                                                         const weight = me?.profile?.weight;
+                                                        const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
                                                         return (
                                                             <Table.Tr key={key}>
                                                                 <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                                                    {isPR && <IconTrophy size={16} color="#f0a500" />}
+                                                                    {medalColor && <IconTrophy size={16} color={medalColor} />}
                                                                 </Table.Td>
                                                                 <Table.Td fw={600}>
                                                                     {effort.window || effort.distance}
@@ -1734,9 +1746,13 @@ export const ActivityDetailPage = () => {
                                                     })}
                                                 </Table.Tbody>
                                             </Table>
+                                            <Group gap="md" mt={4}>
+                                                <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">PR</Text></Group>
+                                                <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">2nd</Text></Group>
+                                                <Group gap={4}><IconTrophy size={12} color="#cd7f32" /><Text size="xs" c="dimmed">3rd</Text></Group>
+                                            </Group>
+                                            </>
                                         ) : null}
-
-                                        {/* Splits Table */}
                                         {effortsSplitsView === 'splits' && (activity.splits_metric?.length || activity.laps?.length) ? (
                                             <>
                                                 <Group gap="xs" mb="sm" wrap="wrap">
@@ -2027,20 +2043,33 @@ export const ActivityDetailPage = () => {
                                     </Button>
                                 </Group>
                                 {showDangerZone && (
-                                    <Group justify="space-between" align="center" mt={4}>
-                                        <Text size="xs" c="dimmed">Delete this activity permanently.</Text>
-                                        <Button
-                                            color="red"
-                                            variant="light"
-                                            size="xs"
-                                            onClick={() => {
-                                                setDeleteConfirmText('');
-                                                setDeleteConfirmOpen(true);
-                                            }}
-                                        >
-                                            Delete Activity
-                                        </Button>
-                                    </Group>
+                                    <Stack gap="xs">
+                                        <Group justify="space-between" align="center">
+                                            <Text size="xs" c="dimmed">{t("Re-parse activity from original file.")}</Text>
+                                            <Button
+                                                variant="light"
+                                                size="xs"
+                                                loading={reparseMutation.isPending}
+                                                onClick={() => reparseMutation.mutate()}
+                                            >
+                                                {t("Re-parse")}
+                                            </Button>
+                                        </Group>
+                                        <Group justify="space-between" align="center">
+                                            <Text size="xs" c="dimmed">Delete this activity permanently.</Text>
+                                            <Button
+                                                color="red"
+                                                variant="light"
+                                                size="xs"
+                                                onClick={() => {
+                                                    setDeleteConfirmText('');
+                                                    setDeleteConfirmOpen(true);
+                                                }}
+                                            >
+                                                Delete Activity
+                                            </Button>
+                                        </Group>
+                                    </Stack>
                                 )}
                             </Stack>
                         </Paper>

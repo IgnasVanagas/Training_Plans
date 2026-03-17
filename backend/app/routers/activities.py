@@ -1654,6 +1654,68 @@ async def get_zone_summary(
         "athletes": list(summaries.values())
     }
 
+@router.post("/{activity_id}/reparse")
+async def reparse_activity(
+    activity_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Re-parse an activity from its stored FIT/GPX file to refresh streams, splits, etc."""
+    activity = await db.get(Activity, activity_id)
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.athlete_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorised")
+    if not activity.file_path or not os.path.exists(activity.file_path):
+        raise HTTPException(status_code=400, detail="Original file not available for re-parse")
+
+    try:
+        parsed_data = parse_activity_file(activity.file_path, activity.file_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Re-parse failed: {str(e)}")
+    if not parsed_data:
+        raise HTTPException(status_code=500, detail="Re-parse returned no data")
+
+    summary = parsed_data.get("summary", {})
+    streams = parsed_data.get("streams", [])
+
+    activity.distance = summary.get("distance")
+    activity.duration = summary.get("duration")
+    activity.avg_speed = summary.get("avg_speed")
+    activity.average_hr = summary.get("average_hr")
+    activity.average_watts = summary.get("average_watts")
+    activity.sport = parsed_data.get("sport") or activity.sport
+
+    # Preserve existing _meta (rpe, notes, split_annotations, etc.)
+    old_meta = {}
+    if isinstance(activity.streams, dict):
+        old_meta = activity.streams.get("_meta", {})
+
+    composite_streams_data = {
+        "data": streams,
+        "power_curve": parsed_data.get("power_curve"),
+        "hr_zones": parsed_data.get("hr_zones"),
+        "pace_curve": parsed_data.get("pace_curve"),
+        "laps": parsed_data.get("laps"),
+        "splits_metric": parsed_data.get("splits_metric"),
+        "_meta": {**old_meta, "reparsed_at": datetime.utcnow().isoformat()},
+        "stats": {
+            "max_hr": summary.get("max_hr"),
+            "max_speed": summary.get("max_speed"),
+            "max_watts": summary.get("max_watts"),
+            "max_cadence": summary.get("max_cadence"),
+            "avg_cadence": summary.get("avg_cadence"),
+            "total_elevation_gain": summary.get("total_elevation_gain"),
+            "total_calories": summary.get("total_calories")
+        }
+    }
+    activity.streams = composite_streams_data
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(activity, "streams")
+
+    await db.commit()
+    return {"status": "ok", "activity_id": activity_id}
+
 @router.post("/upload", status_code=status.HTTP_201_CREATED, response_model=ActivityDetail)
 async def upload_activity(
     file: UploadFile = File(...),

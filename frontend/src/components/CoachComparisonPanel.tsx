@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Alert,
   Badge,
@@ -7,6 +7,7 @@ import {
   Group,
   Paper,
   Progress,
+  ScrollArea,
   SegmentedControl,
   Select,
   SimpleGrid,
@@ -14,7 +15,10 @@ import {
   Table,
   Text,
   Title,
+  UnstyledButton,
+  useComputedColorScheme,
 } from '@mantine/core';
+import { DatePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
 import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconInfoCircle } from '@tabler/icons-react';
 import api from '../api/client';
@@ -653,6 +657,7 @@ const PeriodSummaryTable = ({
 
 export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: AthleteLike[]; me: AthleteLike; isAthlete?: boolean }) => {
   const { t } = useI18n();
+  const isDark = useComputedColorScheme('light') === 'dark';
   const [mode, setMode] = useState<AnalysisMode>('workouts');
   const [leftWorkoutId, setLeftWorkoutId] = useState<string | null>(null);
   const [rightWorkoutId, setRightWorkoutId] = useState<string | null>(null);
