@@ -8,6 +8,9 @@ from .database import Base, engine
 from .routers import auth, users, activities, calendar, workouts, integrations, communications, planning
 from .seed import seed_data
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 app = FastAPI(title="Endurance Sports Management Platform")
 
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
@@ -20,6 +23,9 @@ allowed_origin_regex = os.getenv(
     "ALLOWED_ORIGIN_REGEX",
     r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|^https://[a-zA-Z0-9-]+\.onrender\.com$",
 )
+
+logger.info("CORS allow_origins: %s", allowed_origins)
+logger.info("CORS allow_origin_regex: %s", allowed_origin_regex)
 
 app.add_middleware(
     CORSMiddleware,
@@ -38,22 +44,30 @@ async def healthcheck() -> dict[str, str]:
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS hrv_ms DOUBLE PRECISION"))
-        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE"))
-        await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER"))
-        await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS season_plan_id INTEGER"))
-        await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS planning_context JSONB"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_activities_athlete_created_at ON activities (athlete_id, created_at DESC)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_planned_workouts_user_date ON planned_workouts (user_id, date)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_planned_workouts_season_plan_id ON planned_workouts (season_plan_id)"))
-        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_season_plans_athlete_updated_at ON season_plans (athlete_id, updated_at DESC)"))
-        await conn.execute(text("UPDATE planned_workouts SET created_by_user_id = user_id WHERE created_by_user_id IS NULL"))
-        await conn.execute(text("UPDATE users SET email_verified = TRUE WHERE email_verified IS NULL"))
+    logger.info("Starting up...")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS hrv_ms DOUBLE PRECISION"))
+            await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE"))
+            await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS created_by_user_id INTEGER"))
+            await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS season_plan_id INTEGER"))
+            await conn.execute(text("ALTER TABLE planned_workouts ADD COLUMN IF NOT EXISTS planning_context JSONB"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_activities_athlete_created_at ON activities (athlete_id, created_at DESC)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_planned_workouts_user_date ON planned_workouts (user_id, date)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_planned_workouts_season_plan_id ON planned_workouts (season_plan_id)"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_season_plans_athlete_updated_at ON season_plans (athlete_id, updated_at DESC)"))
+            await conn.execute(text("UPDATE planned_workouts SET created_by_user_id = user_id WHERE created_by_user_id IS NULL"))
+            await conn.execute(text("UPDATE users SET email_verified = TRUE WHERE email_verified IS NULL"))
+        logger.info("Database schema ready")
+    except Exception as exc:
+        logger.error("Database migration failed (non-fatal): %s", exc)
 
     if os.getenv("AUTO_SEED_DEMO", "true").lower() in {"1", "true", "yes", "on"}:
-        await seed_data()
+        try:
+            await seed_data()
+        except Exception as exc:
+            logger.error("Seed data failed (non-fatal): %s", exc)
 
     # Ensure Strava webhook subscription exists on startup
     if os.getenv("ENABLE_STRAVA_INTEGRATION", "false").lower() in {"1", "true", "yes", "on"}:
@@ -62,9 +76,11 @@ async def on_startup() -> None:
             connector = get_connector("strava")
             if connector.is_webhook_configured():
                 result = await connector.ensure_webhook_subscription()
-                logging.getLogger(__name__).info("Strava webhook subscription: %s", result.get("status"))
+                logger.info("Strava webhook subscription: %s", result.get("status"))
         except Exception as exc:
-            logging.getLogger(__name__).warning("Strava webhook subscription check failed: %s", exc)
+            logger.warning("Strava webhook subscription check failed: %s", exc)
+
+    logger.info("Startup complete")
 
 
 @app.on_event("shutdown")
