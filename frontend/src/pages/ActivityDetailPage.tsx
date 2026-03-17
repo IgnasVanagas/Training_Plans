@@ -1,4 +1,4 @@
-import { ActionIcon, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Textarea, Modal, TextInput } from "@mantine/core";
+import { ActionIcon, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput } from "@mantine/core";
 import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -192,7 +192,8 @@ export const ActivityDetailPage = () => {
     });
     const [activityRpe, setActivityRpe] = useState<number | null>(null);
     const [activityNotes, setActivityNotes] = useState('');
-    const [splitAnnotationsOpen, setSplitAnnotationsOpen] = useState(false);
+    const [splitAnnotationsVisible, setSplitAnnotationsVisible] = useState(false);
+    const [splitAnnotationsDirty, setSplitAnnotationsDirty] = useState(false);
     const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }>>({});
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -1669,8 +1670,8 @@ export const ActivityDetailPage = () => {
                                                                 { label: isCyclingActivity ? 'Manual' : 'Laps', value: 'laps', disabled: !activity.laps?.length },
                                                             ]}
                                                         />
-                                                        <Button size="xs" variant="light" onClick={() => setSplitAnnotationsOpen(true)}>
-                                                            {t("Annotate Splits")}
+                                                        <Button size="xs" variant={splitAnnotationsVisible ? "filled" : "light"} onClick={() => setSplitAnnotationsVisible((v) => !v)}>
+                                                            {splitAnnotationsVisible ? t("Hide Annotations") : t("Annotate")}
                                                         </Button>
                                                     </>
                                                 )}
@@ -1765,10 +1766,13 @@ export const ActivityDetailPage = () => {
                                                             {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Th>{t("Avg W")}</Table.Th>}
                                                             {isCyclingActivity && visibleSplitStats.max_watts && <Table.Th>{t("Max W")}</Table.Th>}
                                                             {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>NP</Table.Th>}
+                                                            {splitAnnotationsVisible && <Table.Th>RPE</Table.Th>}
+                                                            {splitAnnotationsVisible && <Table.Th>{t("Lactate")}</Table.Th>}
+                                                            {splitAnnotationsVisible && <Table.Th>{t("Note")}</Table.Th>}
                                                         </Table.Tr>
                                                     </Table.Thead>
                                                     <Table.Tbody>
-                                                        {splitsToDisplayWithPower.map((split: any) => (
+                                                        {splitsToDisplayWithPower.map((split: any, idx: number) => (
                                                             <Table.Tr key={split.split}>
                                                                 <Table.Td>{split.split}</Table.Td>
                                                                 {visibleSplitStats.distance && (
@@ -1804,10 +1808,55 @@ export const ActivityDetailPage = () => {
                                                                 {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Td>{split.avg_watts ? `${split.avg_watts.toFixed(0)} W` : '-'}</Table.Td>}
                                                                 {isCyclingActivity && visibleSplitStats.max_watts && <Table.Td>{split.max_watts ? `${split.max_watts.toFixed(0)} W` : '-'}</Table.Td>}
                                                                 {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Td>{split.normalized_power ? `${split.normalized_power.toFixed(0)} W` : '-'}</Table.Td>}
+                                                                {splitAnnotationsVisible && (
+                                                                    <Table.Td>
+                                                                        <NumberInput size="xs" w={60} min={1} max={10} allowDecimal={false}
+                                                                            value={splitAnnotations[idx]?.rpe ?? ''}
+                                                                            onChange={(value) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: typeof value === 'number' ? value : null, lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null, note: prev[idx]?.note ?? '' } })); }}
+                                                                        />
+                                                                    </Table.Td>
+                                                                )}
+                                                                {splitAnnotationsVisible && (
+                                                                    <Table.Td>
+                                                                        <NumberInput size="xs" w={70} min={0} max={40} decimalScale={1}
+                                                                            value={splitAnnotations[idx]?.lactate_mmol_l ?? ''}
+                                                                            onChange={(value) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: prev[idx]?.rpe ?? null, lactate_mmol_l: typeof value === 'number' ? value : null, note: prev[idx]?.note ?? '' } })); }}
+                                                                        />
+                                                                    </Table.Td>
+                                                                )}
+                                                                {splitAnnotationsVisible && (
+                                                                    <Table.Td>
+                                                                        <TextInput size="xs" w={120} maxLength={220}
+                                                                            value={splitAnnotations[idx]?.note ?? ''}
+                                                                            onChange={(e) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: prev[idx]?.rpe ?? null, lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null, note: e.currentTarget.value } })); }}
+                                                                        />
+                                                                    </Table.Td>
+                                                                )}
                                                             </Table.Tr>
                                                         ))}
                                                     </Table.Tbody>
                                                 </Table>
+                                                {splitAnnotationsVisible && splitAnnotationsDirty && (
+                                                    <Group justify="flex-end" mt="xs">
+                                                        <Button size="xs" loading={updateActivityMutation.isPending}
+                                                            onClick={() => {
+                                                                const splitType = splitMode === 'metric' ? 'metric' : 'laps';
+                                                                const split_annotations = Object.entries(splitAnnotations).map(([index, value]) => ({
+                                                                    split_type: splitType as 'metric' | 'laps',
+                                                                    split_index: Number(index),
+                                                                    rpe: value.rpe,
+                                                                    lactate_mmol_l: value.lactate_mmol_l,
+                                                                    note: value.note?.trim() ? value.note.trim() : null,
+                                                                }));
+                                                                updateActivityMutation.mutate({ split_annotations }, {
+                                                                    onSuccess: () => setSplitAnnotationsDirty(false)
+                                                                });
+                                                            }}
+                                                        >
+                                                            {t("Save Annotations")}
+                                                        </Button>
+                                                    </Group>
+                                                )}
                                             </>
                                         ) : null}
                                     </Paper>
@@ -1997,103 +2046,6 @@ export const ActivityDetailPage = () => {
                         </Paper>
                     )}
                 </Container>
-
-                <Modal
-                    opened={splitAnnotationsOpen}
-                    onClose={() => setSplitAnnotationsOpen(false)}
-                    title="Split Annotations"
-                    size="lg"
-                >
-                    <Stack gap="sm">
-                        <Text size="xs" c="dimmed">Add optional lactate and notes for each {splitMode === 'metric' ? 'auto' : 'manual'} split.</Text>
-                        <Table>
-                            <Table.Thead>
-                                <Table.Tr>
-                                    <Table.Th>Split</Table.Th>
-                                    <Table.Th>RPE</Table.Th>
-                                    <Table.Th>Lactate (mmol/L)</Table.Th>
-                                    <Table.Th>Note</Table.Th>
-                                </Table.Tr>
-                            </Table.Thead>
-                            <Table.Tbody>
-                                {splitsToDisplayWithPower.map((split: any, idx: number) => (
-                                    <Table.Tr key={`annot-${idx}`}>
-                                        <Table.Td>{split.split || idx + 1}</Table.Td>
-                                        <Table.Td>
-                                            <NumberInput
-                                                min={1}
-                                                max={10}
-                                                allowDecimal={false}
-                                                value={splitAnnotations[idx]?.rpe ?? undefined}
-                                                onChange={(value) => setSplitAnnotations((prev) => ({
-                                                    ...prev,
-                                                    [idx]: {
-                                                        rpe: typeof value === 'number' ? value : null,
-                                                        lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null,
-                                                        note: prev[idx]?.note ?? ''
-                                                    }
-                                                }))}
-                                            />
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <NumberInput
-                                                min={0}
-                                                max={40}
-                                                decimalScale={1}
-                                                value={splitAnnotations[idx]?.lactate_mmol_l ?? undefined}
-                                                onChange={(value) => setSplitAnnotations((prev) => ({
-                                                    ...prev,
-                                                    [idx]: {
-                                                        rpe: prev[idx]?.rpe ?? null,
-                                                        lactate_mmol_l: typeof value === 'number' ? value : null,
-                                                        note: prev[idx]?.note ?? ''
-                                                    }
-                                                }))}
-                                            />
-                                        </Table.Td>
-                                        <Table.Td>
-                                            <Textarea
-                                                minRows={1}
-                                                maxRows={2}
-                                                maxLength={220}
-                                                value={splitAnnotations[idx]?.note ?? ''}
-                                                onChange={(e) => setSplitAnnotations((prev) => ({
-                                                    ...prev,
-                                                    [idx]: {
-                                                        rpe: prev[idx]?.rpe ?? null,
-                                                        lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null,
-                                                        note: e.currentTarget.value
-                                                    }
-                                                }))}
-                                            />
-                                        </Table.Td>
-                                    </Table.Tr>
-                                ))}
-                            </Table.Tbody>
-                        </Table>
-                        <Group justify="flex-end">
-                            <Button variant="default" onClick={() => setSplitAnnotationsOpen(false)}>Cancel</Button>
-                            <Button
-                                loading={updateActivityMutation.isPending}
-                                onClick={() => {
-                                    const splitType = splitMode === 'metric' ? 'metric' : 'laps';
-                                    const split_annotations = Object.entries(splitAnnotations).map(([index, value]) => ({
-                                        split_type: splitType as 'metric' | 'laps',
-                                        split_index: Number(index),
-                                        rpe: value.rpe,
-                                        lactate_mmol_l: value.lactate_mmol_l,
-                                        note: value.note?.trim() ? value.note.trim() : null,
-                                    }));
-                                    updateActivityMutation.mutate({ split_annotations }, {
-                                        onSuccess: () => setSplitAnnotationsOpen(false)
-                                    });
-                                }}
-                            >
-                                Save Split Annotations
-                            </Button>
-                        </Group>
-                    </Stack>
-                </Modal>
 
                 <Modal opened={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} title="Confirm delete" centered>
                     <Stack>

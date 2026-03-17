@@ -651,7 +651,7 @@ const PeriodSummaryTable = ({
   );
 };
 
-export const CoachComparisonPanel = ({ athletes, me }: { athletes: AthleteLike[]; me: AthleteLike }) => {
+export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: AthleteLike[]; me: AthleteLike; isAthlete?: boolean }) => {
   const { t } = useI18n();
   const [mode, setMode] = useState<AnalysisMode>('workouts');
   const [leftWorkoutId, setLeftWorkoutId] = useState<string | null>(null);
@@ -898,13 +898,15 @@ export const CoachComparisonPanel = ({ athletes, me }: { athletes: AthleteLike[]
       <Paper withBorder p="sm" radius="md">
         <Stack gap="xs">
           <Text size="sm" fw={600}>{title}</Text>
-          <Select
-            label={t('Athlete') || 'Athlete'}
-            data={athleteOptions}
-            value={athleteId}
-            onChange={setAthleteId}
-            searchable
-          />
+          {!isAthlete && (
+            <Select
+              label={t('Athlete') || 'Athlete'}
+              data={athleteOptions}
+              value={athleteId}
+              onChange={setAthleteId}
+              searchable
+            />
+          )}
           <Select
             label={periodLabel}
             data={options}
@@ -924,10 +926,12 @@ export const CoachComparisonPanel = ({ athletes, me }: { athletes: AthleteLike[]
           <Box>
             <Group gap="xs">
               <IconChartBar size={18} />
-              <Title order={4}>{t('Coach Split-Screen Analysis') || 'Coach Split-Screen Analysis'}</Title>
+              <Title order={4}>{isAthlete ? (t('Training Comparison') || 'Training Comparison') : (t('Coach Split-Screen Analysis') || 'Coach Split-Screen Analysis')}</Title>
             </Group>
             <Text size="sm" c="dimmed">
-              {t('Compare two workouts, weeks, or months side by side with the same analysis model.') || 'Compare two workouts, weeks, or months side by side with the same analysis model.'}
+              {isAthlete
+                ? (t('Compare your workouts, weeks, or months side by side to track your progress.') || 'Compare your workouts, weeks, or months side by side to track your progress.')
+                : (t('Compare two workouts, weeks, or months side by side with the same analysis model.') || 'Compare two workouts, weeks, or months side by side with the same analysis model.')}
             </Text>
           </Box>
           <SegmentedControl
@@ -1088,7 +1092,9 @@ export const CoachComparisonPanel = ({ athletes, me }: { athletes: AthleteLike[]
 
             <Divider />
             <Text size="xs" c="dimmed">
-              {t('Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.') || 'Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.'}
+              {isAthlete
+                ? (t('Compare your own workouts or training periods to see how your fitness is evolving.') || 'Compare your own workouts or training periods to see how your fitness is evolving.')
+                : (t('Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.') || 'Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.')}
             </Text>
           </Stack>
         )}

@@ -398,6 +398,11 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Splits": "Atkarpos",
     "Split": "Atkarpa",
     "Annotate Splits": "Anotavimo atkarpos",
+    "Annotate": "Anotuoti",
+    "Hide Annotations": "Slėpti anotacijas",
+    "Lactate": "Laktatas",
+    "Note": "Pastaba",
+    "Save Annotations": "Išsaugoti anotacijas",
     "Visible stats": "Matoma statistika",
     "Avg HR": "Vid. ŠSD",
     "Avg W": "Vid. W",
@@ -479,7 +484,11 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Could not send request": "Nepavyko išsiųsti užklausos"
     ,"Message failed": "Žinutės išsiųsti nepavyko"
     ,"Coach Split-Screen Analysis": "Trenerio padalinto ekrano analizė"
+    ,"Training Comparison": "Treniruočių palyginimas"
     ,"Compare two workouts, weeks, or months side by side with the same analysis model.": "Palyginkite dvi treniruotes, savaites ar mėnesius greta naudodami tą patį analizės modelį."
+    ,"Compare your workouts, weeks, or months side by side to track your progress.": "Palyginkite savo treniruotes, savaites ar mėnesius greta, kad matytumėte pažangą."
+    ,"Compare your own workouts or training periods to see how your fitness is evolving.": "Palyginkite savo treniruotes ar treniruočių laikotarpius, kad matytumėte, kaip keičiasi jūsų forma."
+    ,"Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.": "Treneriai gali palyginti tą patį sportininką per du laikotarpius arba du sportininkus greta naudodami tą patį analizės modelį."
     ,"Workouts": "Treniruotės"
     ,"Months": "Mėnesiai"
     ,"Side A": "Pusė A"
@@ -534,7 +543,6 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Peak 5min Power": "Piko 5 min. galia"
     ,"Peak 20min Power": "Piko 20 min. galia"
     ,"Best 20min Pace Proxy": "Geriausio 20 min. tempo aproksimacija"
-    ,"Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.": "Treneriai gali lyginti tą patį atletą per du laikotarpius arba du atletus greta naudodami tą patį analizės modelį."
     ,"You are offline. Last synced data is shown; new actions will continue when connection returns.": "Esate neprisijungę. Rodomi paskutiniai sinchronizuoti duomenys; nauji veiksmai bus tęsiami, kai ryšys sugrįš."
   }
 };
