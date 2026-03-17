@@ -17,6 +17,7 @@ from ..services.activity_dedupe import (
     extract_source_identity,
     find_duplicate_activity,
 )
+from ..services.personal_records import compute_activity_best_efforts, get_activity_prs
 from datetime import datetime, timezone, date, timedelta
 from collections import defaultdict
 from typing import Any
