@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
 import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
-import { format, parse, startOfWeek, getDay, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { format, parse, startOfWeek, getDay, endOfWeek, startOfMonth, endOfMonth, addMonths, addWeeks } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
@@ -224,6 +224,21 @@ export const TrainingCalendar = ({
     const [currentView, setCurrentView] = useState<'month' | 'week'>(isMobileViewport ? 'week' : 'month');
     const monthGridRef = React.useRef<HTMLDivElement | null>(null);
     const [weekRowHeights, setWeekRowHeights] = useState<number[]>([]);
+
+    /* ── Scroll-wheel navigation (month / week) ── */
+    const wheelCooldown = useRef(false);
+    const handleCalendarWheel = useCallback((e: React.WheelEvent) => {
+        if (wheelCooldown.current) return;
+        const delta = e.deltaY;
+        if (Math.abs(delta) < 30) return;          // ignore tiny trackpad micro-scrolls
+        wheelCooldown.current = true;
+        setViewDate((prev) =>
+            currentView === 'week'
+                ? addWeeks(prev, delta > 0 ? 1 : -1)
+                : addMonths(prev, delta > 0 ? 1 : -1),
+        );
+        setTimeout(() => { wheelCooldown.current = false; }, 350);
+    }, [currentView]);
 
     const athleteById = useMemo(() => {
         const map = new Map<number, any>();
@@ -1471,6 +1486,7 @@ export const TrainingCalendar = ({
             mx="auto"
             w="100%"
             style={{ overflow: 'hidden', minHeight: 0 }}
+            onWheel={handleCalendarWheel}
         >
             <style>{calendarStyles}</style>
             

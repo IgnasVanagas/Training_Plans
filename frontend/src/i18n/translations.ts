@@ -405,6 +405,8 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Save Annotations": "Išsaugoti anotacijas",
     "Re-parse": "Perkurti duomenis",
     "Re-parse activity from original file.": "Perkurti veiklos duomenis iš originalaus failo.",
+    "Selected": "Pasirinkta",
+    "No activities on this date": "Šią dieną veiklų nėra",
     "Visible stats": "Matoma statistika",
     "Avg HR": "Vid. ŠSD",
     "Avg W": "Vid. W",

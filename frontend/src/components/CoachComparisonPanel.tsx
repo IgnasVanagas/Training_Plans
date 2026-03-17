@@ -655,6 +655,170 @@ const PeriodSummaryTable = ({
   );
 };
 
+/* ── Calendar-based activity picker for workouts mode ── */
+const ActivityCalendarPicker = ({
+  title,
+  activities,
+  athleteMap,
+  selectedId,
+  onSelect,
+  isDark,
+  t,
+}: {
+  title: string;
+  activities: ActivityListItem[];
+  athleteMap: Map<number, AthleteLike>;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  isDark: boolean;
+  t: (v: string) => string;
+}) => {
+  const [pickerDate, setPickerDate] = useState<Date>(new Date());
+
+  const activitiesByDate = useMemo(() => {
+    const map = new Map<string, ActivityListItem[]>();
+    activities.forEach((a) => {
+      const key = a.created_at.slice(0, 10);
+      const list = map.get(key) || [];
+      list.push(a);
+      map.set(key, list);
+    });
+    return map;
+  }, [activities]);
+
+  const selectedDate = useMemo(() => {
+    if (!selectedId) return null;
+    const act = activities.find((a) => String(a.id) === selectedId);
+    return act ? act.created_at.slice(0, 10) : null;
+  }, [selectedId, activities]);
+
+  const [focusDate, setFocusDate] = useState<string | null>(selectedDate);
+
+  const activitiesForFocusDate = useMemo(
+    () => (focusDate ? activitiesByDate.get(focusDate) || [] : []),
+    [focusDate, activitiesByDate],
+  );
+
+  const handleDateClick = useCallback((date: Date) => {
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    setFocusDate(key);
+    const dayActivities = activitiesByDate.get(key) || [];
+    if (dayActivities.length === 1) {
+      onSelect(String(dayActivities[0].id));
+    }
+  }, [activitiesByDate, onSelect]);
+
+  const selectedActivity = useMemo(
+    () => activities.find((a) => String(a.id) === selectedId),
+    [activities, selectedId],
+  );
+
+  const accentColor = '#E95A12';
+  const dotColor = isDark ? 'rgba(233,90,18,0.7)' : 'rgba(233,90,18,0.85)';
+
+  return (
+    <Paper withBorder p="sm" radius="md">
+      <Stack gap="xs">
+        <Text size="sm" fw={600}>{title}</Text>
+
+        <DatePicker
+          value={focusDate ? new Date(focusDate + 'T00:00:00') : null}
+          onChange={(d) => d && handleDateClick(d)}
+          date={pickerDate}
+          onDateChange={setPickerDate}
+          size="sm"
+          getDayProps={(date) => {
+            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            const hasActivities = activitiesByDate.has(key);
+            const isSelected = selectedDate === key;
+            return {
+              style: {
+                position: 'relative' as const,
+                ...(hasActivities && !isSelected
+                  ? { fontWeight: 700, color: accentColor }
+                  : {}),
+              },
+              ...(hasActivities
+                ? {
+                    children: (
+                      <>
+                        {date.getDate()}
+                        <Box
+                          style={{
+                            position: 'absolute',
+                            bottom: 2,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            width: 5,
+                            height: 5,
+                            borderRadius: '50%',
+                            background: isSelected ? '#fff' : dotColor,
+                          }}
+                        />
+                      </>
+                    ),
+                  }
+                : {}),
+            };
+          }}
+        />
+
+        {selectedActivity && (
+          <Paper withBorder p="xs" radius="sm" bg={isDark ? 'rgba(233,90,18,0.08)' : 'rgba(233,90,18,0.05)'} style={{ borderColor: accentColor }}>
+            <Text size="xs" c="dimmed">{t('Selected') || 'Selected'}</Text>
+            <Text size="sm" fw={600}>{selectedActivity.filename}</Text>
+            <Text size="xs" c="dimmed">
+              {formatName(athleteMap.get(selectedActivity.athlete_id))} · {new Date(selectedActivity.created_at).toLocaleDateString()} · {normalizeSport(selectedActivity.sport)}
+            </Text>
+          </Paper>
+        )}
+
+        {focusDate && activitiesForFocusDate.length > 0 && (
+          <ScrollArea.Autosize mah={180}>
+            <Stack gap={4}>
+              {activitiesForFocusDate.map((a) => {
+                const isActive = String(a.id) === selectedId;
+                return (
+                  <UnstyledButton
+                    key={a.id}
+                    onClick={() => onSelect(String(a.id))}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      border: isActive ? `2px solid ${accentColor}` : `1px solid ${isDark ? '#333' : '#ddd'}`,
+                      background: isActive
+                        ? (isDark ? 'rgba(233,90,18,0.12)' : 'rgba(233,90,18,0.06)')
+                        : 'transparent',
+                    }}
+                  >
+                    <Group gap="xs" wrap="nowrap" justify="space-between">
+                      <Box style={{ minWidth: 0 }}>
+                        <Text size="xs" fw={600} truncate>{a.filename}</Text>
+                        <Text size="xs" c="dimmed">
+                          {formatName(athleteMap.get(a.athlete_id))} · {normalizeSport(a.sport)}
+                          {a.duration ? ` · ${formatMinutes(safeNum(a.duration) / 60)}` : ''}
+                          {a.distance ? ` · ${(safeNum(a.distance) / 1000).toFixed(1)}km` : ''}
+                        </Text>
+                      </Box>
+                      <Badge size="xs" variant="light">{normalizeSport(a.sport)}</Badge>
+                    </Group>
+                  </UnstyledButton>
+                );
+              })}
+            </Stack>
+          </ScrollArea.Autosize>
+        )}
+
+        {focusDate && activitiesForFocusDate.length === 0 && (
+          <Text size="xs" c="dimmed" ta="center">{t('No activities on this date') || 'No activities on this date'}</Text>
+        )}
+      </Stack>
+    </Paper>
+  );
+};
+
 export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: AthleteLike[]; me: AthleteLike; isAthlete?: boolean }) => {
   const { t } = useI18n();
   const isDark = useComputedColorScheme('light') === 'dark';
@@ -952,26 +1116,24 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
 
         {mode === 'workouts' ? (
           <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
-            <Paper withBorder p="sm" radius="md">
-              <Text size="sm" fw={600} mb="xs">{t('Side A') || 'Side A'}</Text>
-              <Select
-                label={t('Workout') || 'Workout'}
-                data={workoutOptions}
-                value={leftWorkoutId}
-                onChange={setLeftWorkoutId}
-                searchable
-              />
-            </Paper>
-            <Paper withBorder p="sm" radius="md">
-              <Text size="sm" fw={600} mb="xs">{t('Side B') || 'Side B'}</Text>
-              <Select
-                label={t('Workout') || 'Workout'}
-                data={workoutOptions}
-                value={rightWorkoutId}
-                onChange={setRightWorkoutId}
-                searchable
-              />
-            </Paper>
+            <ActivityCalendarPicker
+              title={t('Side A') || 'Side A'}
+              activities={activities}
+              athleteMap={athleteMap}
+              selectedId={leftWorkoutId}
+              onSelect={setLeftWorkoutId}
+              isDark={isDark}
+              t={t}
+            />
+            <ActivityCalendarPicker
+              title={t('Side B') || 'Side B'}
+              activities={activities}
+              athleteMap={athleteMap}
+              selectedId={rightWorkoutId}
+              onSelect={setRightWorkoutId}
+              isDark={isDark}
+              t={t}
+            />
           </SimpleGrid>
         ) : (
           <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
