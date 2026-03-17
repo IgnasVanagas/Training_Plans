@@ -2141,6 +2141,7 @@ async def get_activity(
     power_curve = None
     hr_zones = None
     pace_curve = None
+    best_efforts = None
     laps = None
     splits_metric = None
     stats = {}
@@ -2158,6 +2159,7 @@ async def get_activity(
         power_curve = stored_data.get("power_curve")
         hr_zones = stored_data.get("hr_zones")
         pace_curve = stored_data.get("pace_curve")
+        best_efforts = stored_data.get("best_efforts")
         laps = stored_data.get("laps")
         splits_metric = stored_data.get("splits_metric")
         stats = stored_data.get("stats", {})
