@@ -543,13 +543,17 @@ class StravaConnector(ProviderConnector):
 
         laps = self._normalize_laps(laps_payload)
 
+        # Compute metric splits from stream points
+        from ...parsing import compute_metric_splits_from_points
+        splits_metric = compute_metric_splits_from_points(points) if points else None
+
         return {
             "data": points,
             "power_curve": power_curve,
             "hr_zones": self._hr_zones(hr_values) if hr_values else None,
             "pace_curve": pace_curve if points else None,
             "laps": laps,
-            "splits_metric": None,
+            "splits_metric": splits_metric,
             "stats": stats,
             "provider_activity_detail": detail,
         }

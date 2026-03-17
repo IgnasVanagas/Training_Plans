@@ -169,6 +169,7 @@ export const ActivityDetailPage = () => {
     const pendingHoveredPointIndexRef = useRef<number | null>(null);
     const hoveredPointRafRef = useRef<number | null>(null);
     const [splitMode, setSplitMode] = useState<'metric' | 'laps'>('metric');
+    const [effortsSplitsView, setEffortsSplitsView] = useState<'efforts' | 'splits'>('efforts');
     const [focusMode, setFocusMode] = useState(false);
     const [focusObjective, setFocusObjective] = useState<'pacing' | 'cardio' | 'efficiency'>('pacing');
     const [completionPulse, setCompletionPulse] = useState(false);
@@ -882,6 +883,18 @@ export const ActivityDetailPage = () => {
         }
 
         setSplitMode('metric');
+    }, [activity]);
+
+    // Auto-select efforts vs splits view based on available data
+    useEffect(() => {
+        if (!activity) return;
+        const hasEfforts = Boolean(activity.best_efforts?.length);
+        const hasSplits = Boolean(activity.splits_metric?.length || activity.laps?.length);
+        if (hasEfforts) {
+            setEffortsSplitsView('efforts');
+        } else if (hasSplits) {
+            setEffortsSplitsView('splits');
+        }
     }, [activity]);
     
     // Calculated Stats for activities where backend summary is missing (legacy compat)
@@ -1626,213 +1639,177 @@ export const ActivityDetailPage = () => {
                                     */}
                                 </Paper>
 
-                                {/* Best Efforts Section */}
-                                {!focusMode && activity.best_efforts && activity.best_efforts.length > 0 && (
-                                    <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                        <Title order={5} c={ui.textMain} mb="md">{t("Best Efforts")}</Title>
-                                        <Table striped highlightOnHover withTableBorder withColumnBorders>
-                                            <Table.Thead>
-                                                <Table.Tr>
-                                                    <Table.Th></Table.Th>
-                                                    <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
-                                                    {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
-                                                    {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
-                                                    {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
-                                                    {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
-                                                    <Table.Th>{t('Heart Rate')}</Table.Th>
-                                                    <Table.Th>{t('Elev')}</Table.Th>
-                                                </Table.Tr>
-                                            </Table.Thead>
-                                            <Table.Tbody>
-                                                {activity.best_efforts.map((effort, idx) => {
-                                                    const key = effort.window || effort.distance || String(idx);
-                                                    const isPR = activity.personal_records?.[key] === true;
-                                                    const weight = me?.profile?.weight;
-                                                    return (
-                                                        <Table.Tr key={key}>
-                                                            <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                                                {isPR && <IconTrophy size={16} color="#f0a500" />}
-                                                            </Table.Td>
-                                                            <Table.Td fw={600}>
-                                                                {effort.window || effort.distance}
-                                                            </Table.Td>
-                                                            {isCyclingActivity && (
-                                                                <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>
-                                                            )}
-                                                            {isCyclingActivity && weight && (
-                                                                <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>
-                                                            )}
-                                                            {isRunningActivity && (
-                                                                <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>
-                                                            )}
-                                                            {isRunningActivity && (
-                                                                <Table.Td>
-                                                                    {effort.time_seconds != null && effort.meters
-                                                                        ? (() => {
-                                                                            const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60);
-                                                                            const mins = Math.floor(paceMinPerKm);
-                                                                            const secs = Math.round((paceMinPerKm - mins) * 60);
-                                                                            return `${mins}:${secs.toString().padStart(2, '0')} /km`;
-                                                                        })()
-                                                                        : '-'}
-                                                                </Table.Td>
-                                                            )}
-                                                            <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
-                                                            <Table.Td>{effort.elevation != null ? `${effort.elevation} m` : '-'}</Table.Td>
-                                                        </Table.Tr>
-                                                    );
-                                                })}
-                                            </Table.Tbody>
-                                        </Table>
-                                    </Paper>
-                                )}
-
-                                {/* Splits Section */}
-                                {!focusMode && (activity.splits_metric?.length || activity.laps?.length) && (
+                                {/* Best Efforts & Splits Combined Section */}
+                                {!focusMode && (activity.best_efforts?.length || activity.splits_metric?.length || activity.laps?.length) && (
                                     <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
                                         <Group justify="space-between" mb="md">
-                                            <Title order={5} c={ui.textMain}>Splits</Title>
+                                            <Title order={5} c={ui.textMain}>
+                                                {effortsSplitsView === 'efforts' ? t("Best Efforts") : t("Splits")}
+                                            </Title>
                                             <Group>
-                                                <SegmentedControl 
-                                                    radius="md"
-                                                    value={splitMode}
-                                                    onChange={(v: any) => setSplitMode(v)}
-                                                    data={[
-                                                        { label: isRunningActivity ? '1 km' : 'Auto', value: 'metric', disabled: !activity.splits_metric?.length },
-                                                        { label: isCyclingActivity ? 'Manual' : 'Laps', value: 'laps', disabled: !activity.laps?.length },
-                                                    ]}
-                                                />
-                                                <Button size="xs" variant="light" onClick={() => setSplitAnnotationsOpen(true)}>
-                                                    Annotate Splits
-                                                </Button>
+                                                {(activity.best_efforts?.length && (activity.splits_metric?.length || activity.laps?.length)) ? (
+                                                    <SegmentedControl
+                                                        radius="md"
+                                                        value={effortsSplitsView}
+                                                        onChange={(v: any) => setEffortsSplitsView(v)}
+                                                        data={[
+                                                            { label: t('Best Efforts'), value: 'efforts' },
+                                                            { label: t('Splits'), value: 'splits' },
+                                                        ]}
+                                                    />
+                                                ) : null}
+                                                {effortsSplitsView === 'splits' && (
+                                                    <>
+                                                        <SegmentedControl 
+                                                            radius="md"
+                                                            value={splitMode}
+                                                            onChange={(v: any) => setSplitMode(v)}
+                                                            data={[
+                                                                { label: isRunningActivity ? '1 km' : 'Auto', value: 'metric', disabled: !activity.splits_metric?.length },
+                                                                { label: isCyclingActivity ? 'Manual' : 'Laps', value: 'laps', disabled: !activity.laps?.length },
+                                                            ]}
+                                                        />
+                                                        <Button size="xs" variant="light" onClick={() => setSplitAnnotationsOpen(true)}>
+                                                            {t("Annotate Splits")}
+                                                        </Button>
+                                                    </>
+                                                )}
                                             </Group>
                                         </Group>
-                                        <Group gap="xs" mb="sm" wrap="wrap">
-                                            <Text size="xs" c={ui.textDim} fw={700}>Visible stats:</Text>
-                                            <Chip
-                                                size="xs"
-                                                checked={visibleSplitStats.distance}
-                                                onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, distance: checked }))}
-                                                variant="light"
-                                            >
-                                                Distance
-                                            </Chip>
-                                            <Chip
-                                                size="xs"
-                                                checked={visibleSplitStats.duration}
-                                                onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, duration: checked }))}
-                                                variant="light"
-                                            >
-                                                Time
-                                            </Chip>
-                                            <Chip
-                                                size="xs"
-                                                checked={visibleSplitStats.pace_or_speed}
-                                                onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, pace_or_speed: checked }))}
-                                                variant="light"
-                                            >
-                                                {isRunningActivity ? 'Pace' : 'Speed'}
-                                            </Chip>
-                                            <Chip
-                                                size="xs"
-                                                checked={visibleSplitStats.avg_hr}
-                                                onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_hr: checked }))}
-                                                variant="light"
-                                            >
-                                                Avg HR
-                                            </Chip>
-                                            <Chip
-                                                size="xs"
-                                                checked={visibleSplitStats.max_hr}
-                                                onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_hr: checked }))}
-                                                variant="light"
-                                            >
-                                                Max HR
-                                            </Chip>
-                                            {isCyclingActivity && (
-                                                <>
-                                                    <Chip
-                                                        size="xs"
-                                                        checked={visibleSplitStats.avg_watts}
-                                                        onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_watts: checked }))}
-                                                        variant="light"
-                                                    >
-                                                        Avg W
-                                                    </Chip>
-                                                    <Chip
-                                                        size="xs"
-                                                        checked={visibleSplitStats.max_watts}
-                                                        onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_watts: checked }))}
-                                                        variant="light"
-                                                    >
-                                                        Max W
-                                                    </Chip>
-                                                    <Chip
-                                                        size="xs"
-                                                        checked={visibleSplitStats.normalized_power}
-                                                        onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, normalized_power: checked }))}
-                                                        variant="light"
-                                                    >
-                                                        NP
-                                                    </Chip>
-                                                </>
-                                            )}
-                                        </Group>
-                                        <Table>
-                                            <Table.Thead>
-                                                <Table.Tr>
-                                                    <Table.Th>Split</Table.Th>
-                                                    {visibleSplitStats.distance && <Table.Th>Distance</Table.Th>}
-                                                    {visibleSplitStats.duration && <Table.Th>Time</Table.Th>}
-                                                    {visibleSplitStats.pace_or_speed && <Table.Th>{isRunningActivity ? 'Pace' : 'Avg Speed'}</Table.Th>}
-                                                    {visibleSplitStats.avg_hr && <Table.Th>Avg HR</Table.Th>}
-                                                    {visibleSplitStats.max_hr && <Table.Th>Max HR</Table.Th>}
-                                                    {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Th>Avg W</Table.Th>}
-                                                    {isCyclingActivity && visibleSplitStats.max_watts && <Table.Th>Max W</Table.Th>}
-                                                    {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>NP</Table.Th>}
-                                                </Table.Tr>
-                                            </Table.Thead>
-                                            <Table.Tbody>
-                                                {splitsToDisplayWithPower.map((split: any) => (
-                                                    <Table.Tr key={split.split}>
-                                                        <Table.Td>{split.split}</Table.Td>
-                                                        {visibleSplitStats.distance && (
-                                                            <Table.Td>
-                                                                {me?.profile?.preferred_units === 'imperial'
-                                                                    ? `${((split.distance || 0) * 0.000621371).toFixed(2)} mi`
-                                                                    : `${((split.distance || 0) / 1000).toFixed(2)} km`}
-                                                            </Table.Td>
-                                                        )}
-                                                        {visibleSplitStats.duration && <Table.Td>{formatDuration(split.duration, true)}</Table.Td>}
-                                                        {visibleSplitStats.pace_or_speed && (
-                                                            <Table.Td>
-                                                                {isRunningActivity
-                                                                    ? (split.avg_speed
-                                                                        ? (me?.profile?.preferred_units === 'imperial'
-                                                                            ? (() => {
-                                                                                const pace = 1609.34 / (split.avg_speed * 60);
-                                                                                const m = Math.floor(pace);
-                                                                                const s = Math.floor((pace - m) * 60);
-                                                                                return `${m}:${s.toString().padStart(2, '0')}/mi`;
-                                                                            })()
-                                                                            : formatPace(split.avg_speed))
-                                                                        : '-')
-                                                                    : (split.avg_speed
-                                                                        ? (me?.profile?.preferred_units === 'imperial'
-                                                                            ? `${(split.avg_speed * 2.23694).toFixed(1)} mph`
-                                                                            : `${(split.avg_speed * 3.6).toFixed(1)} km/h`)
-                                                                        : '-')}
-                                                            </Table.Td>
-                                                        )}
-                                                        {visibleSplitStats.avg_hr && <Table.Td>{split.avg_hr?.toFixed(0) || '-'}</Table.Td>}
-                                                        {visibleSplitStats.max_hr && <Table.Td>{split.max_hr?.toFixed(0) || '-'}</Table.Td>}
-                                                        {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Td>{split.avg_watts ? `${split.avg_watts.toFixed(0)} W` : '-'}</Table.Td>}
-                                                        {isCyclingActivity && visibleSplitStats.max_watts && <Table.Td>{split.max_watts ? `${split.max_watts.toFixed(0)} W` : '-'}</Table.Td>}
-                                                        {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Td>{split.normalized_power ? `${split.normalized_power.toFixed(0)} W` : '-'}</Table.Td>}
+
+                                        {/* Best Efforts Table */}
+                                        {effortsSplitsView === 'efforts' && activity.best_efforts?.length ? (
+                                            <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                                <Table.Thead>
+                                                    <Table.Tr>
+                                                        <Table.Th></Table.Th>
+                                                        <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
+                                                        {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
+                                                        {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
+                                                        {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
+                                                        {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
+                                                        <Table.Th>{t('Heart Rate')}</Table.Th>
+                                                        <Table.Th>{t('Elev')}</Table.Th>
                                                     </Table.Tr>
-                                                ))}
-                                            </Table.Tbody>
-                                        </Table>
+                                                </Table.Thead>
+                                                <Table.Tbody>
+                                                    {activity.best_efforts.map((effort, idx) => {
+                                                        const key = effort.window || effort.distance || String(idx);
+                                                        const isPR = activity.personal_records?.[key] === true;
+                                                        const weight = me?.profile?.weight;
+                                                        return (
+                                                            <Table.Tr key={key}>
+                                                                <Table.Td w={36} style={{ textAlign: 'center' }}>
+                                                                    {isPR && <IconTrophy size={16} color="#f0a500" />}
+                                                                </Table.Td>
+                                                                <Table.Td fw={600}>
+                                                                    {effort.window || effort.distance}
+                                                                </Table.Td>
+                                                                {isCyclingActivity && (
+                                                                    <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>
+                                                                )}
+                                                                {isCyclingActivity && weight && (
+                                                                    <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>
+                                                                )}
+                                                                {isRunningActivity && (
+                                                                    <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>
+                                                                )}
+                                                                {isRunningActivity && (
+                                                                    <Table.Td>
+                                                                        {effort.time_seconds != null && effort.meters
+                                                                            ? (() => {
+                                                                                const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60);
+                                                                                const mins = Math.floor(paceMinPerKm);
+                                                                                const secs = Math.round((paceMinPerKm - mins) * 60);
+                                                                                return `${mins}:${secs.toString().padStart(2, '0')} /km`;
+                                                                            })()
+                                                                            : '-'}
+                                                                    </Table.Td>
+                                                                )}
+                                                                <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
+                                                                <Table.Td>{effort.elevation != null ? `${effort.elevation} m` : '-'}</Table.Td>
+                                                            </Table.Tr>
+                                                        );
+                                                    })}
+                                                </Table.Tbody>
+                                            </Table>
+                                        ) : null}
+
+                                        {/* Splits Table */}
+                                        {effortsSplitsView === 'splits' && (activity.splits_metric?.length || activity.laps?.length) ? (
+                                            <>
+                                                <Group gap="xs" mb="sm" wrap="wrap">
+                                                    <Text size="xs" c={ui.textDim} fw={700}>{t("Visible stats")}:</Text>
+                                                    <Chip size="xs" checked={visibleSplitStats.distance} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, distance: checked }))} variant="light">{t("Distance")}</Chip>
+                                                    <Chip size="xs" checked={visibleSplitStats.duration} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, duration: checked }))} variant="light">{t("Time")}</Chip>
+                                                    <Chip size="xs" checked={visibleSplitStats.pace_or_speed} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, pace_or_speed: checked }))} variant="light">{isRunningActivity ? t('Pace') : t('Speed')}</Chip>
+                                                    <Chip size="xs" checked={visibleSplitStats.avg_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_hr: checked }))} variant="light">{t("Avg HR")}</Chip>
+                                                    <Chip size="xs" checked={visibleSplitStats.max_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_hr: checked }))} variant="light">{t("Max HR")}</Chip>
+                                                    {isCyclingActivity && (
+                                                        <>
+                                                            <Chip size="xs" checked={visibleSplitStats.avg_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_watts: checked }))} variant="light">{t("Avg W")}</Chip>
+                                                            <Chip size="xs" checked={visibleSplitStats.max_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_watts: checked }))} variant="light">{t("Max W")}</Chip>
+                                                            <Chip size="xs" checked={visibleSplitStats.normalized_power} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, normalized_power: checked }))} variant="light">NP</Chip>
+                                                        </>
+                                                    )}
+                                                </Group>
+                                                <Table>
+                                                    <Table.Thead>
+                                                        <Table.Tr>
+                                                            <Table.Th>{t("Split")}</Table.Th>
+                                                            {visibleSplitStats.distance && <Table.Th>{t("Distance")}</Table.Th>}
+                                                            {visibleSplitStats.duration && <Table.Th>{t("Time")}</Table.Th>}
+                                                            {visibleSplitStats.pace_or_speed && <Table.Th>{isRunningActivity ? t('Pace') : t('Avg Speed')}</Table.Th>}
+                                                            {visibleSplitStats.avg_hr && <Table.Th>{t("Avg HR")}</Table.Th>}
+                                                            {visibleSplitStats.max_hr && <Table.Th>{t("Max HR")}</Table.Th>}
+                                                            {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Th>{t("Avg W")}</Table.Th>}
+                                                            {isCyclingActivity && visibleSplitStats.max_watts && <Table.Th>{t("Max W")}</Table.Th>}
+                                                            {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>NP</Table.Th>}
+                                                        </Table.Tr>
+                                                    </Table.Thead>
+                                                    <Table.Tbody>
+                                                        {splitsToDisplayWithPower.map((split: any) => (
+                                                            <Table.Tr key={split.split}>
+                                                                <Table.Td>{split.split}</Table.Td>
+                                                                {visibleSplitStats.distance && (
+                                                                    <Table.Td>
+                                                                        {me?.profile?.preferred_units === 'imperial'
+                                                                            ? `${((split.distance || 0) * 0.000621371).toFixed(2)} mi`
+                                                                            : `${((split.distance || 0) / 1000).toFixed(2)} km`}
+                                                                    </Table.Td>
+                                                                )}
+                                                                {visibleSplitStats.duration && <Table.Td>{formatDuration(split.duration, true)}</Table.Td>}
+                                                                {visibleSplitStats.pace_or_speed && (
+                                                                    <Table.Td>
+                                                                        {isRunningActivity
+                                                                            ? (split.avg_speed
+                                                                                ? (me?.profile?.preferred_units === 'imperial'
+                                                                                    ? (() => {
+                                                                                        const pace = 1609.34 / (split.avg_speed * 60);
+                                                                                        const m = Math.floor(pace);
+                                                                                        const s = Math.floor((pace - m) * 60);
+                                                                                        return `${m}:${s.toString().padStart(2, '0')}/mi`;
+                                                                                    })()
+                                                                                    : formatPace(split.avg_speed))
+                                                                                : '-')
+                                                                            : (split.avg_speed
+                                                                                ? (me?.profile?.preferred_units === 'imperial'
+                                                                                    ? `${(split.avg_speed * 2.23694).toFixed(1)} mph`
+                                                                                    : `${(split.avg_speed * 3.6).toFixed(1)} km/h`)
+                                                                                : '-')}
+                                                                    </Table.Td>
+                                                                )}
+                                                                {visibleSplitStats.avg_hr && <Table.Td>{split.avg_hr?.toFixed(0) || '-'}</Table.Td>}
+                                                                {visibleSplitStats.max_hr && <Table.Td>{split.max_hr?.toFixed(0) || '-'}</Table.Td>}
+                                                                {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Td>{split.avg_watts ? `${split.avg_watts.toFixed(0)} W` : '-'}</Table.Td>}
+                                                                {isCyclingActivity && visibleSplitStats.max_watts && <Table.Td>{split.max_watts ? `${split.max_watts.toFixed(0)} W` : '-'}</Table.Td>}
+                                                                {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Td>{split.normalized_power ? `${split.normalized_power.toFixed(0)} W` : '-'}</Table.Td>}
+                                                            </Table.Tr>
+                                                        ))}
+                                                    </Table.Tbody>
+                                                </Table>
+                                            </>
+                                        ) : null}
                                     </Paper>
                                 )}
 

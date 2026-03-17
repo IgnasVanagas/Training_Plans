@@ -300,6 +300,67 @@ def parse_fit(file_path):
         "best_efforts": best_efforts,
     }
 
+def compute_metric_splits_from_points(points: list, interval: int = 1000) -> list:
+    """Compute per-km (or per-interval) splits from a list of stream point dicts.
+
+    Each point must have at least ``distance`` (cumulative metres).
+    Optional fields: ``heart_rate``, ``power``.
+    Points are assumed to be ~1 Hz (one per second).
+    """
+    if not points or len(points) < 2:
+        return []
+
+    # Extract valid distance-sorted entries
+    valid = []
+    for i, p in enumerate(points):
+        d = p.get("distance")
+        if d is None:
+            continue
+        try:
+            valid.append((i, float(d)))
+        except (ValueError, TypeError):
+            continue
+    if len(valid) < 2:
+        return []
+
+    splits: list[dict] = []
+    split_start_idx = 0
+    split_num = 1
+
+    for vi in range(1, len(valid)):
+        cur_global, cur_dist = valid[vi]
+        start_global, start_dist = valid[split_start_idx]
+        seg_dist = cur_dist - start_dist
+
+        if seg_dist >= interval or vi == len(valid) - 1:
+            duration = float(cur_global - start_global)  # seconds (1-Hz assumption)
+            if duration <= 0:
+                split_start_idx = vi
+                continue
+
+            # Aggregate HR / power over the range
+            hr_vals = [float(points[j].get("heart_rate")) for j in range(start_global, cur_global + 1) if points[j].get("heart_rate") is not None]
+            pwr_vals = [float(points[j].get("power")) for j in range(start_global, cur_global + 1) if points[j].get("power") is not None]
+
+            avg_speed = seg_dist / duration if duration > 0 else 0
+
+            splits.append({
+                "split": split_num,
+                "dist_start": round(start_dist, 1),
+                "distance": round(seg_dist, 1),
+                "duration": round(duration, 1),
+                "avg_speed": round(avg_speed, 3),
+                "avg_hr": round(sum(hr_vals) / len(hr_vals), 1) if hr_vals else None,
+                "max_hr": round(max(hr_vals), 1) if hr_vals else None,
+                "avg_power": round(sum(pwr_vals) / len(pwr_vals), 1) if pwr_vals else None,
+            })
+
+            split_num += 1
+            split_start_idx = vi
+
+    return splits
+
+
 def calculate_metric_splits(df, interval=1000):
     if df.empty or 'distance' not in df.columns:
         return []

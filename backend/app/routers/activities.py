@@ -18,14 +18,18 @@ from ..services.activity_dedupe import (
     find_duplicate_activity,
 )
 from ..services.personal_records import compute_activity_best_efforts, get_activity_prs
+from ..parsing import compute_metric_splits_from_points
 from datetime import datetime, timezone, date, timedelta
 from collections import defaultdict
 from typing import Any
 import math
 import os
 import uuid
+import logging
 
 router = APIRouter(prefix="/activities", tags=["activities"])
+
+logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -1587,8 +1591,8 @@ async def get_zone_summary(
     users_res = await db.execute(users_stmt)
     users = {u.id: u for u in users_res.scalars().all()}
 
-    start_dt = datetime.combine(week_start, datetime.min.time())
-    end_dt = datetime.combine(month_end, datetime.max.time())
+    start_dt = datetime.combine(min(week_start, month_start), datetime.min.time())
+    end_dt = datetime.combine(max(week_end, month_end), datetime.max.time())
 
     activities_stmt = select(Activity).where(
         Activity.athlete_id.in_(target_user_ids),
@@ -2247,16 +2251,41 @@ async def get_activity(
     legacy_rpe, legacy_notes, legacy_lactate = _activity_feedback_from_payload(stored_data)
 
     # Lazy-compute best_efforts for activities that pre-date the feature
-    if best_efforts is None and streams_list:
-        best_efforts = compute_activity_best_efforts(streams_list, activity.sport or "")
-        if best_efforts and isinstance(stored_data, dict):
-            stored_data["best_efforts"] = best_efforts
+    needs_persist = False
+    try:
+        if best_efforts is None and streams_list:
+            best_efforts = compute_activity_best_efforts(streams_list, activity.sport or "")
+            if best_efforts and isinstance(stored_data, dict):
+                stored_data["best_efforts"] = best_efforts
+                needs_persist = True
+    except Exception:
+        logger.warning("Failed to compute best_efforts for activity %s", activity.id, exc_info=True)
+
+    # Lazy-compute splits_metric for provider activities that lack them
+    try:
+        if not splits_metric and streams_list:
+            splits_metric = compute_metric_splits_from_points(streams_list)
+            if splits_metric and isinstance(stored_data, dict):
+                stored_data["splits_metric"] = splits_metric
+                needs_persist = True
+    except Exception:
+        logger.warning("Failed to compute splits for activity %s", activity.id, exc_info=True)
+
+    if needs_persist and isinstance(stored_data, dict):
+        try:
             activity.streams = stored_data
             await db.commit()
             await db.refresh(activity)
+        except Exception:
+            logger.warning("Failed to persist lazy-computed data for activity %s", activity.id, exc_info=True)
+            await db.rollback()
 
     # Check which best efforts are all-time PRs
-    pr_flags = await get_activity_prs(db, activity)
+    try:
+        pr_flags = await get_activity_prs(db, activity)
+    except Exception:
+        logger.warning("Failed to compute PRs for activity %s", activity.id, exc_info=True)
+        pr_flags = {}
 
     activity_response = ActivityDetail(
         id=activity.id,

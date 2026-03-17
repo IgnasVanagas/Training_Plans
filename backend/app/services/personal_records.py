@@ -8,6 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models import Activity
 
 
+def _safe_float(value, default: float = 0.0) -> float:
+    """Convert a value to float, returning *default* on failure."""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
+
 # ---------------------------------------------------------------------------
 # Cycling: power-based time windows (matching Strava's set)
 # ---------------------------------------------------------------------------
@@ -52,9 +62,9 @@ def compute_activity_best_efforts(
 # ------- cycling (power-based windows) --------------------------------
 def _cycling_best_efforts(points: list) -> list[dict] | None:
     n = len(points)
-    powers = [float(p.get("power") or 0) for p in points]
-    hrs = [float(p.get("heart_rate") or 0) for p in points]
-    alts = [float(p.get("altitude") or 0) for p in points]
+    powers = [_safe_float(p.get("power")) for p in points]
+    hrs = [_safe_float(p.get("heart_rate")) for p in points]
+    alts = [_safe_float(p.get("altitude")) for p in points]
 
     # prefix sums
     psum_pow = [0.0] * (n + 1)
@@ -102,8 +112,8 @@ def _cycling_best_efforts(points: list) -> list[dict] | None:
 # ------- running (distance-based efforts) -----------------------------
 def _running_best_efforts(points: list) -> list[dict] | None:
     n = len(points)
-    hrs = [float(p.get("heart_rate") or 0) for p in points]
-    alts = [float(p.get("altitude") or 0) for p in points]
+    hrs = [_safe_float(p.get("heart_rate")) for p in points]
+    alts = [_safe_float(p.get("altitude")) for p in points]
 
     # build cumulative-distance array, forward-fill gaps
     raw_dist: list[float | None] = []
