@@ -392,6 +392,8 @@ class ActivityDetail(ActivityOut):
     power_curve: Optional[Any] = None
     hr_zones: Optional[Any] = None
     pace_curve: Optional[Any] = None
+    best_efforts: Optional[Any] = None
+    personal_records: Optional[Any] = None
     laps: Optional[Any] = None
     splits_metric: Optional[Any] = None
     max_hr: Optional[float] = None

@@ -719,6 +719,8 @@ async def provider_status(
         base["last_sync_at"] = connection.last_sync_at
         base["last_error"] = connection.last_error
 
+    return base
+
 
 @router.get("/strava/import-preferences", response_model=StravaImportPreferencesOut)
 async def get_strava_import_preferences(

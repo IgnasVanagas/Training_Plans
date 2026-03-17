@@ -286,6 +286,7 @@ const LoginPage = () => {
                 onChange={(event) => setEmail(event.currentTarget.value)}
                 required
                 size="lg"
+                autoComplete="email"
                 />
                 
                 {!isForgotPassword && !resetToken && (
@@ -297,6 +298,7 @@ const LoginPage = () => {
                 onChange={(event) => setPassword(event.currentTarget.value)}
                 required
                 size="lg"
+                autoComplete={isRegister ? "new-password" : "current-password"}
                 />
                 )}
 

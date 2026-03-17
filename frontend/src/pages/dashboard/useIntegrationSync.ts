@@ -145,6 +145,49 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
     };
   }, [queryClient, syncingProvider]);
 
+  // Background poll: detect webhook-triggered syncs and auto-refresh data
+  useEffect(() => {
+    if (syncingProvider) return; // Manual sync polling already active
+    if (!me || !integrations) return;
+
+    const stravaProvider = integrations.find(
+      (p) => p.provider.trim().toLowerCase() === "strava" && p.connection_status === "connected",
+    );
+    if (!stravaProvider) return;
+
+    let isActive = true;
+
+    const checkWebhookSync = async () => {
+      if (!isActive) return;
+      try {
+        const status = await getIntegrationSyncStatus("strava");
+        if (!isActive) return;
+        if (status.status === "syncing") {
+          // Webhook triggered a sync — start tracking it
+          setSyncingProvider("strava");
+          notifications.show({
+            id: "integration-sync-strava",
+            title: "Strava sync",
+            message: status.message || "New activities syncing...",
+            loading: true,
+            autoClose: false,
+            withCloseButton: false,
+            position: "bottom-right",
+          });
+        }
+      } catch {
+        // Ignore — network errors shouldn't break the background check
+      }
+    };
+
+    const timer = window.setInterval(checkWebhookSync, 30_000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(timer);
+    };
+  }, [me, integrations, syncingProvider]);
+
   useEffect(() => {
     if (!me || !integrations) return;
 

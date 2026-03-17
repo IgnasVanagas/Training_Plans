@@ -280,6 +280,7 @@ def parse_fit(file_path):
              
     hr_zones = calculate_hr_zones(df)
     pace_curve = calculate_pace_curve(df)
+    best_efforts = calculate_best_efforts(df) if sport == 'running' else None
     
     # Prepare streams for JSON
     # Convert timestamps to string
@@ -295,7 +296,8 @@ def parse_fit(file_path):
         "start_time": start_time,
         "power_curve": power_curve,
         "hr_zones": hr_zones,
-        "pace_curve": pace_curve
+        "pace_curve": pace_curve,
+        "best_efforts": best_efforts,
     }
 
 def calculate_metric_splits(df, interval=1000):
@@ -507,6 +509,7 @@ def parse_fit_decode(file_path):
              
     hr_zones = calculate_hr_zones(df)
     pace_curve = calculate_pace_curve(df)
+    best_efforts = calculate_best_efforts(df) if sport == 'running' else None
     
     splits_metric = calculate_metric_splits(df)
     
@@ -522,6 +525,7 @@ def parse_fit_decode(file_path):
         "power_curve": power_curve,
         "hr_zones": hr_zones,
         "pace_curve": pace_curve,
+        "best_efforts": best_efforts,
         "laps": laps,
         "splits_metric": splits_metric,
         "start_time": start_time

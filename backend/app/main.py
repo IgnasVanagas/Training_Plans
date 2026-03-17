@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import logging
 import os
 from sqlalchemy import text
 
@@ -11,6 +12,10 @@ app = FastAPI(title="Endurance Sports Management Platform")
 
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+# Auto-include FRONTEND_BASE_URL so CORS works even if ALLOWED_ORIGINS is out of sync
+_frontend_url = (os.getenv("FRONTEND_BASE_URL") or "").strip().rstrip("/")
+if _frontend_url and _frontend_url not in allowed_origins:
+    allowed_origins.append(_frontend_url)
 allowed_origin_regex = os.getenv(
     "ALLOWED_ORIGIN_REGEX",
     r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|^https://[a-zA-Z0-9-]+\.onrender\.com$",
@@ -49,6 +54,17 @@ async def on_startup() -> None:
 
     if os.getenv("AUTO_SEED_DEMO", "true").lower() in {"1", "true", "yes", "on"}:
         await seed_data()
+
+    # Ensure Strava webhook subscription exists on startup
+    if os.getenv("ENABLE_STRAVA_INTEGRATION", "false").lower() in {"1", "true", "yes", "on"}:
+        try:
+            from .integrations.registry import get_connector
+            connector = get_connector("strava")
+            if connector.is_webhook_configured():
+                result = await connector.ensure_webhook_subscription()
+                logging.getLogger(__name__).info("Strava webhook subscription: %s", result.get("status"))
+        except Exception as exc:
+            logging.getLogger(__name__).warning("Strava webhook subscription check failed: %s", exc)
 
 
 @app.on_event("shutdown")

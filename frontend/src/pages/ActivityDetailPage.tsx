@@ -1,5 +1,5 @@
 import { ActionIcon, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Textarea, Modal, TextInput } from "@mantine/core";
-import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle } from "@tabler/icons-react";
+import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
@@ -39,6 +39,12 @@ type ActivityDetail = {
     streams: any;
   power_curve: Record<string, number> | null;
   hr_zones: Record<string, number> | null;
+  best_efforts: Array<{
+    window?: string; seconds?: number; power?: number;
+    distance?: string; meters?: number; time_seconds?: number;
+    avg_hr?: number | null; elevation?: number;
+  }> | null;
+  personal_records: Record<string, boolean> | null;
   laps: any[] | null;
   splits_metric: any[] | null;
   max_hr?: number;
@@ -1608,6 +1614,67 @@ export const ActivityDetailPage = () => {
                                         I'll include it in options and Remove the standalone block.
                                     */}
                                 </Paper>
+
+                                {/* Best Efforts Section */}
+                                {!focusMode && activity.best_efforts && activity.best_efforts.length > 0 && (
+                                    <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                        <Title order={5} c={ui.textMain} mb="md">{t("Best Efforts")}</Title>
+                                        <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th></Table.Th>
+                                                    <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
+                                                    {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
+                                                    {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
+                                                    {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
+                                                    {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
+                                                    <Table.Th>{t('Heart Rate')}</Table.Th>
+                                                    <Table.Th>{t('Elev')}</Table.Th>
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {activity.best_efforts.map((effort, idx) => {
+                                                    const key = effort.window || effort.distance || String(idx);
+                                                    const isPR = activity.personal_records?.[key] === true;
+                                                    const weight = me?.profile?.weight;
+                                                    return (
+                                                        <Table.Tr key={key}>
+                                                            <Table.Td w={36} style={{ textAlign: 'center' }}>
+                                                                {isPR && <IconTrophy size={16} color="#f0a500" />}
+                                                            </Table.Td>
+                                                            <Table.Td fw={600}>
+                                                                {effort.window || effort.distance}
+                                                            </Table.Td>
+                                                            {isCyclingActivity && (
+                                                                <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>
+                                                            )}
+                                                            {isCyclingActivity && weight && (
+                                                                <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>
+                                                            )}
+                                                            {isRunningActivity && (
+                                                                <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>
+                                                            )}
+                                                            {isRunningActivity && (
+                                                                <Table.Td>
+                                                                    {effort.time_seconds != null && effort.meters
+                                                                        ? (() => {
+                                                                            const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60);
+                                                                            const mins = Math.floor(paceMinPerKm);
+                                                                            const secs = Math.round((paceMinPerKm - mins) * 60);
+                                                                            return `${mins}:${secs.toString().padStart(2, '0')} /km`;
+                                                                        })()
+                                                                        : '-'}
+                                                                </Table.Td>
+                                                            )}
+                                                            <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
+                                                            <Table.Td>{effort.elevation != null ? `${effort.elevation} m` : '-'}</Table.Td>
+                                                        </Table.Tr>
+                                                    );
+                                                })}
+                                            </Table.Tbody>
+                                        </Table>
+                                    </Paper>
+                                )}
 
                                 {/* Splits Section */}
                                 {!focusMode && (activity.splits_metric?.length || activity.laps?.length) && (

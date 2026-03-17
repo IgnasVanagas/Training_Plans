@@ -531,47 +531,55 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
             <Divider />
 
             <Text fw={600}>Change password</Text>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (!currentPassword || !newPassword || !confirmPassword) {
+                notifications.show({ color: "red", title: "Missing fields", message: "Fill in all password fields." });
+                return;
+              }
+              if (newPassword !== confirmPassword) {
+                notifications.show({ color: "red", title: "Passwords do not match", message: "Please confirm the same new password." });
+                return;
+              }
+              if (!onChangePassword) {
+                return;
+              }
+              onChangePassword({ current_password: currentPassword, new_password: newPassword });
+              setCurrentPassword("");
+              setNewPassword("");
+              setConfirmPassword("");
+            }}>
+            <Stack>
             <PasswordInput
               label="Current password"
               value={currentPassword}
               onChange={(event) => setCurrentPassword(event.currentTarget.value)}
+              autoComplete="current-password"
             />
             <PasswordInput
               label="New password"
               description="At least 10 characters with upper, lower, number, and symbol"
               value={newPassword}
               onChange={(event) => setNewPassword(event.currentTarget.value)}
+              autoComplete="new-password"
             />
             <PasswordInput
               label="Confirm new password"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.currentTarget.value)}
+              autoComplete="new-password"
             />
             <Group justify="flex-end">
               <Button
-                onClick={() => {
-                  if (!currentPassword || !newPassword || !confirmPassword) {
-                    notifications.show({ color: "red", title: "Missing fields", message: "Fill in all password fields." });
-                    return;
-                  }
-                  if (newPassword !== confirmPassword) {
-                    notifications.show({ color: "red", title: "Passwords do not match", message: "Please confirm the same new password." });
-                    return;
-                  }
-                  if (!onChangePassword) {
-                    return;
-                  }
-                  onChangePassword({ current_password: currentPassword, new_password: newPassword });
-                  setCurrentPassword("");
-                  setNewPassword("");
-                  setConfirmPassword("");
-                }}
+                type="submit"
                 loading={changingPassword}
                 disabled={!onChangePassword}
               >
                 Update password
               </Button>
             </Group>
+            </Stack>
+            </form>
           </Stack>
         </Paper>
       </Tabs.Panel>

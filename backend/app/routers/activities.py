@@ -1857,6 +1857,7 @@ async def upload_activity(
         power_curve=parsed_data.get("power_curve"),
         hr_zones=parsed_data.get("hr_zones"),
         pace_curve=parsed_data.get("pace_curve"),
+        best_efforts=parsed_data.get("best_efforts"),
         laps=parsed_data.get("laps"),
         splits_metric=parsed_data.get("splits_metric"),
         max_hr=summary.get("max_hr"),
@@ -2242,6 +2243,18 @@ async def get_activity(
         
     legacy_rpe, legacy_notes, legacy_lactate = _activity_feedback_from_payload(stored_data)
 
+    # Lazy-compute best_efforts for activities that pre-date the feature
+    if best_efforts is None and streams_list:
+        best_efforts = compute_activity_best_efforts(streams_list, activity.sport or "")
+        if best_efforts and isinstance(stored_data, dict):
+            stored_data["best_efforts"] = best_efforts
+            activity.streams = stored_data
+            await db.commit()
+            await db.refresh(activity)
+
+    # Check which best efforts are all-time PRs
+    pr_flags = await get_activity_prs(db, activity)
+
     activity_response = ActivityDetail(
         id=activity.id,
         athlete_id=activity.athlete_id,
@@ -2258,6 +2271,8 @@ async def get_activity(
         power_curve=power_curve,
         hr_zones=hr_zones,
         pace_curve=pace_curve,
+        best_efforts=best_efforts,
+        personal_records=pr_flags if pr_flags else None,
         laps=laps,
         splits_metric=splits_metric,
         max_hr=stats.get("max_hr"),
