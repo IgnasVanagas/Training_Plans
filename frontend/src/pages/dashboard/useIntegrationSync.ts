@@ -28,6 +28,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
   const [syncingProvider, setSyncingProvider] = useState<string | null>(null);
   const autoSyncRequestedRef = useRef<Set<string>>(new Set());
   const lastLiveRefreshAtRef = useRef<number>(0);
+  const lastKnownSyncAtRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!syncingProvider) return;
@@ -174,13 +175,35 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
             withCloseButton: false,
             position: "bottom-right",
           });
+          return;
         }
+        // Detect completed syncs we didn't see "syncing" for
+        // (e.g. short webhook syncs that finish between polls)
+        const newSyncAt = status.last_success ?? null;
+        if (
+          lastKnownSyncAtRef.current !== undefined &&
+          newSyncAt &&
+          newSyncAt !== lastKnownSyncAtRef.current
+        ) {
+          // A sync completed since our last check — refresh data
+          queryClient.invalidateQueries({ queryKey: ["activities"] });
+          queryClient.invalidateQueries({ queryKey: ["calendar"] });
+          queryClient.invalidateQueries({ queryKey: ["zone-summary"] });
+          queryClient.invalidateQueries({ queryKey: ["training-status"] });
+          queryClient.invalidateQueries({ queryKey: ["training-status-history"] });
+          queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
+          queryClient.invalidateQueries({ queryKey: ["wellness-summary"] });
+        }
+        lastKnownSyncAtRef.current = newSyncAt;
       } catch {
         // Ignore — network errors shouldn't break the background check
       }
     };
 
-    const timer = window.setInterval(checkWebhookSync, 30_000);
+    // Poll faster (10s) to catch short webhook syncs sooner
+    const timer = window.setInterval(checkWebhookSync, 10_000);
+    // Run immediately on mount to seed lastKnownSyncAtRef
+    void checkWebhookSync();
 
     return () => {
       isActive = false;

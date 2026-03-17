@@ -3,7 +3,7 @@ import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { endOfWeek, endOfMonth, format, startOfWeek, startOfMonth } from "date-fns";
 import { IconBooks, IconX } from "@tabler/icons-react";
 import api from "../api/client";
@@ -46,9 +46,12 @@ const toLocalDateKey = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings"]);
+
 const Dashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigationState = (location.state || {}) as {
     activeTab?: "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
     selectedAthleteId?: string | null;
@@ -58,9 +61,33 @@ const Dashboard = () => {
   const [opened, { toggle }] = useDisclosure();
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [activeTab, setActiveTab] = useState<"dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings">(
-    navigationState.activeTab || "dashboard",
+
+  // Resolve initial tab: navigation state > URL ?tab= > default "dashboard"
+  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
+  const resolvedInitialTab: DashboardTab = (() => {
+    if (navigationState.activeTab && VALID_TABS.has(navigationState.activeTab)) return navigationState.activeTab;
+    const urlTab = searchParams.get("tab");
+    if (urlTab && VALID_TABS.has(urlTab)) return urlTab as DashboardTab;
+    return "dashboard";
+  })();
+
+  const [activeTab, _setActiveTab] = useState<DashboardTab>(
+    resolvedInitialTab,
   );
+
+  // Wrapper that also keeps the URL ?tab= param in sync
+  const setActiveTab = (tab: DashboardTab) => {
+    _setActiveTab(tab);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (tab === "dashboard") {
+        next.delete("tab");
+      } else {
+        next.set("tab", tab);
+      }
+      return next;
+    }, { replace: true });
+  };
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(navigationState.selectedAthleteId ?? null);
   const initialCalendarViewDate = useMemo(() => {
     const navEntry = (typeof window !== "undefined"
@@ -81,6 +108,8 @@ const Dashboard = () => {
   const [manualMetricValue, setManualMetricValue] = useState<number | "">("");
   const isMobile = useMediaQuery("(max-width: 48em)");
 
+  // When arriving via location.state (e.g. back-navigation), sync the URL
+  // ?tab= param and clear the transient state so F5 preserves the tab.
   useEffect(() => {
     const hasTransientState = Boolean(
       navigationState.activeTab !== undefined ||
@@ -89,7 +118,15 @@ const Dashboard = () => {
     );
     if (!hasTransientState) return;
 
-    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+    // Build the new search string with the tab param
+    const params = new URLSearchParams(location.search);
+    if (resolvedInitialTab && resolvedInitialTab !== "dashboard") {
+      params.set("tab", resolvedInitialTab);
+    } else {
+      params.delete("tab");
+    }
+    const search = params.toString();
+    navigate(`${location.pathname}${search ? `?${search}` : ""}`, { replace: true, state: null });
   }, [
     location.pathname,
     location.search,
@@ -97,6 +134,7 @@ const Dashboard = () => {
     navigationState.activeTab,
     navigationState.calendarDate,
     navigationState.selectedAthleteId,
+    resolvedInitialTab,
   ]);
 
   const queryClient = useQueryClient();
