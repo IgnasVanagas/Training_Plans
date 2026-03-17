@@ -264,7 +264,7 @@ export const ActivityDetailPage = () => {
         }
     });
     
-    const { data: activity, isLoading, isError } = useQuery({
+    const { data: activity, isLoading, isError, refetch } = useQuery({
         queryKey: ['activity', id],
            initialData: () => readSnapshot<ActivityDetail>(`activity:${id}`),
            queryFn: async () => {
@@ -276,6 +276,8 @@ export const ActivityDetailPage = () => {
            gcTime: 1000 * 60 * 30,
            placeholderData: (prev) => prev,
            refetchOnMount: false,
+           retry: 2,
+           retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     });
 
     const streamPoints = useMemo(() => {
@@ -999,8 +1001,17 @@ export const ActivityDetailPage = () => {
     if (isError || !activity) {
         return (
             <Container my={60}>
-                <Stack align="flex-start" gap="xs">
-                    <Text c="red">{t("Error loading activity.")}</Text>
+                <Stack align="center" gap="md">
+                    <Text c="red" fw={500}>{t("Error loading activity.")}</Text>
+                    <Text size="sm" c="dimmed">{t("The server may be temporarily unavailable. Please try again.")}</Text>
+                    <Group>
+                        <Button variant="light" onClick={handleBack} leftSection={<IconArrowLeft size={16} />}>
+                            {t("Go back")}
+                        </Button>
+                        <Button variant="filled" onClick={() => refetch()}>
+                            {t("Retry")}
+                        </Button>
+                    </Group>
                     <SupportContactButton
                         buttonText={t("Contact support")}
                         pageLabel="Activity detail"
