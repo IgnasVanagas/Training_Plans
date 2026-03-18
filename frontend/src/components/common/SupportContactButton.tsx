@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Alert,
   Button,
+  FileInput,
   Group,
   Modal,
   Stack,
@@ -13,7 +14,7 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation } from "@tanstack/react-query";
-import { IconLifebuoy, IconSend } from "@tabler/icons-react";
+import { IconLifebuoy, IconPhoto, IconSend } from "@tabler/icons-react";
 
 import { sendSupportRequest } from "../../api/communications";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -57,6 +58,7 @@ const SupportContactButton = ({
   const [formEmail, setFormEmail] = useState(email || "");
   const [formMessage, setFormMessage] = useState("");
   const [botTrap, setBotTrap] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
   const [openedAt, setOpenedAt] = useState<number>(Date.now());
 
   useEffect(() => {
@@ -78,16 +80,19 @@ const SupportContactButton = ({
         throw new Error(t("Please describe your issue or question."));
       }
 
-      return sendSupportRequest({
-        name: formName.trim() || undefined,
-        email: trimmedEmail,
-        subject: subject || (pageLabel ? `${pageLabel} support request` : undefined),
-        message: trimmedMessage,
-        page_url: typeof window !== "undefined" ? window.location.href : undefined,
-        error_message: errorMessage || undefined,
-        bot_trap: botTrap || undefined,
-        client_elapsed_ms: Math.max(0, Date.now() - openedAt),
-      });
+      return sendSupportRequest(
+        {
+          name: formName.trim() || undefined,
+          email: trimmedEmail,
+          subject: subject || (pageLabel ? `${pageLabel} support request` : undefined),
+          message: trimmedMessage,
+          page_url: typeof window !== "undefined" ? window.location.href : undefined,
+          error_message: errorMessage || undefined,
+          bot_trap: botTrap || undefined,
+          client_elapsed_ms: Math.max(0, Date.now() - openedAt),
+        },
+        photos,
+      );
     },
     onSuccess: (response) => {
       notifications.show({
@@ -97,6 +102,7 @@ const SupportContactButton = ({
       });
       setFormMessage("");
       setBotTrap("");
+      setPhotos([]);
       setOpened(false);
     },
     onError: (error) => {
@@ -174,8 +180,17 @@ const SupportContactButton = ({
             minRows={5}
             required
           />
-          <Group justify="space-between" align="center">
-            <Text size="xs" c="dimmed">ignas@wunderbit.lt</Text>
+          <FileInput
+            label={t("Attach photos")}
+            placeholder={t("Click to add photos")}
+            accept="image/*"
+            multiple
+            value={photos}
+            onChange={(files) => setPhotos(files)}
+            leftSection={<IconPhoto size={16} />}
+            clearable
+          />
+          <Group justify="flex-end" align="center">
             <Button
               onClick={() => supportMutation.mutate()}
               loading={supportMutation.isPending}

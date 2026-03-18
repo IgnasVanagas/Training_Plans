@@ -126,7 +126,29 @@ export const getCommunicationHistory = async (athleteId: number, limit: number =
   return response.data;
 };
 
-export const sendSupportRequest = async (payload: SupportRequestCreate) => {
+export const sendSupportRequest = async (
+  payload: SupportRequestCreate,
+  photos?: File[],
+) => {
+  if (photos && photos.length > 0) {
+    const formData = new FormData();
+    formData.append("name", payload.name || "");
+    formData.append("email", payload.email);
+    formData.append("subject", payload.subject || "");
+    formData.append("message", payload.message);
+    formData.append("page_url", payload.page_url || "");
+    formData.append("error_message", payload.error_message || "");
+    formData.append("bot_trap", payload.bot_trap || "");
+    formData.append("client_elapsed_ms", String(payload.client_elapsed_ms));
+    for (const photo of photos) {
+      formData.append("photos", photo);
+    }
+    const response = await client.post<SupportRequestResponse>(
+      "/communications/support",
+      formData,
+    );
+    return response.data;
+  }
   const response = await client.post<SupportRequestResponse>("/communications/support", payload);
   return response.data;
 };

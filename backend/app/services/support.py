@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import mimetypes
 import re
 import smtplib
 import ssl
@@ -73,6 +74,7 @@ async def send_support_email(
     *,
     client_host: str | None,
     user_agent: str | None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> None:
     try:
         await asyncio.to_thread(
@@ -80,6 +82,7 @@ async def send_support_email(
             payload,
             client_host=client_host,
             user_agent=user_agent,
+            attachments=attachments,
         )
     except SupportDeliveryError:
         raise
@@ -93,6 +96,7 @@ def _send_support_email_sync(
     *,
     client_host: str | None,
     user_agent: str | None,
+    attachments: list[tuple[str, bytes, str]] | None = None,
 ) -> None:
     smtp_host = os.getenv("SMTP_HOST")
     if not smtp_host:
@@ -128,6 +132,16 @@ def _send_support_email_sync(
             ]
         )
     )
+
+    if attachments:
+        for filename, data, content_type in attachments:
+            maintype, subtype = content_type.split("/", 1) if "/" in content_type else ("application", "octet-stream")
+            message.add_attachment(
+                data,
+                maintype=maintype,
+                subtype=subtype,
+                filename=filename,
+            )
 
     context = ssl.create_default_context()
     try:

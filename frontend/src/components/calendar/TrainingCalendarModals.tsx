@@ -1,8 +1,8 @@
 import { format } from 'date-fns';
-import { Activity, Award, Bandage, CalendarOff, CheckCircle, HeartPulse, Medal, Plane, Trophy } from 'lucide-react';
-import { Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, Stack, SegmentedControl, Text } from '@mantine/core';
+import { Activity, Award, Bandage, CalendarOff, CheckCircle, HeartPulse, Medal, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
+import { ActionIcon, Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, SegmentedControl, Text, TextInput, Textarea } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { WorkoutEditor } from '../builder/WorkoutEditor';
 import { WorkoutLibrary } from '../library/WorkoutLibrary';
 import { CalendarEvent, WorkoutRecurrenceRule } from './types';
@@ -172,6 +172,9 @@ export const DayDetailsModal = ({
   ensureAthleteSelectedForCreate,
   onQuickPlanningAction,
   planningActionPending,
+  onSeasonPlanItemUpdate,
+  seasonPlanUpdatePending,
+  calendarSeasonPlan,
   onOpenWorkoutBuilder,
   onCreateQuickWorkout,
   onLibrarySelect,
@@ -181,6 +184,8 @@ export const DayDetailsModal = ({
 }: any) => {
   const { t } = useI18n();
   const [createMode, setCreateMode] = useState<'quick' | 'library'>('quick');
+  const [editingMarker, setEditingMarker] = useState<{ type: string; index: number } | null>(null);
+  const [editDraft, setEditDraft] = useState<any>(null);
   const isRangeSelection = Boolean(
     selectedDateRange?.startDate &&
     selectedDateRange?.endDate &&
@@ -197,9 +202,11 @@ export const DayDetailsModal = ({
       const key = cursor.toISOString().slice(0, 10);
       const items = planningMarkersByDate.get(key) || [];
       for (const m of items) {
-        const id = `${m.type}-${m.label}-${key}`;
-        if (!seen.has(id)) {
-          seen.add(id);
+        const uniqueKey = m.type === 'goal_race'
+          ? `race-${m._raceIndex}`
+          : `constraint-${m._constraintIndex}`;
+        if (!seen.has(uniqueKey)) {
+          seen.add(uniqueKey);
           markers.push(m);
         }
       }
@@ -207,6 +214,47 @@ export const DayDetailsModal = ({
     }
     return markers;
   }, [planningMarkersByDate, selectedDateRange]);
+
+  const startEditing = useCallback((marker: any) => {
+    if (marker.type === 'goal_race') {
+      const race = calendarSeasonPlan?.goal_races?.[marker._raceIndex];
+      if (race) {
+        setEditDraft({ ...race });
+        setEditingMarker({ type: 'race', index: marker._raceIndex });
+      }
+    } else {
+      const constraint = calendarSeasonPlan?.constraints?.[marker._constraintIndex];
+      if (constraint) {
+        setEditDraft({ ...constraint });
+        setEditingMarker({ type: 'constraint', index: marker._constraintIndex });
+      }
+    }
+  }, [calendarSeasonPlan]);
+
+  const cancelEditing = useCallback(() => {
+    setEditingMarker(null);
+    setEditDraft(null);
+  }, []);
+
+  const saveEdit = useCallback(() => {
+    if (!editingMarker || !editDraft || !onSeasonPlanItemUpdate) return;
+    if (editingMarker.type === 'race') {
+      onSeasonPlanItemUpdate({ type: 'update_race', index: editingMarker.index, data: editDraft });
+    } else {
+      onSeasonPlanItemUpdate({ type: 'update_constraint', index: editingMarker.index, data: editDraft });
+    }
+    setEditingMarker(null);
+    setEditDraft(null);
+  }, [editingMarker, editDraft, onSeasonPlanItemUpdate]);
+
+  const deleteItem = useCallback((marker: any) => {
+    if (!onSeasonPlanItemUpdate) return;
+    if (marker.type === 'goal_race' && marker._raceIndex != null) {
+      onSeasonPlanItemUpdate({ type: 'delete_race', index: marker._raceIndex });
+    } else if (marker._constraintIndex != null) {
+      onSeasonPlanItemUpdate({ type: 'delete_constraint', index: marker._constraintIndex });
+    }
+  }, [onSeasonPlanItemUpdate]);
 
   const planningOptions = useMemo(() => {
     const items = [
@@ -241,12 +289,87 @@ export const DayDetailsModal = ({
         <Stack gap="xs">
           {dayMarkers.map((marker: any, idx: number) => {
             const isRace = marker.type === 'goal_race';
+            const markerIndex = isRace ? marker._raceIndex : marker._constraintIndex;
+            const isEditing = editingMarker && (
+              (isRace && editingMarker.type === 'race' && editingMarker.index === markerIndex) ||
+              (!isRace && editingMarker.type === 'constraint' && editingMarker.index === markerIndex)
+            );
             const IconComp = isRace
               ? (marker.priority === 'A' ? Trophy : marker.priority === 'B' ? Medal : Award)
               : (marker.kind === 'travel' ? Plane : marker.kind === 'sickness' ? HeartPulse : marker.kind === 'injury' ? Bandage : CalendarOff);
             const color = isRace
               ? (marker.priority === 'A' ? '#DC2626' : marker.priority === 'B' ? '#D97706' : '#2563EB')
               : (marker.kind === 'travel' ? '#0EA5E9' : marker.kind === 'sickness' ? '#DC2626' : marker.kind === 'injury' ? '#F97316' : '#7C3AED');
+
+            if (isEditing && editDraft) {
+              return (
+                <Paper key={`marker-edit-${idx}`} withBorder radius="md" p="sm" style={{ borderLeft: `3px solid ${color}` }}>
+                  <Stack gap="xs">
+                    <Group justify="space-between">
+                      <Group gap="xs">
+                        <IconComp size={18} color={color} />
+                        <Text fw={600} size="sm">{isRace ? (t('Edit race') || 'Edit race') : (t('Edit constraint') || 'Edit constraint')}</Text>
+                      </Group>
+                      <Group gap={4}>
+                        <ActionIcon size="sm" variant="light" color="green" onClick={saveEdit} loading={seasonPlanUpdatePending}>
+                          <CheckCircle size={14} />
+                        </ActionIcon>
+                        <ActionIcon size="sm" variant="subtle" onClick={cancelEditing}>
+                          <X size={14} />
+                        </ActionIcon>
+                      </Group>
+                    </Group>
+                    {isRace ? (
+                      <>
+                        <SimpleGrid cols={2}>
+                          <TextInput label={t('Race name') || 'Race name'} value={editDraft.name || ''} onChange={(e) => setEditDraft({ ...editDraft, name: e.currentTarget.value })} />
+                          <TextInput label={t('Race date') || 'Race date'} type="date" value={editDraft.date || ''} onChange={(e) => setEditDraft({ ...editDraft, date: e.currentTarget.value })} />
+                        </SimpleGrid>
+                        <SimpleGrid cols={3}>
+                          <Select label={t('Priority') || 'Priority'} data={['A', 'B', 'C']} value={editDraft.priority || 'C'} onChange={(v) => v && setEditDraft({ ...editDraft, priority: v })} />
+                          <Select label={t('Sport') || 'Sport'} data={[{ value: 'Cycling', label: t('Cycling') || 'Cycling' }, { value: 'Running', label: t('Running') || 'Running' }]} value={editDraft.sport_type || ''} onChange={(v) => setEditDraft({ ...editDraft, sport_type: v || '' })} clearable placeholder={t('Select sport') || 'Select sport'} />
+                          <TextInput label={t('Location') || 'Location'} value={editDraft.location || ''} onChange={(e) => setEditDraft({ ...editDraft, location: e.currentTarget.value })} />
+                        </SimpleGrid>
+                        <SimpleGrid cols={2}>
+                          <NumberInput label={t('Distance') || 'Distance'} value={editDraft.distance_km ?? ''} onChange={(v) => setEditDraft({ ...editDraft, distance_km: typeof v === 'number' ? v : null })} min={0} step={0.1} suffix=" km" />
+                          <TextInput label={t('Expected time') || 'Expected time'} placeholder="hh:mm:ss" value={editDraft.expected_time || ''} onChange={(e) => setEditDraft({ ...editDraft, expected_time: e.currentTarget.value })} />
+                        </SimpleGrid>
+                        <Textarea label={t('Details') || 'Details'} minRows={2} value={editDraft.notes || ''} onChange={(e) => setEditDraft({ ...editDraft, notes: e.currentTarget.value })} />
+                      </>
+                    ) : (
+                      <>
+                        <SimpleGrid cols={2}>
+                          <TextInput label={t('Label') || 'Label'} value={editDraft.name || ''} onChange={(e) => setEditDraft({ ...editDraft, name: e.currentTarget.value })} />
+                          <Select label={t('Type') || 'Type'} data={[
+                            { value: 'injury', label: t('Injury') || 'Injury' },
+                            { value: 'travel', label: t('Travel') || 'Travel' },
+                            { value: 'sickness', label: t('Sickness') || 'Sickness' },
+                            { value: 'unavailable', label: t('Unavailable') || 'Unavailable' },
+                          ]} value={editDraft.kind || 'travel'} onChange={(v) => v && setEditDraft({ ...editDraft, kind: v })} />
+                        </SimpleGrid>
+                        <SimpleGrid cols={2}>
+                          <TextInput label={t('Start') || 'Start'} type="date" value={editDraft.start_date || ''} onChange={(e) => setEditDraft({ ...editDraft, start_date: e.currentTarget.value })} />
+                          <TextInput label={t('End') || 'End'} type="date" value={editDraft.end_date || ''} onChange={(e) => setEditDraft({ ...editDraft, end_date: e.currentTarget.value })} />
+                        </SimpleGrid>
+                        <SimpleGrid cols={2}>
+                          <Select label={t('Severity') || 'Severity'} data={[
+                            { value: 'low', label: t('Low') || 'Low' },
+                            { value: 'moderate', label: t('Moderate') || 'Moderate' },
+                            { value: 'high', label: t('High') || 'High' },
+                          ]} value={editDraft.severity || 'moderate'} onChange={(v) => v && setEditDraft({ ...editDraft, severity: v })} />
+                          <Select label={t('Impact') || 'Impact'} data={[
+                            { value: 'reduce', label: t('Reduce load') || 'Reduce load' },
+                            { value: 'avoid_intensity', label: t('Avoid intensity') || 'Avoid intensity' },
+                            { value: 'rest', label: t('Rest only') || 'Rest only' },
+                          ]} value={editDraft.impact || 'reduce'} onChange={(v) => v && setEditDraft({ ...editDraft, impact: v })} />
+                        </SimpleGrid>
+                        <Textarea label={t('Notes') || 'Notes'} minRows={2} value={editDraft.notes || ''} onChange={(e) => setEditDraft({ ...editDraft, notes: e.currentTarget.value })} />
+                      </>
+                    )}
+                  </Stack>
+                </Paper>
+              );
+            }
 
             return (
               <Paper key={`marker-${idx}`} withBorder radius="md" p="sm" style={{ borderLeft: `3px solid ${color}` }}>
@@ -271,6 +394,16 @@ export const DayDetailsModal = ({
                     )}
                     {marker.notes && <Text size="xs" c="dimmed" mt={2}>{marker.notes}</Text>}
                   </Box>
+                  {canEditWorkouts && markerIndex != null && (
+                    <Group gap={4} style={{ flexShrink: 0 }}>
+                      <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => startEditing(marker)} title={t('Edit') || 'Edit'}>
+                        <Pencil size={14} />
+                      </ActionIcon>
+                      <ActionIcon size="sm" variant="subtle" color="red" onClick={() => deleteItem(marker)} loading={seasonPlanUpdatePending} title={t('Delete') || 'Delete'}>
+                        <Trash2 size={14} />
+                      </ActionIcon>
+                    </Group>
+                  )}
                 </Group>
               </Paper>
             );

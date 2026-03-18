@@ -58,8 +58,8 @@ type CalendarPlanningAction =
     | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string; severity: PlannerConstraint['severity']; impact: PlannerConstraint['impact'] };
 
 type CalendarPlanningMarker =
-    | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string; sport_type?: string | null; distance_km?: number | null; expected_time?: string | null; location?: string | null; notes?: string | null }
-    | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string; severity?: string; impact?: string; notes?: string | null; start_date?: string; end_date?: string };
+    | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string; sport_type?: string | null; distance_km?: number | null; expected_time?: string | null; location?: string | null; notes?: string | null; _raceIndex?: number; date?: string }
+    | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string; severity?: string; impact?: string; notes?: string | null; start_date?: string; end_date?: string; _constraintIndex?: number };
 
 type PendingPlanningMarker = {
     requestId: string;
@@ -740,6 +740,48 @@ export const TrainingCalendar = ({
         },
     });
 
+    const seasonPlanUpdateMutation = useMutation({
+        mutationFn: async (input: { type: 'update_race' | 'delete_race' | 'update_constraint' | 'delete_constraint'; index: number; data?: any }) => {
+            const targetAthleteId = calendarSeasonPlanAthleteId;
+            if (!targetAthleteId) throw new Error('No athlete selected');
+            const cached = queryClient.getQueryData<SeasonPlan | null>(['season-plan', targetAthleteId]);
+            const existing = cached ?? await getLatestSeasonPlan(targetAthleteId);
+            if (!existing) throw new Error('No season plan found');
+            const sportType = me?.profile?.main_sport || 'Cycling';
+            const plan = normalizePlan(existing, sportType);
+
+            if (input.type === 'delete_race') {
+                plan.goal_races = plan.goal_races.filter((_: any, i: number) => i !== input.index);
+            } else if (input.type === 'update_race' && input.data) {
+                plan.goal_races = plan.goal_races.map((r: any, i: number) => i === input.index ? { ...r, ...input.data } : r);
+            } else if (input.type === 'delete_constraint') {
+                plan.constraints = plan.constraints.filter((_: any, i: number) => i !== input.index);
+            } else if (input.type === 'update_constraint' && input.data) {
+                plan.constraints = plan.constraints.map((c: any, i: number) => i === input.index ? { ...c, ...input.data } : c);
+            }
+
+            return saveSeasonPlan(plan, targetAthleteId);
+        },
+        onSuccess: (data) => {
+            queryClient.setQueryData(['season-plan', calendarSeasonPlanAthleteId], data);
+            void queryClient.invalidateQueries({ queryKey: ['season-plan', calendarSeasonPlanAthleteId] });
+            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+            notifications.show({ color: 'green', title: t('Season plan updated') || 'Season plan updated', message: '' });
+        },
+        onError: (error: any) => {
+            notifications.show({
+                color: 'red',
+                title: t('Could not update season plan') || 'Could not update season plan',
+                message: error?.response?.data?.detail || error?.message || '',
+            });
+        },
+    });
+
+    const handleSeasonPlanItemUpdate = useCallback((action: { type: 'update_race' | 'delete_race' | 'update_constraint' | 'delete_constraint'; index: number; data?: any }) => {
+        seasonPlanUpdateMutation.mutate(action);
+    }, [seasonPlanUpdateMutation]);
+
     const onEventDrop = useCallback(async ({ event, start }: any) => {
         if (!canEditWorkouts) return;
         const dateStr = format(start, 'yyyy-MM-dd');
@@ -1091,7 +1133,7 @@ export const TrainingCalendar = ({
             }
         };
 
-        (calendarSeasonPlan?.goal_races || []).forEach((race) => {
+        (calendarSeasonPlan?.goal_races || []).forEach((race, raceIndex) => {
             addMarker(race.date, {
                 type: 'goal_race',
                 priority: race.priority,
@@ -1101,10 +1143,12 @@ export const TrainingCalendar = ({
                 expected_time: race.expected_time,
                 location: race.location,
                 notes: race.notes,
+                _raceIndex: raceIndex,
+                date: race.date,
             });
         });
 
-        (calendarSeasonPlan?.constraints || []).forEach((constraint) => {
+        (calendarSeasonPlan?.constraints || []).forEach((constraint, constraintIndex) => {
             addConstraintRange(constraint.start_date, constraint.end_date, {
                 type: 'constraint',
                 kind: constraint.kind,
@@ -1114,6 +1158,7 @@ export const TrainingCalendar = ({
                 notes: constraint.notes,
                 start_date: constraint.start_date,
                 end_date: constraint.end_date,
+                _constraintIndex: constraintIndex,
             });
         });
 
@@ -1670,6 +1715,9 @@ export const TrainingCalendar = ({
                 ensureAthleteSelectedForCreate={ensureAthleteSelectedForCreate}
                 onQuickPlanningAction={handleQuickPlanningAction}
                 planningActionPending={planningActionMutation.isPending}
+                onSeasonPlanItemUpdate={handleSeasonPlanItemUpdate}
+                seasonPlanUpdatePending={seasonPlanUpdateMutation.isPending}
+                calendarSeasonPlan={calendarSeasonPlan}
                 onOpenWorkoutBuilder={open}
                 onCreateQuickWorkout={handleCreateQuickWorkout}
                 onLibrarySelect={handleLibrarySelect}

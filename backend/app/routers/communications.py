@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date as dt_date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,15 +48,58 @@ router = APIRouter(prefix="/communications", tags=["communications"])
 
 @router.post("/support", response_model=SupportRequestResponse, status_code=status.HTTP_202_ACCEPTED)
 async def submit_support_request(
-    payload: SupportRequestCreate,
     request: Request,
+    payload: SupportRequestCreate | None = None,
+    name: str | None = Form(None),
+    email: str | None = Form(None),
+    subject: str | None = Form(None),
+    message: str | None = Form(None),
+    page_url: str | None = Form(None),
+    error_message: str | None = Form(None),
+    bot_trap: str | None = Form(None),
+    client_elapsed_ms: int | None = Form(None),
+    photos: list[UploadFile] = File(default=[]),
 ) -> SupportRequestResponse:
     client_host = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
 
+    # If sent as multipart form, build the payload from form fields
+    if payload is None:
+        if not email or not message:
+            raise HTTPException(status_code=422, detail="email and message are required")
+        payload = SupportRequestCreate(
+            name=name or None,
+            email=email,
+            subject=subject or None,
+            message=message,
+            page_url=page_url or None,
+            error_message=error_message or None,
+            bot_trap=bot_trap or None,
+            client_elapsed_ms=client_elapsed_ms or 0,
+        )
+
+    # Read photo data
+    photo_attachments: list[tuple[str, bytes, str]] = []
+    for photo in photos:
+        if photo.content_type and not photo.content_type.startswith("image/"):
+            continue
+        data = await photo.read()
+        if len(data) > 10 * 1024 * 1024:  # 10 MB limit per photo
+            raise HTTPException(status_code=413, detail="Photo too large (max 10 MB)")
+        photo_attachments.append((
+            photo.filename or "photo.jpg",
+            data,
+            photo.content_type or "image/jpeg",
+        ))
+
     try:
         validate_support_request(payload, client_host=client_host, user_agent=user_agent)
-        await send_support_email(payload, client_host=client_host, user_agent=user_agent)
+        await send_support_email(
+            payload,
+            client_host=client_host,
+            user_agent=user_agent,
+            attachments=photo_attachments or None,
+        )
     except SupportSubmissionBlocked as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except SupportDeliveryError as exc:
