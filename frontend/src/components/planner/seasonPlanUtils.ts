@@ -22,6 +22,10 @@ export const emptyRace = (): PlannerGoalRace => ({
   name: "",
   date: plusDays(todayKey(), 84),
   priority: "A",
+  sport_type: "",
+  distance_km: null,
+  expected_time: "",
+  location: "",
   notes: "",
   target_metrics: [emptyMetric()],
 });

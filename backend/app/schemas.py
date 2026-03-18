@@ -597,6 +597,10 @@ class PlannerGoalRace(BaseModel):
     name: str
     date: dt_date
     priority: Literal['A', 'B', 'C'] = 'C'
+    sport_type: Optional[str] = None
+    distance_km: Optional[float] = None
+    expected_time: Optional[str] = None
+    location: Optional[str] = None
     notes: Optional[str] = None
     target_metrics: List[PlannerTargetMetric] = Field(default_factory=list)
 

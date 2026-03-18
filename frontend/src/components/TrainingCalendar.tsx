@@ -58,8 +58,8 @@ type CalendarPlanningAction =
     | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string; severity: PlannerConstraint['severity']; impact: PlannerConstraint['impact'] };
 
 type CalendarPlanningMarker =
-    | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string }
-    | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string };
+    | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string; sport_type?: string | null; distance_km?: number | null; expected_time?: string | null; location?: string | null; notes?: string | null }
+    | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string; severity?: string; impact?: string; notes?: string | null; start_date?: string; end_date?: string };
 
 type PendingPlanningMarker = {
     requestId: string;
@@ -1096,6 +1096,11 @@ export const TrainingCalendar = ({
                 type: 'goal_race',
                 priority: race.priority,
                 label: race.name || `${race.priority} race`,
+                sport_type: race.sport_type,
+                distance_km: race.distance_km,
+                expected_time: race.expected_time,
+                location: race.location,
+                notes: race.notes,
             });
         });
 
@@ -1104,6 +1109,11 @@ export const TrainingCalendar = ({
                 type: 'constraint',
                 kind: constraint.kind,
                 label: constraint.name || constraint.kind,
+                severity: constraint.severity,
+                impact: constraint.impact,
+                notes: constraint.notes,
+                start_date: constraint.start_date,
+                end_date: constraint.end_date,
             });
         });
 
@@ -1410,21 +1420,21 @@ export const TrainingCalendar = ({
                             return (
                                 <Group
                                     key={`${dateKey}-${marker.label}-${index}`}
-                                    gap={2}
+                                    gap={3}
                                     wrap="nowrap"
                                     title={visual.title}
                                     style={{
                                         borderRadius: 999,
-                                        padding: '1px 5px',
+                                        padding: '2px 6px',
                                         background: isDark ? 'rgba(15, 23, 42, 0.78)' : 'rgba(255, 255, 255, 0.88)',
                                         border: `1px solid ${visual.color}55`,
                                         color: visual.color,
                                         width: 'fit-content',
                                     }}
                                 >
-                                    <Icon size={10} />
+                                    <Icon size={16} />
                                     {visual.shortLabel ? (
-                                        <Text size="8px" fw={800} c={visual.color} style={{ lineHeight: 1 }}>
+                                        <Text size="11px" fw={800} c={visual.color} style={{ lineHeight: 1 }}>
                                             {visual.shortLabel}
                                         </Text>
                                     ) : null}
@@ -1432,7 +1442,7 @@ export const TrainingCalendar = ({
                             );
                         })}
                         {markers.length > 3 && (
-                            <Text size="9px" fw={700} c={palette.textDim}>+{markers.length - 3}</Text>
+                            <Text size="11px" fw={700} c={palette.textDim}>+{markers.length - 3}</Text>
                         )}
                     </Group>
                 )}
@@ -1638,6 +1648,7 @@ export const TrainingCalendar = ({
                 selectedDayTitle={selectedDayTitle}
                 dayEvents={dayEvents}
                 selectedDateRange={selectedDateRange}
+                planningMarkersByDate={planningMarkersByDate}
                 isDark={isDark}
                 activityColors={activityColors}
                 palette={palette}

@@ -155,6 +155,7 @@ export const DayDetailsModal = ({
   selectedDayTitle,
   dayEvents,
   selectedDateRange,
+  planningMarkersByDate,
   isDark,
   athleteId,
   viewDate,
@@ -186,6 +187,27 @@ export const DayDetailsModal = ({
     selectedDateRange.startDate !== selectedDateRange.endDate,
   );
 
+  const dayMarkers = useMemo(() => {
+    if (!planningMarkersByDate || !selectedDateRange?.startDate) return [];
+    const markers: any[] = [];
+    const seen = new Set<string>();
+    let cursor = new Date(selectedDateRange.startDate + 'T00:00:00');
+    const end = new Date((selectedDateRange.endDate || selectedDateRange.startDate) + 'T00:00:00');
+    while (cursor <= end) {
+      const key = cursor.toISOString().slice(0, 10);
+      const items = planningMarkersByDate.get(key) || [];
+      for (const m of items) {
+        const id = `${m.type}-${m.label}-${key}`;
+        if (!seen.has(id)) {
+          seen.add(id);
+          markers.push(m);
+        }
+      }
+      cursor = new Date(cursor.getTime() + 86400000);
+    }
+    return markers;
+  }, [planningMarkersByDate, selectedDateRange]);
+
   const planningOptions = useMemo(() => {
     const items = [
       { label: t('Travel') || 'Travel', icon: Plane, action: { type: 'constraint', kind: 'travel', label: t('Travel') || 'Travel', severity: 'moderate', impact: 'reduce' } },
@@ -215,6 +237,46 @@ export const DayDetailsModal = ({
     styles={{ content: { fontFamily: '"Inter", sans-serif' } }}
   >
     <Stack>
+      {dayMarkers.length > 0 && (
+        <Stack gap="xs">
+          {dayMarkers.map((marker: any, idx: number) => {
+            const isRace = marker.type === 'goal_race';
+            const IconComp = isRace
+              ? (marker.priority === 'A' ? Trophy : marker.priority === 'B' ? Medal : Award)
+              : (marker.kind === 'travel' ? Plane : marker.kind === 'sickness' ? HeartPulse : marker.kind === 'injury' ? Bandage : CalendarOff);
+            const color = isRace
+              ? (marker.priority === 'A' ? '#DC2626' : marker.priority === 'B' ? '#D97706' : '#2563EB')
+              : (marker.kind === 'travel' ? '#0EA5E9' : marker.kind === 'sickness' ? '#DC2626' : marker.kind === 'injury' ? '#F97316' : '#7C3AED');
+
+            return (
+              <Paper key={`marker-${idx}`} withBorder radius="md" p="sm" style={{ borderLeft: `3px solid ${color}` }}>
+                <Group gap="sm" wrap="nowrap" align="flex-start">
+                  <IconComp size={20} color={color} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <Box style={{ flex: 1, minWidth: 0 }}>
+                    <Group gap="xs" wrap="nowrap">
+                      <Text fw={600} size="sm">{marker.label}</Text>
+                      {isRace && <Text size="xs" c={color} fw={700}>{t('Priority') || 'Priority'} {marker.priority}</Text>}
+                      {!isRace && marker.severity && <Text size="xs" c="dimmed" tt="capitalize">{marker.severity} · {marker.impact}</Text>}
+                    </Group>
+                    {isRace && (
+                      <Group gap="md" mt={4}>
+                        {marker.sport_type && <Text size="xs" c="dimmed">{marker.sport_type}</Text>}
+                        {marker.distance_km != null && <Text size="xs" c="dimmed">{marker.distance_km} km</Text>}
+                        {marker.expected_time && <Text size="xs" c="dimmed">{marker.expected_time}</Text>}
+                        {marker.location && <Text size="xs" c="dimmed">{marker.location}</Text>}
+                      </Group>
+                    )}
+                    {!isRace && marker.start_date && marker.end_date && marker.start_date !== marker.end_date && (
+                      <Text size="xs" c="dimmed" mt={2}>{marker.start_date} — {marker.end_date}</Text>
+                    )}
+                    {marker.notes && <Text size="xs" c="dimmed" mt={2}>{marker.notes}</Text>}
+                  </Box>
+                </Group>
+              </Paper>
+            );
+          })}
+        </Stack>
+      )}
       {(() => {
         const selectedDate = selectedEvent?.date ? new Date(selectedEvent.date) : null;
         const normalizedSelected = selectedDate ? new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate()) : null;

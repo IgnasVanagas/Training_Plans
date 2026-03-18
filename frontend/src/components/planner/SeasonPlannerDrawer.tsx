@@ -237,12 +237,20 @@ export default function SeasonPlannerDrawer({ opened, onClose, me, athletes, sel
                         <IconTrash size={16} />
                       </ActionIcon>
                     </Group>
-                    <SimpleGrid cols={{ base: 1, sm: 3 }}>
-                      <TextInput label={t("Race name") || "Race name"} value={race.name} onChange={(event) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, name: event.currentTarget.value } : row) }))} />
-                      <TextInput label={t("Race date") || "Race date"} type="date" value={race.date} onChange={(event) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, date: event.currentTarget.value } : row) }))} />
-                      <Select label={t("Priority") || "Priority"} data={["A", "B", "C"]} value={race.priority} onChange={(value) => value && setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, priority: value as "A" | "B" | "C" } : row) }))} />
+                    <SimpleGrid cols={{ base: 1, sm: 2 }}>
+                      <Select label={t("Sport") || "Sport"} data={sportOptions} value={race.sport_type || ""} onChange={(value) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, sport_type: value || "" } : row) }))} placeholder={t("Select sport") || "Select sport"} />
+                      <TextInput label={t("Race name") || "Race name"} value={race.name} onChange={(event) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, name: event.currentTarget.value } : row) }))} required />
                     </SimpleGrid>
-                    <Textarea label={t("Race notes") || "Race notes"} minRows={2} value={race.notes || ""} onChange={(event) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, notes: event.currentTarget.value } : row) }))} />
+                    <SimpleGrid cols={{ base: 1, sm: 3 }}>
+                      <TextInput label={t("Race date") || "Race date"} type="date" value={race.date} onChange={(event) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, date: event.currentTarget.value } : row) }))} required />
+                      <NumberInput label={t("Distance") || "Distance"} value={race.distance_km ?? ""} onChange={(value) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, distance_km: typeof value === "number" ? value : null } : row) }))} min={0} step={0.1} suffix=" km" />
+                      <TextInput label={t("Expected time") || "Expected time"} placeholder="hh:mm:ss" value={race.expected_time || ""} onChange={(event) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, expected_time: event.currentTarget.value } : row) }))} />
+                    </SimpleGrid>
+                    <SimpleGrid cols={{ base: 1, sm: 3 }}>
+                      <Select label={t("Priority") || "Priority"} data={["A", "B", "C"]} value={race.priority} onChange={(value) => value && setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, priority: value as "A" | "B" | "C" } : row) }))} />
+                      <TextInput label={t("Location") || "Location"} value={race.location || ""} onChange={(event) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, location: event.currentTarget.value } : row) }))} />
+                    </SimpleGrid>
+                    <Textarea label={t("Details") || "Details"} minRows={2} value={race.notes || ""} onChange={(event) => setPlan((current) => ({ ...current, goal_races: current.goal_races.map((row, index) => index === raceIndex ? { ...row, notes: event.currentTarget.value } : row) }))} />
 
                     <Divider label={t("Race target metrics") || "Race target metrics"} labelPosition="center" />
                     {race.target_metrics.map((metric, metricIndex) => (

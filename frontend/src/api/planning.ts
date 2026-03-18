@@ -10,6 +10,10 @@ export type PlannerGoalRace = {
   name: string;
   date: string;
   priority: "A" | "B" | "C";
+  sport_type?: string | null;
+  distance_km?: number | null;
+  expected_time?: string | null;
+  location?: string | null;
   notes?: string | null;
   target_metrics: PlannerTargetMetric[];
 };
