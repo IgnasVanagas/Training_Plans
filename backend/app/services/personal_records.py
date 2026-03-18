@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import defer
 
 from ..models import Activity
 
@@ -189,16 +190,24 @@ def _ffill(vals: list[float | None]) -> list[float]:
 async def get_personal_records(
     db: AsyncSession, athlete_id: int, sport: str
 ) -> dict:
-    stmt = select(Activity).where(
-        and_(Activity.athlete_id == athlete_id, Activity.sport == sport)
+    # Only extract the JSONB sub-keys needed (best_efforts, power_curve) —
+    # avoids loading the multi-MB streams.data array into Python memory.
+    stmt = (
+        select(
+            Activity.id,
+            Activity.created_at,
+            Activity.streams['best_efforts'].label('best_efforts'),
+            Activity.streams['power_curve'].label('power_curve'),
+        )
+        .where(and_(Activity.athlete_id == athlete_id, Activity.sport == sport))
     )
     result = await db.execute(stmt)
-    activities = result.scalars().all()
+    rows = result.all()
 
     if sport == "cycling":
-        return {"sport": "cycling", "power": _agg_cycling_prs(activities)}
+        return {"sport": "cycling", "power": _agg_cycling_prs_rows(rows)}
     elif sport == "running":
-        return {"sport": "running", "best_efforts": _agg_running_prs(activities)}
+        return {"sport": "running", "best_efforts": _agg_running_prs_rows(rows)}
     return {"sport": sport}
 
 
@@ -227,6 +236,35 @@ def _agg_cycling_prs(activities: list) -> dict:
     return bests
 
 
+def _pr_entry_row(value, activity_id: int, created_at) -> dict:
+    return {
+        "value": value,
+        "activity_id": activity_id,
+        "date": created_at.isoformat() if created_at else None,
+    }
+
+
+def _agg_cycling_prs_rows(rows: list) -> dict:
+    """Lightweight version that works with (id, created_at, best_efforts, power_curve) rows."""
+    all_vals: dict = {}
+    for activity_id, created_at, best_efforts, power_curve in rows:
+        if isinstance(best_efforts, list):
+            for e in best_efforts:
+                w = e.get("window") if isinstance(e, dict) else None
+                v = e.get("power", 0) if isinstance(e, dict) else 0
+                if w and v and v > 0:
+                    all_vals.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at))
+        elif isinstance(power_curve, dict):
+            for w, v in power_curve.items():
+                if v and v > 0:
+                    all_vals.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at))
+    bests: dict = {}
+    for w, entries in all_vals.items():
+        entries.sort(key=lambda x: x["value"], reverse=True)
+        bests[w] = entries[:3]
+    return bests
+
+
 def _agg_running_prs(activities: list) -> dict:
     """``{distance: [{value, activity_id, date}, ...]}`` -- top 3 times per distance."""
     all_vals: dict = {}
@@ -240,6 +278,26 @@ def _agg_running_prs(activities: list) -> dict:
             if d and v and v > 0:
                 all_vals.setdefault(d, []).append(_pr_entry(v, act))
     # keep top 3 per distance (lowest time)
+    bests: dict = {}
+    for d, entries in all_vals.items():
+        entries.sort(key=lambda x: x["value"])
+        bests[d] = entries[:3]
+    return bests
+
+
+def _agg_running_prs_rows(rows: list) -> dict:
+    """Lightweight version that works with (id, created_at, best_efforts, power_curve) rows."""
+    all_vals: dict = {}
+    for activity_id, created_at, best_efforts, _power_curve in rows:
+        if not isinstance(best_efforts, list):
+            continue
+        for e in best_efforts:
+            if not isinstance(e, dict):
+                continue
+            d = e.get("distance")
+            v = e.get("time_seconds", 0)
+            if d and v and v > 0:
+                all_vals.setdefault(d, []).append(_pr_entry_row(v, activity_id, created_at))
     bests: dict = {}
     for d, entries in all_vals.items():
         entries.sort(key=lambda x: x["value"])

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
+from sqlalchemy.orm import defer
 from ..database import get_db
 from ..models import User, Activity, OrganizationMember, RoleEnum, Profile, PlannedWorkout, RHRDaily
 from ..integrations.crypto import decrypt_token, encrypt_token
@@ -1292,6 +1293,11 @@ def _estimate_load_from_activity_summary(
 def _cached_activity_load_from_meta(activity: Activity) -> tuple[float, float] | None:
     payload = _as_stream_payload(activity.streams)
     meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
+    return _load_from_meta_dict(meta)
+
+
+def _load_from_meta_dict(meta: dict) -> tuple[float, float] | None:
+    """Extract cached aerobic/anaerobic load from a _meta dict (no full streams needed)."""
     if not isinstance(meta, dict):
         return None
 
@@ -1598,9 +1604,7 @@ async def get_zone_summary(
         Activity.athlete_id.in_(target_user_ids),
         Activity.created_at >= start_dt,
         Activity.created_at <= end_dt
-    )
-    activities_res = await db.execute(activities_stmt)
-    activities = activities_res.scalars().all()
+    ).execution_options(yield_per=10)
 
     summaries: dict[int, dict] = {}
     for user_id in target_user_ids:
@@ -1613,7 +1617,8 @@ async def get_zone_summary(
             "monthly_activity_zones": []
         }
 
-    for activity in activities:
+    activities_stream = await db.stream(activities_stmt)
+    async for activity in activities_stream.scalars():
         if _is_activity_deleted(activity):
             continue
         activity_date = activity.created_at.date()
@@ -1981,22 +1986,52 @@ async def get_training_status(
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(ref_date, datetime.max.time())
 
-    activities_stmt = select(Activity).where(
+    # Pass 1: load activities WITHOUT full streams – only extract _meta for cached loads
+    activities_stmt = select(
+        Activity,
+        Activity.streams['_meta'].label('streams_meta'),
+    ).options(defer(Activity.streams)).where(
         Activity.athlete_id == target_athlete_id,
         Activity.created_at >= start_dt,
         Activity.created_at <= end_dt
     )
     activities_res = await db.execute(activities_stmt)
-    activities = [activity for activity in activities_res.scalars().all() if not _is_activity_deleted(activity)]
+    rows = activities_res.all()
 
     daily_aerobic: dict[date, float] = defaultdict(float)
     daily_anaerobic: dict[date, float] = defaultdict(float)
+    needs_full_streams: list[int] = []
 
-    for activity in activities:
-        aerobic, anaerobic = _activity_training_load(activity, ftp, max_hr, profile)
+    for activity, streams_meta in rows:
+        meta = streams_meta if isinstance(streams_meta, dict) else {}
+        if meta.get("deleted"):
+            continue
+        sport = _normalize_sport_name(activity.sport)
+        cached = _load_from_meta_dict(meta)
+        if cached is not None:
+            aerobic, anaerobic = cached
+        else:
+            estimated = _estimate_load_from_activity_summary(
+                activity, sport=sport, ftp=ftp, max_hr=max_hr, profile=profile,
+            )
+            if estimated is not None:
+                aerobic, anaerobic = estimated
+            else:
+                needs_full_streams.append(activity.id)
+                continue
         activity_day = activity.created_at.date()
         daily_aerobic[activity_day] += aerobic
         daily_anaerobic[activity_day] += anaerobic
+
+    # Pass 2: for the rare activities that need full streams (no cached load + no summary fields)
+    if needs_full_streams:
+        full_stmt = select(Activity).where(Activity.id.in_(needs_full_streams))
+        full_res = await db.execute(full_stmt)
+        for activity in full_res.scalars().all():
+            aerobic, anaerobic = _activity_training_load(activity, ftp, max_hr, profile)
+            activity_day = activity.created_at.date()
+            daily_aerobic[activity_day] += aerobic
+            daily_anaerobic[activity_day] += anaerobic
 
     acute_start = ref_date - timedelta(days=6)
     chronic_start = ref_date - timedelta(days=41)
@@ -2051,7 +2086,10 @@ async def get_activities(
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
 
-    query = select(Activity)
+    query = select(
+        Activity,
+        Activity.streams['_meta'].label('streams_meta'),
+    ).options(defer(Activity.streams))
 
     if start_date:
         try:
@@ -2108,17 +2146,19 @@ async def get_activities(
 
     order_expr = Activity.created_at.desc() if sort_by == "created_at" else Activity.id.desc()
     result = await db.execute(query.order_by(order_expr).limit(limit).offset(offset))
-    activities = result.scalars().all()
+    rows = result.all()
 
     profile_map: dict[int, Profile] = {}
     if include_load_metrics:
-        athlete_ids = list({activity.athlete_id for activity in activities})
+        athlete_ids = list({row[0].athlete_id for row in rows})
         if athlete_ids:
             profiles_res = await db.execute(select(Profile).where(Profile.user_id.in_(athlete_ids)))
             profile_map = {profile.user_id: profile for profile in profiles_res.scalars().all()}
 
     out: list[ActivityOut] = []
-    for activity in activities:
+    for activity, streams_meta in rows:
+        meta = streams_meta if isinstance(streams_meta, dict) else {}
+        is_deleted = bool(meta.get("deleted"))
         aerobic_load = None
         anaerobic_load = None
         total_load_impact = None
@@ -2126,24 +2166,48 @@ async def get_activities(
             profile = profile_map.get(activity.athlete_id)
             ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
             max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
-            aerobic_load, anaerobic_load = _activity_list_load(activity, ftp, max_hr, profile)
+            # Try cached load from _meta, then estimate from summary fields
+            cached = _load_from_meta_dict(meta)
+            if cached is not None:
+                aerobic_load, anaerobic_load = cached
+            else:
+                estimated = _estimate_load_from_activity_summary(
+                    activity, sport=_normalize_sport_name(activity.sport),
+                    ftp=ftp, max_hr=max_hr, profile=profile,
+                )
+                if estimated is not None:
+                    aerobic_load, anaerobic_load = estimated
+                else:
+                    aerobic_load, anaerobic_load = 0.0, 0.0
             total_load_impact = round((aerobic_load or 0) + (anaerobic_load or 0), 1)
 
-        payload = _as_stream_payload(activity.streams)
-        
-        # Prefer new columns, fallback to streams (legacy)
+        # Prefer new columns, fallback to streams._meta (legacy)
         rpe = activity.rpe
         notes = activity.notes
         lactate_mmol_l = None
-        if rpe is None or notes is None or lactate_mmol_l is None:
-            legacy_rpe, legacy_notes, legacy_lactate = _activity_feedback_from_payload(payload)
-            if rpe is None:
-                rpe = legacy_rpe
-            if notes is None:
-                notes = legacy_notes
-            if lactate_mmol_l is None:
-                lactate_mmol_l = legacy_lactate
-            
+        if rpe is None:
+            rpe_raw = meta.get("rpe")
+            if rpe_raw is not None:
+                try:
+                    parsed = int(rpe_raw)
+                    if 1 <= parsed <= 10:
+                        rpe = parsed
+                except (TypeError, ValueError):
+                    pass
+        if notes is None:
+            notes_raw = meta.get("notes")
+            if isinstance(notes_raw, str) and notes_raw.strip():
+                notes = notes_raw.strip()
+        if lactate_mmol_l is None:
+            lactate_raw = meta.get("lactate_mmol_l")
+            if lactate_raw is not None:
+                try:
+                    parsed = float(lactate_raw)
+                    if 0.0 <= parsed <= 40.0:
+                        lactate_mmol_l = parsed
+                except (TypeError, ValueError):
+                    pass
+
         out.append(
             ActivityOut(
                 id=activity.id,
@@ -2157,7 +2221,7 @@ async def get_activities(
                 avg_speed=activity.avg_speed,
                 average_hr=activity.average_hr,
                 average_watts=activity.average_watts,
-                is_deleted=_is_activity_deleted(activity),
+                is_deleted=is_deleted,
                 aerobic_load=aerobic_load,
                 anaerobic_load=anaerobic_load,
                 total_load_impact=total_load_impact,

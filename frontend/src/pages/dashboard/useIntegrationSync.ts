@@ -98,7 +98,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
           // Live-refresh key dashboards while sync is active so newly imported
           // activities appear without manual page reload.
           const now = Date.now();
-          if (now - lastLiveRefreshAtRef.current >= 8000) {
+          if (now - lastLiveRefreshAtRef.current >= 20000) {
             lastLiveRefreshAtRef.current = now;
             queryClient.invalidateQueries({ queryKey: ["activities"] });
             queryClient.invalidateQueries({ queryKey: ["calendar"] });
@@ -138,7 +138,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
     void pollStatus();
     const timer = window.setInterval(() => {
       void pollStatus();
-    }, 1500);
+    }, 4000);
 
     return () => {
       isActive = false;
@@ -200,8 +200,8 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
       }
     };
 
-    // Poll faster (10s) to catch short webhook syncs sooner
-    const timer = window.setInterval(checkWebhookSync, 10_000);
+    // Poll at 30s interval to detect webhook syncs without overloading backend
+    const timer = window.setInterval(checkWebhookSync, 30_000);
     // Run immediately on mount to seed lastKnownSyncAtRef
     void checkWebhookSync();
 
