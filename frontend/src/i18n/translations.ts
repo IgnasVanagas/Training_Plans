@@ -548,6 +548,21 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Peak 20min Power": "Piko 20 min. galia"
     ,"Best 20min Pace Proxy": "Geriausio 20 min. tempo aproksimacija"
     ,"You are offline. Last synced data is shown; new actions will continue when connection returns.": "Esate neprisijungę. Rodomi paskutiniai sinchronizuoti duomenys; nauji veiksmai bus tęsiami, kai ryšys sugrįš."
+    ,"Open detailed view": "Atidaryti detalų vaizdą"
+    ,"Compare workouts, weeks, or months side by side.": "Palyginkite treniruotes, savaites ar mėnesius šalia viena kitos."
+    ,"Power Curve Comparison": "Galios kreivės palyginimas"
+    ,"Zone Distribution": "Zonų pasiskirstymas"
+    ,"Weekday Distribution": "Savaitės dienų pasiskirstymas"
+    ,"Split Comparison": "Atkarpų palyginimas"
+    ,"splits": "atkarpos"
+    ,"Key Sessions": "Pagrindinės treniruotės"
+    ,"Sport Mix": "Sporto šakų derinys"
+    ,"Open activity details": "Atidaryti veiklos detales"
+    ,"Aerobic Load": "Aerobinis krūvis"
+    ,"Anaerobic Load": "Anaerobinis krūvis"
+    ,"vs": "prieš"
+    ,"Dist": "Atstumas"
+    ,"HR": "ŠSD"
   }
 };
 

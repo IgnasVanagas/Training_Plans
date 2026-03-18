@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,7 +23,9 @@ router = APIRouter(
 
 def _plain(value):
     if hasattr(value, "model_dump"):
-        return value.model_dump()
+        return _plain(value.model_dump())
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
     if isinstance(value, list):
         return [_plain(item) for item in value]
     if isinstance(value, dict):
@@ -129,7 +131,7 @@ async def save_season_plan(
     plan.goal_races = _plain(payload.goal_races)
     plan.constraints = _plain(payload.constraints)
     plan.periodization = _plain(payload.periodization)
-    plan.generated_summary = preview
+    plan.generated_summary = _plain(preview)
 
     db.add(plan)
     await db.commit()
@@ -222,7 +224,7 @@ async def apply_season_plan(
         db.add(planned_workout)
         touched_dates.add(workout_date)
 
-    plan.generated_summary = preview
+    plan.generated_summary = _plain(preview)
     db.add(plan)
     await db.commit()
     await db.refresh(plan)

@@ -3,6 +3,7 @@ import {
   Alert,
   Badge,
   Box,
+  Button,
   Divider,
   Group,
   Paper,
@@ -20,7 +21,8 @@ import {
 } from '@mantine/core';
 import { DatePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
-import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconInfoCircle } from '@tabler/icons-react';
+import { useNavigate } from 'react-router-dom';
+import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
 import api from '../api/client';
 import ZoneBars from './coachComparison/ZoneBars';
 import {
@@ -822,6 +824,7 @@ const ActivityCalendarPicker = ({
 export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: AthleteLike[]; me: AthleteLike; isAthlete?: boolean }) => {
   const { t } = useI18n();
   const isDark = useComputedColorScheme('light') === 'dark';
+  const navigate = useNavigate();
   const [mode, setMode] = useState<AnalysisMode>('workouts');
   const [leftWorkoutId, setLeftWorkoutId] = useState<string | null>(null);
   const [rightWorkoutId, setRightWorkoutId] = useState<string | null>(null);
@@ -1258,11 +1261,21 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
             )}
 
             <Divider />
-            <Text size="xs" c="dimmed">
-              {isAthlete
-                ? (t('Compare your own workouts or training periods to see how your fitness is evolving.') || 'Compare your own workouts or training periods to see how your fitness is evolving.')
-                : (t('Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.') || 'Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.')}
-            </Text>
+            <Group justify="space-between">
+              <Text size="xs" c="dimmed">
+                {isAthlete
+                  ? (t('Compare your own workouts or training periods to see how your fitness is evolving.') || 'Compare your own workouts or training periods to see how your fitness is evolving.')
+                  : (t('Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.') || 'Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.')}
+              </Text>
+              <Button
+                variant="light"
+                size="xs"
+                rightSection={<IconExternalLink size={14} />}
+                onClick={() => navigate('/dashboard/compare', { state: { mode, leftId: leftWorkoutId, rightId: rightWorkoutId } })}
+              >
+                {t('Open detailed view') || 'Open detailed view'}
+              </Button>
+            </Group>
           </Stack>
         )}
       </Stack>
