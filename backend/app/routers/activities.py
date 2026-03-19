@@ -7,7 +7,7 @@ from ..models import User, Activity, OrganizationMember, RoleEnum, Profile, Plan
 from ..integrations.crypto import decrypt_token, encrypt_token
 from ..integrations.registry import get_connector
 from ..integrations.service import get_connection
-from ..schemas import ActivityOut, ActivityDetail, ActivityUpdate
+from ..schemas import ActivityOut, ActivityDetail, ActivityUpdate, ActivityManualCreate
 from ..auth import get_current_user
 from ..parsing import parse_activity_file
 from ..services.compliance import match_and_score
@@ -1720,6 +1720,93 @@ async def reparse_activity(
 
     await db.commit()
     return {"status": "ok", "activity_id": activity_id}
+
+
+@router.post("/manual", status_code=status.HTTP_201_CREATED, response_model=ActivityDetail)
+async def create_manual_activity(
+    payload: ActivityManualCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Log an activity manually without uploading a file."""
+    # Convert distance from km to meters for storage
+    distance_m = payload.distance * 1000.0 if payload.distance else None
+    avg_speed = (distance_m / payload.duration) if (distance_m and payload.duration > 0) else None
+
+    activity_date = datetime(
+        payload.date.year, payload.date.month, payload.date.day,
+        12, 0, 0,  # noon as default time
+    )
+
+    new_activity = Activity(
+        athlete_id=current_user.id,
+        filename="Manual Entry",
+        file_path="manual",
+        file_type="manual",
+        sport=payload.sport,
+        created_at=activity_date,
+        distance=distance_m,
+        duration=payload.duration,
+        avg_speed=avg_speed,
+        average_hr=payload.average_hr,
+        average_watts=payload.average_watts,
+        rpe=payload.rpe,
+        notes=payload.notes,
+        streams={
+            "data": [],
+            "power_curve": None,
+            "hr_zones": None,
+            "pace_curve": None,
+            "laps": None,
+            "splits_metric": None,
+            "_meta": {
+                "deleted": False,
+                "manual": True,
+                "rpe": payload.rpe,
+                "notes": payload.notes,
+            },
+            "stats": {
+                "max_hr": None,
+                "max_speed": None,
+                "max_watts": None,
+                "max_cadence": None,
+                "avg_cadence": None,
+                "total_elevation_gain": None,
+                "total_calories": None,
+            },
+        },
+    )
+
+    db.add(new_activity)
+    await db.commit()
+    await db.refresh(new_activity)
+
+    await match_and_score(db, current_user.id, new_activity.created_at.date())
+
+    profile = await db.scalar(select(Profile).where(Profile.user_id == current_user.id))
+    ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+    max_hr_val = _safe_number(getattr(profile, "max_hr", None), default=190.0)
+    aerobic_load, anaerobic_load = _activity_training_load(new_activity, ftp, max_hr_val, profile)
+
+    return ActivityDetail(
+        id=new_activity.id,
+        athlete_id=new_activity.athlete_id,
+        filename=new_activity.filename,
+        created_at=new_activity.created_at,
+        file_type=new_activity.file_type,
+        sport=new_activity.sport,
+        distance=new_activity.distance,
+        duration=new_activity.duration,
+        avg_speed=new_activity.avg_speed,
+        average_hr=new_activity.average_hr,
+        average_watts=new_activity.average_watts,
+        aerobic_load=aerobic_load,
+        anaerobic_load=anaerobic_load,
+        total_load_impact=round(aerobic_load + anaerobic_load, 1),
+        rpe=payload.rpe,
+        notes=payload.notes,
+    )
+
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED, response_model=ActivityDetail)
 async def upload_activity(

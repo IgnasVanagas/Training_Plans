@@ -385,3 +385,18 @@ class OrganizationCoachMessage(Base):
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     body = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class DayNote(Base):
+    __tablename__ = "day_notes"
+    __table_args__ = (
+        UniqueConstraint("athlete_id", "date", "author_id", name="uq_day_note_athlete_date_author"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    athlete_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

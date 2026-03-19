@@ -387,6 +387,18 @@ class ActivityOut(ActivityBase):
     class Config:
         from_attributes = True
 
+
+class ActivityManualCreate(BaseModel):
+    sport: str = Field(max_length=50)
+    date: dt_date
+    duration: float = Field(gt=0, description="Duration in seconds")
+    distance: Optional[float] = Field(default=None, ge=0, description="Distance in km")
+    average_hr: Optional[float] = Field(default=None, ge=20, le=250)
+    average_watts: Optional[float] = Field(default=None, ge=0, le=3000)
+    rpe: Optional[int] = Field(default=None, ge=1, le=10)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
 class ActivityDetail(ActivityOut):
     streams: Optional[Any] = None
     power_curve: Optional[Any] = None
@@ -852,3 +864,29 @@ class OrganizationCoachChatMessageOut(BaseModel):
     sender_name: Optional[str] = None
     body: str
     created_at: datetime
+
+
+# --- Day Notes ---
+
+class DayNoteOut(BaseModel):
+    id: int
+    athlete_id: int
+    author_id: int
+    author_name: Optional[str] = None
+    author_role: Optional[str] = None
+    date: dt_date
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DayNoteUpsert(BaseModel):
+    content: str = Field(min_length=1, max_length=5000)
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, value: str) -> str:
+        return value.strip()

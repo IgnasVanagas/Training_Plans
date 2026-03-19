@@ -164,6 +164,8 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Select sports": "Pasirinkite sporto šakas",
     "Running": "Bėgimas",
     "Cycling": "Dviračiai",
+    "Triathlon": "Triatlonas",
+    "Swimming": "Plaukimas",
     "Select main sport": "Pasirinkite pagrindinį sportą",
     "Determines which metrics are shown on the dashboard.": "Nusako, kurie rodikliai rodomi skydelyje.",
     "HRV (ms)": "ŠRV (ms)",
@@ -255,6 +257,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Goal races": "Tikslinės varžybos",
     "A races drive peak/taper logic, B races get mini peaks, C races stay supportive.": "A varžybos formuoja piką ir taper logiką, B varžyboms taikomi mažesni pikai, o C varžybos išlieka palaikančios.",
     "Add race": "Pridėti varžybas",
+    "Race details": "Varžybų informacija",
     "Race": "Varžybos",
     "Race name": "Varžybų pavadinimas",
     "Race date": "Varžybų data",
@@ -270,6 +273,10 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Edit constraint": "Redaguoti apribojimą",
     "Edit": "Redaguoti",
     "Delete": "Ištrinti",
+    "Save": "Išsaugoti",
+    "Day notes": "Dienos pastabos",
+    "Add a note for this day...": "Pridėti pastabą šiai dienai...",
+    "Add note": "Pridėti pastabą",
     "Season plan updated": "Sezono planas atnaujintas",
     "Could not update season plan": "Nepavyko atnaujinti sezono plano",
     "Availability and constraints": "Prieinamumas ir apribojimai",
@@ -575,6 +582,38 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"vs": "prieš"
     ,"Dist": "Atstumas"
     ,"HR": "ŠSD"
+    ,"Upload file": "Įkelti failą"
+    ,"Log manually": "Registruoti rankiniu būdu"
+    ,"Upload Activity": "Įkelti veiklą"
+    ,"Bring in your latest session from FIT or GPX in one step.": "Įkelkite naujausią sesiją iš FIT arba GPX vienu žingsniu."
+    ,"Average heart rate": "Vidutinis širdies ritmas"
+    ,"Other": "Kita"
+    ,"Activity saved": "Veikla išsaugota"
+    ,"Manual activity logged successfully.": "Rankinė veikla sėkmingai užregistruota."
+    ,"Enter a valid duration (hh:mm:ss)": "Įveskite teisingą trukmę (hh:mm:ss)"
+    ,"Select a date": "Pasirinkite datą"
+    ,"Save activity": "Išsaugoti veiklą"
+    ,"Coach feedback loop": "Trenerio grįžtamojo ryšio ciklas"
+    ,"Coach notified": "Treneris informuotas"
+    ,"Reflection sent. Your coach can respond with plan adjustments.": "Pastaba išsiųsta. Treneris gali atsakyti plano pakeitimais."
+    ,"Session sent to coach as On Plan. Add reflection anytime.": "Sesija išsiųsta treneriui kaip pagal planą. Pridėkite pastabą bet kada."
+    ,"Uploading and processing...": "Įkeliama ir apdorojama..."
+    ,"Send": "Siųsti"
+    ,"Your profile": "Jūsų profilis"
+    ,"Edit profile": "Redaguoti profilį"
+    ,"Athletic profile": "Sportinis profilis"
+    ,"Security & integrations": "Sauga ir integracijos"
+    ,"Manage your personal information.": "Tvarkykite asmeninę informaciją."
+    ,"Customize your display and regional settings.": "Pritaikykite ekrano ir regioninius nustatymus."
+    ,"Your sport and fitness metrics used for training zones and dashboard.": "Jūsų sporto ir fizinio pasirengimo rodikliai, naudojami treniruočių zonoms ir skydeliui."
+    ,"Configure your training zone boundaries per sport and metric.": "Konfigūruokite treniruočių zonų ribas pagal sportą ir rodiklį."
+    ,"Zone boundaries": "Zonų ribos"
+    ,"upper bound": "viršutinė riba"
+    ,"Zones defined as": "Zonos apibrėžiamos kaip"
+    ,"from slow to fast pace.": "nuo lėto iki greito tempo."
+    ,"from low to high intensity.": "nuo žemo iki didelio intensyvumo."
+    ,"Manage your email verification and password.": "Tvarkykite el. pašto patvirtinimą ir slaptažodį."
+    ,"Connect and manage external services.": "Prijunkite ir tvarkykite išorines paslaugas."
   }
 };
 

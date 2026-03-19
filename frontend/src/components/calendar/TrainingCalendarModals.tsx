@@ -2,13 +2,15 @@ import { format } from 'date-fns';
 import { Activity, Award, Bandage, CalendarOff, CheckCircle, HeartPulse, Medal, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
 import { ActionIcon, Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, SegmentedControl, Text, TextInput, Textarea } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { WorkoutEditor } from '../builder/WorkoutEditor';
 import { WorkoutLibrary } from '../library/WorkoutLibrary';
 import { CalendarEvent, WorkoutRecurrenceRule } from './types';
 import { formatMinutesHm, parseDate } from './dateUtils';
 import { DayEventItem } from './TrainingCalendarEventRenderers';
 import { useI18n } from '../../i18n/I18nProvider';
+import { getDayNotes, upsertDayNote, deleteDayNote, DayNote } from '../../api/dayNotes';
 
 const weekdayOptions = (t: (value: string) => string) => [
   { value: '0', label: t('Monday') || 'Monday' },
@@ -186,6 +188,44 @@ export const DayDetailsModal = ({
   const [createMode, setCreateMode] = useState<'quick' | 'library'>('quick');
   const [editingMarker, setEditingMarker] = useState<{ type: string; index: number } | null>(null);
   const [editDraft, setEditDraft] = useState<any>(null);
+  const [pendingRaceAction, setPendingRaceAction] = useState<{ type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string } | null>(null);
+  const [pendingRaceDraft, setPendingRaceDraft] = useState<{ name: string; sport_type: string; distance_km: number | null; expected_time: string; location: string; notes: string } | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
+
+  const noteDateKey = selectedDateRange?.startDate || null;
+  const notesQuery = useQuery({
+    queryKey: ['day-notes', noteDateKey, athleteId],
+    queryFn: () => getDayNotes(noteDateKey!, athleteId || undefined),
+    enabled: opened && !!noteDateKey,
+    staleTime: 30_000,
+  });
+
+  const upsertNoteMutation = useMutation({
+    mutationFn: async (content: string) => upsertDayNote(noteDateKey!, content, athleteId || undefined),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['day-notes', noteDateKey, athleteId] });
+      setNoteText('');
+      setEditingNoteId(null);
+    },
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: (noteId: number) => deleteDayNote(noteId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['day-notes', noteDateKey, athleteId] });
+    },
+  });
+
+  // Reset note editing when modal closes
+  useEffect(() => {
+    if (!opened) {
+      setNoteText('');
+      setEditingNoteId(null);
+    }
+  }, [opened]);
+
   const isRangeSelection = Boolean(
     selectedDateRange?.startDate &&
     selectedDateRange?.endDate &&
@@ -199,7 +239,7 @@ export const DayDetailsModal = ({
     let cursor = new Date(selectedDateRange.startDate + 'T00:00:00');
     const end = new Date((selectedDateRange.endDate || selectedDateRange.startDate) + 'T00:00:00');
     while (cursor <= end) {
-      const key = cursor.toISOString().slice(0, 10);
+      const key = format(cursor, 'yyyy-MM-dd');
       const items = planningMarkersByDate.get(key) || [];
       for (const m of items) {
         const uniqueKey = m.type === 'goal_race'
@@ -439,6 +479,66 @@ export const DayDetailsModal = ({
               ))
             )}
 
+            {/* Day Notes */}
+            <Divider label={t('Day notes') || 'Day notes'} labelPosition="left" my={4} />
+            <Stack gap="xs">
+              {(notesQuery.data || []).map((note: DayNote) => (
+                <Paper key={note.id} withBorder radius="md" p="xs" style={{ borderLeft: '3px solid var(--mantine-color-blue-5)' }}>
+                  {editingNoteId === note.id ? (
+                    <Stack gap="xs">
+                      <Textarea
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.currentTarget.value)}
+                        minRows={2}
+                        autosize
+                      />
+                      <Group justify="flex-end" gap="xs">
+                        <Button variant="subtle" size="xs" onClick={() => { setEditingNoteId(null); setNoteText(''); }}>
+                          {t('Cancel') || 'Cancel'}
+                        </Button>
+                        <Button size="xs" onClick={() => upsertNoteMutation.mutate(noteText)} loading={upsertNoteMutation.isPending} disabled={!noteText.trim()}>
+                          {t('Save') || 'Save'}
+                        </Button>
+                      </Group>
+                    </Stack>
+                  ) : (
+                    <Group gap="sm" wrap="nowrap" align="flex-start">
+                      <Box style={{ flex: 1, minWidth: 0 }}>
+                        <Group gap="xs" mb={2}>
+                          <Text size="xs" fw={600} c="blue">{note.author_name || '?'}</Text>
+                          <Text size="xs" c="dimmed">{note.author_role === 'coach' ? (t('Coach') || 'Coach') : (t('Athlete') || 'Athlete')}</Text>
+                        </Group>
+                        <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{note.content}</Text>
+                      </Box>
+                      <Group gap={4} style={{ flexShrink: 0 }}>
+                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => { setEditingNoteId(note.id); setNoteText(note.content); }} title={t('Edit') || 'Edit'}>
+                          <Pencil size={14} />
+                        </ActionIcon>
+                        <ActionIcon size="sm" variant="subtle" color="red" onClick={() => deleteNoteMutation.mutate(note.id)} loading={deleteNoteMutation.isPending} title={t('Delete') || 'Delete'}>
+                          <Trash2 size={14} />
+                        </ActionIcon>
+                      </Group>
+                    </Group>
+                  )}
+                </Paper>
+              ))}
+              {editingNoteId === null && (
+                <Group gap="xs" align="flex-end">
+                  <Textarea
+                    placeholder={t('Add a note for this day...') || 'Add a note for this day...'}
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.currentTarget.value)}
+                    minRows={1}
+                    autosize
+                    style={{ flex: 1 }}
+                  />
+                  <Button size="xs" variant="light" onClick={() => upsertNoteMutation.mutate(noteText)} loading={upsertNoteMutation.isPending} disabled={!noteText.trim()}>
+                    {t('Add note') || 'Add note'}
+                  </Button>
+                </Group>
+              )}
+            </Stack>
+
             {!isPastCreationDate && (
               <>
 
@@ -468,10 +568,18 @@ export const DayDetailsModal = ({
                     {planningOptions.map((option) => (
                       <Button
                         key={option.label}
-                        variant="light"
+                        variant={pendingRaceAction?.priority === (option.action as any).priority && option.action.type === 'goal_race' ? 'filled' : 'light'}
                         size="xs"
                         leftSection={<option.icon size={14} />}
-                        onClick={() => onQuickPlanningAction(option.action)}
+                        onClick={() => {
+                          if (option.action.type === 'goal_race') {
+                            setPendingRaceAction(option.action as any);
+                            setPendingRaceDraft({ name: '', sport_type: '', distance_km: null, expected_time: '', location: '', notes: '' });
+                          } else {
+                            setPendingRaceAction(null);
+                            onQuickPlanningAction(option.action);
+                          }
+                        }}
                         loading={planningActionPending}
                         disabled={!canEditWorkouts || planningActionPending}
                       >
@@ -479,6 +587,89 @@ export const DayDetailsModal = ({
                       </Button>
                     ))}
                   </Group>
+
+                  {pendingRaceAction && pendingRaceDraft && (
+                    <Paper withBorder radius="md" p="sm" mt={4}>
+                      <Stack gap="xs">
+                        <Text fw={600} size="sm">
+                          {pendingRaceAction.priority === 'A' ? t('A race') || 'A race' : pendingRaceAction.priority === 'B' ? t('B race') || 'B race' : t('C race') || 'C race'}
+                          {' — '}{t('Race details') || 'Race details'}
+                        </Text>
+                        <SimpleGrid cols={2}>
+                          <TextInput
+                            label={t('Race name') || 'Race name'}
+                            placeholder={t('Race name') || 'Race name'}
+                            value={pendingRaceDraft.name}
+                            onChange={(e) => setPendingRaceDraft({ ...pendingRaceDraft, name: e.currentTarget.value })}
+                          />
+                          <Select
+                            label={t('Sport') || 'Sport'}
+                            data={[
+                              { value: 'Cycling', label: t('Cycling') || 'Cycling' },
+                              { value: 'Running', label: t('Running') || 'Running' },
+                              { value: 'Triathlon', label: t('Triathlon') || 'Triathlon' },
+                              { value: 'Swimming', label: t('Swimming') || 'Swimming' },
+                            ]}
+                            value={pendingRaceDraft.sport_type || null}
+                            onChange={(v) => setPendingRaceDraft({ ...pendingRaceDraft, sport_type: v || '' })}
+                            clearable
+                            placeholder={t('Select sport') || 'Select sport'}
+                          />
+                        </SimpleGrid>
+                        <SimpleGrid cols={2}>
+                          <NumberInput
+                            label={t('Distance') || 'Distance'}
+                            value={pendingRaceDraft.distance_km ?? ''}
+                            onChange={(v) => setPendingRaceDraft({ ...pendingRaceDraft, distance_km: typeof v === 'number' ? v : null })}
+                            min={0}
+                            step={0.1}
+                            suffix=" km"
+                          />
+                          <TextInput
+                            label={t('Expected time') || 'Expected time'}
+                            placeholder="hh:mm:ss"
+                            value={pendingRaceDraft.expected_time}
+                            onChange={(e) => setPendingRaceDraft({ ...pendingRaceDraft, expected_time: e.currentTarget.value })}
+                          />
+                        </SimpleGrid>
+                        <TextInput
+                          label={t('Location') || 'Location'}
+                          placeholder={t('Location') || 'Location'}
+                          value={pendingRaceDraft.location}
+                          onChange={(e) => setPendingRaceDraft({ ...pendingRaceDraft, location: e.currentTarget.value })}
+                        />
+                        <Textarea
+                          label={t('Details') || 'Details'}
+                          minRows={2}
+                          value={pendingRaceDraft.notes}
+                          onChange={(e) => setPendingRaceDraft({ ...pendingRaceDraft, notes: e.currentTarget.value })}
+                        />
+                        <Group justify="flex-end" gap="xs">
+                          <Button variant="subtle" size="xs" onClick={() => setPendingRaceAction(null)}>
+                            {t('Cancel') || 'Cancel'}
+                          </Button>
+                          <Button
+                            size="xs"
+                            onClick={() => {
+                              onQuickPlanningAction({
+                                ...pendingRaceAction,
+                                label: pendingRaceDraft.name || pendingRaceAction.label,
+                                sport_type: pendingRaceDraft.sport_type || undefined,
+                                distance_km: pendingRaceDraft.distance_km,
+                                expected_time: pendingRaceDraft.expected_time || undefined,
+                                location: pendingRaceDraft.location || undefined,
+                                notes: pendingRaceDraft.notes || undefined,
+                              });
+                              setPendingRaceAction(null);
+                            }}
+                            loading={planningActionPending}
+                          >
+                            {t('Add race') || 'Add race'}
+                          </Button>
+                        </Group>
+                      </Stack>
+                    </Paper>
+                  )}
                 </Stack>
 
                 {!isRangeSelection && (

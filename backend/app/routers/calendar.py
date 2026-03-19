@@ -6,8 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 
 from app.database import get_db
-from app.models import User, PlannedWorkout, Activity, ComplianceStatusEnum, RoleEnum, OrganizationMember, Profile
-from app.schemas import PlannedWorkoutCreate, PlannedWorkoutUpdate, PlannedWorkoutOut, CalendarEvent
+from app.models import User, PlannedWorkout, Activity, ComplianceStatusEnum, RoleEnum, OrganizationMember, Profile, DayNote
+from app.schemas import PlannedWorkoutCreate, PlannedWorkoutUpdate, PlannedWorkoutOut, CalendarEvent, DayNoteOut, DayNoteUpsert
 from app.auth import get_current_user
 from app.services.compliance import match_and_score
 from app.services.permissions import get_athlete_permissions
@@ -738,3 +738,135 @@ async def download_workout(
         media_type="text/calendar; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
+
+
+# ── Day Notes ────────────────────────────────────────────────────────
+
+async def _resolve_athlete_id(
+    current_user: User,
+    athlete_id: int | None,
+    db: AsyncSession,
+) -> int:
+    """Return the effective athlete_id, checking coach access if needed."""
+    if athlete_id is None:
+        return current_user.id
+    if athlete_id == current_user.id:
+        return current_user.id
+    if current_user.role == RoleEnum.coach:
+        await check_coach_access(current_user.id, athlete_id, db)
+        return athlete_id
+    raise HTTPException(status_code=403, detail="Not authorized")
+
+
+def _note_display_name(profile: Profile | None) -> str | None:
+    if profile and (profile.first_name or profile.last_name):
+        return " ".join(p for p in [profile.first_name, profile.last_name] if p).strip() or None
+    return None
+
+
+@router.get("/day-notes", response_model=list[DayNoteOut])
+async def get_day_notes(
+    date_str: str = Query(..., alias="date"),
+    athlete_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    target_id = await _resolve_athlete_id(current_user, athlete_id, db)
+    target_date = date.fromisoformat(date_str)
+
+    rows = await db.execute(
+        select(DayNote)
+        .where(DayNote.athlete_id == target_id, DayNote.date == target_date)
+        .order_by(DayNote.created_at)
+    )
+    notes = rows.scalars().all()
+
+    results: list[DayNoteOut] = []
+    for n in notes:
+        author_profile = await db.scalar(
+            select(Profile).where(Profile.user_id == n.author_id)
+        )
+        author_user = await db.scalar(select(User).where(User.id == n.author_id))
+        results.append(DayNoteOut(
+            id=n.id,
+            athlete_id=n.athlete_id,
+            author_id=n.author_id,
+            author_name=_note_display_name(author_profile) or (author_user.email if author_user else None),
+            author_role=author_user.role.value if author_user else None,
+            date=n.date,
+            content=n.content,
+            created_at=n.created_at,
+            updated_at=n.updated_at,
+        ))
+    return results
+
+
+@router.put("/day-notes", response_model=DayNoteOut)
+async def upsert_day_note(
+    payload: DayNoteUpsert,
+    date_str: str = Query(..., alias="date"),
+    athlete_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    target_id = await _resolve_athlete_id(current_user, athlete_id, db)
+    target_date = date.fromisoformat(date_str)
+
+    existing = await db.scalar(
+        select(DayNote).where(
+            DayNote.athlete_id == target_id,
+            DayNote.date == target_date,
+            DayNote.author_id == current_user.id,
+        )
+    )
+
+    if existing:
+        existing.content = payload.content
+        existing.updated_at = datetime.utcnow()
+        await db.commit()
+        await db.refresh(existing)
+        note = existing
+    else:
+        note = DayNote(
+            athlete_id=target_id,
+            author_id=current_user.id,
+            date=target_date,
+            content=payload.content,
+        )
+        db.add(note)
+        await db.commit()
+        await db.refresh(note)
+
+    author_profile = await db.scalar(
+        select(Profile).where(Profile.user_id == current_user.id)
+    )
+    return DayNoteOut(
+        id=note.id,
+        athlete_id=note.athlete_id,
+        author_id=note.author_id,
+        author_name=_note_display_name(author_profile) or current_user.email,
+        author_role=current_user.role.value,
+        date=note.date,
+        content=note.content,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+@router.delete("/day-notes/{note_id}", status_code=204)
+async def delete_day_note(
+    note_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    note = await db.scalar(select(DayNote).where(DayNote.id == note_id))
+    if not note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    # Author can always delete their own note; coaches can delete notes on their athletes
+    if note.author_id != current_user.id:
+        if current_user.role == RoleEnum.coach:
+            await check_coach_access(current_user.id, note.athlete_id, db)
+        else:
+            raise HTTPException(status_code=403, detail="Not authorized")
+    await db.delete(note)
+    await db.commit()

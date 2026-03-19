@@ -54,7 +54,7 @@ const WEEKDAY_HEADER_HEIGHT = 36;
 const WEEKLY_TOTALS_PANEL_WIDTH = 324;
 
 type CalendarPlanningAction =
-    | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string }
+    | { type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string; sport_type?: string; distance_km?: number | null; expected_time?: string; location?: string; notes?: string }
     | { type: 'constraint'; kind: PlannerConstraint['kind']; label: string; severity: PlannerConstraint['severity']; impact: PlannerConstraint['impact'] };
 
 type CalendarPlanningMarker =
@@ -480,7 +480,11 @@ export const TrainingCalendar = ({
                 name: `${action.label} ${format(parseDate(dateRange.startDate), 'MMM d')}`,
                 date: dateRange.startDate,
                 priority: action.priority,
-                notes: '',
+                sport_type: action.sport_type || '',
+                distance_km: action.distance_km ?? null,
+                expected_time: action.expected_time || '',
+                location: action.location || '',
+                notes: action.notes || '',
                 target_metrics: [],
             };
             const existingRaceIndex = nextPlan.goal_races.findIndex((race) => race.date === dateRange.startDate);
