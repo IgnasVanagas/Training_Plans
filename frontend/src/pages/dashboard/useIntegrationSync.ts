@@ -239,7 +239,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
           withCloseButton: false,
           position: "bottom-right",
         });
-        void syncIntegrationNow("strava", "recent")
+        void syncIntegrationNow("strava")
           .then(() => {
             queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
             queryClient.invalidateQueries({ queryKey: ["wellness-summary"] });

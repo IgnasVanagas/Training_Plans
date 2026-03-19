@@ -127,14 +127,16 @@ export const TrainingCalendar = ({
     athletes, 
     initialViewDate,
     draggedWorkout,
-    onWorkoutDrop 
+    onWorkoutDrop,
+    actionButtons,
 }: { 
     athleteId?: number | null, 
     allAthletes?: boolean, 
     athletes?: any[], 
     initialViewDate?: string | null,
     draggedWorkout?: SavedWorkout | null,
-    onWorkoutDrop?: (workout: SavedWorkout, date: Date) => void
+    onWorkoutDrop?: (workout: SavedWorkout, date: Date) => void,
+    actionButtons?: React.ReactNode,
 }) => {
     const estimatePlannedDurationMinutesFromStructure = (nodes: any[]): number | undefined => {
         if (!Array.isArray(nodes) || nodes.length === 0) return undefined;
@@ -1557,6 +1559,7 @@ export const TrainingCalendar = ({
                 monthlyTotalsLabel={monthlyHeaderLabel}
                 onMonthlyTotalsClick={handleMonthlyTotalsOpen}
                 monthlyTotalsWidth={WEEKLY_TOTALS_PANEL_WIDTH}
+                actionButtons={actionButtons}
             />
             
             <Group align="stretch" gap={8} wrap={isMobileViewport ? 'wrap' : 'nowrap'} style={{ flex: 1, minHeight: 0 }}>

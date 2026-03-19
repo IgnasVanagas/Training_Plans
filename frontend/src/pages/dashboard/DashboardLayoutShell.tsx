@@ -28,6 +28,14 @@ import {
   IconCalendar,
   IconChevronDown,
   IconChevronRight,
+  IconTrophy,
+  IconChartBar,
+  IconTrendingUp,
+  IconWaveSine,
+  IconBike,
+  IconUser,
+  IconDotsVertical,
+  IconFlag,
   IconLayoutDashboard,
   IconBell,
   IconLogout,
@@ -49,7 +57,7 @@ import api from "../../api/client";
 
 const appLogo = "/origami-logo.png";
 
-type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
+type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "performance" | "zones" | "trackers" | "profile" | "macrocycle";
 
 type SidebarAthlete = {
   id: number;
@@ -101,17 +109,30 @@ const DashboardLayoutShell = ({
   const accentPrimary = "#E95A12";
   const accentSecondary = "#6E4BF3";
   const isCoachDesktop = role === "coach" && !isMobile;
+  const isAthleteDesktop = role !== "coach" && !isMobile;
   const [teamExpanded, setTeamExpanded] = useState(true);
   type AthleteSort = "az" | "za" | "recent";
   const [athleteSort, setAthleteSort] = useState<AthleteSort>("az");
-  const navItems: Array<{ key: DashboardTab; icon: typeof IconLayoutDashboard; label: string }> = [
-    { key: "dashboard", icon: IconLayoutDashboard, label: t("Dashboard") },
+  type NavItem = { key: DashboardTab; icon: typeof IconLayoutDashboard; label: string; color?: string };
+  const athleteNavItems: NavItem[] = [
+    { key: "plan", icon: IconCalendar, label: t("Calendar"), color: "#E95A12" },
+    { key: "races", icon: IconTrophy, label: t("Races & records"), color: "#2E8B57" },
+    { key: "insights", icon: IconChartBar, label: t("Training insights"), color: "#3B82F6" },
+    { key: "performance", icon: IconTrendingUp, label: t("Performance"), color: "#8B5CF6" },
+    { key: "zones", icon: IconWaveSine, label: t("Training zones"), color: "#0EA5E9" },
+    { key: "trackers", icon: IconBike, label: t("Activity trackers"), color: "#EAB308" },
+    { key: "profile", icon: IconUser, label: t("Athlete profile"), color: "#3B82F6" },
+    { key: "macrocycle", icon: IconFlag, label: t("Macrocycle"), color: "#22C55E" },
+  ];
+  const coachNavItems: NavItem[] = [
+    { key: "dashboard", icon: IconLayoutDashboard, label: t("Dashboard"), color: "#E95A12" },
     { key: "activities", icon: IconActivity, label: t("Activities") },
-    { key: "plan", icon: IconCalendar, label: t("Training Plan") },
+    { key: "plan", icon: IconCalendar, label: t("Calendar"), color: "#E95A12" },
     { key: "organizations", icon: IconUsersGroup, label: t("Organizations") },
     { key: "notifications", icon: IconBell, label: t("Notifications") },
     { key: "settings", icon: IconSettings, label: t("Settings") },
   ];
+  const navItems = role === "coach" ? coachNavItems : athleteNavItems;
 
   const getAthleteName = (athlete: SidebarAthlete) =>
     (athlete.profile?.first_name || athlete.profile?.last_name)
@@ -281,7 +302,7 @@ const DashboardLayoutShell = ({
     <AppShell
       header={{ height: 60 }}
       navbar={{
-        width: isMobile ? 260 : (isCoachDesktop ? 250 : 96),
+        width: isMobile ? 260 : (isCoachDesktop ? 250 : (isAthleteDesktop ? 220 : 96)),
         breakpoint: "sm",
         collapsed: { mobile: !opened },
       }}
@@ -294,31 +315,50 @@ const DashboardLayoutShell = ({
       <AppShell.Navbar p="sm" style={{ backgroundColor: shellBackground, borderRight: `1px solid ${isDark ? "rgba(148,163,184,0.22)" : "rgba(15,23,42,0.12)"}` }}>
         <ScrollArea h="100%" scrollbarSize={4} type="auto">
         <Stack h="100%" justify="space-between" gap="md">
-          {/* Coach profile section at top of sidebar */}
-          {isCoachDesktop && (
+          {/* Profile section at top of sidebar */}
+          {(isCoachDesktop || isAthleteDesktop) && (
             <Group gap="sm" px={4} pt={4} pb={0}>
-              <Avatar color="orange" radius="xl" size="md">
-                {meDisplayName[0]?.toUpperCase() || "C"}
+              <Avatar color={role === "coach" ? "orange" : "blue"} radius="xl" size="md">
+                {meDisplayName[0]?.toUpperCase() || "U"}
               </Avatar>
-              <Stack gap={0}>
+              <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
                 <Text size="sm" fw={700} c={isDark ? "#E2E8F0" : "#1E293B"} lineClamp={1}>{meDisplayName}</Text>
-                <Text size="xs" c="dimmed">{t("Coach")}</Text>
+                {role === "coach" && <Text size="xs" c="dimmed">{t("Coach")}</Text>}
               </Stack>
+              {isAthleteDesktop && (
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  radius="xl"
+                  onClick={() => setActiveTab("settings" as DashboardTab)}
+                  aria-label={t("Settings")}
+                  color={isDark ? "gray" : "dark"}
+                >
+                  <IconSettings size={16} />
+                </ActionIcon>
+              )}
             </Group>
           )}
 
-          <Stack gap={4} align={isMobile ? "stretch" : (isCoachDesktop ? "stretch" : "center")} pt="xs">
+          <Stack gap={4} align={isMobile ? "stretch" : (isCoachDesktop || isAthleteDesktop ? "stretch" : "center")} pt="xs">
             {navItems.map((item) => {
               const IconComponent = item.icon;
               const active = activeTab === item.key;
-              if (isMobile || isCoachDesktop) {
+              const itemColor = item.color || accentPrimary;
+              if (isMobile || isCoachDesktop || isAthleteDesktop) {
                 return (
                   <Button
                     key={item.key}
                     variant={active ? "light" : "subtle"}
-                    leftSection={<IconComponent size={16} stroke={1.8} />}
+                    leftSection={
+                      <IconComponent
+                        size={18}
+                        stroke={1.8}
+                        color={active ? itemColor : (isDark ? "#94A3B8" : "#64748B")}
+                      />
+                    }
                     justify="flex-start"
-                    size={isCoachDesktop ? "sm" : undefined}
+                    size="sm"
                     onClick={() => {
                       setActiveTab(item.key as DashboardTab);
                       if (isMobile) toggle();
@@ -326,13 +366,14 @@ const DashboardLayoutShell = ({
                     styles={{
                       root: {
                         border: `1px solid ${active
-                          ? (isDark ? "rgba(233, 90, 18, 0.55)" : "rgba(233, 90, 18, 0.35)")
+                          ? (isDark ? `${itemColor}88` : `${itemColor}55`)
                           : "transparent"}`,
-                        color: active ? accentPrimary : (isDark ? "#E2E8F0" : "#1E293B"),
+                        color: active ? (isDark ? "#F1F5F9" : "#1E293B") : (isDark ? "#E2E8F0" : "#1E293B"),
                         background: active
-                          ? (isDark ? "rgba(233, 90, 18, 0.20)" : "rgba(233, 90, 18, 0.10)")
+                          ? (isDark ? `${itemColor}20` : `${itemColor}14`)
                           : "transparent",
                         fontWeight: active ? 600 : 400,
+                        fontSize: 13,
                       }
                     }}
                   >
@@ -504,40 +545,76 @@ const DashboardLayoutShell = ({
         {children}
       </AppShell.Main>
 
-      {isMobile && (
-        <Affix position={{ bottom: 12, left: 12, right: 12 }}>
-          <Group
-            justify="space-around"
-            wrap="nowrap"
-            px="sm"
-            py={8}
-            style={{
-              borderRadius: 14,
-              border: `1px solid ${isDark ? "rgba(148,163,184,0.22)" : "rgba(15,23,42,0.12)"}`,
-              background: isDark ? "rgba(8,18,38,0.94)" : "rgba(255,255,255,0.94)",
-              backdropFilter: "blur(8px)"
-            }}
-          >
-            {navItems.map((item) => {
-              const IconComponent = item.icon;
-              const active = activeTab === item.key;
-              return (
-                <ActionIcon
-                  key={`mobile-${item.key}`}
-                  size="lg"
-                  radius="xl"
-                  variant={active ? "light" : "subtle"}
-                  aria-label={item.label}
-                  onClick={() => setActiveTab(item.key)}
-                  color={active ? "orange" : undefined}
-                >
-                  <IconComponent size={18} stroke={1.8} />
-                </ActionIcon>
-              );
-            })}
-          </Group>
-        </Affix>
-      )}
+      {isMobile && (() => {
+        const MAX_MOBILE = 5;
+        const showMore = navItems.length > MAX_MOBILE;
+        const visibleItems = showMore ? navItems.slice(0, MAX_MOBILE - 1) : navItems;
+        const overflowItems = showMore ? navItems.slice(MAX_MOBILE - 1) : [];
+        const overflowActive = overflowItems.some((i) => activeTab === i.key);
+        return (
+          <Affix position={{ bottom: 12, left: 12, right: 12 }}>
+            <Group
+              justify="space-around"
+              wrap="nowrap"
+              px="sm"
+              py={8}
+              style={{
+                borderRadius: 14,
+                border: `1px solid ${isDark ? "rgba(148,163,184,0.22)" : "rgba(15,23,42,0.12)"}`,
+                background: isDark ? "rgba(8,18,38,0.94)" : "rgba(255,255,255,0.94)",
+                backdropFilter: "blur(8px)"
+              }}
+            >
+              {visibleItems.map((item) => {
+                const IconComponent = item.icon;
+                const active = activeTab === item.key;
+                return (
+                  <ActionIcon
+                    key={`mobile-${item.key}`}
+                    size="lg"
+                    radius="xl"
+                    variant={active ? "light" : "subtle"}
+                    aria-label={item.label}
+                    onClick={() => setActiveTab(item.key)}
+                    color={active ? "orange" : undefined}
+                  >
+                    <IconComponent size={18} stroke={1.8} />
+                  </ActionIcon>
+                );
+              })}
+              {showMore && (
+                <Menu shadow="md" width={200} position="top-end" withArrow>
+                  <Menu.Target>
+                    <ActionIcon
+                      size="lg"
+                      radius="xl"
+                      variant={overflowActive ? "light" : "subtle"}
+                      aria-label={t("More")}
+                      color={overflowActive ? "orange" : undefined}
+                    >
+                      <IconDotsVertical size={18} stroke={1.8} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {overflowItems.map((item) => {
+                      const IconComponent = item.icon;
+                      return (
+                        <Menu.Item
+                          key={`mobile-more-${item.key}`}
+                          leftSection={<IconComponent size={16} stroke={1.6} />}
+                          onClick={() => setActiveTab(item.key)}
+                        >
+                          {item.label}
+                        </Menu.Item>
+                      );
+                    })}
+                  </Menu.Dropdown>
+                </Menu>
+              )}
+            </Group>
+          </Affix>
+        );
+      })()}
     </AppShell>
   );
 };

@@ -195,6 +195,7 @@ export const ActivityDetailPage = () => {
     const [splitAnnotationsVisible, setSplitAnnotationsVisible] = useState(false);
     const [splitAnnotationsDirty, setSplitAnnotationsDirty] = useState(false);
     const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }>>({});
+    const [showAllBestEfforts, setShowAllBestEfforts] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [showDangerZone, setShowDangerZone] = useState(false);
@@ -298,6 +299,27 @@ export const ActivityDetailPage = () => {
         if (Array.isArray(activity.streams?.data)) return activity.streams.data;
         return [];
     }, [activity]);
+
+    const rankedBestEfforts = useMemo(() => {
+        const allEfforts = activity?.best_efforts;
+        if (!allEfforts?.length) return [];
+
+        return allEfforts.filter((effort, idx) => {
+            const key = effort.window || effort.distance || String(idx);
+            const rank = activity?.personal_records?.[key];
+            return typeof rank === 'number' && rank >= 1 && rank <= 3;
+        });
+    }, [activity?.best_efforts, activity?.personal_records]);
+
+    const displayedBestEfforts = useMemo(() => {
+        if (!activity?.best_efforts?.length) return [];
+        return showAllBestEfforts ? activity.best_efforts : rankedBestEfforts;
+    }, [activity?.best_efforts, rankedBestEfforts, showAllBestEfforts]);
+
+    const hasHiddenBestEfforts = useMemo(() => {
+        const total = activity?.best_efforts?.length ?? 0;
+        return total > displayedBestEfforts.length;
+    }, [activity?.best_efforts?.length, displayedBestEfforts.length]);
 
     const routePositions = useMemo(() => {
         return streamPoints
@@ -907,6 +929,10 @@ export const ActivityDetailPage = () => {
             setEffortsSplitsView('splits');
         }
     }, [activity]);
+
+    useEffect(() => {
+        setShowAllBestEfforts(false);
+    }, [activity?.id]);
     
     // Calculated Stats for activities where backend summary is missing (legacy compat)
     const derivedStats = useMemo(() => {
@@ -1691,66 +1717,95 @@ export const ActivityDetailPage = () => {
                                         {/* Best Efforts Table */}
                                         {effortsSplitsView === 'efforts' && activity.best_efforts?.length ? (
                                             <>
-                                            <Table striped highlightOnHover withTableBorder withColumnBorders>
-                                                <Table.Thead>
-                                                    <Table.Tr>
-                                                        <Table.Th></Table.Th>
-                                                        <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
-                                                        {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
-                                                        {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
-                                                        {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
-                                                        {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
-                                                        <Table.Th>{t('Heart Rate')}</Table.Th>
-                                                        <Table.Th>{t('Elev')}</Table.Th>
-                                                    </Table.Tr>
-                                                </Table.Thead>
-                                                <Table.Tbody>
-                                                    {activity.best_efforts.map((effort, idx) => {
-                                                        const key = effort.window || effort.distance || String(idx);
-                                                        const prRank = activity.personal_records?.[key];
-                                                        const weight = me?.profile?.weight;
-                                                        const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
-                                                        return (
-                                                            <Table.Tr key={key}>
-                                                                <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                                                    {medalColor && <IconTrophy size={16} color={medalColor} />}
-                                                                </Table.Td>
-                                                                <Table.Td fw={600}>
-                                                                    {effort.window || effort.distance}
-                                                                </Table.Td>
-                                                                {isCyclingActivity && (
-                                                                    <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>
-                                                                )}
-                                                                {isCyclingActivity && weight && (
-                                                                    <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>
-                                                                )}
-                                                                {isRunningActivity && (
-                                                                    <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>
-                                                                )}
-                                                                {isRunningActivity && (
-                                                                    <Table.Td>
-                                                                        {effort.time_seconds != null && effort.meters
-                                                                            ? (() => {
-                                                                                const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60);
-                                                                                const mins = Math.floor(paceMinPerKm);
-                                                                                const secs = Math.round((paceMinPerKm - mins) * 60);
-                                                                                return `${mins}:${secs.toString().padStart(2, '0')} /km`;
-                                                                            })()
-                                                                            : '-'}
-                                                                    </Table.Td>
-                                                                )}
-                                                                <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
-                                                                <Table.Td>{effort.elevation != null ? `${effort.elevation} m` : '-'}</Table.Td>
+                                            {displayedBestEfforts.length ? (
+                                                <>
+                                                    <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                                        <Table.Thead>
+                                                            <Table.Tr>
+                                                                <Table.Th></Table.Th>
+                                                                <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
+                                                                {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
+                                                                {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
+                                                                {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
+                                                                {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
+                                                                <Table.Th>{t('Heart Rate')}</Table.Th>
                                                             </Table.Tr>
-                                                        );
-                                                    })}
-                                                </Table.Tbody>
-                                            </Table>
-                                            <Group gap="md" mt={4}>
-                                                <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">PR</Text></Group>
-                                                <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">2nd</Text></Group>
-                                                <Group gap={4}><IconTrophy size={12} color="#cd7f32" /><Text size="xs" c="dimmed">3rd</Text></Group>
-                                            </Group>
+                                                        </Table.Thead>
+                                                        <Table.Tbody>
+                                                            {displayedBestEfforts.map((effort, idx) => {
+                                                                const key = effort.window || effort.distance || String(idx);
+                                                                const prRank = activity.personal_records?.[key];
+                                                                const weight = me?.profile?.weight;
+                                                                const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
+                                                                return (
+                                                                    <Table.Tr key={key}>
+                                                                        <Table.Td w={36} style={{ textAlign: 'center' }}>
+                                                                            {medalColor && <IconTrophy size={16} color={medalColor} />}
+                                                                        </Table.Td>
+                                                                        <Table.Td fw={600}>
+                                                                            {effort.window || effort.distance}
+                                                                        </Table.Td>
+                                                                        {isCyclingActivity && (
+                                                                            <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>
+                                                                        )}
+                                                                        {isCyclingActivity && weight && (
+                                                                            <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>
+                                                                        )}
+                                                                        {isRunningActivity && (
+                                                                            <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>
+                                                                        )}
+                                                                        {isRunningActivity && (
+                                                                            <Table.Td>
+                                                                                {effort.time_seconds != null && effort.meters
+                                                                                    ? (() => {
+                                                                                        const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60);
+                                                                                        const mins = Math.floor(paceMinPerKm);
+                                                                                        const secs = Math.round((paceMinPerKm - mins) * 60);
+                                                                                        return `${mins}:${secs.toString().padStart(2, '0')} /km`;
+                                                                                    })()
+                                                                                    : '-'}
+                                                                            </Table.Td>
+                                                                        )}
+                                                                        <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
+                                                                    </Table.Tr>
+                                                                );
+                                                            })}
+                                                        </Table.Tbody>
+                                                    </Table>
+
+                                                    {!showAllBestEfforts && hasHiddenBestEfforts ? (
+                                                        <Group justify="space-between" mt="xs" mb={4}>
+                                                            <Text size="xs" c="dimmed">{t('Only all-time top 3 efforts are shown here')}</Text>
+                                                            <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(true)}>
+                                                                {t('Show all efforts')}
+                                                            </Button>
+                                                        </Group>
+                                                    ) : null}
+
+                                                    {showAllBestEfforts && activity.best_efforts.length > rankedBestEfforts.length ? (
+                                                        <Group justify="end" mt="xs" mb={4}>
+                                                            <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(false)}>
+                                                                {t('Hide non-ranked efforts')}
+                                                            </Button>
+                                                        </Group>
+                                                    ) : null}
+
+                                                    <Group gap="md" mt={4}>
+                                                        <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">{t('PR')}</Text></Group>
+                                                        <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">{t('2nd')}</Text></Group>
+                                                        <Group gap={4}><IconTrophy size={12} color="#cd7f32" /><Text size="xs" c="dimmed">{t('3rd')}</Text></Group>
+                                                    </Group>
+                                                </>
+                                            ) : (
+                                                <Stack gap="xs">
+                                                    <Text size="sm" c="dimmed">{t('No all-time top 3 efforts in this activity yet')}</Text>
+                                                    <Group>
+                                                        <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(true)}>
+                                                            {t('Show all efforts')}
+                                                        </Button>
+                                                    </Group>
+                                                </Stack>
+                                            )}
                                             </>
                                         ) : null}
                                         {effortsSplitsView === 'splits' && (activity.splits_metric?.length || activity.laps?.length) ? (

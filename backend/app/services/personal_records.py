@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select, and_
+import os
+
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import defer
 
 from ..models import Activity
 
@@ -20,24 +21,68 @@ def _safe_float(value, default: float = 0.0) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Cycling: power-based time windows (matching Strava's set)
+# Cycling: power-based time windows (1s to 60min matching Strava's set)
 # ---------------------------------------------------------------------------
 CYCLING_EFFORT_WINDOWS = {
-    "5s": 5, "15s": 15, "30s": 30,
-    "1min": 60, "2min": 120, "3min": 180,
-    "5min": 300, "8min": 480, "10min": 600,
-    "15min": 900, "20min": 1200, "30min": 1800,
-    "45min": 2700, "60min": 3600,
+    "1s": 1, "5s": 5, "15s": 15, "30s": 30,
+    "1min": 60, "2min": 120, "3min": 180, "5min": 300,
+    "8min": 480, "10min": 600, "15min": 900, "20min": 1200,
+    "30min": 1800, "45min": 2700, "60min": 3600,
 }
 
 # ---------------------------------------------------------------------------
-# Running: standard distance best-efforts
+# Running: standard distance best-efforts (400m to 100 miles)
 # ---------------------------------------------------------------------------
 RUNNING_DISTANCES = {
-    "400m": 400, "800m": 800, "1km": 1000, "1mi": 1609,
-    "5km": 5000, "10km": 10000, "15km": 15000,
-    "Half Marathon": 21097, "Marathon": 42195,
+    "400m": 400, "800m": 800, "1km": 1000, "1mi": 1609, "1.5mi": 2414,
+    "2km": 2000, "5km": 5000, "5mi": 8047, "10km": 10000, "10mi": 16094,
+    "15km": 15000, "Half Marathon": 21097, "20mi": 32187,
+    "Marathon": 42195, "50km": 50000, "50mi": 80467, "100km": 100000, "100mi": 160934,
 }
+
+
+SUPPORTED_PR_SPORTS = {"running", "cycling"}
+
+
+def normalize_pr_sport(sport: str | None) -> str:
+    raw = (sport or "").strip().lower()
+    if not raw:
+        return "other"
+    if "run" in raw:
+        return "running"
+    if "cycl" in raw or "bike" in raw or "ride" in raw:
+        return "cycling"
+    return raw
+
+
+def _sport_matches(raw_sport: str | None, target_sport: str) -> bool:
+    return normalize_pr_sport(raw_sport) == target_sport
+
+
+def _has_best_efforts(best_efforts: object) -> bool:
+    return isinstance(best_efforts, list) and len(best_efforts) > 0
+
+
+def _cycling_efforts_from_power_curve(power_curve: object) -> list[dict] | None:
+    if not isinstance(power_curve, dict):
+        return None
+
+    efforts: list[dict] = []
+    for window, seconds in CYCLING_EFFORT_WINDOWS.items():
+        power = _safe_float(power_curve.get(window), default=0.0)
+        if power <= 0:
+            continue
+        efforts.append(
+            {
+                "window": window,
+                "seconds": seconds,
+                "power": round(power),
+                "avg_hr": None,
+                "elevation": 0,
+            }
+        )
+
+    return efforts if efforts else None
 
 
 # ===================================================================
@@ -188,27 +233,172 @@ def _ffill(vals: list[float | None]) -> list[float]:
 # Aggregate PRs across all activities for an athlete + sport
 # ===================================================================
 async def get_personal_records(
-    db: AsyncSession, athlete_id: int, sport: str
+    db: AsyncSession,
+    athlete_id: int,
+    sport: str,
+    *,
+    auto_backfill: bool = False,
+    backfill_batch_size: int | None = None,
 ) -> dict:
-    # Only extract the JSONB sub-keys needed (best_efforts, power_curve) —
-    # avoids loading the multi-MB streams.data array into Python memory.
+    target_sport = normalize_pr_sport(sport)
+    if target_sport not in SUPPORTED_PR_SPORTS:
+        return {
+            "sport": sport,
+            "has_activities_for_sport": False,
+            "missing_best_efforts_count": 0,
+            "backfill_status": "ready",
+            "backfill_updated_count": 0,
+            "records_source": "none",
+        }
+
+    # Only extract the JSONB sub-keys needed (best_efforts, power_curve)
+    # to avoid loading the large streams.data arrays.
     stmt = (
         select(
             Activity.id,
             Activity.created_at,
+            Activity.sport,
             Activity.streams['best_efforts'].label('best_efforts'),
             Activity.streams['power_curve'].label('power_curve'),
         )
-        .where(and_(Activity.athlete_id == athlete_id, Activity.sport == sport))
+        .where(Activity.athlete_id == athlete_id)
     )
-    result = await db.execute(stmt)
-    rows = result.all()
+    rows = (await db.execute(stmt)).all()
+    sport_rows = [
+        (activity_id, created_at, best_efforts, power_curve)
+        for activity_id, created_at, raw_sport, best_efforts, power_curve in rows
+        if _sport_matches(raw_sport, target_sport)
+    ]
 
-    if sport == "cycling":
-        return {"sport": "cycling", "power": _agg_cycling_prs_rows(rows)}
-    elif sport == "running":
-        return {"sport": "running", "best_efforts": _agg_running_prs_rows(rows)}
-    return {"sport": sport}
+    has_activities = len(sport_rows) > 0
+    missing_best_efforts_count = sum(1 for _, _, best_efforts, _ in sport_rows if not _has_best_efforts(best_efforts))
+    backfill_updated_count = 0
+
+    if target_sport == "cycling":
+        records, used_fallback = _agg_cycling_prs_rows(sport_rows)
+    else:
+        records = _agg_running_prs_rows(sport_rows)
+        used_fallback = False
+
+    records_empty = len(records) == 0
+
+    if auto_backfill and has_activities and records_empty and missing_best_efforts_count > 0:
+        configured_batch = max(1, int(os.getenv("PERSONAL_RECORDS_BACKFILL_BATCH_SIZE", "150")))
+        batch_size = configured_batch if backfill_batch_size is None else max(1, backfill_batch_size)
+        backfill_result = await backfill_missing_best_efforts(
+            db,
+            athlete_id=athlete_id,
+            sport=target_sport,
+            limit=batch_size,
+        )
+        backfill_updated_count = int(backfill_result.get("updated", 0) or 0)
+
+        rows = (await db.execute(stmt)).all()
+        sport_rows = [
+            (activity_id, created_at, best_efforts, power_curve)
+            for activity_id, created_at, raw_sport, best_efforts, power_curve in rows
+            if _sport_matches(raw_sport, target_sport)
+        ]
+        missing_best_efforts_count = sum(1 for _, _, best_efforts, _ in sport_rows if not _has_best_efforts(best_efforts))
+
+        if target_sport == "cycling":
+            records, used_fallback = _agg_cycling_prs_rows(sport_rows)
+        else:
+            records = _agg_running_prs_rows(sport_rows)
+            used_fallback = False
+        records_empty = len(records) == 0
+
+    backfill_status = (
+        "processing"
+        if has_activities and records_empty and missing_best_efforts_count > 0 and backfill_updated_count > 0
+        else "ready"
+    )
+    records_source = "power_curve_fallback" if used_fallback else "best_efforts"
+
+    if target_sport == "cycling":
+        return {
+            "sport": "cycling",
+            "power": records,
+            "has_activities_for_sport": has_activities,
+            "missing_best_efforts_count": missing_best_efforts_count,
+            "backfill_status": backfill_status,
+            "backfill_updated_count": backfill_updated_count,
+            "records_source": records_source,
+        }
+
+    return {
+        "sport": "running",
+        "best_efforts": records,
+        "has_activities_for_sport": has_activities,
+        "missing_best_efforts_count": missing_best_efforts_count,
+        "backfill_status": backfill_status,
+        "backfill_updated_count": backfill_updated_count,
+        "records_source": records_source,
+    }
+
+
+async def backfill_missing_best_efforts(
+    db: AsyncSession,
+    *,
+    athlete_id: int | None = None,
+    sport: str | None = None,
+    limit: int = 200,
+) -> dict[str, int]:
+    target_sport = normalize_pr_sport(sport) if sport else None
+    if target_sport is not None and target_sport not in SUPPORTED_PR_SPORTS:
+        return {
+            "updated": 0,
+            "missing": 0,
+            "remaining_missing": 0,
+        }
+
+    batch_limit = max(1, int(limit))
+
+    stmt = select(Activity).where(Activity.streams.is_not(None)).order_by(Activity.created_at.desc())
+    if athlete_id is not None:
+        stmt = stmt.where(Activity.athlete_id == athlete_id)
+
+    activities = list((await db.execute(stmt)).scalars().all())
+
+    updated = 0
+    missing = 0
+    for activity in activities:
+        normalized_sport = normalize_pr_sport(activity.sport)
+        if normalized_sport not in SUPPORTED_PR_SPORTS:
+            continue
+        if target_sport is not None and normalized_sport != target_sport:
+            continue
+
+        streams = activity.streams if isinstance(activity.streams, dict) else {}
+        best_efforts = streams.get("best_efforts")
+        if _has_best_efforts(best_efforts):
+            continue
+
+        missing += 1
+        if updated >= batch_limit:
+            continue
+
+        stream_points = streams.get("data") if isinstance(streams.get("data"), list) else []
+        computed = compute_activity_best_efforts(stream_points, activity.sport or "")
+        if not computed and normalized_sport == "cycling":
+            computed = _cycling_efforts_from_power_curve(streams.get("power_curve"))
+        if not computed:
+            continue
+
+        next_streams = dict(streams)
+        next_streams["best_efforts"] = computed
+        activity.streams = next_streams
+        db.add(activity)
+        updated += 1
+
+    if updated > 0:
+        await db.commit()
+
+    return {
+        "updated": updated,
+        "missing": missing,
+        "remaining_missing": max(0, missing - updated),
+    }
 
 
 def _agg_cycling_prs(activities: list) -> dict:
@@ -236,25 +426,31 @@ def _agg_cycling_prs(activities: list) -> dict:
     return bests
 
 
-def _pr_entry_row(value, activity_id: int, created_at) -> dict:
-    return {
+def _pr_entry_row(value, activity_id: int, created_at, *, avg_hr=None) -> dict:
+    entry = {
         "value": value,
         "activity_id": activity_id,
         "date": created_at.isoformat() if created_at else None,
     }
+    if avg_hr is not None:
+        entry["avg_hr"] = round(float(avg_hr))
+    return entry
 
 
-def _agg_cycling_prs_rows(rows: list) -> dict:
+def _agg_cycling_prs_rows(rows: list) -> tuple[dict, bool]:
     """Lightweight version that works with (id, created_at, best_efforts, power_curve) rows."""
     all_vals: dict = {}
+    used_fallback = False
     for activity_id, created_at, best_efforts, power_curve in rows:
         if isinstance(best_efforts, list):
             for e in best_efforts:
                 w = e.get("window") if isinstance(e, dict) else None
                 v = e.get("power", 0) if isinstance(e, dict) else 0
                 if w and v and v > 0:
-                    all_vals.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at))
+                    avg_hr = e.get("avg_hr") if isinstance(e, dict) else None
+                    all_vals.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at, avg_hr=avg_hr))
         elif isinstance(power_curve, dict):
+            used_fallback = True
             for w, v in power_curve.items():
                 if v and v > 0:
                     all_vals.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at))
@@ -262,7 +458,7 @@ def _agg_cycling_prs_rows(rows: list) -> dict:
     for w, entries in all_vals.items():
         entries.sort(key=lambda x: x["value"], reverse=True)
         bests[w] = entries[:3]
-    return bests
+    return bests, used_fallback
 
 
 def _agg_running_prs(activities: list) -> dict:
@@ -297,7 +493,8 @@ def _agg_running_prs_rows(rows: list) -> dict:
             d = e.get("distance")
             v = e.get("time_seconds", 0)
             if d and v and v > 0:
-                all_vals.setdefault(d, []).append(_pr_entry_row(v, activity_id, created_at))
+                avg_hr = e.get("avg_hr")
+                all_vals.setdefault(d, []).append(_pr_entry_row(v, activity_id, created_at, avg_hr=avg_hr))
     bests: dict = {}
     for d, entries in all_vals.items():
         entries.sort(key=lambda x: x["value"])

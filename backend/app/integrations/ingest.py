@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Activity
 from ..services.activity_dedupe import build_fingerprint, find_duplicate_activity
+from ..services.personal_records import compute_activity_best_efforts
 
 
 async def ingest_provider_activity(
@@ -56,6 +57,11 @@ async def ingest_provider_activity(
     splits_metric = detail_payload.get("splits_metric") if isinstance(detail_payload.get("splits_metric"), list) else None
     stats = detail_payload.get("stats") if isinstance(detail_payload.get("stats"), dict) else {}
 
+    # Compute best efforts from stream data if available
+    best_efforts = None
+    if stream_points:
+        best_efforts = compute_activity_best_efforts(stream_points, sport or "")
+
     if duplicate:
         duplicate_streams = getattr(duplicate, "streams", None)
         existing_streams = duplicate_streams if isinstance(duplicate_streams, dict) else {}
@@ -102,6 +108,7 @@ async def ingest_provider_activity(
                 "pace_curve": pace_curve,
                 "laps": laps,
                 "splits_metric": splits_metric,
+                "best_efforts": best_efforts,
                 "provider_payload": payload or {},
                 "stats": stats,
                 "_meta": {
@@ -140,6 +147,7 @@ async def ingest_provider_activity(
             "pace_curve": pace_curve,
             "laps": laps,
             "splits_metric": splits_metric,
+            "best_efforts": best_efforts,
             "provider_payload": payload or {},
             "stats": stats,
             "_meta": {

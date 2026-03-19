@@ -34,16 +34,20 @@ import { notifications } from "@mantine/notifications";
 import { IntegrationsPanel } from "../IntegrationsPanel";
 import { useI18n } from "../../i18n/I18nProvider";
 import {
-  getStravaImportPreferences,
-  setStravaImportPreferences,
   type ProviderStatus,
-  type StravaImportPreferences,
 } from "../../api/integrations";
 
 type Profile = {
   first_name?: string | null;
   last_name?: string | null;
+  gender?: string | null;
   birth_date?: string | Date | null;
+  weight?: number | null;
+  country?: string | null;
+  contact_email?: string | null;
+  contact_number?: string | null;
+  menstruation_available_to_coach?: boolean | null;
+  training_days?: string[] | null;
   hrv_ms?: number | null;
   ftp?: number | null;
   lt2?: number | null;
@@ -86,6 +90,7 @@ type SettingsFormProps = {
   changingPassword?: boolean;
   onRequestEmailConfirmation?: () => void;
   onChangePassword?: (payload: { current_password: string; new_password: string }) => void;
+  initialSection?: string;
 };
 
 const getSupportedTimeZones = (): string[] => {
@@ -95,11 +100,11 @@ const getSupportedTimeZones = (): string[] => {
   return intlWithSupportedValues.supportedValuesOf?.("timeZone") ?? [Intl.DateTimeFormat().resolvedOptions().timeZone];
 };
 
-const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider, disconnectingProvider, syncingProvider, cancelingProvider, onConnect, onDisconnect, onSync, onCancelSync, requestingEmailConfirmation, changingPassword, onRequestEmailConfirmation, onChangePassword }: SettingsFormProps) => {
+const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider, disconnectingProvider, syncingProvider, cancelingProvider, onConnect, onDisconnect, onSync, onCancelSync, requestingEmailConfirmation, changingPassword, onRequestEmailConfirmation, onChangePassword, initialSection }: SettingsFormProps) => {
   const isDark = useComputedColorScheme("light") === "dark";
   const isMobile = useMediaQuery("(max-width: 48em)");
   const { t } = useI18n();
-  const [activeSection, setActiveSection] = useState("general");
+  const [activeSection, setActiveSection] = useState(initialSection || "general");
   const capitalize = (s?: string | null) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
   const initialProfile: Profile = user.profile
     ? {
@@ -117,9 +122,6 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
   const [profile, setProfile] = useState<Profile>(initialProfile || {});
   const [zoneSport, setZoneSport] = useState<'running' | 'cycling'>('running');
   const [zoneMetric, setZoneMetric] = useState<'hr' | 'pace' | 'power'>('hr');
-  const [stravaImportPrefs, setStravaImportPrefs] = useState<StravaImportPreferences | null>(null);
-  const [stravaPrefsLoading, setStravaPrefsLoading] = useState(false);
-  const [stravaPrefsSaving, setStravaPrefsSaving] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -132,36 +134,6 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
       setZoneMetric('power');
     }
   }, [zoneSport, zoneMetric]);
-
-  const stravaProvider = (providers || []).find((provider) => provider.provider === 'strava');
-  const stravaConnected = stravaProvider?.connection_status === 'connected';
-
-  useEffect(() => {
-    let active = true;
-    if (!stravaConnected) {
-      setStravaImportPrefs(null);
-      return;
-    }
-
-    setStravaPrefsLoading(true);
-    void getStravaImportPreferences()
-      .then((prefs) => {
-        if (!active) return;
-        setStravaImportPrefs(prefs);
-      })
-      .catch(() => {
-        if (!active) return;
-        setStravaImportPrefs(null);
-      })
-      .finally(() => {
-        if (!active) return;
-        setStravaPrefsLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [stravaConnected]);
   
   const handleChange = (field: keyof Profile, value: any) => {
     setProfile(p => ({ ...p, [field]: value }));
@@ -514,48 +486,6 @@ const SettingsForm = ({ user, onSubmit, isSaving, providers, connectingProvider,
               checked={profile.auto_sync_integrations !== false}
               onChange={(event) => handleChange('auto_sync_integrations', event.currentTarget.checked)}
             />
-
-            <Paper withBorder p="sm" radius="sm">
-              <Stack gap={6}>
-                <Switch
-                  label={t('Strava detail backfill: import all-time history') || 'Strava detail backfill: import all-time history'}
-                  description={
-                    stravaImportPrefs
-                      ? `${t('When off, full-detail backfill focuses on the last') || 'When off, full-detail backfill focuses on the last'} ${stravaImportPrefs.default_window_days} ${t('days.') || 'days.'}`
-                      : t('Runs in background in small batches with request limits.') || 'Runs in background in small batches with request limits.'
-                  }
-                  checked={Boolean(stravaImportPrefs?.import_all_time)}
-                  disabled={!stravaConnected || stravaPrefsLoading || stravaPrefsSaving}
-                  onChange={(event) => {
-                    const next = event.currentTarget.checked;
-                    setStravaPrefsSaving(true);
-                    void setStravaImportPreferences({ import_all_time: next })
-                      .then((prefs) => {
-                        setStravaImportPrefs(prefs);
-                        notifications.show({
-                          color: 'teal',
-                          title: t('Strava import preference saved') || 'Strava import preference saved',
-                          message: next
-                            ? t('All-time detail backfill enabled. Sync runs in background batches.') || 'All-time detail backfill enabled. Sync runs in background batches.'
-                            : `${t('Detail backfill set to last') || 'Detail backfill set to last'} ${prefs.default_window_days} ${t('days.') || 'days.'}`,
-                        });
-                        if (onSync) onSync('strava');
-                      })
-                      .catch(() => {
-                        notifications.show({
-                          color: 'red',
-                          title: t('Unable to save Strava preference') || 'Unable to save Strava preference',
-                          message: t('Please try again.') || 'Please try again.',
-                        });
-                      })
-                      .finally(() => setStravaPrefsSaving(false));
-                  }}
-                />
-                {!stravaConnected && (
-                  <Text size="xs" c="dimmed">{t('Connect Strava to configure detail backfill scope.') || 'Connect Strava to configure detail backfill scope.'}</Text>
-                )}
-              </Stack>
-            </Paper>
 
             <IntegrationsPanel
               providers={providers || []}

@@ -67,7 +67,7 @@ export const IntegrationsPanel = ({
                   <Text size="xs" c="dimmed">Status: {getStatusText(item, isConnected)}</Text>
                   {item.provider === "strava" && isConnected && (
                     <Text size="xs" c="dimmed">
-                      Recent activities sync first. Full history is added gradually in the background.
+                      Imports your last 3 months of activities on first sync.
                     </Text>
                   )}
                   {item.last_sync_at && <Text size="xs" c="dimmed">Last sync: {new Date(item.last_sync_at).toLocaleString()}</Text>}

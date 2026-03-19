@@ -117,6 +117,11 @@ class Profile(Base):
     
     # Sports configuration
     sports = Column(JSONB, nullable=True) 
+    country = Column(String(100), nullable=True)
+    contact_email = Column(String(255), nullable=True)
+    contact_number = Column(String(50), nullable=True)
+    menstruation_available_to_coach = Column(Boolean, default=False, nullable=True)
+    training_days = Column(JSONB, nullable=True)  # e.g. ["monday","tuesday",...]
     main_sport = Column(String(50), nullable=True)
     timezone = Column(String(50), nullable=True)
     preferred_units = Column(String(20), default="metric", nullable=True) # metric, imperial

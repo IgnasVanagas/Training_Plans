@@ -280,8 +280,6 @@ async def _queue_strava_recent_sync_from_webhook(db: AsyncSession, *, user_id: i
     state = await get_or_create_sync_state(db, user_id=user_id, provider="strava")
     cursor = dict(state.cursor or {})
     cursor.pop("cancel_requested", None)
-    cursor["strava_recent_only_once"] = True
-    cursor["strava_no_auto_history"] = True
     state.cursor = cursor
 
     if getattr(state, "sync_status", "idle") == "syncing":
@@ -797,14 +795,8 @@ async def _sync_provider_task(provider: str, user_id: int):
                     await db.commit()
                     return
 
-            strava_auto_backfill_enabled = os.getenv("STRAVA_AUTO_BACKFILL_CONTINUE", "true").lower() in {"1", "true", "yes", "on"}
-            strava_auto_backfill_delay_seconds = max(0.0, float(os.getenv("STRAVA_AUTO_BACKFILL_DELAY_SECONDS", "8")))
-            strava_auto_backfill_max_phases = max(0, int(os.getenv("STRAVA_AUTO_BACKFILL_MAX_PHASES", "0")))
-            strava_phase_index = 0
             sync_progress_step = max(1, int(os.getenv("INTEGRATION_SYNC_PROGRESS_STEP", "5")))
             ingest_commit_batch = max(1, int(os.getenv("INTEGRATION_SYNC_INGEST_COMMIT_BATCH", "20")))
-            strava_recent_only_once = provider == "strava" and bool((state.cursor or {}).get("strava_recent_only_once"))
-            strava_no_auto_history = provider == "strava" and bool((state.cursor or {}).get("strava_no_auto_history", False))
 
             async def _is_cancel_requested() -> bool:
                 latest_state = await db.scalar(select(ProviderSyncState).where(ProviderSyncState.id == state.id))
@@ -840,17 +832,10 @@ async def _sync_provider_task(provider: str, user_id: int):
                     if await _is_cancel_requested():
                         raise RuntimeError("SYNC_CANCELLED_BY_USER")
                     return
-                suffix = ""
-                if provider == "strava":
-                    requests_last_10m = (state.cursor or {}).get("strava_requests_last_10m")
-                    if requests_last_10m is not None:
-                        suffix = f" Recent first; full history appears progressively. Strava requests last 10m: {requests_last_10m}."
-                    else:
-                        suffix = " Recent first; full history appears progressively."
                 await db.execute(
                     update(ProviderSyncState)
                     .where(ProviderSyncState.id == state.id)
-                    .values(sync_progress=fetched_count, sync_message=f"Synced {fetched_count} activities...{suffix}")
+                    .values(sync_progress=fetched_count, sync_message=f"Synced {fetched_count} activities...")
                 )
                 await db.commit()
                 if await _is_cancel_requested():
@@ -866,23 +851,10 @@ async def _sync_provider_task(provider: str, user_id: int):
                 sync_request_cursor = dict(current_cursor)
 
                 if provider == "strava":
-                    if strava_recent_only_once:
-                        sync_request_cursor["strava_recent_only"] = True
-                        sync_request_cursor.pop("strava_history_only", None)
-                    elif strava_phase_index <= 0:
-                        sync_request_cursor["strava_recent_only"] = True
-                        sync_request_cursor.pop("strava_history_only", None)
-                    else:
-                        sync_request_cursor["strava_history_only"] = True
-                        sync_request_cursor.pop("strava_recent_only", None)
-
-                if provider == "strava":
                     if is_strava_initial_phase:
-                        state.sync_message = "Starting sync... loading your most recent activities first."
-                    elif strava_phase_index > 0:
-                        state.sync_message = f"Continuing sync phase {strava_phase_index + 1}... adding older history."
+                        state.sync_message = "Starting sync... loading your last 3 months of activities."
                     else:
-                        state.sync_message = "Starting sync... adding older history in the background."
+                        state.sync_message = "Starting sync..."
                 else:
                     state.sync_message = "Starting sync..."
                 state.sync_progress = 0
@@ -936,15 +908,12 @@ async def _sync_provider_task(provider: str, user_id: int):
                         )
                         return
 
-                    suffix = ""
-                    if provider == "strava":
-                        suffix = " Recent first; full history appears progressively."
                     should_write_progress = ((index + 1) % sync_progress_step == 0) or (index + 1 == total_items)
                     if should_write_progress:
                         await db.execute(
                             update(ProviderSyncState)
                             .where(ProviderSyncState.id == state.id)
-                            .values(sync_progress=index + 1, sync_total=total_items, sync_message=f"Saving activity {index+1}/{total_items}...{suffix}")
+                            .values(sync_progress=index + 1, sync_total=total_items, sync_message=f"Saving activity {index+1}/{total_items}...")
                         )
                         await db.commit()
 
@@ -1146,21 +1115,6 @@ async def _sync_provider_task(provider: str, user_id: int):
                         int(cursor_snapshot.get("strava_requests_last_10m") or 0),
                     )
 
-                has_backfill_remaining = bool(next_cursor.get("backfill_before_epoch")) and not bool(next_cursor.get("full_backfill_once_done"))
-                backfill_cursor_advanced = next_cursor.get("backfill_before_epoch") != current_cursor.get("backfill_before_epoch")
-                made_phase_progress = imported > 0 or enriched_count > 0 or backfill_cursor_advanced
-                strava_daily_limit_reached = bool(next_cursor.get("strava_daily_limit_reached"))
-                can_continue_backfill = (
-                    provider == "strava"
-                    and strava_auto_backfill_enabled
-                    and not strava_no_auto_history
-                    and not strava_recent_only_once
-                    and has_backfill_remaining
-                    and made_phase_progress
-                    and not strava_daily_limit_reached
-                    and (strava_auto_backfill_max_phases <= 0 or (strava_phase_index + 1) < strava_auto_backfill_max_phases)
-                )
-
                 state.cursor = next_cursor
                 state.cursor.pop("strava_recent_only_once", None)
                 state.cursor.pop("strava_no_auto_history", None)
@@ -1169,66 +1123,8 @@ async def _sync_provider_task(provider: str, user_id: int):
                 connection.last_sync_at = datetime.utcnow()
                 connection.last_error = None
 
-                if can_continue_backfill:
-                    state.sync_status = "syncing"
-                    state.sync_message = (
-                        f"Completed phase {strava_phase_index + 1}. Imported {imported} new, {duplicates} duplicates. "
-                        "Continuing historical backfill shortly..."
-                    )
-                    await db.commit()
-                    strava_phase_index += 1
-                    if strava_auto_backfill_delay_seconds > 0:
-                        await asyncio.sleep(strava_auto_backfill_delay_seconds)
-                    continue
-
                 state.sync_status = "completed"
-                if provider == "strava" and strava_recent_only_once and has_backfill_remaining:
-                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
-                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
-                    state.sync_message = (
-                        f"Completed recent sync. Imported {imported} new, {duplicates} duplicates. "
-                        "Press Sync now to continue importing older historical activities."
-                        + debug_tail
-                    )
-                elif provider == "strava" and has_backfill_remaining and not strava_auto_backfill_enabled:
-                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
-                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
-                    state.sync_message = (
-                        f"Completed this phase. Imported {imported} new, {duplicates} duplicates. "
-                        "More historical activities are available; trigger sync again to continue backfill."
-                        + debug_tail
-                    )
-                elif provider == "strava" and has_backfill_remaining and not made_phase_progress:
-                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
-                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
-                    state.sync_message = (
-                        f"Completed this phase. Imported {imported} new, {duplicates} duplicates. "
-                        "Backfill paused with no additional progress this run; sync again later."
-                        + debug_tail
-                    )
-                elif provider == "strava" and has_backfill_remaining and strava_daily_limit_reached:
-                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
-                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
-                    state.sync_message = (
-                        f"Completed this phase. Imported {imported} new, {duplicates} duplicates. "
-                        "Paused because daily Strava API limit is reached; will continue next UTC day."
-                        + debug_tail
-                    )
-                elif provider == "strava" and has_backfill_remaining and strava_auto_backfill_max_phases > 0:
-                    requests_last_10m = next_cursor.get("strava_requests_last_10m")
-                    debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
-                    state.sync_message = (
-                        f"Completed this run. Imported {imported} new, {duplicates} duplicates. "
-                        "More historical activities remain and will sync on the next run."
-                        + debug_tail
-                    )
-                else:
-                    if provider == "strava":
-                        requests_last_10m = next_cursor.get("strava_requests_last_10m")
-                        debug_tail = f" Strava requests last 10m: {requests_last_10m}." if requests_last_10m is not None else ""
-                        state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates.{debug_tail}"
-                    else:
-                        state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates."
+                state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates."
 
                 await db.commit()
                 break
@@ -1341,12 +1237,8 @@ async def sync_provider_now(
     if provider == "strava":
         cursor = dict(state.cursor or {})
         cursor.pop("cancel_requested", None)
-        if requested_mode == "recent":
-            cursor["strava_recent_only_once"] = True
-            cursor["strava_no_auto_history"] = True
-        else:
-            cursor.pop("strava_recent_only_once", None)
-            cursor.pop("strava_no_auto_history", None)
+        cursor.pop("strava_recent_only_once", None)
+        cursor.pop("strava_no_auto_history", None)
         state.cursor = cursor
     else:
         cursor = dict(state.cursor or {})
@@ -1366,19 +1258,12 @@ async def sync_provider_now(
         connection.last_error = None
     await db.commit()
 
-    queued_message = "Sync queued"
-    if provider == "strava":
-        if requested_mode == "recent":
-            queued_message = "Sync queued. Loading newest activities now; older history syncs when you press Sync now."
-        else:
-            queued_message = "Sync queued. Your newest activities arrive first; full history follows over time."
-
     return SyncStatusOut(
         provider=provider,
         status="syncing",
         progress=0,
         total=0,
-        message=queued_message,
+        message="Sync queued.",
         last_success=state.last_success,
         last_error=state.last_error
     )

@@ -18,7 +18,7 @@ from ..services.activity_dedupe import (
     extract_source_identity,
     find_duplicate_activity,
 )
-from ..services.personal_records import compute_activity_best_efforts, get_activity_prs
+from ..services.personal_records import compute_activity_best_efforts, get_activity_prs, get_personal_records
 from ..parsing import compute_metric_splits_from_points
 from datetime import datetime, timezone, date, timedelta
 from collections import defaultdict
@@ -120,6 +120,14 @@ def _metric_upper_bounds(
                 parsed_bounds.append(float(raw))
             except (TypeError, ValueError):
                 return fallback_bounds
+
+        if sport == "running" and metric == "pace":
+            # Running pace is interpreted as min/km. Older payloads may contain seconds or percentages.
+            if min(parsed_bounds) >= 60.0 and max(parsed_bounds) <= 1200.0:
+                parsed_bounds = [bound / 60.0 for bound in parsed_bounds]
+            elif max(parsed_bounds) > 20.0:
+                return fallback_bounds
+
         if any(parsed_bounds[i] <= parsed_bounds[i - 1] for i in range(1, len(parsed_bounds))):
             return fallback_bounds
         return parsed_bounds
@@ -137,7 +145,15 @@ def _metric_upper_bounds(
     if sport == "running" and metric == "pace":
         if lt2f >= lt1f:
             return fallback_bounds
-        return [lt2f * 0.84, lt2f * 0.90, lt2f * 0.97, lt2f * 1.03, lt1f, lt1f * 1.10]
+        # Zones based on %LT2 speed: Z1=50-60%, Z2=60-75%, Z3=75-90%, Z4=90-100%, Z5=100%+
+        # Stored as % of LT2 pace time (inverse of speed %)
+        return [
+            lt2f * 1.80,  # Z1 upper: 50-60% LT2 speed
+            lt2f * 1.50,  # Z2 upper: 60-75% LT2 speed
+            lt2f * 1.20,  # Z3 upper: 75-90% LT2 speed
+            lt2f * 1.05,  # Z4 upper: 90-100% LT2 speed
+            lt2f * 0.95,  # Z5 upper: 100%+ LT2 speed
+        ]
 
     if lt2f <= lt1f:
         return fallback_bounds
@@ -192,6 +208,26 @@ def _zone_index_from_upper_bounds(value: float, upper_bounds: list[float], rever
         if value <= bound:
             return idx
     return len(upper_bounds) + 1
+
+
+def _zone_bucket_key(zone_seconds: dict[str, float], zone: int) -> str:
+    zone_indexes = [
+        int(key[1:])
+        for key in zone_seconds.keys()
+        if isinstance(key, str) and key.startswith("Z") and key[1:].isdigit()
+    ]
+    if not zone_indexes:
+        return f"Z{max(1, zone)}"
+
+    min_zone = min(zone_indexes)
+    max_zone = max(zone_indexes)
+    clamped_zone = max(min_zone, min(max_zone, zone))
+    return f"Z{clamped_zone}"
+
+
+def _add_zone_seconds(zone_seconds: dict[str, float], zone: int, seconds: float) -> None:
+    key = _zone_bucket_key(zone_seconds, zone)
+    zone_seconds[key] = _safe_number(zone_seconds.get(key), default=0.0) + max(0.0, _safe_number(seconds, default=0.0))
 
 
 def _normalize_utc_iso(value) -> str | None:
@@ -1055,14 +1091,14 @@ def _apply_activity_to_bucket(
             profile,
             sport="running",
             metric="pace",
-            fallback_bounds=[lt2_pace * 0.84, lt2_pace * 0.90, lt2_pace * 0.97, lt2_pace * 1.03, lt2_pace * 1.10, lt2_pace * 1.20] if lt2_pace > 0 else [],
+            fallback_bounds=[lt2_pace * 1.80, lt2_pace * 1.50, lt2_pace * 1.20, lt2_pace * 1.05, lt2_pace * 0.95] if lt2_pace > 0 else [],
         )
 
         if hr_samples and max_hr > 0 and duration_seconds > 0:
             seconds_per_sample = duration_seconds / len(hr_samples)
             for hr in hr_samples:
                 zone = _zone_index_from_upper_bounds(hr, running_hr_bounds)
-                sport_bucket["zone_seconds_by_metric"]["hr"][f"Z{zone}"] += seconds_per_sample
+                _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["hr"], zone, seconds_per_sample)
         else:
             hr_zones = stored_streams.get("hr_zones") if isinstance(stored_streams, dict) else None
             if isinstance(hr_zones, dict):
@@ -1083,14 +1119,14 @@ def _apply_activity_to_bucket(
                     if lap_avg_hr <= 0 or lap_duration <= 0:
                         continue
                     zone = _zone_index_from_upper_bounds(lap_avg_hr, running_hr_bounds)
-                    sport_bucket["zone_seconds_by_metric"]["hr"][f"Z{zone}"] += lap_duration
+                    _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["hr"], zone, lap_duration)
 
         if running_pace_bounds and speed_samples and duration_seconds > 0:
             seconds_per_sample = duration_seconds / len(speed_samples)
             for speed in speed_samples:
                 pace_min_per_km = 1000.0 / (speed * 60.0)
                 zone = _zone_index_from_upper_bounds(pace_min_per_km, running_pace_bounds, reverse=True)
-                sport_bucket["zone_seconds_by_metric"]["pace"][f"Z{zone}"] += seconds_per_sample
+                _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["pace"], zone, seconds_per_sample)
 
         sport_bucket["zone_seconds"] = dict(sport_bucket["zone_seconds_by_metric"]["hr"])
         return
@@ -1136,7 +1172,7 @@ def _apply_activity_to_bucket(
         seconds_per_sample = duration_seconds / len(power_samples)
         for watts in power_samples:
             zone = _zone_index_from_upper_bounds(watts, cycling_power_bounds)
-            sport_bucket["zone_seconds_by_metric"]["power"][f"Z{zone}"] += seconds_per_sample
+            _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["power"], zone, seconds_per_sample)
     elif cycling_power_bounds and isinstance(laps, list):
         for lap in laps:
             if not isinstance(lap, dict):
@@ -1152,13 +1188,13 @@ def _apply_activity_to_bucket(
             if lap_avg_power < 0 or lap_duration <= 0:
                 continue
             zone = _zone_index_from_upper_bounds(lap_avg_power, cycling_power_bounds)
-            sport_bucket["zone_seconds_by_metric"]["power"][f"Z{zone}"] += lap_duration
+            _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["power"], zone, lap_duration)
 
     if hr_samples and max_hr > 0 and duration_seconds > 0:
         seconds_per_sample = duration_seconds / len(hr_samples)
         for hr in hr_samples:
             zone = _zone_index_from_upper_bounds(hr, cycling_hr_bounds)
-            sport_bucket["zone_seconds_by_metric"]["hr"][f"Z{zone}"] += seconds_per_sample
+            _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["hr"], zone, seconds_per_sample)
     else:
         hr_zones = stored_streams.get("hr_zones") if isinstance(stored_streams, dict) else None
         if isinstance(hr_zones, dict):
@@ -1179,7 +1215,7 @@ def _apply_activity_to_bucket(
                 if lap_avg_hr <= 0 or lap_duration <= 0:
                     continue
                 zone = _zone_index_from_upper_bounds(lap_avg_hr, cycling_hr_bounds)
-                sport_bucket["zone_seconds_by_metric"]["hr"][f"Z{zone}"] += lap_duration
+                _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["hr"], zone, lap_duration)
 
     sport_bucket["zone_seconds"] = dict(sport_bucket["zone_seconds_by_metric"]["power"])
 
@@ -2157,6 +2193,45 @@ async def get_training_status(
         },
         "training_status": _resolve_training_status(acute_load, chronic_load)
     }
+
+@router.get("/personal-records")
+async def get_personal_records_endpoint(
+    sport: str = "cycling",
+    athlete_id: int | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return aggregate personal records (top-3 per window/distance) for an athlete."""
+    target_athlete_id = current_user.id
+
+    if athlete_id is not None and athlete_id != current_user.id:
+        if current_user.role != RoleEnum.coach:
+            raise HTTPException(status_code=403, detail="Not authorized for this athlete")
+        access_stmt = select(OrganizationMember).where(
+            OrganizationMember.user_id == athlete_id,
+            OrganizationMember.status == "active",
+            OrganizationMember.organization_id.in_(
+                select(OrganizationMember.organization_id).where(
+                    OrganizationMember.user_id == current_user.id,
+                    OrganizationMember.role == RoleEnum.coach.value,
+                    OrganizationMember.status == "active",
+                )
+            ),
+        )
+        access_res = await db.execute(access_stmt)
+        if access_res.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="Not authorized for this athlete")
+        target_athlete_id = athlete_id
+    elif athlete_id is not None:
+        target_athlete_id = athlete_id
+
+    return await get_personal_records(
+        db,
+        target_athlete_id,
+        sport,
+        auto_backfill=True,
+    )
+
 
 @router.get("/", response_model=list[ActivityOut])
 async def get_activities(

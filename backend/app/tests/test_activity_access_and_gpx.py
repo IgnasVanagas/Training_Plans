@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 from fastapi import HTTPException
 
-from app.models import Activity, PlannedWorkout, RoleEnum, User
+from app.models import Activity, PlannedWorkout, Profile, RoleEnum, User
 from app.parsing import parse_gpx
 from app.routers import activities as activities_router
 
@@ -248,3 +248,51 @@ def test_activity_feedback_parses_legacy_lactate_payload():
     assert rpe == 7
     assert notes == "Felt controlled"
     assert lactate == pytest.approx(3.2)
+
+
+def test_apply_activity_to_bucket_clamps_hr_zone_to_available_keys():
+    # Five HR upper bounds can produce an index of 6 for values above the top bound.
+    # The accumulation code should clamp to the highest available HR bucket (Z5), not crash.
+    profile = Profile(
+        user_id=3,
+        sports={
+            "zone_settings": {
+                "cycling": {
+                    "hr": {
+                        "upper_bounds": [100, 120, 140, 160, 180],
+                    }
+                }
+            }
+        },
+    )
+    activity = Activity(
+        id=301,
+        athlete_id=3,
+        filename="edge-case.fit",
+        file_path="uploads/edge-case.fit",
+        file_type="fit",
+        created_at=datetime.utcnow(),
+        sport="cycling",
+        duration=120,
+        distance=1000,
+        streams={
+            "data": [
+                {"heart_rate": 170, "power": 180},
+                {"heart_rate": 185, "power": 182},
+            ],
+            "stats": {},
+        },
+    )
+    bucket = activities_router._empty_bucket()
+
+    activities_router._apply_activity_to_bucket(
+        bucket,
+        activity,
+        ftp=250,
+        max_hr=190,
+        profile=profile,
+    )
+
+    hr_zones = bucket["sports"]["cycling"]["zone_seconds_by_metric"]["hr"]
+    assert "Z6" not in hr_zones
+    assert hr_zones["Z5"] > 0

@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
+from .services.personal_records import CYCLING_EFFORT_WINDOWS, compute_activity_best_efforts
+
 def safe_float(val):
     try:
         f = float(val)
@@ -14,6 +16,34 @@ def safe_float(val):
         return f
     except (ValueError, TypeError):
         return None
+
+
+def _cycling_efforts_from_power_curve(power_curve):
+    if not isinstance(power_curve, dict):
+        return None
+
+    efforts = []
+    for window, seconds in CYCLING_EFFORT_WINDOWS.items():
+        watts = safe_float(power_curve.get(window))
+        if not watts or watts <= 0:
+            continue
+        efforts.append({
+            "window": window,
+            "seconds": seconds,
+            "power": round(watts),
+            "avg_hr": None,
+            "elevation": 0,
+        })
+
+    return efforts or None
+
+
+def _compute_best_efforts(streams, sport, power_curve=None):
+    efforts = compute_activity_best_efforts(streams or [], sport or "")
+    sport_name = (sport or "").lower()
+    if not efforts and ("cycl" in sport_name or "bike" in sport_name or "ride" in sport_name):
+        efforts = _cycling_efforts_from_power_curve(power_curve)
+    return efforts
 
 def parse_activity_file(file_path: str, file_type: str):
     if file_type == 'fit':
@@ -280,8 +310,8 @@ def parse_fit(file_path):
              
     hr_zones = calculate_hr_zones(df)
     pace_curve = calculate_pace_curve(df)
-    # best_efforts are lazy-computed at GET time via compute_activity_best_efforts
-    best_efforts = None
+    streams = clean_streams(df)
+    best_efforts = _compute_best_efforts(streams, sport, power_curve)
     
     splits_metric = calculate_metric_splits(df)
     
@@ -294,7 +324,7 @@ def parse_fit(file_path):
     
     return {
         "summary": summary,
-        "streams": clean_streams(df),
+        "streams": streams,
         "sport": sport,
         "start_time": start_time,
         "power_curve": power_curve,
@@ -575,8 +605,8 @@ def parse_fit_decode(file_path):
              
     hr_zones = calculate_hr_zones(df)
     pace_curve = calculate_pace_curve(df)
-    # best_efforts are lazy-computed at GET time via compute_activity_best_efforts
-    best_efforts = None
+    streams = clean_streams(df)
+    best_efforts = _compute_best_efforts(streams, sport, power_curve)
     
     splits_metric = calculate_metric_splits(df)
     
@@ -587,7 +617,7 @@ def parse_fit_decode(file_path):
     
     return {
         "summary": summary,
-        "streams": clean_streams(df),
+        "streams": streams,
         "sport": sport,
         "power_curve": power_curve,
         "hr_zones": hr_zones,

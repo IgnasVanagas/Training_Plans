@@ -59,6 +59,11 @@ async def on_startup() -> None:
             await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_season_plans_athlete_updated_at ON season_plans (athlete_id, updated_at DESC)"))
             await conn.execute(text("UPDATE planned_workouts SET created_by_user_id = user_id WHERE created_by_user_id IS NULL"))
             await conn.execute(text("UPDATE users SET email_verified = TRUE WHERE email_verified IS NULL"))
+            await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS country VARCHAR(100)"))
+            await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255)"))
+            await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS contact_number VARCHAR(50)"))
+            await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS menstruation_available_to_coach BOOLEAN DEFAULT FALSE"))
+            await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS training_days JSONB"))
         logger.info("Database schema ready")
     except Exception as exc:
         logger.error("Database migration failed (non-fatal): %s", exc)

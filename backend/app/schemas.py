@@ -32,6 +32,11 @@ class ProfileOut(BaseModel):
     birth_date: Optional[dt_date] = None
     gender: Optional[str] = None
     weight: Optional[float] = None
+    country: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_number: Optional[str] = None
+    menstruation_available_to_coach: Optional[bool] = None
+    training_days: Optional[list[str]] = None
     hrv_ms: Optional[float] = None
     ftp: Optional[float] = None
     lt2: Optional[float] = None
@@ -99,7 +104,13 @@ class ProfileUpdate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     birth_date: Optional[dt_date] = None
+    gender: Optional[str] = None
     weight: Optional[float] = None
+    country: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_number: Optional[str] = None
+    menstruation_available_to_coach: Optional[bool] = None
+    training_days: Optional[list[str]] = None
     hrv_ms: Optional[float] = None
     ftp: Optional[float] = None
     lt2: Optional[float] = None

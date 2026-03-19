@@ -317,12 +317,13 @@ async def test_strava_incremental_sync_always_requests_latest_first(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_strava_history_only_mode_skips_recent_requests(monkeypatch):
+async def test_strava_initial_sync_uses_three_month_window(monkeypatch):
     import app.integrations.connectors.strava as strava_module
+    from datetime import datetime, timezone, timedelta
 
     captured_params: list[dict] = []
 
-    class _FakeHistoryClient:
+    class _FakeInitialSyncClient:
         def __init__(self, *args, **kwargs):
             pass
 
@@ -341,7 +342,7 @@ async def test_strava_history_only_mode_skips_recent_requests(monkeypatch):
                     [
                         {
                             "id": 2001,
-                            "name": "Old Ride",
+                            "name": "3-Month Old Ride",
                             "start_date": "2025-12-01T07:30:00Z",
                             "moving_time": 2400,
                             "distance": 12000,
@@ -351,17 +352,16 @@ async def test_strava_history_only_mode_skips_recent_requests(monkeypatch):
                 )
             return _ListResponse([])
 
-    monkeypatch.setattr(strava_module.httpx, "AsyncClient", _FakeHistoryClient)
+    monkeypatch.setattr(strava_module.httpx, "AsyncClient", _FakeInitialSyncClient)
 
     connector = StravaConnector()
     result = await connector.fetch_activities(
         access_token="token",
-        cursor={
-            "initial_sync_done": True,
-            "strava_history_only": True,
-            "backfill_before_epoch": 1764547200,
-        },
+        cursor={},
     )
 
     assert len(result.activities) == 1
-    assert all("before" in p for p in captured_params)
+    # On first sync, should use "after" parameter (not "before")
+    assert all("after" in p for p in captured_params)
+    # Cursor should be updated to mark initial sync as done
+    assert result.next_cursor.get("initial_sync_done") is True

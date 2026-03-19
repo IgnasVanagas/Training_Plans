@@ -1,8 +1,14 @@
 export type Profile = {
   first_name?: string | null;
   last_name?: string | null;
+  gender?: string | null;
   birth_date?: string | Date | null;
   weight?: number | null;
+  country?: string | null;
+  contact_email?: string | null;
+  contact_number?: string | null;
+  menstruation_available_to_coach?: boolean | null;
+  training_days?: string[] | null;
   hrv_ms?: number | null;
   ftp?: number | null;
   lt2?: number | null;

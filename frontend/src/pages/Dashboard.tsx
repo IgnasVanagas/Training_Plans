@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { endOfWeek, endOfMonth, format, startOfWeek, startOfMonth } from "date-fns";
-import { IconBooks, IconX } from "@tabler/icons-react";
+import { IconBooks, IconX, IconUpload, IconColumns, IconCalendarEvent, IconChartBar } from "@tabler/icons-react";
 import api from "../api/client";
 import { getWellnessSummary, listIntegrationProviders, logManualWellness } from "../api/integrations";
 import { ActivitiesView } from "../components/ActivitiesView";
@@ -21,6 +21,10 @@ import DashboardCoachHome from "./dashboard/DashboardCoachHome";
 import DashboardLayoutShell from "./dashboard/DashboardLayoutShell";
 import DashboardNotificationsTab from "./dashboard/DashboardNotificationsTab";
 import DashboardOrganizationsTab from "./dashboard/DashboardOrganizationsTab";
+import DashboardRacesRecordsTab from "./dashboard/DashboardRacesRecordsTab";
+import DashboardAthleteProfileTab from "./dashboard/DashboardAthleteProfileTab";
+import DashboardTrainingZonesTab from "./dashboard/DashboardTrainingZonesTab";
+import DashboardActivityTrackersTab from "./dashboard/DashboardActivityTrackersTab";
 import DashboardSettingsTab from "./dashboard/DashboardSettingsTab";
 import { useI18n } from "../i18n/I18nProvider";
 import {
@@ -46,7 +50,7 @@ const toLocalDateKey = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings"]);
+const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings", "races", "insights", "performance", "zones", "trackers", "profile", "macrocycle"]);
 
 const Dashboard = () => {
   const location = useLocation();
@@ -63,7 +67,7 @@ const Dashboard = () => {
   const [inviteEmail, setInviteEmail] = useState("");
 
   // Resolve initial tab: navigation state > URL ?tab= > default "dashboard"
-  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
+  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "performance" | "zones" | "trackers" | "profile" | "macrocycle";
   const resolvedInitialTab: DashboardTab = (() => {
     if (navigationState.activeTab && VALID_TABS.has(navigationState.activeTab)) return navigationState.activeTab;
     const urlTab = searchParams.get("tab");
@@ -108,6 +112,14 @@ const Dashboard = () => {
   const [manualMetricValue, setManualMetricValue] = useState<number | "">("");
   const isMobile = useMediaQuery("(max-width: 48em)");
 
+  // Auto-open season planner when macrocycle tab is selected
+  useEffect(() => {
+    if (activeTab === "macrocycle") setPlannerOpened(true);
+  }, [activeTab]);
+
+  // Default athletes to Calendar (plan) tab when no explicit tab is in the URL
+  const [didDefaultTab, setDidDefaultTab] = useState(false);
+
   // When arriving via location.state (e.g. back-navigation), sync the URL
   // ?tab= param and clear the transient state so F5 preserves the tab.
   useEffect(() => {
@@ -148,6 +160,15 @@ const Dashboard = () => {
       return response.data;
     },
   });
+
+  // Default athletes to Calendar (plan) tab when no explicit tab is in the URL
+  useEffect(() => {
+    if (didDefaultTab || !meQuery.data) return;
+    if (meQuery.data.role !== "coach" && activeTab === "dashboard" && !searchParams.get("tab") && !navigationState.activeTab) {
+      setActiveTab("plan");
+    }
+    setDidDefaultTab(true);
+  }, [meQuery.data, didDefaultTab, activeTab, searchParams, navigationState.activeTab]);
 
   const athletesQuery = useQuery({
     queryKey: ["athletes"],
@@ -718,23 +739,6 @@ const Dashboard = () => {
           />
         ) : activeTab === "plan" ? (
           <Flex direction="column" gap="xs" style={{ height: 'calc(100dvh - 140px)' }}>
-             <Group justify="flex-end">
-              <Button
-                variant={plannerOpened ? "light" : "outline"}
-                size="xs"
-                onClick={() => setPlannerOpened(!plannerOpened)}
-              >
-                {plannerOpened ? (t("Close Planner") || "Close Planner") : (t("Season Planner") || "Season Planner")}
-              </Button>
-                <Button 
-                    variant={showLibrary ? "light" : "outline"}
-                    size="xs"
-                    leftSection={showLibrary ? <IconX size={14} /> : <IconBooks size={14} />}
-                    onClick={() => setShowLibrary(!showLibrary)}
-                >
-                    {showLibrary ? "Close Library" : "Library"}
-                </Button>
-             </Group>
              <Flex style={{ flex: 1, minHeight: 0 }} gap="md">
                 <Box style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                   <TrainingCalendar
@@ -747,6 +751,50 @@ const Dashboard = () => {
                         setDraggedWorkout(null);
                         notifications.show({ title: 'Workout Scheduled', message: `${w.title} on ${format(d, 'MMM do')}` });
                     }}
+                    actionButtons={
+                      <>
+                        {!isMobile && (
+                          <Button
+                            variant="default"
+                            size="compact-sm"
+                            leftSection={<IconColumns size={14} />}
+                            onClick={() => setShowLibrary(!showLibrary)}
+                            styles={{ root: { borderRadius: 8, fontWeight: 600, fontSize: 12 } }}
+                          >
+                            {t("Dual view")}
+                          </Button>
+                        )}
+                        <Button
+                          variant="default"
+                          size="compact-sm"
+                          leftSection={<IconUpload size={14} />}
+                          onClick={() => setUploadModalOpened(true)}
+                          styles={{ root: { borderRadius: 8, fontWeight: 600, fontSize: 12 } }}
+                        >
+                          {t("Upload FIT file")}
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="compact-sm"
+                          leftSection={<IconCalendarEvent size={14} />}
+                          onClick={() => setPlannerOpened(!plannerOpened)}
+                          styles={{ root: { borderRadius: 8, fontWeight: 600, fontSize: 12 } }}
+                        >
+                          {t("Save a plan")}
+                        </Button>
+                        {!isMobile && (
+                          <Button
+                            variant="default"
+                            size="compact-sm"
+                            leftSection={<IconChartBar size={14} />}
+                            onClick={() => {}}
+                            styles={{ root: { borderRadius: 8, fontWeight: 600, fontSize: 12 } }}
+                          >
+                            {t("Weekly summary")}
+                          </Button>
+                        )}
+                      </>
+                    }
                   />
                 </Box>
                 {showLibrary && (
@@ -758,6 +806,74 @@ const Dashboard = () => {
                     </Box>
                 )}
              </Flex>
+          </Flex>
+        ) : activeTab === "races" ? (
+          <DashboardRacesRecordsTab me={me} athleteId={athleteIdNum} />
+        ) : activeTab === "insights" ? (
+          <DashboardAthleteHome
+            isDark={isDark}
+            me={me}
+            todayWorkout={featuredWorkout}
+            isTodayWorkout={Boolean(todayWorkout && featuredWorkout?.date === todayWorkout.date)}
+            wellnessSummary={wellnessSummaryQuery.data}
+            integrations={integrationsQuery.data || []}
+            trainingStatus={trainingStatusQuery.data}
+            onOpenPlan={() => setActiveTab("plan")}
+            onSelectMetric={(metric) => setSelectedMetric(metric)}
+            respondingInvitation={respondInvitationMutation.isPending}
+            onRespondInvitation={(organizationId, action) => respondInvitationMutation.mutate({ organizationId, action })}
+          />
+        ) : activeTab === "performance" ? (
+          <DashboardAthleteHome
+            isDark={isDark}
+            me={me}
+            todayWorkout={featuredWorkout}
+            isTodayWorkout={Boolean(todayWorkout && featuredWorkout?.date === todayWorkout.date)}
+            wellnessSummary={wellnessSummaryQuery.data}
+            integrations={integrationsQuery.data || []}
+            trainingStatus={trainingStatusQuery.data}
+            onOpenPlan={() => setActiveTab("plan")}
+            onSelectMetric={(metric) => setSelectedMetric(metric)}
+            respondingInvitation={respondInvitationMutation.isPending}
+            onRespondInvitation={(organizationId, action) => respondInvitationMutation.mutate({ organizationId, action })}
+          />
+        ) : activeTab === "profile" ? (
+          <DashboardAthleteProfileTab
+            user={me}
+            onSubmit={(data) => profileUpdateMutation.mutate(data)}
+            isSaving={profileUpdateMutation.isPending}
+          />
+        ) : activeTab === "zones" ? (
+          <DashboardTrainingZonesTab
+            user={me}
+            onSubmit={(data) => profileUpdateMutation.mutate(data)}
+            isSaving={profileUpdateMutation.isPending}
+          />
+        ) : activeTab === "trackers" ? (
+          <DashboardActivityTrackersTab
+            providers={integrationsQuery.data || []}
+            connectingProvider={connectingProvider}
+            disconnectingProvider={disconnectingProvider}
+            syncingProvider={syncingProvider}
+            cancelingProvider={cancelingProvider}
+            onConnect={(provider) => connectIntegrationMutation.mutate(provider)}
+            onDisconnect={(provider) => disconnectIntegrationMutation.mutate(provider)}
+            onSync={(provider) => syncIntegrationMutation.mutate(provider)}
+            onCancelSync={(provider) => cancelSyncMutation.mutate(provider)}
+          />
+        ) : activeTab === "macrocycle" ? (
+          <Flex direction="column" gap="xs" style={{ height: 'calc(100dvh - 140px)' }}>
+            <TrainingCalendar
+              athleteId={athleteIdNum}
+              allAthletes={me.role === "coach" && !athleteIdNum}
+              athletes={me.role === "coach" ? athletesQuery.data || [] : []}
+              initialViewDate={calendarViewDate}
+              draggedWorkout={draggedWorkout}
+              onWorkoutDrop={(w, d) => {
+                setDraggedWorkout(null);
+                notifications.show({ title: 'Workout Scheduled', message: `${w.title} on ${format(d, 'MMM do')}` });
+              }}
+            />
           </Flex>
         ) : activeTab === "notifications" ? (
           <DashboardNotificationsTab
