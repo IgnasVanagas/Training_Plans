@@ -50,7 +50,7 @@ const toLocalDateKey = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings", "races", "insights", "performance", "zones", "trackers", "profile", "macrocycle"]);
+const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle"]);
 
 const Dashboard = () => {
   const location = useLocation();
@@ -67,7 +67,7 @@ const Dashboard = () => {
   const [inviteEmail, setInviteEmail] = useState("");
 
   // Resolve initial tab: navigation state > URL ?tab= > default "dashboard"
-  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "performance" | "zones" | "trackers" | "profile" | "macrocycle";
+  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle";
   const resolvedInitialTab: DashboardTab = (() => {
     if (navigationState.activeTab && VALID_TABS.has(navigationState.activeTab)) return navigationState.activeTab;
     const urlTab = searchParams.get("tab");
@@ -112,10 +112,6 @@ const Dashboard = () => {
   const [manualMetricValue, setManualMetricValue] = useState<number | "">("");
   const isMobile = useMediaQuery("(max-width: 48em)");
 
-  // Auto-open season planner when macrocycle tab is selected
-  useEffect(() => {
-    if (activeTab === "macrocycle") setPlannerOpened(true);
-  }, [activeTab]);
 
   // Default athletes to Calendar (plan) tab when no explicit tab is in the URL
   const [didDefaultTab, setDidDefaultTab] = useState(false);
@@ -305,6 +301,20 @@ const Dashboard = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["me"] });
+      notifications.show({
+        color: "green",
+        title: t("Profile saved") || "Profile saved",
+        message: t("Your profile has been updated.") || "Your profile has been updated.",
+        position: "bottom-right",
+      });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: t("Could not save profile") || "Could not save profile",
+        message: extractApiErrorMessage(error),
+        position: "bottom-right",
+      });
     },
   });
 
@@ -533,10 +543,10 @@ const Dashboard = () => {
       date: String(row.reference_date),
       value:
         selectedMetric === "aerobic_load"
-          ? row.acute.aerobic
+          ? row.atl
           : selectedMetric === "anaerobic_load"
-            ? row.acute.anaerobic
-            : `${row.training_status} (A ${row.acute.daily_load.toFixed(1)} / C ${row.chronic.daily_load.toFixed(1)})`,
+            ? row.ctl
+            : `${row.training_status} (ATL ${row.atl?.toFixed(1) ?? "-"} / CTL ${row.ctl?.toFixed(1) ?? "-"} / TSB ${(row.tsb ?? 0) >= 0 ? "+" : ""}${row.tsb?.toFixed(1) ?? "-"})`,
     }));
   }, [profileMetricHistory, selectedMetric, trainingStatusHistoryQuery.data]);
 
@@ -559,6 +569,9 @@ const Dashboard = () => {
       anaerobic: row.acute.anaerobic,
       acute: row.acute.daily_load,
       chronic: row.chronic.daily_load,
+      atl: row.atl,
+      ctl: row.ctl,
+      tsb: row.tsb,
       status: row.training_status,
     }));
   }, [profileMetricHistory, selectedMetric, trainingStatusHistoryQuery.data]);
@@ -823,20 +836,6 @@ const Dashboard = () => {
             respondingInvitation={respondInvitationMutation.isPending}
             onRespondInvitation={(organizationId, action) => respondInvitationMutation.mutate({ organizationId, action })}
           />
-        ) : activeTab === "performance" ? (
-          <DashboardAthleteHome
-            isDark={isDark}
-            me={me}
-            todayWorkout={featuredWorkout}
-            isTodayWorkout={Boolean(todayWorkout && featuredWorkout?.date === todayWorkout.date)}
-            wellnessSummary={wellnessSummaryQuery.data}
-            integrations={integrationsQuery.data || []}
-            trainingStatus={trainingStatusQuery.data}
-            onOpenPlan={() => setActiveTab("plan")}
-            onSelectMetric={(metric) => setSelectedMetric(metric)}
-            respondingInvitation={respondInvitationMutation.isPending}
-            onRespondInvitation={(organizationId, action) => respondInvitationMutation.mutate({ organizationId, action })}
-          />
         ) : activeTab === "profile" ? (
           <DashboardAthleteProfileTab
             user={me}
@@ -862,19 +861,16 @@ const Dashboard = () => {
             onCancelSync={(provider) => cancelSyncMutation.mutate(provider)}
           />
         ) : activeTab === "macrocycle" ? (
-          <Flex direction="column" gap="xs" style={{ height: 'calc(100dvh - 140px)' }}>
-            <TrainingCalendar
-              athleteId={athleteIdNum}
-              allAthletes={me.role === "coach" && !athleteIdNum}
-              athletes={me.role === "coach" ? athletesQuery.data || [] : []}
-              initialViewDate={calendarViewDate}
-              draggedWorkout={draggedWorkout}
-              onWorkoutDrop={(w, d) => {
-                setDraggedWorkout(null);
-                notifications.show({ title: 'Workout Scheduled', message: `${w.title} on ${format(d, 'MMM do')}` });
-              }}
+          me ? (
+            <SeasonPlannerDrawer
+              opened={true}
+              onClose={() => setActiveTab("plan")}
+              me={me}
+              athletes={athletesQuery.data || []}
+              selectedAthleteId={athleteIdNum}
+              inline={true}
             />
-          </Flex>
+          ) : null
         ) : activeTab === "notifications" ? (
           <DashboardNotificationsTab
             me={me}

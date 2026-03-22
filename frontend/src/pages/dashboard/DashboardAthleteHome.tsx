@@ -174,20 +174,20 @@ const DashboardAthleteHome = ({
       <SimpleGrid cols={{ base: 1, sm: 3 }} mt="md">
         <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: "pointer", borderColor: cardBorder }} onClick={() => onSelectMetric("aerobic_load")}>
           <Group justify="space-between" mb="xs">
-            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Aerobic Load (7d)</Text>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>ATL</Text>
             <IconActivity size={20} color="#E95A12" />
           </Group>
-          <Text fw={700} size="xl">{trainingStatus ? trainingStatus.acute.aerobic.toFixed(1) : "-"}</Text>
-          <Text size="xs" c="dimmed" mt="xs">Load points</Text>
+          <Text fw={700} size="xl">{trainingStatus ? trainingStatus.atl?.toFixed(1) ?? "-" : "-"}</Text>
+          <Text size="xs" c="dimmed" mt="xs">Acute Training Load (7d)</Text>
         </Card>
 
         <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: "pointer", borderColor: cardBorder }} onClick={() => onSelectMetric("anaerobic_load")}>
           <Group justify="space-between" mb="xs">
-            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Anaerobic Load (7d)</Text>
-            <IconBolt size={20} color="red" />
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>CTL</Text>
+            <IconBolt size={20} color="#2563eb" />
           </Group>
-          <Text fw={700} size="xl">{trainingStatus ? trainingStatus.acute.anaerobic.toFixed(1) : "-"}</Text>
-          <Text size="xs" c="dimmed" mt="xs">Load points</Text>
+          <Text fw={700} size="xl">{trainingStatus ? trainingStatus.ctl?.toFixed(1) ?? "-" : "-"}</Text>
+          <Text size="xs" c="dimmed" mt="xs">Chronic Training Load (42d)</Text>
         </Card>
 
         <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: "pointer", borderColor: cardBorder }} onClick={() => onSelectMetric("training_status")}>
@@ -197,7 +197,7 @@ const DashboardAthleteHome = ({
           </Group>
           <Text fw={700} size="xl">{trainingStatus?.training_status || "-"}</Text>
           <Text size="xs" c="dimmed" mt="xs">
-            Acute {trainingStatus ? trainingStatus.acute.daily_load.toFixed(1) : "-"} / Chronic {trainingStatus ? trainingStatus.chronic.daily_load.toFixed(1) : "-"}
+            TSB {trainingStatus ? ((trainingStatus.tsb ?? 0) >= 0 ? "+" : "") + (trainingStatus.tsb?.toFixed(1) ?? "-") : "-"}
           </Text>
         </Card>
       </SimpleGrid>

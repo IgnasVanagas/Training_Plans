@@ -130,6 +130,16 @@ class Profile(Base):
     user = relationship("User", back_populates="profile")
 
 
+class ProfileMetricHistory(Base):
+    __tablename__ = "profile_metric_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    metric = Column(String(20), nullable=False)   # 'ftp' | 'weight'
+    value = Column(Float, nullable=False)
+    recorded_at = Column(DateTime, nullable=False)  # date this value became active
+
+
 class CoachAthleteLink(Base):
     __tablename__ = "coach_athlete_links"
 
@@ -163,8 +173,16 @@ class Activity(Base):
 
     streams = Column(JSONB, nullable=True)
 
+    # Duplicate detection: if set, this activity is a secondary recording of duplicate_of_id
+    duplicate_of_id = Column(Integer, ForeignKey("activities.id"), nullable=True, index=True)
+
+    # Soft-delete flag (set when Strava webhook reports deletion)
+    is_deleted = Column(Boolean, default=False, server_default="false", nullable=False)
+
     athlete = relationship("User", back_populates="activities")
     matched_workout = relationship("PlannedWorkout", back_populates="matched_activity", uselist=False)
+    duplicate_recordings = relationship("Activity", foreign_keys="Activity.duplicate_of_id", back_populates="duplicate_of", lazy="dynamic")
+    duplicate_of = relationship("Activity", foreign_keys="Activity.duplicate_of_id", remote_side="Activity.id", back_populates="duplicate_recordings")
 
 
 class StructuredWorkout(Base):

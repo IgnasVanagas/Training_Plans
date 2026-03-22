@@ -64,6 +64,7 @@ async def on_startup() -> None:
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS contact_number VARCHAR(50)"))
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS menstruation_available_to_coach BOOLEAN DEFAULT FALSE"))
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS training_days JSONB"))
+            await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"))
         logger.info("Database schema ready")
     except Exception as exc:
         logger.error("Database migration failed (non-fatal): %s", exc)
@@ -84,6 +85,17 @@ async def on_startup() -> None:
                 logger.info("Strava webhook subscription: %s", result.get("status"))
         except Exception as exc:
             logger.warning("Strava webhook subscription check failed: %s", exc)
+
+    # Backfill duplicate_of_id for any historic activities that were recorded
+    # before the duplicate-detection column existed.  Safe to run on every
+    # startup — only touches rows where duplicate_of_id IS NULL.
+    try:
+        from .services.activity_dedupe import _backfill_duplicates
+        marked = await _backfill_duplicates(engine)
+        if marked:
+            logger.info("Duplicate backfill: marked %d historic duplicate(s)", marked)
+    except Exception as exc:
+        logger.warning("Duplicate backfill failed (non-fatal): %s", exc)
 
     logger.info("Startup complete")
 

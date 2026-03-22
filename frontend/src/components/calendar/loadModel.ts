@@ -145,7 +145,7 @@ export const deriveZonesFromActivityDetail = (detail: any, profile?: any) => {
   }
 
   if (sport === 'cycling') {
-    let ftp = safeNumber(profile?.ftp, 0);
+    let ftp = safeNumber(detail?.ftp_at_time ?? profile?.ftp, 0);
     const powerCurve = detail?.power_curve && typeof detail.power_curve === 'object'
       ? detail.power_curve
       : (streamsRaw?.power_curve && typeof streamsRaw.power_curve === 'object' ? streamsRaw.power_curve : null);

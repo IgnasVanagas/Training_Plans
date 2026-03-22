@@ -22,6 +22,7 @@ import { ORIGAMI_ACTIVITY_COLORS, ORIGAMI_THEME } from './calendar/theme';
 import { CalendarEventCard } from './calendar/TrainingCalendarEventRenderers';
 import { resolveActivityAccentColor } from './calendar/activityStyling';
 import { BulkEditModal, DayDetailsModal, WorkoutEditModal } from './calendar/TrainingCalendarModals';
+import { Activity, DuplicateSelectModal } from './ActivitiesView';
 import TrainingCalendarZoneSummaryPanel from './calendar/TrainingCalendarZoneSummaryPanel';
 import { buildTrainingCalendarStyles } from './calendar/trainingCalendarStyles';
 import { CalendarWeekSkeleton, CalendarMonthSkeleton } from './common/SkeletonScreens';
@@ -204,6 +205,7 @@ export const TrainingCalendar = ({
 
     const [opened, { open, close }] = useDisclosure(false);
     const [selectedEvent, setSelectedEvent] = useState<Partial<CalendarEvent>>({ sport_type: 'Cycling' });
+    const [duplicateModalActivity, setDuplicateModalActivity] = useState<Activity | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
     const [bulkEditOpened, setBulkEditOpened] = useState(false);
     const [bulkWeekKey, setBulkWeekKey] = useState<string | null>(null);
@@ -366,7 +368,7 @@ export const TrainingCalendar = ({
     const { data: events = [], isLoading: eventsLoading, isFetching: eventsFetching } = useQuery({
         queryKey: ['calendar', currentView, format(rangeBounds.start, 'yyyy-MM-dd'), format(rangeBounds.end, 'yyyy-MM-dd'), athleteId, allAthletes],
         initialData: () => {
-            const snapKey = `calendar:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
+            const snapKey = `calendar:v2:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
             const snap = readSnapshot<any[]>(snapKey) || [];
             return snap
                 .map(normalizeCalendarEvent)
@@ -377,7 +379,7 @@ export const TrainingCalendar = ({
             const safeRows = rows
                 .map(normalizeCalendarEvent)
                 .filter((event): event is any => Boolean(event));
-            const snapKey = `calendar:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
+            const snapKey = `calendar:v2:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
             writeSnapshot(snapKey, safeRows);
             return safeRows;
         },
@@ -858,6 +860,24 @@ export const TrainingCalendar = ({
 
         if (!event.resource.is_planned) {
             if (event.resource.id) {
+                if ((event.resource.duplicate_recordings_count ?? 0) > 0) {
+                    const res = event.resource;
+                    setDuplicateModalActivity({
+                        id: res.id!,
+                        filename: res.title,
+                        sport: res.sport_type ?? null,
+                        created_at: res.date,
+                        distance: res.distance != null ? res.distance * 1000 : null,
+                        duration: res.duration != null ? res.duration * 60 : null,
+                        avg_speed: res.avg_speed ?? null,
+                        average_hr: res.avg_hr ?? null,
+                        average_watts: res.avg_watts ?? null,
+                        athlete_id: res.user_id!,
+                        duplicate_recordings_count: res.duplicate_recordings_count ?? null,
+                        duplicate_of_id: null,
+                    });
+                    return;
+                }
                 navigate(`/dashboard/activities/${event.resource.id}`, {
                     state: {
                         returnTo: athleteId ? `/dashboard/athlete/${athleteId}` : '/dashboard',
@@ -867,7 +887,7 @@ export const TrainingCalendar = ({
                     }
                 });
             }
-            return; 
+            return;
         }
         if (!canEditWorkouts) {
             return;
@@ -1763,6 +1783,20 @@ export const TrainingCalendar = ({
                 canEditWorkouts={canEditWorkouts}
                 deleteMutation={deleteMutation}
                 handleSave={handleSave}
+            />
+
+            <DuplicateSelectModal
+                activity={duplicateModalActivity}
+                onClose={() => setDuplicateModalActivity(null)}
+                isDark={isDark}
+                formatDistance={(m) => `${(m / 1000).toFixed(2)} km`}
+                formatDurationHm={(s) => {
+                    if (!s || s <= 0) return '-';
+                    const h = Math.floor(s / 3600);
+                    const m = Math.floor((s % 3600) / 60);
+                    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                }}
+                onNavigate={(id) => { setDuplicateModalActivity(null); navigate(`/dashboard/activities/${id}`); }}
             />
         </Stack>
     );

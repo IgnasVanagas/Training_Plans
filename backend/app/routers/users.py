@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import date as dt_date, timedelta
+from datetime import date as dt_date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, or_
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user, get_password_hash, verify_password
 from ..database import get_db
-from ..models import CoachAthleteLink, RoleEnum, User, Profile, Organization, OrganizationMember, PlannedWorkout
+from ..models import CoachAthleteLink, RoleEnum, User, Profile, ProfileMetricHistory, Organization, OrganizationMember, PlannedWorkout
 from ..schemas import AthleteOut, InviteLinkResponse, InviteByEmailRequest, InviteByEmailResponse, UserOut, ProfileUpdate, OrganizationOut, OrganizationUpdate, JoinOrganization, JoinOrganizationRequest, InvitationRespondRequest, OrganizationCreate, AthletePermissionOut, AthletePermissionUpdate, AthletePermissionSettings, ChangePasswordRequest, CoachSummaryOut, OrganizationDiscoverOut, OrganizationDiscoverItemOut, OrganizationCoachOut
 from ..services.permissions import get_shared_org_ids, get_athlete_permissions, set_athlete_permissions_for_shared_orgs
 
@@ -123,6 +123,20 @@ def _apply_profile_update_to_user(target_user: User, profile_update: ProfileUpda
                 "auto_sync_integrations": bool(incoming_auto_sync_integrations),
             },
         }
+
+
+async def _log_metric_change(db: AsyncSession, user_id: int, metric: str, old_value, new_value) -> None:
+    """Insert a ProfileMetricHistory row when a metric actually changes."""
+    if new_value is None:
+        return
+    if old_value == new_value:
+        return
+    db.add(ProfileMetricHistory(
+        user_id=user_id,
+        metric=metric,
+        value=new_value,
+        recorded_at=datetime.utcnow(),
+    ))
 
 
 async def _get_athlete_coach_summaries(db: AsyncSession, athlete: User) -> list[CoachSummaryOut]:
@@ -379,7 +393,11 @@ async def update_athlete_profile_endpoint(
     if not athlete:
         raise HTTPException(status_code=404, detail='Athlete not found')
 
+    old_ftp = athlete.profile.ftp if athlete.profile else None
+    old_weight = athlete.profile.weight if athlete.profile else None
     _apply_profile_update_to_user(athlete, profile_update)
+    await _log_metric_change(db, athlete_id, "ftp", old_ftp, athlete.profile.ftp)
+    await _log_metric_change(db, athlete_id, "weight", old_weight, athlete.profile.weight)
     db.add(athlete)
     await db.commit()
     await db.refresh(athlete)
@@ -778,7 +796,11 @@ async def update_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
+    old_ftp = current_user.profile.ftp if current_user.profile else None
+    old_weight = current_user.profile.weight if current_user.profile else None
     _apply_profile_update_to_user(current_user, profile_update)
+    await _log_metric_change(db, current_user.id, "ftp", old_ftp, current_user.profile.ftp)
+    await _log_metric_change(db, current_user.id, "weight", old_weight, current_user.profile.weight)
 
     await db.commit()
     await db.refresh(current_user)

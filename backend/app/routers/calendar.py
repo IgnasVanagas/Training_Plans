@@ -3,7 +3,8 @@ from typing import Any, List, Optional
 from datetime import date, timedelta, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
+from sqlalchemy.orm import load_only
 
 from app.database import get_db
 from app.models import User, PlannedWorkout, Activity, ComplianceStatusEnum, RoleEnum, OrganizationMember, Profile, DayNote
@@ -28,14 +29,6 @@ def _escape_ics_text(value: str | None) -> str:
         .replace("\n", "\\n")
     )
 
-
-def _is_activity_deleted(activity: Activity) -> bool:
-    streams = activity.streams
-    if isinstance(streams, dict):
-        meta = streams.get("_meta")
-        if isinstance(meta, dict):
-            return bool(meta.get("deleted"))
-    return False
 
 
 def _estimate_planned_duration_minutes(structure: object) -> Optional[int]:
@@ -290,17 +283,38 @@ async def get_calendar_events(
     search_start_dt = datetime.combine(start_date - timedelta(days=1), datetime.min.time())
     search_end_dt = datetime.combine(end_date + timedelta(days=1), datetime.max.time())
     
-    query_activities = select(Activity).where(
-        and_(
+    query_activities = (
+        select(Activity)
+        .options(load_only(
+            Activity.id, Activity.athlete_id, Activity.filename, Activity.sport,
+            Activity.created_at, Activity.distance, Activity.duration,
+            Activity.avg_speed, Activity.average_hr, Activity.average_watts,
+            Activity.duplicate_of_id,
+        ))
+        .where(
             Activity.created_at >= search_start_dt,
             Activity.created_at <= search_end_dt,
-            Activity.athlete_id.in_(target_user_ids)
+            Activity.athlete_id.in_(target_user_ids),
+            Activity.duplicate_of_id.is_(None),
+            Activity.is_deleted.is_(False),
         )
     )
     res_activities = await db.execute(query_activities)
     activities = res_activities.scalars().all()
 
-    visible_activity_ids = {activity.id for activity in activities if not _is_activity_deleted(activity)}
+    # Count duplicate recordings for each primary activity
+    primary_ids = [a.id for a in activities]
+    dup_count_map: dict[int, int] = {}
+    if primary_ids:
+        dup_counts_res = await db.execute(
+            select(Activity.duplicate_of_id, func.count(Activity.id).label("cnt"))
+            .where(Activity.duplicate_of_id.in_(primary_ids))
+            .group_by(Activity.duplicate_of_id)
+        )
+        for row in dup_counts_res.all():
+            dup_count_map[row[0]] = row[1]
+
+    visible_activity_ids = {activity.id for activity in activities}
     workout_by_matched_activity_id = {
         workout.matched_activity_id: workout
         for workout in workouts
@@ -376,8 +390,6 @@ async def get_calendar_events(
 
     # Map Activities
     for a in activities:
-        if _is_activity_deleted(a):
-            continue
         matched_workout = workout_by_matched_activity_id.get(a.id)
         created_by_user_id, created_by_name, created_by_email = (None, None, None)
         if matched_workout is not None:
@@ -410,6 +422,7 @@ async def get_calendar_events(
             avg_hr=a.average_hr,
             avg_watts=a.average_watts,
             avg_speed=a.avg_speed,
+            duplicate_recordings_count=dup_count_map.get(a.id, 0) or None,
             start_time=a.created_at
         ))
         

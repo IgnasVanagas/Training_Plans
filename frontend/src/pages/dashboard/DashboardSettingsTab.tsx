@@ -10,15 +10,6 @@ type Props = {
   permissionsRows: AthletePermissions[];
   isSavingProfile: boolean;
   onSaveProfile: (data: Profile) => void;
-  providers: any[];
-  connectingProvider: string | null;
-  disconnectingProvider: string | null;
-  cancelingProvider: string | null;
-  syncingProvider: string | null;
-  onConnect: (provider: string) => void;
-  onDisconnect: (provider: string) => void;
-  onSync: (provider: string) => void;
-  onCancelSync: (provider: string) => void;
   requestingEmailConfirmation: boolean;
   changingPassword: boolean;
   onRequestEmailConfirmation: () => void;
@@ -26,6 +17,16 @@ type Props = {
   onUpdateAthletePermission: (athleteId: number, permissions: AthletePermissions["permissions"]) => void;
   savingAthleteProfileId: number | null;
   onSaveAthleteProfile: (athleteId: number, profile: Profile) => void;
+  // kept for call-site compatibility
+  providers?: unknown[];
+  connectingProvider?: string | null;
+  disconnectingProvider?: string | null;
+  cancelingProvider?: string | null;
+  syncingProvider?: string | null;
+  onConnect?: (provider: string) => void;
+  onDisconnect?: (provider: string) => void;
+  onSync?: (provider: string) => void;
+  onCancelSync?: (provider: string) => void;
   initialSection?: string;
 };
 
@@ -35,15 +36,6 @@ const DashboardSettingsTab = ({
   permissionsRows,
   isSavingProfile,
   onSaveProfile,
-  providers,
-  connectingProvider,
-  disconnectingProvider,
-  cancelingProvider,
-  syncingProvider,
-  onConnect,
-  onDisconnect,
-  onSync,
-  onCancelSync,
   requestingEmailConfirmation,
   changingPassword,
   onRequestEmailConfirmation,
@@ -51,7 +43,6 @@ const DashboardSettingsTab = ({
   onUpdateAthletePermission,
   savingAthleteProfileId,
   onSaveAthleteProfile,
-  initialSection,
 }: Props) => {
   const isDark = useComputedColorScheme("light") === "dark";
   const { t } = useI18n();
@@ -63,27 +54,15 @@ const DashboardSettingsTab = ({
 
   return (
     <Stack w="100%">
-      <Paper withBorder p={0} radius="md" style={panelStyle}>
-        <SettingsForm
-          user={me}
-          onSubmit={onSaveProfile}
-          isSaving={isSavingProfile}
-          providers={providers}
-          connectingProvider={connectingProvider}
-          disconnectingProvider={disconnectingProvider}
-          cancelingProvider={cancelingProvider}
-          syncingProvider={syncingProvider}
-          onConnect={onConnect}
-          onDisconnect={onDisconnect}
-          onSync={onSync}
-          onCancelSync={onCancelSync}
-          requestingEmailConfirmation={requestingEmailConfirmation}
-          changingPassword={changingPassword}
-          onRequestEmailConfirmation={onRequestEmailConfirmation}
-          onChangePassword={onChangePassword}
-          initialSection={initialSection}
-        />
-      </Paper>
+      <SettingsForm
+        user={me}
+        onSubmit={onSaveProfile}
+        isSaving={isSavingProfile}
+        requestingEmailConfirmation={requestingEmailConfirmation}
+        changingPassword={changingPassword}
+        onRequestEmailConfirmation={onRequestEmailConfirmation}
+        onChangePassword={onChangePassword}
+      />
 
       {me.role === "coach" && (
         <>

@@ -61,6 +61,8 @@ type ActivityDetail = {
     rpe?: number | null;
     lactate_mmol_l?: number | null;
     notes?: string | null;
+    ftp_at_time?: number | null;
+    weight_at_time?: number | null;
     planned_comparison?: {
         workout_id: number;
         workout_title: string;
@@ -684,7 +686,7 @@ export const ActivityDetailPage = () => {
 
         const zoneSeconds = Object.fromEntries(Array.from({ length: 7 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>;
 
-        let ftp = Number(me?.profile?.ftp || 0);
+        let ftp = Number(activity?.ftp_at_time || me?.profile?.ftp || 0);
         if (ftp <= 0 && activity?.power_curve?.['20min']) {
             ftp = Number(activity.power_curve['20min']) * 0.95;
         }
@@ -820,6 +822,22 @@ export const ActivityDetailPage = () => {
             .filter((value: number) => Number.isFinite(value) && value > 0);
         return calculateNormalizedPower(powerSamples);
     }, [streamPoints]);
+
+    const cyclingPerfMetrics = useMemo(() => {
+        if (!activity) return null;
+        const sport = (activity.sport || '').toLowerCase();
+        const isCycling = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride') || sport.includes('virtualride');
+        if (!isCycling) return null;
+        const np = overallNormalizedPower;
+        const ftp = activity.ftp_at_time ?? (me?.profile?.ftp as number | undefined | null);
+        if (!np || !ftp || ftp <= 0) return null;
+        const intensityFactor = np / ftp;
+        const durationSec = activity.duration ?? 0;
+        const tss = durationSec > 0 ? (durationSec * np * intensityFactor) / (ftp * 3600) * 100 : null;
+        const avgWatts = activity.average_watts;
+        const vi = avgWatts && avgWatts > 0 ? np / avgWatts : null;
+        return { intensityFactor, tss, vi };
+    }, [activity, overallNormalizedPower, me?.profile?.ftp]);
 
     const splitsToDisplay = useMemo(() => {
         if (!activity) return [];
@@ -1985,6 +2003,13 @@ export const ActivityDetailPage = () => {
                                              </Group>
                                          )}
 
+                                         {activity.average_watts != null && activity.average_watts > 0 && activity.weight_at_time != null && activity.weight_at_time > 0 && (
+                                             <Group justify="space-between">
+                                                <Text size="sm" c={ui.textDim}>Avg Power (w/kg)</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{(activity.average_watts / activity.weight_at_time).toFixed(2)} w/kg</Text>
+                                             </Group>
+                                         )}
+
                                          {activity.max_watts != null && activity.max_watts > 0 && (
                                              <Group justify="space-between">
                                                 <Text size="sm" c={ui.textDim}>Max Power</Text>
@@ -1996,6 +2021,27 @@ export const ActivityDetailPage = () => {
                                              <Group justify="space-between">
                                                 <Text size="sm" c={ui.textDim}>Normalized Power</Text>
                                                 <Text size="sm" fw={700} c={ui.textMain}>{overallNormalizedPower.toFixed(0)} W</Text>
+                                             </Group>
+                                         )}
+
+                                         {isCyclingActivity && cyclingPerfMetrics?.intensityFactor != null && (
+                                             <Group justify="space-between">
+                                                <Text size="sm" c={ui.textDim}>Intensity Factor</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.intensityFactor.toFixed(2)}</Text>
+                                             </Group>
+                                         )}
+
+                                         {isCyclingActivity && cyclingPerfMetrics?.tss != null && (
+                                             <Group justify="space-between">
+                                                <Text size="sm" c={ui.textDim}>TSS</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.tss.toFixed(0)}</Text>
+                                             </Group>
+                                         )}
+
+                                         {isCyclingActivity && cyclingPerfMetrics?.vi != null && (
+                                             <Group justify="space-between">
+                                                <Text size="sm" c={ui.textDim}>Variability Index</Text>
+                                                <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.vi.toFixed(2)}</Text>
                                              </Group>
                                          )}
 

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, case
 from sqlalchemy.orm import defer
 from ..database import get_db
-from ..models import User, Activity, OrganizationMember, RoleEnum, Profile, PlannedWorkout, RHRDaily
+from ..models import User, Activity, OrganizationMember, RoleEnum, Profile, ProfileMetricHistory, PlannedWorkout, RHRDaily
 from ..integrations.crypto import decrypt_token, encrypt_token
 from ..integrations.registry import get_connector
 from ..integrations.service import get_connection
@@ -76,6 +76,32 @@ def _empty_bucket() -> dict:
             }
         }
     }
+
+
+def _hist_lookup(history: list[tuple[datetime, float]], at: datetime, fallback: float) -> float:
+    """Return the most recent value in a sorted (asc) history list that is <= `at`, or fallback."""
+    result = fallback
+    for dt, val in history:
+        if dt <= at:
+            result = val
+        else:
+            break
+    return result
+
+
+async def _get_metric_at_date(db: AsyncSession, user_id: int, metric: str, activity_date: datetime):
+    """Return the most recent value of metric ('ftp'|'weight') recorded on or before activity_date."""
+    row = await db.scalar(
+        select(ProfileMetricHistory)
+        .where(
+            ProfileMetricHistory.user_id == user_id,
+            ProfileMetricHistory.metric == metric,
+            ProfileMetricHistory.recorded_at <= activity_date,
+        )
+        .order_by(ProfileMetricHistory.recorded_at.desc())
+        .limit(1)
+    )
+    return row.value if row else None
 
 
 def _safe_number(value, default: float = 0.0) -> float:
@@ -1526,21 +1552,18 @@ def _activity_training_load(
     return round(aerobic, 1), round(anaerobic, 1)
 
 
-def _resolve_training_status(acute_load: float, chronic_load: float) -> str:
-    # ACWR-based status bands from common applied-sport practice:
-    # acute = 7d average daily load, chronic = 42d average daily load.
-    if chronic_load < 5 and acute_load < 5:
+def _resolve_training_status(tsb: float, ctl: float) -> str:
+    """PMC TSB-based training status."""
+    if ctl < 5:
         return "Detraining"
-    if chronic_load <= 0:
-        return "Maintaining"
-
-    ratio = acute_load / chronic_load
-    if ratio < 0.8:
-        return "Recovering"
-    if ratio <= 1.20:
+    if tsb > 15:
+        return "Fresh"
+    if tsb >= 5:
         return "Productive"
-    if ratio <= 1.50:
-        return "Overreaching"
+    if tsb >= -10:
+        return "Maintaining"
+    if tsb >= -25:
+        return "Fatigued"
     return "Strained"
 
 
@@ -1618,6 +1641,20 @@ async def get_zone_summary(
     profiles_res = await db.execute(profiles_stmt)
     profiles = {p.user_id: p for p in profiles_res.scalars().all()}
 
+    # Pre-fetch metric history for historical FTP/weight lookups (avoid N+1 in activity loop)
+    metric_hist_res = await db.execute(
+        select(ProfileMetricHistory)
+        .where(ProfileMetricHistory.user_id.in_(target_user_ids))
+        .order_by(ProfileMetricHistory.user_id, ProfileMetricHistory.metric, ProfileMetricHistory.recorded_at)
+    )
+    _ftp_hist: dict[int, list[tuple[datetime, float]]] = {}
+    _weight_hist: dict[int, list[tuple[datetime, float]]] = {}
+    for row in metric_hist_res.scalars().all():
+        if row.metric == "ftp":
+            _ftp_hist.setdefault(row.user_id, []).append((row.recorded_at, row.value))
+        elif row.metric == "weight":
+            _weight_hist.setdefault(row.user_id, []).append((row.recorded_at, row.value))
+
     lowest_rhr_stmt = (
         select(RHRDaily.user_id, func.min(RHRDaily.resting_hr))
         .where(RHRDaily.user_id.in_(target_user_ids))
@@ -1639,7 +1676,8 @@ async def get_zone_summary(
     activities_stmt = select(Activity).where(
         Activity.athlete_id.in_(target_user_ids),
         Activity.created_at >= start_dt,
-        Activity.created_at <= end_dt
+        Activity.created_at <= end_dt,
+        Activity.duplicate_of_id.is_(None)
     ).execution_options(yield_per=10)
 
     summaries: dict[int, dict] = {}
@@ -1663,7 +1701,8 @@ async def get_zone_summary(
             continue
 
         profile = profiles.get(activity.athlete_id)
-        ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+        _profile_ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+        ftp = _hist_lookup(_ftp_hist.get(activity.athlete_id, []), activity.created_at, _profile_ftp)
         max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
         lowest_recorded_rhr = lowest_rhr_by_user.get(activity.athlete_id)
         effective_resting_hr = _resolve_effective_resting_hr(profile, lowest_recorded_rhr)
@@ -1954,13 +1993,9 @@ async def upload_activity(
         duration_s=summary.get("duration"),
         distance_m=summary.get("distance"),
     )
-    if duplicate:
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        raise HTTPException(
-            status_code=409,
-            detail=f"Duplicate activity detected (existing id {duplicate.id})"
-        )
+    # Fuzzy duplicates are saved as alternate recordings linked to the original.
+    # Only exact-file duplicates (same SHA256) are rejected outright (caught above).
+    _duplicate_of_id = duplicate.id if duplicate else None
 
     new_activity = Activity(
         athlete_id=current_user.id,
@@ -1973,7 +2008,8 @@ async def upload_activity(
         avg_speed=summary.get("avg_speed"),
         average_hr=summary.get("average_hr"),
         average_watts=summary.get("average_watts"),
-        streams=streams
+        streams=streams,
+        duplicate_of_id=_duplicate_of_id,
     )
     
     # Store calculated stats in JSON for MVP (ideally separate columns)
@@ -2067,6 +2103,7 @@ async def upload_activity(
         total_load_impact=round(aerobic_load + anaerobic_load, 1),
         rpe=None,
         notes=None,
+        duplicate_of_id=new_activity.duplicate_of_id,
     )
 
 
@@ -2102,12 +2139,27 @@ async def get_training_status(
         target_athlete_id = athlete_id
 
     profile = await db.scalar(select(Profile).where(Profile.user_id == target_athlete_id))
-    ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+    _profile_ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
     max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
 
-    start_date = ref_date - timedelta(days=41)
+    # Fetch 90 days so CTL (42-day EWA) has enough warmup data
+    _PMC_WINDOW = 89
+    start_date = ref_date - timedelta(days=_PMC_WINDOW)
     start_dt = datetime.combine(start_date, datetime.min.time())
     end_dt = datetime.combine(ref_date, datetime.max.time())
+
+    # Pre-fetch FTP history for this user so each activity uses the FTP in effect at its date
+    _ts_ftp_hist_res = await db.execute(
+        select(ProfileMetricHistory)
+        .where(
+            ProfileMetricHistory.user_id == target_athlete_id,
+            ProfileMetricHistory.metric == "ftp",
+        )
+        .order_by(ProfileMetricHistory.recorded_at)
+    )
+    _ts_ftp_hist: list[tuple[datetime, float]] = [
+        (row.recorded_at, row.value) for row in _ts_ftp_hist_res.scalars().all()
+    ]
 
     # Pass 1: load activities WITHOUT full streams – only extract _meta for cached loads
     activities_stmt = select(
@@ -2116,7 +2168,8 @@ async def get_training_status(
     ).options(defer(Activity.streams)).where(
         Activity.athlete_id == target_athlete_id,
         Activity.created_at >= start_dt,
-        Activity.created_at <= end_dt
+        Activity.created_at <= end_dt,
+        Activity.duplicate_of_id.is_(None)
     )
     activities_res = await db.execute(activities_stmt)
     rows = activities_res.all()
@@ -2130,6 +2183,7 @@ async def get_training_status(
         if meta.get("deleted"):
             continue
         sport = _normalize_sport_name(activity.sport)
+        ftp = _hist_lookup(_ts_ftp_hist, activity.created_at, _profile_ftp)
         cached = _load_from_meta_dict(meta)
         if cached is not None:
             aerobic, anaerobic = cached
@@ -2151,6 +2205,7 @@ async def get_training_status(
         full_stmt = select(Activity).where(Activity.id.in_(needs_full_streams))
         full_res = await db.execute(full_stmt)
         for activity in full_res.scalars().all():
+            ftp = _hist_lookup(_ts_ftp_hist, activity.created_at, _profile_ftp)
             aerobic, anaerobic = _activity_training_load(activity, ftp, max_hr, profile)
             activity_day = activity.created_at.date()
             daily_aerobic[activity_day] += aerobic
@@ -2164,17 +2219,31 @@ async def get_training_status(
     chronic_aerobic = 0.0
     chronic_anaerobic = 0.0
 
-    day_cursor = chronic_start
+    # PMC exponential weighted averages (EWA) for CTL and ATL
+    _DECAY_CTL = 1.0 - math.exp(-1.0 / 42)
+    _DECAY_ATL = 1.0 - math.exp(-1.0 / 7)
+    ctl = 0.0
+    atl = 0.0
+
+    day_cursor = start_date
     while day_cursor <= ref_date:
         day_aerobic = daily_aerobic.get(day_cursor, 0.0)
         day_anaerobic = daily_anaerobic.get(day_cursor, 0.0)
-        chronic_aerobic += day_aerobic
-        chronic_anaerobic += day_anaerobic
+        day_tss = day_aerobic + day_anaerobic
+
+        # PMC EWA update
+        ctl += (day_tss - ctl) * _DECAY_CTL
+        atl += (day_tss - atl) * _DECAY_ATL
+
+        if day_cursor >= chronic_start:
+            chronic_aerobic += day_aerobic
+            chronic_anaerobic += day_anaerobic
         if day_cursor >= acute_start:
             acute_aerobic += day_aerobic
             acute_anaerobic += day_anaerobic
         day_cursor += timedelta(days=1)
 
+    tsb = ctl - atl
     acute_load = (acute_aerobic + acute_anaerobic) / 7.0
     chronic_load = (chronic_aerobic + chronic_anaerobic) / 42.0
 
@@ -2191,7 +2260,10 @@ async def get_training_status(
             "anaerobic": round(chronic_anaerobic, 1),
             "daily_load": round(chronic_load, 1)
         },
-        "training_status": _resolve_training_status(acute_load, chronic_load)
+        "atl": round(atl, 1),
+        "ctl": round(ctl, 1),
+        "tsb": round(tsb, 1),
+        "training_status": _resolve_training_status(tsb, ctl)
     }
 
 @router.get("/personal-records")
@@ -2306,16 +2378,42 @@ async def get_activities(
         # Regular athlete, see only own
         query = query.where(Activity.athlete_id == current_user.id)
 
+    # Hide secondary recordings from the list (they are accessible via the primary)
+    query = query.where(Activity.duplicate_of_id.is_(None))
+
     order_expr = Activity.created_at.desc() if sort_by == "created_at" else Activity.id.desc()
     result = await db.execute(query.order_by(order_expr).limit(limit).offset(offset))
     rows = result.all()
 
+    # Count alternate recordings for each primary activity
+    primary_ids = [row[0].id for row in rows]
+    dup_count_map: dict[int, int] = {}
+    if primary_ids:
+        dup_counts_res = await db.execute(
+            select(Activity.duplicate_of_id, func.count(Activity.id).label("cnt"))
+            .where(Activity.duplicate_of_id.in_(primary_ids))
+            .group_by(Activity.duplicate_of_id)
+        )
+        for orig_id, cnt in dup_counts_res.all():
+            dup_count_map[orig_id] = cnt
+
     profile_map: dict[int, Profile] = {}
+    ftp_hist_map: dict[int, list[tuple[datetime, float]]] = {}
     if include_load_metrics:
         athlete_ids = list({row[0].athlete_id for row in rows})
         if athlete_ids:
             profiles_res = await db.execute(select(Profile).where(Profile.user_id.in_(athlete_ids)))
             profile_map = {profile.user_id: profile for profile in profiles_res.scalars().all()}
+            ftp_hist_res = await db.execute(
+                select(ProfileMetricHistory)
+                .where(
+                    ProfileMetricHistory.user_id.in_(athlete_ids),
+                    ProfileMetricHistory.metric == "ftp",
+                )
+                .order_by(ProfileMetricHistory.user_id, ProfileMetricHistory.recorded_at)
+            )
+            for row in ftp_hist_res.scalars().all():
+                ftp_hist_map.setdefault(row.user_id, []).append((row.recorded_at, row.value))
 
     out: list[ActivityOut] = []
     for activity, streams_meta in rows:
@@ -2326,7 +2424,8 @@ async def get_activities(
         total_load_impact = None
         if include_load_metrics:
             profile = profile_map.get(activity.athlete_id)
-            ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+            _pf = _safe_number(getattr(profile, "ftp", None), default=0.0)
+            ftp = _hist_lookup(ftp_hist_map.get(activity.athlete_id, []), activity.created_at, _pf)
             max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
             # Try cached load from _meta, then estimate from summary fields
             cached = _load_from_meta_dict(meta)
@@ -2390,9 +2489,100 @@ async def get_activities(
                 rpe=rpe,
                 lactate_mmol_l=lactate_mmol_l,
                 notes=notes,
+                duplicate_recordings_count=dup_count_map.get(activity.id, 0) or None,
+                source_provider=meta.get("source_provider"),
             )
         )
     return out
+
+@router.get("/{activity_id}/duplicates", response_model=list[ActivityOut])
+async def get_activity_duplicates(
+    activity_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return alternate recordings linked to this activity."""
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_id))
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.athlete_id != current_user.id and current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    result = await db.execute(
+        select(Activity, Activity.streams['_meta'].label('streams_meta'))
+        .options(defer(Activity.streams))
+        .where(Activity.duplicate_of_id == activity_id)
+        .order_by(Activity.created_at)
+    )
+    rows = result.all()
+
+    out: list[ActivityOut] = []
+    for dup, streams_meta in rows:
+        meta = streams_meta if isinstance(streams_meta, dict) else {}
+        out.append(
+            ActivityOut(
+                id=dup.id,
+                athlete_id=dup.athlete_id,
+                filename=dup.filename,
+                created_at=dup.created_at,
+                file_type=dup.file_type,
+                sport=dup.sport,
+                distance=dup.distance,
+                duration=dup.duration,
+                avg_speed=dup.avg_speed,
+                average_hr=dup.average_hr,
+                average_watts=dup.average_watts,
+                is_deleted=bool(meta.get("deleted")),
+                duplicate_of_id=dup.duplicate_of_id,
+                source_provider=meta.get("source_provider"),
+            )
+        )
+    return out
+
+
+@router.post("/{activity_id}/make-primary", status_code=204)
+async def make_activity_primary(
+    activity_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Promote a secondary recording to be the primary (canonical) activity."""
+    activity = await db.scalar(select(Activity).where(Activity.id == activity_id))
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    if activity.athlete_id != current_user.id and current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    if activity.duplicate_of_id is None:
+        # Already primary, nothing to do
+        return
+
+    old_primary_id = activity.duplicate_of_id
+
+    # Fetch old primary and all siblings
+    old_primary = await db.scalar(select(Activity).where(Activity.id == old_primary_id))
+    siblings_res = await db.execute(
+        select(Activity).where(Activity.duplicate_of_id == old_primary_id)
+    )
+    siblings = siblings_res.scalars().all()
+
+    # Promote target to primary
+    activity.duplicate_of_id = None
+    db.add(activity)
+
+    # Demote old primary to secondary of new primary
+    if old_primary:
+        old_primary.duplicate_of_id = activity_id
+        db.add(old_primary)
+
+    # Re-link all other siblings to the new primary
+    for sibling in siblings:
+        if sibling.id != activity_id:
+            sibling.duplicate_of_id = activity_id
+            db.add(sibling)
+
+    await db.commit()
+
 
 @router.get("/{activity_id}", response_model=ActivityDetail)
 async def get_activity(
@@ -2457,8 +2647,8 @@ async def get_activity(
         splits_metric = stored_data.get("splits_metric")
         stats = stored_data.get("stats", {})
 
-    # Lazy-load deep provider data only when explicitly enabled.
-    allow_lazy_provider_detail_fetch = os.getenv("STRAVA_ALLOW_LAZY_DETAIL_FETCH", "false").lower() in {"1", "true", "yes", "on"}
+    # Lazy-load deep provider data on demand (enabled by default; set STRAVA_ALLOW_LAZY_DETAIL_FETCH=false to disable).
+    allow_lazy_provider_detail_fetch = os.getenv("STRAVA_ALLOW_LAZY_DETAIL_FETCH", "true").lower() in {"1", "true", "yes", "on"}
 
     if isinstance(stored_data, dict):
         meta = stored_data.get("_meta") if isinstance(stored_data.get("_meta"), dict) else {}
@@ -2520,7 +2710,11 @@ async def get_activity(
                 pass
 
     profile = await db.scalar(select(Profile).where(Profile.user_id == activity.athlete_id))
-    ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+    ftp_hist = await _get_metric_at_date(db, activity.athlete_id, "ftp", activity.created_at)
+    weight_hist = await _get_metric_at_date(db, activity.athlete_id, "weight", activity.created_at)
+    ftp = _safe_number(ftp_hist if ftp_hist is not None else getattr(profile, "ftp", None), default=0.0)
+    ftp_at_time = ftp if ftp > 0 else None
+    weight_at_time = weight_hist if weight_hist is not None else getattr(profile, "weight", None)
     max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
     aerobic_load, anaerobic_load = _activity_training_load(activity, ftp, max_hr, profile)
 
@@ -2610,6 +2804,8 @@ async def get_activity(
         rpe=activity.rpe if activity.rpe is not None else legacy_rpe,
         lactate_mmol_l=legacy_lactate,
         notes=activity.notes if activity.notes is not None else legacy_notes,
+        ftp_at_time=ftp_at_time,
+        weight_at_time=weight_at_time,
     )
     return activity_response
 
@@ -2728,12 +2924,29 @@ async def delete_activity(
     else:
         if activity.athlete_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized")
-        athlete_permissions = await get_athlete_permissions(db, current_user.id)
-        if not athlete_permissions.get('allow_delete_activities', False):
-            raise HTTPException(status_code=403, detail="Coach has not allowed activity deletion")
+        # Skip permission gate when cleaning up duplicate recordings — the user owns the
+        # activity and is just resolving system-detected duplicates.
+        is_duplicate_cleanup = activity.duplicate_of_id is not None or bool(
+            (await db.execute(
+                select(Activity.id).where(Activity.duplicate_of_id == activity.id).limit(1)
+            )).scalar_one_or_none()
+        )
+        if not is_duplicate_cleanup:
+            athlete_permissions = await get_athlete_permissions(db, current_user.id)
+            if not athlete_permissions.get('allow_delete_activities', False):
+                raise HTTPException(status_code=403, detail="Coach has not allowed activity deletion")
 
     activity_date = activity.created_at.date()
     athlete_id = activity.athlete_id
+
+    # If this is a primary activity, promote its duplicate recordings to standalone
+    if activity.duplicate_of_id is None:
+        dupes_res = await db.execute(
+            select(Activity).where(Activity.duplicate_of_id == activity.id)
+        )
+        for dup in dupes_res.scalars().all():
+            dup.duplicate_of_id = None
+            db.add(dup)
 
     payload = _as_stream_payload(activity.streams)
     meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}

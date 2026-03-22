@@ -68,6 +68,9 @@ export type TrainingStatus = {
     anaerobic: number;
     daily_load: number;
   };
+  atl: number;
+  ctl: number;
+  tsb: number;
   training_status: string;
 };
 

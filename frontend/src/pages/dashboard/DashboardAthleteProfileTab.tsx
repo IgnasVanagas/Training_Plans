@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import {
-  ActionIcon,
   Box,
   Button,
   Checkbox,
   Divider,
-  FileButton,
   Group,
   NumberInput,
   Paper,
@@ -19,7 +17,6 @@ import {
   useComputedColorScheme,
 } from "@mantine/core";
 import { DateInput } from "@mantine/dates";
-import { IconPlus } from "@tabler/icons-react";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Profile, User } from "./types";
 
@@ -76,7 +73,6 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
     : ({} as Profile);
 
   const [profile, setProfile] = useState<Profile>(initialProfile);
-  const [, setPhotoFile] = useState<File | null>(null);
 
   useEffect(() => {
     setProfile(initialProfile);
@@ -136,33 +132,6 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">
         {/* Left column */}
         <Stack gap="lg">
-          {/* Photo section */}
-          <Paper p="md" radius="md" withBorder bg={panelBg}>
-            <Text fw={700} mb="xs">{t("Your picture")}</Text>
-            <Text size="sm" c="dimmed" mb="xs">{t("Your photo")}</Text>
-            <FileButton
-              onChange={(file) => setPhotoFile(file)}
-              accept="image/png,image/jpeg"
-            >
-              {(props) => (
-                <ActionIcon
-                  {...props}
-                  variant="outline"
-                  size={64}
-                  radius="xl"
-                  color={isDark ? "gray" : "dark"}
-                  style={{ border: `2px dashed ${isDark ? "#555" : "#ccc"}` }}
-                >
-                  <IconPlus size={24} />
-                </ActionIcon>
-              )}
-            </FileButton>
-            <Text size="xs" c="dimmed" mt={4}>
-              jpg, {t("or")} png<br />
-              ({t("Recommended")}: 400×400px)
-            </Text>
-          </Paper>
-
           {/* Personal details */}
           <Paper p="md" radius="md" withBorder bg={panelBg}>
             <Text fw={700} mb="sm">{t("Personal details")}</Text>

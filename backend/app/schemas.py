@@ -394,7 +394,10 @@ class ActivityBase(BaseModel):
 class ActivityOut(ActivityBase):
     id: int
     athlete_id: int
-    
+    duplicate_of_id: Optional[int] = None
+    duplicate_recordings_count: Optional[int] = None
+    source_provider: Optional[str] = None
+
     class Config:
         from_attributes = True
 
@@ -427,6 +430,8 @@ class ActivityDetail(ActivityOut):
     total_elevation_gain: Optional[float] = None
     total_calories: Optional[float] = None
     planned_comparison: Optional[Any] = None
+    ftp_at_time: Optional[float] = None
+    weight_at_time: Optional[float] = None
 
 
 class SplitAnnotationUpdate(BaseModel):
@@ -542,7 +547,8 @@ class CalendarEvent(BaseModel):
     avg_hr: Optional[float] = None
     avg_watts: Optional[float] = None
     avg_speed: Optional[float] = None
-    
+    duplicate_recordings_count: Optional[int] = None
+
     # Sorting helper
     start_time: Optional[datetime] = None
 

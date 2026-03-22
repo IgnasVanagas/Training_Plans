@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
+import json
 from typing import Any, Optional
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import load_only
 
 from ..models import Activity
 
@@ -18,10 +20,14 @@ def normalize_sport(sport: Optional[str]) -> str:
     if not sport:
         return "other"
     lowered = sport.lower()
-    if "run" in lowered:
+    if any(x in lowered for x in ("run", "jog", "treadmill")):
         return "running"
-    if "cycl" in lowered or "bike" in lowered:
+    if any(x in lowered for x in ("cycl", "bike", "ride")):
         return "cycling"
+    if any(x in lowered for x in ("swim", "pool")):
+        return "swimming"
+    if any(x in lowered for x in ("walk", "hik")):
+        return "walking"
     return lowered
 
 
@@ -92,52 +98,179 @@ async def find_duplicate_activity(
     duration_s: Optional[float] = None,
     distance_m: Optional[float] = None,
 ) -> Optional[Activity]:
-    res = await db.execute(select(Activity).where(Activity.athlete_id == athlete_id))
-    activities = res.scalars().all()
+    # 1. Provider + source_id — search ALL activities (including ones previously marked as
+    #    duplicates) so Strava re-syncing a marked duplicate doesn't create a brand-new row.
+    if source_provider and source_activity_id:
+        sp = source_provider.strip().lower()
+        si = source_activity_id.strip()
+        result = await db.scalar(
+            select(Activity).where(
+                Activity.athlete_id == athlete_id,
+                Activity.streams['_meta']['source_provider'].astext == sp,
+                Activity.streams['_meta']['source_activity_id'].astext == si,
+            ).limit(1)
+        )
+        if result:
+            # If the found activity is itself a duplicate, return its original
+            if result.duplicate_of_id:
+                orig = await db.get(Activity, result.duplicate_of_id)
+                return orig or result
+            return result
 
-    normalized_provider = source_provider.strip().lower() if source_provider else None
-    normalized_source_id = source_activity_id.strip() if source_activity_id else None
-    normalized_sport = normalize_sport(sport)
+    # 2. File SHA256 (originals only)
+    if file_sha256:
+        result = await db.scalar(
+            select(Activity).where(
+                Activity.athlete_id == athlete_id,
+                Activity.streams['_meta']['file_sha256'].astext == file_sha256,
+                Activity.duplicate_of_id.is_(None),
+            ).limit(1)
+        )
+        if result:
+            return result
 
-    for activity in activities:
-        meta = _activity_meta(activity)
+    # 3. Fingerprint (originals only)
+    if fingerprint_v1:
+        result = await db.scalar(
+            select(Activity).where(
+                Activity.athlete_id == athlete_id,
+                Activity.streams['_meta']['fingerprint_v1'].astext == fingerprint_v1,
+                Activity.duplicate_of_id.is_(None),
+            ).limit(1)
+        )
+        if result:
+            return result
 
-        existing_hash = str(meta.get("file_sha256", "")).strip() if meta.get("file_sha256") else None
-        if file_sha256 and existing_hash and existing_hash == file_sha256:
-            return activity
-
-        existing_provider = str(meta.get("source_provider", "")).strip().lower() if meta.get("source_provider") else None
-        existing_source_id = str(meta.get("source_activity_id", "")).strip() if meta.get("source_activity_id") else None
-        if normalized_provider and normalized_source_id and existing_provider and existing_source_id:
-            if existing_provider == normalized_provider and existing_source_id == normalized_source_id:
-                return activity
-
-        existing_fingerprint = str(meta.get("fingerprint_v1", "")).strip() if meta.get("fingerprint_v1") else None
-        if fingerprint_v1 and existing_fingerprint and existing_fingerprint == fingerprint_v1:
-            return activity
-
-    if created_at is None:
-        return None
-
-    for activity in activities:
-        existing_sport = normalize_sport(activity.sport)
-        if normalized_sport != "other" and existing_sport != normalized_sport:
-            continue
-
-        delta_seconds = abs((activity.created_at - created_at).total_seconds())
-        if delta_seconds > 180:
-            continue
-
-        existing_duration = float(activity.duration or 0.0)
-        incoming_duration = float(duration_s or 0.0)
-        if abs(existing_duration - incoming_duration) > 90:
-            continue
-
-        existing_distance = float(activity.distance or 0.0)
-        incoming_distance = float(distance_m or 0.0)
-        if abs(existing_distance - incoming_distance) > 150:
-            continue
-
-        return activity
+    # 4. Fuzzy: narrow to ±15-minute window using the composite index, then check in Python
+    if created_at is not None:
+        ns = normalize_sport(sport)
+        window_start = created_at - timedelta(seconds=900)
+        window_end = created_at + timedelta(seconds=900)
+        rows = await db.execute(
+            select(Activity).options(load_only(
+                Activity.id, Activity.sport, Activity.created_at,
+                Activity.duration, Activity.distance, Activity.duplicate_of_id,
+            )).where(
+                Activity.athlete_id == athlete_id,
+                Activity.duplicate_of_id.is_(None),
+                Activity.created_at.between(window_start, window_end),
+            )
+        )
+        for a in rows.scalars().all():
+            as_ = normalize_sport(a.sport)
+            if ns != "other" and as_ != "other" and as_ != ns:
+                continue
+            a_dist = float(a.distance or 0)
+            q_dist = float(distance_m or 0)
+            indoor_pair = a_dist == 0 or q_dist == 0
+            if abs(float(a.duration or 0) - float(duration_s or 0)) > (3600 if indoor_pair else 300):
+                continue
+            if not indoor_pair and abs(a_dist - q_dist) > 500:
+                continue
+            return a
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Startup backfill — run once per server start to mark any historic duplicates
+# that existed before the duplicate_of_id column was added.
+# ---------------------------------------------------------------------------
+
+def _row_meta(row: dict) -> dict:
+    streams = row.get("streams") or {}
+    if isinstance(streams, str):
+        try:
+            streams = json.loads(streams)
+        except Exception:
+            streams = {}
+    m = streams.get("_meta") if isinstance(streams, dict) else None
+    return m if isinstance(m, dict) else {}
+
+
+def _rows_are_duplicate(existing: dict, candidate: dict) -> bool:
+    """Same logic as find_duplicate_activity but operates on plain dicts."""
+    em = _row_meta(existing)
+    cm = _row_meta(candidate)
+
+    eh = str(em.get("file_sha256", "")).strip()
+    ch = str(cm.get("file_sha256", "")).strip()
+    if eh and ch and eh == ch:
+        return True
+
+    ep = em.get("source_provider") or None
+    es = em.get("source_activity_id") or None
+    cp = cm.get("source_provider") or None
+    cs = cm.get("source_activity_id") or None
+    if ep and es and cp and cs and str(ep).strip().lower() == str(cp).strip().lower() and str(es).strip() == str(cs).strip():
+        return True
+
+    ef = str(em.get("fingerprint_v1", "")).strip()
+    cf = str(cm.get("fingerprint_v1", "")).strip()
+    if ef and cf and ef == cf:
+        return True
+
+    ec = existing.get("created_at")
+    cc = candidate.get("created_at")
+    if ec is None or cc is None:
+        return False
+
+    ns_e = normalize_sport(existing.get("sport"))
+    ns_c = normalize_sport(candidate.get("sport"))
+    if ns_e != "other" and ns_c != "other" and ns_e != ns_c:
+        return False
+
+    dist_e = float(existing.get("distance") or 0)
+    dist_c = float(candidate.get("distance") or 0)
+    indoor_pair = dist_e == 0 or dist_c == 0
+    if abs((ec - cc).total_seconds()) > (900 if indoor_pair else 180):
+        return False
+    if abs(float(existing.get("duration") or 0) - float(candidate.get("duration") or 0)) > (3600 if indoor_pair else 300):
+        return False
+    if not indoor_pair and abs(dist_e - dist_c) > 500:
+        return False
+
+    return True
+
+
+async def _backfill_duplicates(engine) -> int:
+    """
+    Scan all activities with duplicate_of_id IS NULL, detect duplicates using
+    the same rules as find_duplicate_activity(), and set duplicate_of_id on the
+    newer copy.  Returns the number of rows updated.
+    """
+    async with engine.connect() as conn:
+        result = await conn.execute(text(
+            "SELECT id, athlete_id, sport, created_at, duration, distance, streams "
+            "FROM activities WHERE duplicate_of_id IS NULL ORDER BY athlete_id, id"
+        ))
+        rows = [dict(r) for r in result.mappings().fetchall()]
+
+    by_athlete: dict[int, list] = {}
+    for r in rows:
+        by_athlete.setdefault(r["athlete_id"], []).append(r)
+
+    to_mark: list[tuple[int, int]] = []
+    for activities in by_athlete.values():
+        claimed: set[int] = set()
+        for i, candidate in enumerate(activities):
+            if candidate["id"] in claimed:
+                continue
+            for original in activities[:i]:
+                if original["id"] in claimed:
+                    continue
+                if _rows_are_duplicate(original, candidate):
+                    to_mark.append((candidate["id"], original["id"]))
+                    claimed.add(candidate["id"])
+                    break
+
+    if not to_mark:
+        return 0
+
+    async with engine.begin() as conn:
+        for dup_id, orig_id in to_mark:
+            await conn.execute(
+                text("UPDATE activities SET duplicate_of_id = :orig WHERE id = :dup"),
+                {"orig": orig_id, "dup": dup_id},
+            )
+    return len(to_mark)

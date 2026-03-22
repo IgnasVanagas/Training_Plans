@@ -1,8 +1,9 @@
-import { Badge, Group, List, Paper, SimpleGrid, Card, Stack, Text, Title, Box, Button, useComputedColorScheme } from '@mantine/core';
+import { Badge, Group, List, Modal, Paper, SimpleGrid, Card, Stack, Text, Title, Box, Button, Tooltip, useComputedColorScheme } from '@mantine/core';
+import { IconCopy, IconStar } from '@tabler/icons-react';
 import { DatePickerInput } from '@mantine/dates';
 import { useEffect, useMemo, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { IconCalendar, IconUpload } from '@tabler/icons-react';
 import '@mantine/dates/styles.css';
@@ -12,7 +13,7 @@ import { resolveActivityAccentColor, resolveActivityPillLabel } from './calendar
 import { ActivitiesListSkeleton } from './common/SkeletonScreens';
 import { readSnapshot, writeSnapshot } from '../utils/localSnapshot';
 
-type Activity = {
+export type Activity = {
     id: number;
     filename: string;
     sport: string | null;
@@ -27,6 +28,9 @@ type Activity = {
     aerobic_load?: number;
     anaerobic_load?: number;
     total_load_impact?: number;
+    duplicate_recordings_count?: number | null;
+    duplicate_of_id?: number | null;
+    source_provider?: string | null;
 };
 
 import { useNavigate } from 'react-router-dom';
@@ -56,6 +60,7 @@ export function ActivitiesView({
     const [offset, setOffset] = useState(0);
     const [loadedActivities, setLoadedActivities] = useState<Activity[]>([]);
     const [hasMoreActivities, setHasMoreActivities] = useState(true);
+    const [duplicateModalActivity, setDuplicateModalActivity] = useState<Activity | null>(null);
     const PAGE_SIZE = 40;
         const ui = {
                 pageBg: isDark ? '#081226' : '#F4F7FC',
@@ -207,12 +212,14 @@ export function ActivitiesView({
                 );
                 const pillLabel = resolveActivityPillLabel(act.sport || undefined, act.filename);
 
+                const hasDuplicates = (act.duplicate_recordings_count ?? 0) > 0;
+
                 return (
-                <Card 
-                    key={act.id} 
-                    withBorder 
+                <Card
+                    key={act.id}
+                    withBorder
                     shadow="xs"
-                    padding="lg" 
+                    padding="lg"
                     radius="lg"
                     bg={ui.cardBg}
                     style={{
@@ -221,7 +228,13 @@ export function ActivitiesView({
                         ...cardStyle,
                         borderLeft: `4px solid ${accentColor}`,
                     }}
-                    onClick={() => navigate(`/dashboard/activities/${act.id}`)}
+                    onClick={() => {
+                        if (hasDuplicates) {
+                            setDuplicateModalActivity(act);
+                        } else {
+                            navigate(`/dashboard/activities/${act.id}`);
+                        }
+                    }}
                     onMouseEnter={(e) => {
                         e.currentTarget.style.transform = 'translateY(-1px)';
                         e.currentTarget.style.boxShadow = isDark
@@ -232,7 +245,7 @@ export function ActivitiesView({
                         e.currentTarget.style.transform = 'translateY(0)';
                         e.currentTarget.style.boxShadow = 'none';
                     }}
-                > 
+                >
                     <Group justify="space-between" mb="xs">
                         <Stack gap={0} style={{ overflow: 'hidden' }}>
                             <Text fw={700} c={ui.textMain} truncate>{act.filename}</Text>
@@ -267,6 +280,11 @@ export function ActivitiesView({
                                     </Badge>
                                 )}
                                 {act.is_deleted && <Badge size="sm" color="red" variant="light">Deleted</Badge>}
+                                {hasDuplicates && (
+                                    <Badge size="sm" color="orange" variant="light" leftSection={<IconCopy size={10} />}>
+                                        {(act.duplicate_recordings_count ?? 0) + 1} recordings
+                                    </Badge>
+                                )}
                             </Group>
                         </Stack>
                         <Text size="xs" c={ui.textDim}>{new Date(act.created_at).toLocaleString()}</Text>
@@ -340,6 +358,168 @@ export function ActivitiesView({
                             </Paper>
                         )}
         </SimpleGrid>
+
+        <DuplicateSelectModal
+            activity={duplicateModalActivity}
+            onClose={() => setDuplicateModalActivity(null)}
+            isDark={isDark}
+            formatDistance={formatDistance}
+            formatDurationHm={formatDurationHm}
+            onNavigate={(id) => { setDuplicateModalActivity(null); navigate(`/dashboard/activities/${id}`); }}
+        />
     </Stack>
   );
+}
+
+export type DuplicateSelectModalProps = {
+    activity: Activity | null;
+    onClose: () => void;
+    isDark: boolean;
+    formatDistance: (m: number) => string;
+    formatDurationHm: (s?: number | null) => string;
+    onNavigate: (id: number) => void;
+};
+
+const PROVIDER_LABELS: Record<string, string> = {
+    strava: 'Strava',
+    garmin: 'Garmin',
+    wahoo: 'Wahoo',
+    polar: 'Polar',
+    zwift: 'Zwift',
+    suunto: 'Suunto',
+    coros: 'Coros',
+};
+
+function formatProvider(provider?: string | null, fileType?: string): string {
+    if (provider && PROVIDER_LABELS[provider.toLowerCase()]) {
+        return PROVIDER_LABELS[provider.toLowerCase()];
+    }
+    if (fileType) return `.${fileType.toLowerCase()}`;
+    return 'file';
+}
+
+export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance, formatDurationHm, onNavigate }: DuplicateSelectModalProps) {
+    const queryClient = useQueryClient();
+    const [allRecordings, setAllRecordings] = useState<Activity[]>([]);
+    const [primaryId, setPrimaryId] = useState<number | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!activity) return;
+        setPrimaryId(activity.id);
+        setAllRecordings([activity]);
+        setLoading(true);
+        api.get<Activity[]>(`/activities/${activity.id}/duplicates`)
+            .then(res => setAllRecordings([activity, ...res.data]))
+            .finally(() => setLoading(false));
+    }, [activity?.id]);
+
+    const deleteMutation = useMutation({
+        mutationFn: async (id: number) => {
+            await api.delete(`/activities/${id}`);
+        },
+        onSuccess: (_, id) => {
+            const remaining = allRecordings.filter(r => r.id !== id);
+            setAllRecordings(remaining);
+            queryClient.invalidateQueries({ queryKey: ['activities'] });
+            if (remaining.length <= 1) {
+                onClose();
+            }
+        },
+    });
+
+    const makePrimaryMutation = useMutation({
+        mutationFn: async (id: number) => {
+            await api.post(`/activities/${id}/make-primary`);
+        },
+        onSuccess: (_, id) => {
+            setPrimaryId(id);
+            queryClient.invalidateQueries({ queryKey: ['activities'] });
+        },
+    });
+
+    // Primary first, then the rest
+    const recordings = [
+        ...allRecordings.filter(r => r.id === primaryId),
+        ...allRecordings.filter(r => r.id !== primaryId),
+    ];
+
+    const cardBg = isDark ? '#182B4B' : '#FFFFFF';
+    const border = isDark ? 'rgba(148,163,184,0.28)' : '#DCE6F7';
+
+    return (
+        <Modal
+            opened={Boolean(activity)}
+            onClose={onClose}
+            title="Multiple recordings detected"
+            size="md"
+            centered
+        >
+            <Stack gap="sm">
+                <Text size="sm" c="dimmed">
+                    This workout was recorded on multiple devices. Choose which recording to keep as primary, or delete the ones you don't need.
+                </Text>
+
+                {loading ? (
+                    <Text size="sm" c="dimmed">Loading recordings…</Text>
+                ) : (
+                    recordings.map((rec) => {
+                        const isPrimary = rec.id === primaryId;
+                        const sourceLabel = formatProvider(rec.source_provider, rec.file_type);
+                        return (
+                            <Paper
+                                key={rec.id}
+                                withBorder
+                                p="sm"
+                                radius="md"
+                                style={{ borderColor: isPrimary ? '#3B82F6' : border, background: cardBg }}
+                            >
+                                <Group justify="space-between" wrap="nowrap">
+                                    <Stack gap={2} style={{ flex: 1, overflow: 'hidden' }}>
+                                        <Group gap={6} wrap="nowrap">
+                                            <Text fw={600} size="sm" truncate style={{ flex: 1 }}>{rec.filename}</Text>
+                                            <Badge size="xs" color="gray" variant="outline" style={{ flexShrink: 0 }}>{sourceLabel}</Badge>
+                                            {isPrimary && <Badge size="xs" color="blue" variant="light" style={{ flexShrink: 0 }}>Primary</Badge>}
+                                        </Group>
+                                        <Text size="xs" c="dimmed">
+                                            {new Date(rec.created_at.endsWith('Z') ? rec.created_at : rec.created_at + 'Z').toLocaleString()} · {rec.duration ? formatDurationHm(rec.duration) : '-'} · {rec.distance ? formatDistance(rec.distance) : '-'}
+                                            {rec.average_hr ? ` · ${rec.average_hr.toFixed(0)} bpm` : ''}
+                                        </Text>
+                                    </Stack>
+                                    <Group gap={6} wrap="nowrap">
+                                        <Button size="xs" variant="light" onClick={() => onNavigate(rec.id)}>
+                                            View
+                                        </Button>
+                                        {!isPrimary && (
+                                            <Tooltip label="Make this the primary recording">
+                                                <Button
+                                                    size="xs"
+                                                    variant="light"
+                                                    color="yellow"
+                                                    leftSection={<IconStar size={12} />}
+                                                    loading={makePrimaryMutation.isPending && makePrimaryMutation.variables === rec.id}
+                                                    onClick={() => makePrimaryMutation.mutate(rec.id)}
+                                                >
+                                                    Primary
+                                                </Button>
+                                            </Tooltip>
+                                        )}
+                                        <Button
+                                            size="xs"
+                                            color="red"
+                                            variant="subtle"
+                                            loading={deleteMutation.isPending && deleteMutation.variables === rec.id}
+                                            onClick={() => deleteMutation.mutate(rec.id)}
+                                        >
+                                            Delete
+                                        </Button>
+                                    </Group>
+                                </Group>
+                            </Paper>
+                        );
+                    })
+                )}
+            </Stack>
+        </Modal>
+    );
 }

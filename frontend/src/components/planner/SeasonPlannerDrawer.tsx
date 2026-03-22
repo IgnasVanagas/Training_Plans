@@ -43,9 +43,10 @@ type Props = {
   me: User;
   athletes: User[];
   selectedAthleteId?: number | null;
+  inline?: boolean;
 };
 
-export default function SeasonPlannerDrawer({ opened, onClose, me, athletes, selectedAthleteId }: Props) {
+export default function SeasonPlannerDrawer({ opened, onClose, me, athletes, selectedAthleteId, inline }: Props) {
   const queryClient = useQueryClient();
   const { t } = useI18n();
 
@@ -154,10 +155,9 @@ export default function SeasonPlannerDrawer({ opened, onClose, me, athletes, sel
     { value: "Running", label: t("Running") || "Running" },
   ];
 
-  return (
-    <Drawer opened={opened} onClose={onClose} position="right" size="min(620px, 100vw)" title={t("Season Planner") || "Season Planner"} padding="md">
-      <ScrollArea h="calc(100vh - 90px)" offsetScrollbars>
-        <Stack gap="md" pb="xl">
+  const content = (
+    <ScrollArea h={inline ? "calc(100dvh - 140px)" : "calc(100vh - 90px)"} offsetScrollbars>
+      <Stack gap="md" pb="xl" px={inline ? "md" : undefined}>
           {localError && <Alert color="red">{localError}</Alert>}
           {planQuery.isLoading && <Alert color="blue">{t("Loading saved framework") || "Loading saved framework"}</Alert>}
 
@@ -489,6 +489,13 @@ export default function SeasonPlannerDrawer({ opened, onClose, me, athletes, sel
           )}
         </Stack>
       </ScrollArea>
+  );
+
+  if (inline) return content;
+
+  return (
+    <Drawer opened={opened} onClose={onClose} position="right" size="min(620px, 100vw)" title={t("Season Planner") || "Season Planner"} padding="md">
+      {content}
     </Drawer>
   );
 }

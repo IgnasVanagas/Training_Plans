@@ -30,12 +30,11 @@ import {
   IconChevronRight,
   IconTrophy,
   IconChartBar,
-  IconTrendingUp,
   IconWaveSine,
-  IconBike,
+  IconDeviceWatch,
   IconUser,
   IconDotsVertical,
-  IconFlag,
+  IconCircle,
   IconLayoutDashboard,
   IconBell,
   IconLogout,
@@ -57,7 +56,7 @@ import api from "../../api/client";
 
 const appLogo = "/origami-logo.png";
 
-type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "performance" | "zones" | "trackers" | "profile" | "macrocycle";
+type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle";
 
 type SidebarAthlete = {
   id: number;
@@ -118,11 +117,10 @@ const DashboardLayoutShell = ({
     { key: "plan", icon: IconCalendar, label: t("Calendar"), color: "#E95A12" },
     { key: "races", icon: IconTrophy, label: t("Races & records"), color: "#2E8B57" },
     { key: "insights", icon: IconChartBar, label: t("Training insights"), color: "#3B82F6" },
-    { key: "performance", icon: IconTrendingUp, label: t("Performance"), color: "#8B5CF6" },
     { key: "zones", icon: IconWaveSine, label: t("Training zones"), color: "#0EA5E9" },
-    { key: "trackers", icon: IconBike, label: t("Activity trackers"), color: "#EAB308" },
+    { key: "trackers", icon: IconDeviceWatch, label: t("Activity trackers"), color: "#EAB308" },
     { key: "profile", icon: IconUser, label: t("Athlete profile"), color: "#3B82F6" },
-    { key: "macrocycle", icon: IconFlag, label: t("Macrocycle"), color: "#22C55E" },
+    { key: "macrocycle", icon: IconCircle, label: t("Macrocycle"), color: "#22C55E" },
   ];
   const coachNavItems: NavItem[] = [
     { key: "dashboard", icon: IconLayoutDashboard, label: t("Dashboard"), color: "#E95A12" },

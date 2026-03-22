@@ -69,13 +69,13 @@ export const MetricHistoryModal = ({
           {selectedMetric === "training_status" && (
             <Paper withBorder p="sm" radius="sm">
               <Stack gap={4}>
-                <Text size="sm" fw={600}>{isLt ? "Visos galimos būsenos" : "All possible statuses"}</Text>
-                <Text size="sm"><b>{isLt ? "Formos kritimas" : "Detraining"}</b>{isLt ? ": labai mažas pastarasis ir lėtinis krūvis; treniruočių stimulas greičiausiai nepakankamas." : ": very low recent and chronic load; fitness stimulus is likely insufficient."}</Text>
-                <Text size="sm"><b>{isLt ? "Palaikymas" : "Maintaining"}</b>{isLt ? ": minimalus bazinis krūvis su stabiliai mažu nuovargiu." : ": minimal baseline load with stable low strain."}</Text>
-                <Text size="sm"><b>{isLt ? "Atsistatymas" : "Recovering"}</b>{isLt ? ": ūmus krūvis yra gerokai mažesnis už lėtinį (ACWR < 0.8); naudinga po sunkių blokų." : ": acute load is well below chronic load (ACWR < 0.8); useful after hard blocks."}</Text>
-                <Text size="sm"><b>{isLt ? "Produktyvu" : "Productive"}</b>{isLt ? ": subalansuota progreso zona (0.8 ≤ ACWR ≤ 1.2); geriausias intervalas nuosekliai adaptacijai." : ": balanced progression zone (0.8 ≤ ACWR ≤ 1.2); best range for consistent adaptation."}</Text>
-                <Text size="sm"><b>{isLt ? "Perkrova" : "Overreaching"}</b>{isLt ? ": padidintas trumpalaikis stresas (1.2 < ACWR ≤ 1.5); valdoma, jei trumpa ir suplanuota." : ": elevated short-term stress (1.2 < ACWR ≤ 1.5); manageable if brief and planned."}</Text>
-                <Text size="sm"><b>{isLt ? "Perdėtas nuovargis" : "Strained"}</b>{isLt ? ": per didelis trumpalaikis stresas (ACWR > 1.5); didesnė nuovargio ir traumų rizika." : ": excessive short-term stress (ACWR > 1.5); higher fatigue/injury risk."}</Text>
+                <Text size="sm" fw={600}>{isLt ? "TSB pagrįstos būsenos" : "TSB-based statuses (CTL − ATL)"}</Text>
+                <Text size="sm"><b>{isLt ? "Formos kritimas" : "Detraining"}</b>{isLt ? ": CTL < 5; treniruočių stimulas nepakankamas." : ": CTL < 5; insufficient training stimulus."}</Text>
+                <Text size="sm"><b>{isLt ? "Šviežia" : "Fresh"}</b>{isLt ? ": TSB > 15; gerai pailsėjęs, tačiau gali netekti formos." : ": TSB > 15; well rested but fitness may be tapering."}</Text>
+                <Text size="sm"><b>{isLt ? "Produktyvu" : "Productive"}</b>{isLt ? ": 5 ≤ TSB ≤ 15; optimalus progreso langas." : ": 5 ≤ TSB ≤ 15; optimal adaptation window."}</Text>
+                <Text size="sm"><b>{isLt ? "Palaikymas" : "Maintaining"}</b>{isLt ? ": −10 ≤ TSB < 5; subalansuotas krūvis." : ": −10 ≤ TSB < 5; balanced load."}</Text>
+                <Text size="sm"><b>{isLt ? "Pavargęs" : "Fatigued"}</b>{isLt ? ": −25 ≤ TSB < −10; reikalingas papildomas poilsis." : ": −25 ≤ TSB < −10; additional recovery needed."}</Text>
+                <Text size="sm"><b>{isLt ? "Perkrautas" : "Strained"}</b>{isLt ? ": TSB < −25; didelė traumų rizika." : ": TSB < −25; high injury risk."}</Text>
               </Stack>
             </Paper>
           )}
@@ -94,26 +94,25 @@ export const MetricHistoryModal = ({
                         return first?.date || String(value);
                       }}
                     />
-                    {selectedMetric === "aerobic_load" && <Legend />}
-                    {selectedMetric === "anaerobic_load" && <Legend />}
-                    {selectedMetric === "training_status" && <Legend />}
+                    {(selectedMetric === "aerobic_load" || selectedMetric === "anaerobic_load" || selectedMetric === "training_status") && <Legend />}
 
                     {(selectedMetric === "ftp" || selectedMetric === "rhr" || selectedMetric === "hrv") && (
                       <Line type="monotone" dataKey="value" stroke="#228be6" strokeWidth={2} dot={false} connectNulls />
                     )}
 
                     {selectedMetric === "aerobic_load" && (
-                      <Line type="monotone" dataKey="aerobic" name="Aerobic" stroke="#12b886" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="atl" name="ATL" stroke="#E95A12" strokeWidth={2} dot={false} />
                     )}
 
                     {selectedMetric === "anaerobic_load" && (
-                      <Line type="monotone" dataKey="anaerobic" name="Anaerobic" stroke="#fa5252" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="ctl" name="CTL" stroke="#2563eb" strokeWidth={2} dot={false} />
                     )}
 
                     {selectedMetric === "training_status" && (
                       <>
-                        <Line type="monotone" dataKey="acute" name="Acute load" stroke="#228be6" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="chronic" name="Chronic load" stroke="#9775fa" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="atl" name="ATL" stroke="#E95A12" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="ctl" name="CTL" stroke="#2563eb" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="tsb" name="TSB" stroke="#9775fa" strokeWidth={2} dot={false} />
                       </>
                     )}
                   </LineChart>

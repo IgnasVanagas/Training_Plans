@@ -248,6 +248,7 @@ async def _mark_strava_activity_deleted(db: AsyncSession, *, user_id: int, provi
         select(Activity).where(
             Activity.athlete_id == user_id,
             Activity.file_type == "provider",
+            Activity.streams['_meta']['source_activity_id'].astext == provider_activity_id,
         )
     )
     updated = 0
@@ -257,8 +258,6 @@ async def _mark_strava_activity_deleted(db: AsyncSession, *, user_id: int, provi
         meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
         if str(meta.get("source_provider") or "") != "strava":
             continue
-        if str(meta.get("source_activity_id") or "") != provider_activity_id:
-            continue
         meta.update({
             "deleted": True,
             "deleted_at": datetime.utcnow().isoformat(),
@@ -266,6 +265,7 @@ async def _mark_strava_activity_deleted(db: AsyncSession, *, user_id: int, provi
         })
         payload["_meta"] = meta
         activity.streams = payload
+        activity.is_deleted = True
         db.add(activity)
         updated += 1
         matched_dates.add(activity.created_at.date())

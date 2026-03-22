@@ -360,7 +360,7 @@ class StravaConnector(ProviderConnector):
             normalized.append(
                 {
                     "split": idx + 1,
-                    "start_time": self._normalize_utc_iso(lap.get("start_date") or lap.get("start_date_local")),
+                    "start_time": self._normalize_utc_iso(lap.get("start_date")),
                     "duration": lap.get("elapsed_time") or lap.get("moving_time"),
                     "distance": lap.get("distance"),
                     "avg_speed": lap.get("average_speed"),
@@ -594,7 +594,7 @@ class StravaConnector(ProviderConnector):
             response.raise_for_status()
             payload = response.json() if isinstance(response.json(), dict) else {}
 
-        start_iso = payload.get("start_date") or payload.get("start_date_local")
+        start_iso = payload.get("start_date")  # always UTC from Strava; never fall back to start_date_local (local time)
         if not start_iso:
             return None
         start_time = datetime.fromisoformat(str(start_iso).replace("Z", "+00:00")).replace(tzinfo=None)
@@ -719,7 +719,7 @@ class StravaConnector(ProviderConnector):
                     if not activity_id or activity_id in seen_ids:
                         continue
 
-                    start_iso = item.get("start_date") or item.get("start_date_local")
+                    start_iso = item.get("start_date")  # always UTC from Strava; never fall back to start_date_local
                     if not start_iso:
                         continue
                     start_time = datetime.fromisoformat(start_iso.replace("Z", "+00:00")).replace(tzinfo=None)
