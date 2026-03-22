@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Endurance Sports Management Platform")
 
-allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://training-plans-1.onrender.com,https://training-plans.onrender.com")
 allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
 # Auto-include FRONTEND_BASE_URL so CORS works even if ALLOWED_ORIGINS is out of sync
 _frontend_url = (os.getenv("FRONTEND_BASE_URL") or "").strip().rstrip("/")
