@@ -31,6 +31,7 @@ export type Activity = {
     duplicate_recordings_count?: number | null;
     duplicate_of_id?: number | null;
     source_provider?: string | null;
+    file_type?: string | null;
 };
 
 import { useNavigate } from 'react-router-dom';
