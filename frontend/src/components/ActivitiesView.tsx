@@ -466,7 +466,7 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
                 ) : (
                     recordings.map((rec) => {
                         const isPrimary = rec.id === primaryId;
-                        const sourceLabel = formatProvider(rec.source_provider, rec.file_type);
+                        const sourceLabel = formatProvider(rec.source_provider, rec.file_type ?? undefined);
                         return (
                             <Paper
                                 key={rec.id}
