@@ -163,7 +163,7 @@ async def find_duplicate_activity(
             a_dist = float(a.distance or 0)
             q_dist = float(distance_m or 0)
             indoor_pair = a_dist == 0 or q_dist == 0
-            if abs(float(a.duration or 0) - float(duration_s or 0)) > (3600 if indoor_pair else 300):
+            if abs(float(a.duration or 0) - float(duration_s or 0)) > (3600 if indoor_pair else 600):
                 continue
             if not indoor_pair and abs(a_dist - q_dist) > 500:
                 continue
@@ -223,9 +223,9 @@ def _rows_are_duplicate(existing: dict, candidate: dict) -> bool:
     dist_e = float(existing.get("distance") or 0)
     dist_c = float(candidate.get("distance") or 0)
     indoor_pair = dist_e == 0 or dist_c == 0
-    if abs((ec - cc).total_seconds()) > (900 if indoor_pair else 180):
+    if abs((ec - cc).total_seconds()) > 900:
         return False
-    if abs(float(existing.get("duration") or 0) - float(candidate.get("duration") or 0)) > (3600 if indoor_pair else 300):
+    if abs(float(existing.get("duration") or 0) - float(candidate.get("duration") or 0)) > (3600 if indoor_pair else 600):
         return False
     if not indoor_pair and abs(dist_e - dist_c) > 500:
         return False

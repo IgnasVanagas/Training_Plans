@@ -763,6 +763,22 @@ async def set_strava_import_preferences(
     )
 
 
+async def _startup_trigger_pending_syncs() -> None:
+    """On startup, queue a Strava sync for any user whose initial sync never completed."""
+    async with AsyncSessionLocal() as db:
+        states = await db.execute(
+            select(ProviderSyncState).where(
+                ProviderSyncState.provider == "strava",
+                ProviderSyncState.sync_status != "syncing",
+            )
+        )
+        for state in states.scalars().all():
+            cursor = state.cursor or {}
+            if not cursor.get("initial_sync_done"):
+                asyncio.create_task(_sync_provider_task("strava", state.user_id))
+                logger.info("Startup: queued initial Strava sync for user_id=%s", state.user_id)
+
+
 async def _sync_provider_task(provider: str, user_id: int):
     # Create a new session for the background task since the original one is closed
     async with AsyncSessionLocal() as db:

@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import asyncio
 import logging
 import os
 from sqlalchemy import text
@@ -19,6 +20,10 @@ allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") i
 _frontend_url = (os.getenv("FRONTEND_BASE_URL") or "").strip().rstrip("/")
 if _frontend_url and _frontend_url not in allowed_origins:
     allowed_origins.append(_frontend_url)
+# Always include known Render production origins regardless of what ALLOWED_ORIGINS env var is set to
+for _ro in ("https://training-plans-1.onrender.com", "https://training-plans.onrender.com"):
+    if _ro not in allowed_origins:
+        allowed_origins.append(_ro)
 allowed_origin_regex = os.getenv(
     "ALLOWED_ORIGIN_REGEX",
     r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|^https://[a-zA-Z0-9-]+\.onrender\.com$",
@@ -96,6 +101,13 @@ async def on_startup() -> None:
             logger.info("Duplicate backfill: marked %d historic duplicate(s)", marked)
     except Exception as exc:
         logger.warning("Duplicate backfill failed (non-fatal): %s", exc)
+
+    # Trigger a sync for any Strava user whose initial sync never completed
+    try:
+        from .routers.integrations import _startup_trigger_pending_syncs
+        asyncio.create_task(_startup_trigger_pending_syncs())
+    except Exception as exc:
+        logger.warning("Startup pending sync trigger failed: %s", exc)
 
     logger.info("Startup complete")
 
