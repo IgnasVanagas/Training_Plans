@@ -166,7 +166,7 @@ export const ActivityDetailPage = () => {
         return `${distance.toFixed(3)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`;
     };
     const [graphMode, setGraphMode] = useState<'standard' | 'power_curve' | 'hr_zones' | 'pace_zones' | 'power_zones'>('hr_zones');
-    const [activeSection, setActiveSection] = useState<'overview' | 'analysis' | 'laps' | 'best_efforts' | 'comparison'>('overview');
+    const [activeSection, setActiveSection] = useState<'overview' | 'charts' | 'analysis' | 'laps' | 'best_efforts' | 'comparison'>('overview');
     const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
     const hoveredPointIndexRef = useRef<number | null>(null);
     const pendingHoveredPointIndexRef = useRef<number | null>(null);
@@ -1190,6 +1190,7 @@ export const ActivityDetailPage = () => {
                     <Tabs value={activeSection} onChange={(v) => setActiveSection(v as typeof activeSection)} mb="md">
                         <Tabs.List mb="md">
                             <Tabs.Tab value="overview">Overview</Tabs.Tab>
+                            <Tabs.Tab value="charts">Charts</Tabs.Tab>
                             <Tabs.Tab value="analysis">Analysis</Tabs.Tab>
                             {(activity.splits_metric?.length || activity.laps?.length) ? <Tabs.Tab value="laps">Laps</Tabs.Tab> : null}
                             {activity.best_efforts?.length ? <Tabs.Tab value="best_efforts">Best Efforts</Tabs.Tab> : null}
@@ -1201,162 +1202,6 @@ export const ActivityDetailPage = () => {
                             <Grid gutter="md">
                                 <Grid.Col span={{ base: 12, md: 8 }}>
                                     <Stack gap="sm">
-                                        {/* Overview Chart (standard mode only) */}
-                                        <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                            <Group justify="space-between" mb="md">
-                                                <Stack gap={4}>
-                                                    <Title order={5} c={ui.textMain}>Activity Charts</Title>
-                                                    {focusMode && <Text size="xs" c={ui.textDim}>Focus mode keeps only key signals for this review objective.</Text>}
-                                                </Stack>
-                                                <Group>
-                                                    <Select
-                                                        size="xs"
-                                                        value={focusObjective}
-                                                        onChange={(value) => setFocusObjective((value as 'pacing' | 'cardio' | 'efficiency') || 'pacing')}
-                                                        data={[
-                                                            { value: 'pacing', label: 'Pacing Discipline' },
-                                                            { value: 'cardio', label: 'Cardio Drift' },
-                                                            { value: 'efficiency', label: 'Power Efficiency' },
-                                                        ]}
-                                                        disabled={!focusMode}
-                                                        w={180}
-                                                    />
-                                                    <Switch
-                                                        checked={focusMode}
-                                                        onChange={(event) => setFocusMode(event.currentTarget.checked)}
-                                                        label="Focus Mode"
-                                                    />
-                                                </Group>
-                                            </Group>
-                                            <Box w="100%" mih={300} style={{ borderRadius: 12 }}>
-                                                <Group mb="sm" gap="xs">
-                                                    <Text size="xs" fw={700}>Show:</Text>
-                                                    <Chip checked={focusSeries.heart_rate} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, heart_rate: !v.heart_rate}))} size="xs" color="red" variant="light">Heart Rate</Chip>
-                                                    {isRunningActivity && (
-                                                        <Chip checked={focusSeries.pace} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, pace: !v.pace}))} size="xs" color="blue" variant="light">Pace</Chip>
-                                                    )}
-                                                    <Chip checked={focusSeries.power} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, power: !v.power}))} size="xs" color="orange" variant="light">Power</Chip>
-                                                    <Chip checked={focusSeries.cadence} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, cadence: !v.cadence}))} size="xs" color="cyan" variant="light">Cadence</Chip>
-                                                    <Chip checked={focusSeries.altitude} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, altitude: !v.altitude}))} size="xs" color="green" variant="light">Altitude</Chip>
-                                                </Group>
-
-                                                <Stack gap="xs">
-                                                    {focusSeries.heart_rate && (
-                                                        <Box h={160} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis dataKey="heart_rate" orientation="right" domain={['dataMin - 5', 'dataMax + 5']} width={40} tick={{fontSize: 10}} />
-                                                                    <Tooltip
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={hrTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="heart_rate" stroke="#fa5252" fill="#fa5252" fillOpacity={0.15} strokeWidth={2} activeDot={{ r: 4 }} />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {isRunningActivity && focusSeries.pace && (
-                                                        <Box h={160} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis
-                                                                        dataKey="pace"
-                                                                        orientation="right"
-                                                                        reversed
-                                                                        domain={['dataMin', 'dataMax']}
-                                                                        width={40}
-                                                                        tick={{fontSize: 10}}
-                                                                        tickFormatter={(val) => {
-                                                                            const m = Math.floor(val);
-                                                                            return `${m}:${Math.floor((val-m)*60).toString().padStart(2,'0')}`;
-                                                                        }}
-                                                                    />
-                                                                    <Tooltip
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={paceTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="pace" stroke="#228be6" fill="#228be6" fillOpacity={0.15} strokeWidth={2} connectNulls />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {focusSeries.power && (
-                                                        <Box h={160} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis dataKey="power" orientation="right" width={40} tick={{fontSize: 10}} />
-                                                                    <Tooltip
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={powerTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="power" stroke="#fd7e14" fill="#fd7e14" fillOpacity={0.15} strokeWidth={1.5} />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {focusSeries.cadence && (
-                                                        <Box h={120} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis dataKey="cadence" orientation="right" domain={['dataMin - 10', 'dataMax + 10']} width={40} tick={{fontSize: 10}} />
-                                                                    <Tooltip
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={cadenceTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="cadence" stroke="#15aabf" fill="#15aabf" fillOpacity={0.1} strokeWidth={1} />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {focusSeries.altitude && (
-                                                        <Box h={120} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis dataKey="altitude" orientation="right" domain={['dataMin', 'dataMax']} width={40} tick={{fontSize: 10}} />
-                                                                    <Tooltip
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={altitudeTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="altitude" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.1} strokeWidth={1} />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {/* Shared Axis with Brush at bottom */}
-                                                    <Box h={60} w="100%">
-                                                        <ResponsiveContainer>
-                                                            <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 0, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} orientation="bottom" tick={{fontSize: 10}} tickFormatter={(val) => { const m = Math.floor(val); const s = Math.round((val - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
-                                                                <YAxis hide domain={[0, 1]} />
-                                                                <Area dataKey="time_min" fill="none" stroke="none" />
-                                                                <Brush dataKey="time_min" height={20} stroke="#8884d8" tickFormatter={(val) => { const m = Math.floor(val); const s = Math.round((val - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
-                                                            </AreaChart>
-                                                        </ResponsiveContainer>
-                                                    </Box>
-                                                </Stack>
-                                            </Box>
-                                        </Paper>
-
                                         {/* Detailed Stats */}
                                         <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
                                             <Title order={5} mb="md" c={ui.textMain}>Detailed Stats</Title>
@@ -1473,6 +1318,42 @@ export const ActivityDetailPage = () => {
                                                  </Group>
                                             </Stack>
                                         </Paper>
+                                        {rankedBestEfforts.length > 0 && (
+                                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                                <Group justify="space-between" mb="sm">
+                                                    <Title order={5} c={ui.textMain}>Top Efforts</Title>
+                                                    {(activity.best_efforts?.length ?? 0) > rankedBestEfforts.length && (
+                                                        <Button size="xs" variant="subtle" onClick={() => setActiveSection('best_efforts')}>View all</Button>
+                                                    )}
+                                                </Group>
+                                                <Stack gap="xs">
+                                                    {rankedBestEfforts.slice(0, 3).map((effort, idx) => {
+                                                        const key = effort.window || effort.distance || String(idx);
+                                                        const prRank = activity.personal_records?.[key];
+                                                        const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : '#cd7f32';
+                                                        return (
+                                                            <Group key={key} justify="space-between">
+                                                                <Group gap="xs">
+                                                                    <IconTrophy size={14} color={medalColor} />
+                                                                    <Text size="sm" fw={600} c={ui.textMain}>{effort.window || effort.distance}</Text>
+                                                                </Group>
+                                                                <Group gap="sm">
+                                                                    {isCyclingActivity && effort.power != null && (
+                                                                        <Text size="sm" c={ui.textDim}>{effort.power} W</Text>
+                                                                    )}
+                                                                    {isRunningActivity && effort.time_seconds != null && (
+                                                                        <Text size="sm" c={ui.textDim}>{formatDuration(effort.time_seconds)}</Text>
+                                                                    )}
+                                                                    {effort.avg_hr != null && (
+                                                                        <Text size="sm" c={ui.textDim}>{effort.avg_hr} bpm</Text>
+                                                                    )}
+                                                                </Group>
+                                                            </Group>
+                                                        );
+                                                    })}
+                                                </Stack>
+                                            </Paper>
+                                        )}
                                     </Stack>
                                 </Grid.Col>
 
@@ -1505,6 +1386,157 @@ export const ActivityDetailPage = () => {
                                     </Stack>
                                 </Grid.Col>
                             </Grid>
+                        </Tabs.Panel>
+
+                        {/* CHARTS TAB */}
+                        <Tabs.Panel value="charts">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Group justify="space-between" mb="md" wrap="wrap" gap="sm">
+                                    <Group gap="xs" wrap="wrap">
+                                        <Text size="xs" fw={700} c={ui.textDim}>Show:</Text>
+                                        <Chip size="xs" checked={visibleSeries.heart_rate} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, heart_rate: checked }))} variant="light">Heart Rate</Chip>
+                                        {supportsPaceSeries && <Chip size="xs" checked={visibleSeries.pace} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, pace: checked }))} variant="light">Pace</Chip>}
+                                        <Chip size="xs" checked={visibleSeries.power} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, power: checked }))} variant="light">Power</Chip>
+                                        <Chip size="xs" checked={visibleSeries.cadence} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, cadence: checked }))} variant="light">Cadence</Chip>
+                                        <Chip size="xs" checked={visibleSeries.altitude} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, altitude: checked }))} variant="light">Altitude</Chip>
+                                    </Group>
+                                    <Group gap="xs">
+                                        {focusMode && (
+                                            <Select
+                                                size="xs"
+                                                value={focusObjective}
+                                                onChange={(v) => v && setFocusObjective(v as typeof focusObjective)}
+                                                data={[
+                                                    { value: 'pacing', label: 'Pacing' },
+                                                    { value: 'cardio', label: 'Cardio' },
+                                                    { value: 'efficiency', label: 'Efficiency' },
+                                                ]}
+                                                w={120}
+                                            />
+                                        )}
+                                        <Switch
+                                            size="xs"
+                                            label="Focus mode"
+                                            checked={focusMode}
+                                            onChange={(e) => setFocusMode(e.currentTarget.checked)}
+                                        />
+                                    </Group>
+                                </Group>
+                                {chartData.length > 0 ? (
+                                    <Stack gap="xs">
+                                        {focusSeries.heart_rate && (
+                                            <Box h={160}>
+                                                <ResponsiveContainer>
+                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                        <defs>
+                                                            <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#fa5252" stopOpacity={0.3} />
+                                                                <stop offset="95%" stopColor="#fa5252" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
+                                                        <XAxis dataKey="distance_km" hide />
+                                                        <YAxis width={35} tick={{ fontSize: 10 }} domain={['auto', 'auto']} tickFormatter={(v) => `${Math.round(v)}`} />
+                                                        <Tooltip content={hrTooltipContent} />
+                                                        <Area type="monotone" dataKey="heart_rate" stroke="#fa5252" fill="url(#hrGrad)" strokeWidth={1.5} dot={false} name="HR" isAnimationActive={false} />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </Box>
+                                        )}
+                                        {focusSeries.pace && (
+                                            <Box h={160}>
+                                                <ResponsiveContainer>
+                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                        <defs>
+                                                            <linearGradient id="paceGrad" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#228be6" stopOpacity={0.3} />
+                                                                <stop offset="95%" stopColor="#228be6" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
+                                                        <XAxis dataKey="distance_km" hide />
+                                                        <YAxis width={35} tick={{ fontSize: 10 }} reversed tickFormatter={(v) => { const m = Math.floor(v); const s = Math.round((v - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
+                                                        <Tooltip content={paceTooltipContent} />
+                                                        <Area type="monotone" dataKey="pace" stroke="#228be6" fill="url(#paceGrad)" strokeWidth={1.5} dot={false} name="Pace" isAnimationActive={false} connectNulls={false} />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </Box>
+                                        )}
+                                        {focusSeries.power && (
+                                            <Box h={160}>
+                                                <ResponsiveContainer>
+                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                        <defs>
+                                                            <linearGradient id="powerGrad" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#fd7e14" stopOpacity={0.3} />
+                                                                <stop offset="95%" stopColor="#fd7e14" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
+                                                        <XAxis dataKey="distance_km" hide />
+                                                        <YAxis width={35} tick={{ fontSize: 10 }} domain={[0, 'auto']} tickFormatter={(v) => `${Math.round(v)}`} />
+                                                        <Tooltip content={powerTooltipContent} />
+                                                        <Area type="monotone" dataKey="power" stroke="#fd7e14" fill="url(#powerGrad)" strokeWidth={1.5} dot={false} name="Power" isAnimationActive={false} />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </Box>
+                                        )}
+                                        {focusSeries.cadence && (
+                                            <Box h={120}>
+                                                <ResponsiveContainer>
+                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                        <defs>
+                                                            <linearGradient id="cadenceGrad" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#40c057" stopOpacity={0.3} />
+                                                                <stop offset="95%" stopColor="#40c057" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
+                                                        <XAxis dataKey="distance_km" hide />
+                                                        <YAxis width={35} tick={{ fontSize: 10 }} domain={['auto', 'auto']} tickFormatter={(v) => `${Math.round(v)}`} />
+                                                        <Tooltip content={cadenceTooltipContent} />
+                                                        <Area type="monotone" dataKey="cadence" stroke="#40c057" fill="url(#cadenceGrad)" strokeWidth={1.5} dot={false} name="Cadence" isAnimationActive={false} />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </Box>
+                                        )}
+                                        {focusSeries.altitude && (
+                                            <Box h={120}>
+                                                <ResponsiveContainer>
+                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                        <defs>
+                                                            <linearGradient id="altGrad" x1="0" y1="0" x2="0" y2="1">
+                                                                <stop offset="5%" stopColor="#868e96" stopOpacity={0.3} />
+                                                                <stop offset="95%" stopColor="#868e96" stopOpacity={0} />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
+                                                        <XAxis dataKey="distance_km" hide />
+                                                        <YAxis width={35} tick={{ fontSize: 10 }} domain={['auto', 'auto']} tickFormatter={(v) => `${Math.round(v)}`} />
+                                                        <Tooltip content={altitudeTooltipContent} />
+                                                        <Area type="monotone" dataKey="altitude" stroke="#868e96" fill="url(#altGrad)" strokeWidth={1.5} dot={false} name="Altitude" isAnimationActive={false} />
+                                                    </AreaChart>
+                                                </ResponsiveContainer>
+                                            </Box>
+                                        )}
+                                        <Box h={60}>
+                                            <ResponsiveContainer>
+                                                <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                    <XAxis dataKey="distance_km" tick={{ fontSize: 10 }} tickFormatter={(v) => `${Number(v).toFixed(1)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`} />
+                                                    <YAxis hide />
+                                                    <Brush dataKey="distance_km" height={40} stroke={ui.border} />
+                                                    <Area type="monotone" dataKey="heart_rate" stroke="transparent" fill="transparent" isAnimationActive={false} />
+                                                </AreaChart>
+                                            </ResponsiveContainer>
+                                        </Box>
+                                    </Stack>
+                                ) : (
+                                    <Stack align="center" justify="center" h={200}>
+                                        <IconActivity size={40} color="gray" />
+                                        <Text c={ui.textDim}>No stream data available for this activity</Text>
+                                    </Stack>
+                                )}
+                            </Paper>
                         </Tabs.Panel>
 
                         {/* ANALYSIS TAB */}
@@ -1738,73 +1770,51 @@ export const ActivityDetailPage = () => {
                         <Tabs.Panel value="best_efforts">
                             <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
                                 <Title order={5} mb="md" c={ui.textMain}>{t("Best Efforts")}</Title>
-                                {displayedBestEfforts.length ? (
-                                    <>
-                                        <Table striped highlightOnHover withTableBorder withColumnBorders>
-                                            <Table.Thead>
-                                                <Table.Tr>
-                                                    <Table.Th></Table.Th>
-                                                    <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
-                                                    {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
-                                                    {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
-                                                    {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
-                                                    {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
-                                                    <Table.Th>{t('Heart Rate')}</Table.Th>
+                                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th></Table.Th>
+                                            <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
+                                            {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
+                                            {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
+                                            {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
+                                            {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
+                                            <Table.Th>{t('Heart Rate')}</Table.Th>
+                                        </Table.Tr>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {activity.best_efforts!.map((effort, idx) => {
+                                            const key = effort.window || effort.distance || String(idx);
+                                            const prRank = activity.personal_records?.[key];
+                                            const weight = me?.profile?.weight;
+                                            const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
+                                            return (
+                                                <Table.Tr key={key}>
+                                                    <Table.Td w={36} style={{ textAlign: 'center' }}>
+                                                        {medalColor && <IconTrophy size={16} color={medalColor} />}
+                                                    </Table.Td>
+                                                    <Table.Td fw={600}>{effort.window || effort.distance}</Table.Td>
+                                                    {isCyclingActivity && <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>}
+                                                    {isCyclingActivity && weight && <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>}
+                                                    {isRunningActivity && <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>}
+                                                    {isRunningActivity && (
+                                                        <Table.Td>
+                                                            {effort.time_seconds != null && effort.meters
+                                                                ? (() => { const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60); const mins = Math.floor(paceMinPerKm); const secs = Math.round((paceMinPerKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
+                                                                : '-'}
+                                                        </Table.Td>
+                                                    )}
+                                                    <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
                                                 </Table.Tr>
-                                            </Table.Thead>
-                                            <Table.Tbody>
-                                                {displayedBestEfforts.map((effort, idx) => {
-                                                    const key = effort.window || effort.distance || String(idx);
-                                                    const prRank = activity.personal_records?.[key];
-                                                    const weight = me?.profile?.weight;
-                                                    const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
-                                                    return (
-                                                        <Table.Tr key={key}>
-                                                            <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                                                {medalColor && <IconTrophy size={16} color={medalColor} />}
-                                                            </Table.Td>
-                                                            <Table.Td fw={600}>{effort.window || effort.distance}</Table.Td>
-                                                            {isCyclingActivity && <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>}
-                                                            {isCyclingActivity && weight && <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>}
-                                                            {isRunningActivity && <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>}
-                                                            {isRunningActivity && (
-                                                                <Table.Td>
-                                                                    {effort.time_seconds != null && effort.meters
-                                                                        ? (() => { const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60); const mins = Math.floor(paceMinPerKm); const secs = Math.round((paceMinPerKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
-                                                                        : '-'}
-                                                                </Table.Td>
-                                                            )}
-                                                            <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
-                                                        </Table.Tr>
-                                                    );
-                                                })}
-                                            </Table.Tbody>
-                                        </Table>
-                                        {!showAllBestEfforts && hasHiddenBestEfforts ? (
-                                            <Group justify="space-between" mt="xs" mb={4}>
-                                                <Text size="xs" c="dimmed">{t('Only all-time top 3 efforts are shown here')}</Text>
-                                                <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(true)}>{t('Show all efforts')}</Button>
-                                            </Group>
-                                        ) : null}
-                                        {showAllBestEfforts && activity.best_efforts.length > rankedBestEfforts.length ? (
-                                            <Group justify="end" mt="xs" mb={4}>
-                                                <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(false)}>{t('Hide non-ranked efforts')}</Button>
-                                            </Group>
-                                        ) : null}
-                                        <Group gap="md" mt={4}>
-                                            <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">{t('PR')}</Text></Group>
-                                            <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">{t('2nd')}</Text></Group>
-                                            <Group gap={4}><IconTrophy size={12} color="#cd7f32" /><Text size="xs" c="dimmed">{t('3rd')}</Text></Group>
-                                        </Group>
-                                    </>
-                                ) : (
-                                    <Stack gap="xs">
-                                        <Text size="sm" c="dimmed">{t('No all-time top 3 efforts in this activity yet')}</Text>
-                                        <Group>
-                                            <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(true)}>{t('Show all efforts')}</Button>
-                                        </Group>
-                                    </Stack>
-                                )}
+                                            );
+                                        })}
+                                    </Table.Tbody>
+                                </Table>
+                                <Group gap="md" mt="sm">
+                                    <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">{t('PR')}</Text></Group>
+                                    <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">{t('2nd')}</Text></Group>
+                                    <Group gap={4}><IconTrophy size={12} color="#cd7f32" /><Text size="xs" c="dimmed">{t('3rd')}</Text></Group>
+                                </Group>
                             </Paper>
                         </Tabs.Panel>
                         ) : null}
