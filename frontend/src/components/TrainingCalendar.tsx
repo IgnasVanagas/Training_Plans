@@ -1561,6 +1561,36 @@ export const TrainingCalendar = ({
         palette,
     }), [isDark, palette]);
 
+    const upcomingRacesNode = useMemo(() => {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const races = (calendarSeasonPlan?.goal_races || [])
+            .filter((r: any) => r.date >= today)
+            .sort((a: any, b: any) => a.date.localeCompare(b.date))
+            .slice(0, 2);
+        if (!races.length) return null;
+        const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+        const bg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)';
+        const textColor = isDark ? '#E2E8F0' : '#1E293B';
+        return (
+            <Group gap={6} wrap="nowrap">
+                {races.map((race: any, idx: number) => {
+                    const RaceIcon = race.priority === 'A' ? Trophy : race.priority === 'B' ? Medal : Award;
+                    const iconColor = race.priority === 'A' ? '#DC2626' : race.priority === 'B' ? '#D97706' : '#2563EB';
+                    const daysUntil = Math.max(0, Math.ceil((parseDate(race.date).getTime() - Date.now()) / 86400000));
+                    return (
+                        <Group key={idx} gap={5} wrap="nowrap" style={{ padding: '3px 8px', borderRadius: 8, border: `1px solid ${borderColor}`, background: bg }}>
+                            <RaceIcon size={11} color={iconColor} style={{ flexShrink: 0 }} />
+                            <Text size="xs" fw={idx === 0 ? 700 : 500} style={{ color: textColor, whiteSpace: 'nowrap' }}>
+                                {format(parseDate(race.date), 'MMM d')} · {race.name}
+                            </Text>
+                            <Text size="xs" fw={700} style={{ color: iconColor, whiteSpace: 'nowrap' }}>{daysUntil}d</Text>
+                        </Group>
+                    );
+                })}
+            </Group>
+        );
+    }, [calendarSeasonPlan, isDark]);
+
     return (
         <Stack
             p={isMobileViewport ? 6 : 10}
@@ -1583,7 +1613,7 @@ export const TrainingCalendar = ({
                 monthlyTotalsLabel={monthlyHeaderLabel}
                 onMonthlyTotalsClick={handleMonthlyTotalsOpen}
                 monthlyTotalsWidth={WEEKLY_TOTALS_PANEL_WIDTH}
-                actionButtons={actionButtons}
+                actionButtons={upcomingRacesNode ?? actionButtons}
             />
             
             <Group align="stretch" gap={8} wrap={isMobileViewport ? 'wrap' : 'nowrap'} style={{ flex: 1, minHeight: 0 }}>

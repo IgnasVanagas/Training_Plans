@@ -764,50 +764,6 @@ const Dashboard = () => {
                         setDraggedWorkout(null);
                         notifications.show({ title: 'Workout Scheduled', message: `${w.title} on ${format(d, 'MMM do')}` });
                     }}
-                    actionButtons={
-                      <>
-                        {!isMobile && (
-                          <Button
-                            variant="default"
-                            size="compact-sm"
-                            leftSection={<IconColumns size={14} />}
-                            onClick={() => setShowLibrary(!showLibrary)}
-                            styles={{ root: { borderRadius: 8, fontWeight: 600, fontSize: 12 } }}
-                          >
-                            {t("Dual view")}
-                          </Button>
-                        )}
-                        <Button
-                          variant="default"
-                          size="compact-sm"
-                          leftSection={<IconUpload size={14} />}
-                          onClick={() => setUploadModalOpened(true)}
-                          styles={{ root: { borderRadius: 8, fontWeight: 600, fontSize: 12 } }}
-                        >
-                          {t("Upload FIT file")}
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="compact-sm"
-                          leftSection={<IconCalendarEvent size={14} />}
-                          onClick={() => setPlannerOpened(!plannerOpened)}
-                          styles={{ root: { borderRadius: 8, fontWeight: 600, fontSize: 12 } }}
-                        >
-                          {t("Save a plan")}
-                        </Button>
-                        {!isMobile && (
-                          <Button
-                            variant="default"
-                            size="compact-sm"
-                            leftSection={<IconChartBar size={14} />}
-                            onClick={() => {}}
-                            styles={{ root: { borderRadius: 8, fontWeight: 600, fontSize: 12 } }}
-                          >
-                            {t("Weekly summary")}
-                          </Button>
-                        )}
-                      </>
-                    }
                   />
                 </Box>
                 {showLibrary && (
