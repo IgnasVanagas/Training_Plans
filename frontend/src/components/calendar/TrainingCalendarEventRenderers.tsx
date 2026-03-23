@@ -1,4 +1,4 @@
-import { Badge, Box, Button, Group, Paper, Stack, Text } from '@mantine/core';
+import { Badge, Box, Button, Group, Paper, Text } from '@mantine/core';
 import { Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { useCallback } from 'react';
@@ -126,40 +126,12 @@ export const CalendarEventCard = ({
       }}
     >
       <Group gap={5} wrap="nowrap" align="center" pl={1}>
-        <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
-          <Group justify="space-between" align="center" wrap="nowrap" gap={6}>
-            <Text size="xs" fw={900} c={palette.textMain} style={{ lineHeight: 1.1, letterSpacing: '-0.01em' }}>
-              {primaryMetric}
-            </Text>
-          </Group>
-          <Group gap={5} align="center" wrap="nowrap" style={{ minWidth: 0 }}>
-            <Box style={{ color: accentColor, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-              <SportIcon sport={r.sport_type || 'Activity'} size={12} />
-            </Box>
-            <Text
-              size="10px"
-              fw={700}
-              c={palette.textDim}
-              style={{
-                opacity: 1,
-                textTransform: 'uppercase',
-                letterSpacing: 0.35,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                minWidth: 0,
-                flex: 1,
-              }}
-            >
-              {(r.title || 'Session').toUpperCase()}
-            </Text>
-            {metricParts.length > 0 && (
-              <Text size="10px" fw={600} c={palette.textDim} style={{ opacity: 0.95, whiteSpace: 'nowrap' }}>
-                · {metricParts.join(' · ')}
-              </Text>
-            )}
-          </Group>
-        </Stack>
+        <Box style={{ color: accentColor, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <SportIcon sport={r.sport_type || 'Activity'} size={12} />
+        </Box>
+        <Text size="xs" fw={900} c={palette.textMain} style={{ lineHeight: 1.1, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          {primaryMetric}
+        </Text>
       </Group>
     </Box>
   );

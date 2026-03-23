@@ -392,20 +392,15 @@ export const TrainingCalendar = ({
     }, [athleteId, allAthletes, athleteById]);
 
     const rangeBounds = useMemo(() => {
-        if (currentView === 'week') {
-            return {
-                start: startOfWeek(viewDate, { weekStartsOn: weekStartDay as any }),
-                end: endOfWeek(viewDate, { weekStartsOn: weekStartDay as any }),
-            };
-        }
-
+        // Always fetch the full visible-month range regardless of view.
+        // Week view filters from this superset, so switching views is instant.
         const monthStartVisible = startOfWeek(startOfMonth(viewDate), { weekStartsOn: weekStartDay as any });
         const monthEndVisible = endOfWeek(endOfMonth(viewDate), { weekStartsOn: weekStartDay as any });
         return {
             start: monthStartVisible,
             end: monthEndVisible,
         };
-    }, [currentView, viewDate, weekStartDay]);
+    }, [viewDate, weekStartDay]);
 
     const toEventDate = (value: unknown, fallbackDate?: string): Date | null => {
         if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -446,9 +441,9 @@ export const TrainingCalendar = ({
     };
 
     const { data: events = [], isLoading: eventsLoading, isFetching: eventsFetching } = useQuery({
-        queryKey: ['calendar', currentView, format(rangeBounds.start, 'yyyy-MM-dd'), format(rangeBounds.end, 'yyyy-MM-dd'), athleteId, allAthletes],
+        queryKey: ['calendar', format(rangeBounds.start, 'yyyy-MM-dd'), format(rangeBounds.end, 'yyyy-MM-dd'), athleteId, allAthletes],
         initialData: () => {
-            const snapKey = `calendar:v2:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
+            const snapKey = `calendar:v2:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
             const snap = readSnapshot<any[]>(snapKey) || [];
             return snap
                 .map(normalizeCalendarEvent)
@@ -459,7 +454,7 @@ export const TrainingCalendar = ({
             const safeRows = rows
                 .map(normalizeCalendarEvent)
                 .filter((event): event is any => Boolean(event));
-            const snapKey = `calendar:v2:${currentView}:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
+            const snapKey = `calendar:v2:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
             writeSnapshot(snapKey, safeRows);
             return safeRows;
         },
@@ -497,8 +492,8 @@ export const TrainingCalendar = ({
     }, [buildCalendarDisplayResource]);
 
     const calendarQueryContainsDate = useCallback((queryKey: readonly unknown[], dateKey: string) => {
-        const start = typeof queryKey?.[2] === 'string' ? queryKey[2] : null;
-        const end = typeof queryKey?.[3] === 'string' ? queryKey[3] : null;
+        const start = typeof queryKey?.[1] === 'string' ? queryKey[1] : null;
+        const end = typeof queryKey?.[2] === 'string' ? queryKey[2] : null;
         if (!start || !end) return true;
         return dateKey >= start && dateKey <= end;
     }, []);
@@ -1732,11 +1727,11 @@ export const TrainingCalendar = ({
                                 </Group>
                             </Paper>
 
-                            {weeklyEvents.length === 0 ? (
+                            {weeklyEvents.length === 0 && !eventsFetching ? (
                                 <Paper withBorder p="md" radius="md" bg={palette.cardBg} style={{ borderColor: palette.cardBorder }}>
-                                    <Text size="sm" c={palette.textDim}>No activities for this week.</Text>
+                                    <Text size="sm" c={palette.textDim}>{t('No activities for this week.') || 'No activities for this week.'}</Text>
                                 </Paper>
-                            ) : (
+                            ) : weeklyEvents.length === 0 ? null : (
                                 weeklyEvents.map((event: any) => {
                                     const resource = event.resource as CalendarEvent;
                                     const accent = resolveActivityAccentColor(activityColors as any, resource.sport_type, resource.title);

@@ -6,6 +6,7 @@ import { WorkoutPreviewGraph } from './WorkoutPreviewGraph';
 
 interface WorkoutLibraryItemProps {
     workout: SavedWorkout;
+    isTemplate?: boolean;
     onToggleFavorite: (e: React.MouseEvent, id: number, isFavorite: boolean) => void;
     onDelete: (e: React.MouseEvent, id: number) => void;
     onEdit: (e: React.MouseEvent, workout: SavedWorkout) => void;
@@ -14,7 +15,7 @@ interface WorkoutLibraryItemProps {
     onSelect?: (workout: SavedWorkout) => void;
 }
 
-export const WorkoutLibraryItem = ({ workout, onToggleFavorite, onDelete, onEdit, onDragStart, onDragEnd, onSelect }: WorkoutLibraryItemProps) => {
+export const WorkoutLibraryItem = ({ workout, isTemplate, onToggleFavorite, onDelete, onEdit, onDragStart, onDragEnd, onSelect }: WorkoutLibraryItemProps) => {
     const handleDragStart = (e: React.DragEvent) => {
         // Set drag data for HTML5 DnD
         e.dataTransfer.setData('application/json', JSON.stringify(workout));
@@ -57,6 +58,11 @@ export const WorkoutLibraryItem = ({ workout, onToggleFavorite, onDelete, onEdit
                             <Badge variant="light" size="xs" color="blue">
                                 {workout.sport_type}
                             </Badge>
+                            {isTemplate && (
+                                <Badge variant="filled" size="xs" color="teal">
+                                    Template
+                                </Badge>
+                            )}
                             {workout.tags?.map(tag => (
                                 <Badge key={tag} variant="outline" size="xs" color="gray">
                                     {tag}
@@ -67,22 +73,26 @@ export const WorkoutLibraryItem = ({ workout, onToggleFavorite, onDelete, onEdit
                 </Group>
                 
                 <Stack gap={4} align="center">
-                    <ActionIcon 
-                        variant="subtle" 
-                        color={workout.is_favorite ? "yellow" : "gray"} 
-                        size="sm"
-                        onClick={(e) => onToggleFavorite(e, workout.id, !workout.is_favorite)}
-                    >
-                        {workout.is_favorite ? <IconStarFilled size={16} /> : <IconStar size={16} />}
-                    </ActionIcon>
-                    <Group gap={2}>
-                        <ActionIcon variant="subtle" size="xs" color="blue" onClick={(e) => onEdit(e, workout)}>
-                            <IconEdit size={14} />
+                    {!isTemplate && (
+                      <>
+                        <ActionIcon 
+                            variant="subtle" 
+                            color={workout.is_favorite ? "yellow" : "gray"} 
+                            size="sm"
+                            onClick={(e) => onToggleFavorite(e, workout.id, !workout.is_favorite)}
+                        >
+                            {workout.is_favorite ? <IconStarFilled size={16} /> : <IconStar size={16} />}
                         </ActionIcon>
-                        <ActionIcon variant="subtle" size="xs" color="red" onClick={(e) => onDelete(e, workout.id)}>
-                            <IconTrash size={14} />
-                        </ActionIcon>
-                    </Group>
+                        <Group gap={2}>
+                            <ActionIcon variant="subtle" size="xs" color="blue" onClick={(e) => onEdit(e, workout)}>
+                                <IconEdit size={14} />
+                            </ActionIcon>
+                            <ActionIcon variant="subtle" size="xs" color="red" onClick={(e) => onDelete(e, workout.id)}>
+                                <IconTrash size={14} />
+                            </ActionIcon>
+                        </Group>
+                      </>
+                    )}
                 </Stack>
             </Group>
         </Card>

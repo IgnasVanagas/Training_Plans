@@ -318,7 +318,8 @@ export const ActivityDetailPage = () => {
 
     const displayedBestEfforts = useMemo(() => {
         if (!activity?.best_efforts?.length) return [];
-        return showAllBestEfforts ? activity.best_efforts : rankedBestEfforts;
+        if (showAllBestEfforts || rankedBestEfforts.length === 0) return activity.best_efforts;
+        return rankedBestEfforts;
     }, [activity?.best_efforts, rankedBestEfforts, showAllBestEfforts]);
 
     const hasHiddenBestEfforts = useMemo(() => {
@@ -1342,6 +1343,9 @@ export const ActivityDetailPage = () => {
                                                             <Group key={key} justify="space-between">
                                                                 <Group gap="xs">
                                                                     <IconTrophy size={14} color={medalColor} />
+                                                                    <Badge size="xs" variant="light" color={prRank === 1 ? 'yellow' : prRank === 2 ? 'gray' : 'orange'}>
+                                                                        {prRank === 1 ? 'PR' : prRank === 2 ? '2nd' : '3rd'}
+                                                                    </Badge>
                                                                     <Text size="sm" fw={600} c={ui.textMain}>{effort.window || effort.distance}</Text>
                                                                 </Group>
                                                                 <Group gap="sm">
@@ -1786,7 +1790,14 @@ export const ActivityDetailPage = () => {
                         {activity.best_efforts?.length ? (
                         <Tabs.Panel value="best_efforts">
                             <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                <Title order={5} mb="md" c={ui.textMain}>{t("Best Efforts")}</Title>
+                                <Group justify="space-between" mb="md">
+                                    <Title order={5} c={ui.textMain}>{t("Best Efforts")}</Title>
+                                    {hasHiddenBestEfforts && (
+                                        <Button size="xs" variant="subtle" onClick={() => setShowAllBestEfforts(!showAllBestEfforts)}>
+                                            {showAllBestEfforts ? t('Show PRs only') : t('Show all efforts')}
+                                        </Button>
+                                    )}
+                                </Group>
                                 <Table striped highlightOnHover withTableBorder withColumnBorders>
                                     <Table.Thead>
                                         <Table.Tr>
@@ -1800,15 +1811,21 @@ export const ActivityDetailPage = () => {
                                         </Table.Tr>
                                     </Table.Thead>
                                     <Table.Tbody>
-                                        {activity.best_efforts!.map((effort, idx) => {
+                                        {displayedBestEfforts.map((effort, idx) => {
                                             const key = effort.window || effort.distance || String(idx);
                                             const prRank = activity.personal_records?.[key];
                                             const weight = me?.profile?.weight;
                                             const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
+                                            const rankLabel = prRank === 1 ? 'PR' : prRank === 2 ? '2nd' : prRank === 3 ? '3rd' : undefined;
                                             return (
                                                 <Table.Tr key={key}>
-                                                    <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                                        {medalColor && <IconTrophy size={16} color={medalColor} />}
+                                                    <Table.Td w={60} style={{ textAlign: 'center' }}>
+                                                        {medalColor && (
+                                                            <Group gap={2} wrap="nowrap" justify="center">
+                                                                <IconTrophy size={14} color={medalColor} />
+                                                                <Text size="10px" fw={700} c={medalColor}>{rankLabel}</Text>
+                                                            </Group>
+                                                        )}
                                                     </Table.Td>
                                                     <Table.Td fw={600}>{effort.window || effort.distance}</Table.Td>
                                                     {isCyclingActivity && <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>}

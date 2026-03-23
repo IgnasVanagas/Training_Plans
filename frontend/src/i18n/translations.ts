@@ -192,6 +192,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Powered by Strava": "Veikia su Strava",
     "View on Strava": "Žiūrėti Strava",
     "Rest Day": "Poilsio diena",
+    "No activities for this week.": "Šią savaitę veiklų nėra.",
     "Allow delete activities": "Leisti trinti veiklas",
     "Allow edit workouts": "Leisti redaguoti treniruotes",
     "Allow delete workouts": "Leisti trinti treniruotes",
@@ -392,6 +393,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Cadence": "Kadencija",
     "Altitude": "Aukštis",
     "Best Efforts": "Geriausi rezultatai",
+    "Show PRs only": "Rodyti tik rekordus",
     "Time": "Laikas",
     "Distance": "Atstumas",
     "Elev": "Aukštis",
@@ -451,6 +453,8 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Save Workout": "Išsaugoti treniruotę"
     ,"Delete Workout": "Ištrinti treniruotę"
     ,"Library": "Biblioteka"
+    ,"Templates": "Šablonai"
+    ,"Template": "Šablonas"
     ,"Open Workout Builder": "Atidaryti treniruotės kūrėją"
     ,"Repeat workout": "Kartoti treniruotę"
     ,"Create a weekly series and skip specific dates when needed.": "Sukurkite savaitinę seriją ir prireikus praleiskite konkrečias datas."

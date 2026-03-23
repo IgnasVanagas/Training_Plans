@@ -572,7 +572,7 @@ async def update_workout(
         if workout.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized to edit this workout")
         athlete_permissions = await get_athlete_permissions(db, workout.user_id)
-        if not athlete_permissions.get("allow_edit_workouts", False):
+        if not athlete_permissions.get("allow_edit_workouts", True):
             raise HTTPException(status_code=403, detail="Coach has not allowed workout editing")
 
     update_data = workout_update.model_dump(exclude_unset=True)

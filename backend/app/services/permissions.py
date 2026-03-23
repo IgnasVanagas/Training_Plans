@@ -12,13 +12,14 @@ PERMISSION_KEYS = (
 )
 
 DEFAULT_PERMISSIONS = {key: False for key in PERMISSION_KEYS}
+DEFAULT_PERMISSIONS["allow_edit_workouts"] = True
 
 
 def normalize_permissions(raw: Optional[dict]) -> dict:
     if not isinstance(raw, dict):
         return DEFAULT_PERMISSIONS.copy()
     return {
-        key: bool(raw.get(key, False))
+        key: bool(raw.get(key, DEFAULT_PERMISSIONS.get(key, False)))
         for key in PERMISSION_KEYS
     }
 

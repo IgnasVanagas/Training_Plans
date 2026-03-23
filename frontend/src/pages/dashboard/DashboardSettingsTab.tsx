@@ -75,7 +75,7 @@ const DashboardSettingsTab = ({
                 const permissions = permissionRow?.permissions || {
                   allow_delete_activities: false,
                   allow_delete_workouts: false,
-                  allow_edit_workouts: false,
+                  allow_edit_workouts: true,
                 };
                 const athleteName = (athlete.profile?.first_name || athlete.profile?.last_name)
                   ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()

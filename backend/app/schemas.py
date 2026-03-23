@@ -359,7 +359,7 @@ class AthleteOut(BaseModel):
 class AthletePermissionSettings(BaseModel):
     allow_delete_activities: bool = False
     allow_delete_workouts: bool = False
-    allow_edit_workouts: bool = False
+    allow_edit_workouts: bool = True
 
 
 class AthletePermissionOut(BaseModel):

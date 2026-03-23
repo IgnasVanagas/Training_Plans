@@ -5,6 +5,7 @@ import { IconSearch, IconFilter, IconPlus, IconX } from '@tabler/icons-react';
 import { getWorkouts, deleteWorkout, updateWorkout, getRecentCoachWorkouts, RecentCoachWorkout } from '../../api/workouts';
 import { SavedWorkout } from '../../types/workout';
 import { WorkoutLibraryItem } from './WorkoutLibraryItem';
+import { getBuiltInTemplates, isBuiltInTemplate } from './workoutTemplates';
 import { useNavigate } from 'react-router-dom';
 
 interface WorkoutLibraryProps {
@@ -18,7 +19,7 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
     const navigate = useNavigate();
     const [search, setSearch] = useState('');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
-    const [filterType, setFilterType] = useState<'all' | 'recent' | 'saved'>('all');
+    const [filterType, setFilterType] = useState<'all' | 'recent' | 'saved' | 'templates'>('all');
 
     const { data: workouts, isLoading } = useQuery({
         queryKey: ['workouts'],
@@ -46,13 +47,27 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
     });
 
     const allTags = useMemo(() => {
-        if (!workouts) return [];
         const tags = new Set<string>();
-        workouts.forEach(w => w.tags?.forEach(t => tags.add(t)));
+        if (filterType === 'templates') {
+            getBuiltInTemplates().forEach(w => w.tags?.forEach(t => tags.add(t)));
+        } else if (workouts) {
+            workouts.forEach(w => w.tags?.forEach(t => tags.add(t)));
+        }
         return Array.from(tags);
-    }, [workouts]);
+    }, [workouts, filterType]);
 
     const filteredWorkouts = useMemo(() => {
+        if (filterType === 'templates') {
+            const builtIn = getBuiltInTemplates();
+            return builtIn.filter(w => {
+                const matchesSearch = !search || w.title.toLowerCase().includes(search.toLowerCase()) ||
+                                      w.description?.toLowerCase().includes(search.toLowerCase());
+                const matchesTags = selectedTags.length === 0 ||
+                                    selectedTags.every(t => w.tags?.includes(t));
+                return matchesSearch && matchesTags;
+            });
+        }
+
         if (filterType === 'recent') {
             if (!recentPlanned) return [];
             // Map recent planned workouts to SavedWorkout-like shape
@@ -139,9 +154,10 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
                 fullWidth 
                 size="xs"
                 value={filterType}
-                onChange={(val) => setFilterType(val as 'all' | 'recent' | 'saved')}
+                onChange={(val) => setFilterType(val as 'all' | 'recent' | 'saved' | 'templates')}
                 data={[
                     { label: 'All', value: 'all' },
+                    { label: 'Templates', value: 'templates' },
                     { label: 'Recent', value: 'recent' },
                     { label: 'Saved', value: 'saved' }
                 ]}
@@ -171,6 +187,7 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
                             <WorkoutLibraryItem 
                                 key={workout.id} 
                                 workout={workout}
+                                isTemplate={isBuiltInTemplate(workout)}
                                 onDelete={handleDelete}
                                 onEdit={handleEdit}
                                 onToggleFavorite={handleToggleFavorite}
