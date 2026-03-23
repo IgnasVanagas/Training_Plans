@@ -1743,7 +1743,6 @@ export const TrainingCalendar = ({
                             weekStartDay={weekStartDay}
                             weekdayHeaderHeight={WEEKDAY_HEADER_HEIGHT}
                             panelWidth={WEEKLY_TOTALS_PANEL_WIDTH}
-                            goalRaces={calendarSeasonPlan?.goal_races}
                         />
                     </>
                 )}
