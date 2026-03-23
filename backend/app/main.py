@@ -70,6 +70,9 @@ async def on_startup() -> None:
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS menstruation_available_to_coach BOOLEAN DEFAULT FALSE"))
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS training_days JSONB"))
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"))
+            await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS duplicate_of_id INTEGER REFERENCES activities(id)"))
+            await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS rpe FLOAT"))
+            await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS notes TEXT"))
         logger.info("Database schema ready")
     except Exception as exc:
         logger.error("Database migration failed (non-fatal): %s", exc)
