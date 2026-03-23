@@ -572,8 +572,10 @@ export const TrainingCalendar = ({
         return limited;
     }, [events, currentView]);
 
+    const zoneSummarySnapKey = `zone-summary:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}:${weekStartDay}:${format(viewDate, 'yyyy-MM')}`;
     const { data: zoneSummary } = useQuery({
         queryKey: ['zone-summary', format(viewDate, 'yyyy-MM-dd'), athleteId, allAthletes, weekStartDay],
+        initialData: () => readSnapshot<ZoneSummaryResponse>(zoneSummarySnapKey) ?? undefined,
         queryFn: async () => {
             const params = new URLSearchParams();
             params.set('reference_date', format(viewDate, 'yyyy-MM-dd'));
@@ -584,9 +586,11 @@ export const TrainingCalendar = ({
                 params.set('all_athletes', 'true');
             }
             const res = await api.get<ZoneSummaryResponse>(`/activities/zone-summary?${params.toString()}`);
+            writeSnapshot(zoneSummarySnapKey, res.data);
             return res.data;
         },
-        staleTime: 1000 * 60,
+        staleTime: 1000 * 60 * 5,
+        placeholderData: (prev) => prev,
     });
 
     const [dayEvents, setDayEvents] = useState<CalendarEvent[]>([]);
@@ -1709,6 +1713,7 @@ export const TrainingCalendar = ({
                             weekStartDay={weekStartDay}
                             weekdayHeaderHeight={WEEKDAY_HEADER_HEIGHT}
                             panelWidth={WEEKLY_TOTALS_PANEL_WIDTH}
+                            goalRaces={calendarSeasonPlan?.goal_races}
                         />
                     </>
                 )}

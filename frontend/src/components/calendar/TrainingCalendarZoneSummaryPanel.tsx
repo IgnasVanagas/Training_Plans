@@ -2,7 +2,9 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Box, Group, SegmentedControl, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { endOfWeek, format, startOfWeek } from 'date-fns';
+import { Award, Medal, Trophy } from 'lucide-react';
 import api from '../../api/client';
+import { PlannerGoalRace } from '../../api/planning';
 import { resolveWeekAccentColor } from './activityStyling';
 import { parseDate } from './dateUtils';
 import { computeLoadsFromZones, deriveZonesFromActivityDetail, normalizeSport, zoneCountForSport } from './loadModel';
@@ -30,6 +32,7 @@ type ZoneSummaryPanelProps = {
     weekStartDay: number;
     weekdayHeaderHeight: number;
     panelWidth: number;
+    goalRaces?: PlannerGoalRace[];
 };
 
 const formatTotalMinutes = (minutes: number) => {
@@ -170,10 +173,18 @@ export default function TrainingCalendarZoneSummaryPanel({
     weekStartDay,
     weekdayHeaderHeight,
     panelWidth,
+    goalRaces,
 }: ZoneSummaryPanelProps) {
     const [zoneDetailModal, setZoneDetailModal] = useState<ZoneDetailModalData | null>(null);
     const [weeklyZoneMetricMode, setWeeklyZoneMetricMode] = useState<'hr' | 'performance'>('performance');
     const lastHandledMonthlySignalRef = useRef(0);
+
+    const upcomingRaces = useMemo(() => {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        return (goalRaces || [])
+            .filter(r => r.date >= today)
+            .sort((a, b) => a.date.localeCompare(b.date));
+    }, [goalRaces]);
 
     const hasZoneSeconds = (source?: Record<string, number>) => {
         if (!source) return false;
@@ -688,13 +699,50 @@ export default function TrainingCalendarZoneSummaryPanel({
 
     return (
         <Stack w={panelWidth} miw={panelWidth} h="100%" gap={0} style={{ overflow: 'hidden' }}>
+            {upcomingRaces.length > 0 && (
+                <Box
+                    px={10}
+                    py={6}
+                    style={{
+                        border: `1px solid ${palette.headerBorder}`,
+                        borderBottom: 'none',
+                        borderRadius: '12px 12px 0 0',
+                        background: palette.panelBg,
+                        flexShrink: 0,
+                    }}
+                >
+                    <Text size="9px" fw={800} c={palette.textDim} mb={4} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                        Upcoming Races
+                    </Text>
+                    <Stack gap={3}>
+                        {upcomingRaces.slice(0, 4).map((race, idx) => {
+                            const RaceIcon = race.priority === 'A' ? Trophy : race.priority === 'B' ? Medal : Award;
+                            const iconColor = race.priority === 'A' ? '#DC2626' : race.priority === 'B' ? '#D97706' : '#2563EB';
+                            const daysUntil = Math.max(0, Math.ceil((parseDate(race.date).getTime() - Date.now()) / 86400000));
+                            return (
+                                <Group key={idx} gap={5} wrap="nowrap" justify="space-between">
+                                    <Group gap={5} wrap="nowrap" style={{ minWidth: 0 }}>
+                                        <RaceIcon size={10} color={iconColor} style={{ flexShrink: 0 }} />
+                                        <Text size="xs" fw={idx === 0 ? 700 : 500} c={idx === 0 ? palette.text : palette.textDim} truncate>
+                                            {format(parseDate(race.date), 'MMM d')} · {race.name}
+                                        </Text>
+                                    </Group>
+                                    <Text size="xs" fw={idx === 0 ? 700 : 400} c={idx === 0 ? iconColor : palette.textDim} style={{ flexShrink: 0 }}>
+                                        {daysUntil}d
+                                    </Text>
+                                </Group>
+                            );
+                        })}
+                    </Stack>
+                </Box>
+            )}
             <Box
                 h={weekdayHeaderHeight}
                 px={10}
                 style={{
                     border: `1px solid ${palette.headerBorder}`,
                     borderBottom: 'none',
-                    borderRadius: '12px 12px 0 0',
+                    borderRadius: upcomingRaces.length > 0 ? 0 : '12px 12px 0 0',
                     background: palette.panelBg,
                     display: 'flex',
                     alignItems: 'center',

@@ -1688,12 +1688,30 @@ async def get_zone_summary(
     start_dt = datetime.combine(min(week_start, month_start), datetime.min.time())
     end_dt = datetime.combine(max(week_end, month_end), datetime.max.time())
 
-    activities_stmt = select(Activity).where(
+    # Load activities without the heavy per-second streams["data"] array.
+    # hr_zones, laps, _meta, stats, power_curve are all still present and sufficient
+    # for zone computation. This avoids transferring/parsing MB of stream data.
+    from types import SimpleNamespace
+    streams_lite = Activity.streams.op('-')('data').label('streams_lite')
+    activities_stmt = select(
+        Activity.id,
+        Activity.athlete_id,
+        Activity.sport,
+        Activity.created_at,
+        Activity.duration,
+        Activity.distance,
+        Activity.filename,
+        Activity.average_hr,
+        Activity.average_watts,
+        Activity.is_deleted,
+        Activity.duplicate_of_id,
+        streams_lite,
+    ).where(
         Activity.athlete_id.in_(target_user_ids),
         Activity.created_at >= start_dt,
         Activity.created_at <= end_dt,
-        Activity.duplicate_of_id.is_(None)
-    ).execution_options(yield_per=10)
+        Activity.duplicate_of_id.is_(None),
+    )
 
     summaries: dict[int, dict] = {}
     for user_id in target_user_ids:
@@ -1706,8 +1724,22 @@ async def get_zone_summary(
             "monthly_activity_zones": []
         }
 
-    activities_stream = await db.stream(activities_stmt)
-    async for activity in activities_stream.scalars():
+    activities_res = await db.execute(activities_stmt)
+    for row in activities_res.mappings():
+        activity = SimpleNamespace(
+            id=row["id"],
+            athlete_id=row["athlete_id"],
+            sport=row["sport"],
+            created_at=row["created_at"],
+            duration=row["duration"],
+            distance=row["distance"],
+            filename=row["filename"],
+            average_hr=row["average_hr"],
+            average_watts=row["average_watts"],
+            is_deleted=row["is_deleted"],
+            duplicate_of_id=row["duplicate_of_id"],
+            streams=row["streams_lite"],
+        )
         if _is_activity_deleted(activity):
             continue
         activity_date = activity.created_at.date()
