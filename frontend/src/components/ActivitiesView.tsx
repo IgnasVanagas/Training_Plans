@@ -404,14 +404,17 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
     const [allRecordings, setAllRecordings] = useState<Activity[]>([]);
     const [primaryId, setPrimaryId] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!activity) return;
         setPrimaryId(activity.id);
         setAllRecordings([activity]);
+        setLoadError(null);
         setLoading(true);
         api.get<Activity[]>(`/activities/${activity.id}/duplicates`)
             .then(res => setAllRecordings([activity, ...res.data]))
+            .catch(() => setLoadError('Could not load additional recordings. The duplicate may still exist — try refreshing.'))
             .finally(() => setLoading(false));
     }, [activity?.id]);
 
@@ -460,6 +463,8 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
                 <Text size="sm" c="dimmed">
                     This workout was recorded on multiple devices. Choose which recording to keep as primary, or delete the ones you don't need.
                 </Text>
+
+                {loadError && <Text size="sm" c="red">{loadError}</Text>}
 
                 {loading ? (
                     <Text size="sm" c="dimmed">Loading recordings…</Text>
