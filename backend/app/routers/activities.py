@@ -1146,6 +1146,11 @@ def _apply_activity_to_bucket(
                         continue
                     zone = _zone_index_from_upper_bounds(lap_avg_hr, running_hr_bounds)
                     _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["hr"], zone, lap_duration)
+            elif max_hr > 0 and duration_seconds > 0:
+                avg_hr_val = _safe_number(getattr(activity, "average_hr", None), default=0.0)
+                if avg_hr_val > 0:
+                    zone = _zone_index_from_upper_bounds(avg_hr_val, running_hr_bounds)
+                    _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["hr"], zone, duration_seconds)
 
         if running_pace_bounds and speed_samples and duration_seconds > 0:
             seconds_per_sample = duration_seconds / len(speed_samples)
@@ -1215,6 +1220,11 @@ def _apply_activity_to_bucket(
                 continue
             zone = _zone_index_from_upper_bounds(lap_avg_power, cycling_power_bounds)
             _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["power"], zone, lap_duration)
+    elif cycling_power_bounds and duration_seconds > 0:
+        avg_watts_val = _safe_number(getattr(activity, "average_watts", None), default=0.0)
+        if avg_watts_val > 0:
+            zone = _zone_index_from_upper_bounds(avg_watts_val, cycling_power_bounds)
+            _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["power"], zone, duration_seconds)
 
     if hr_samples and max_hr > 0 and duration_seconds > 0:
         seconds_per_sample = duration_seconds / len(hr_samples)
@@ -1242,6 +1252,11 @@ def _apply_activity_to_bucket(
                     continue
                 zone = _zone_index_from_upper_bounds(lap_avg_hr, cycling_hr_bounds)
                 _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["hr"], zone, lap_duration)
+        elif max_hr > 0 and duration_seconds > 0:
+            avg_hr_val = _safe_number(getattr(activity, "average_hr", None), default=0.0)
+            if avg_hr_val > 0:
+                zone = _zone_index_from_upper_bounds(avg_hr_val, cycling_hr_bounds)
+                _add_zone_seconds(sport_bucket["zone_seconds_by_metric"]["hr"], zone, duration_seconds)
 
     sport_bucket["zone_seconds"] = dict(sport_bucket["zone_seconds_by_metric"]["power"])
 
