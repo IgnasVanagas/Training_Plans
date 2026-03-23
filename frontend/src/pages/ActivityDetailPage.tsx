@@ -1,4 +1,4 @@
-import { ActionIcon, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput } from "@mantine/core";
+import { ActionIcon, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput } from "@mantine/core";
 import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -165,7 +165,8 @@ export const ActivityDetailPage = () => {
         if (!Number.isFinite(distance)) return '-';
         return `${distance.toFixed(3)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`;
     };
-    const [graphMode, setGraphMode] = useState<'standard' | 'power_curve' | 'hr_zones' | 'pace_zones' | 'power_zones'>('standard');
+    const [graphMode, setGraphMode] = useState<'standard' | 'power_curve' | 'hr_zones' | 'pace_zones' | 'power_zones'>('hr_zones');
+    const [activeSection, setActiveSection] = useState<'overview' | 'analysis' | 'laps' | 'best_efforts' | 'comparison'>('overview');
     const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
     const hoveredPointIndexRef = useRef<number | null>(null);
     const pendingHoveredPointIndexRef = useRef<number | null>(null);
@@ -1186,12 +1187,636 @@ export const ActivityDetailPage = () => {
                         </Card>
                     </SimpleGrid>
 
-                    {activity.planned_comparison && (
-                        <Paper withBorder p="md" radius="lg" mb="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
-                            <Group justify="space-between" mb="xs">
-                                <Title order={5} c={ui.textMain}>Planned vs Actual</Title>
-                                <Text size="xs" c={ui.textDim}>{activity.planned_comparison.workout_title}</Text>
-                            </Group>
+                    <Tabs value={activeSection} onChange={(v) => setActiveSection(v as typeof activeSection)} mb="md">
+                        <Tabs.List mb="md">
+                            <Tabs.Tab value="overview">Overview</Tabs.Tab>
+                            <Tabs.Tab value="analysis">Analysis</Tabs.Tab>
+                            {(activity.splits_metric?.length || activity.laps?.length) ? <Tabs.Tab value="laps">Laps</Tabs.Tab> : null}
+                            {activity.best_efforts?.length ? <Tabs.Tab value="best_efforts">Best Efforts</Tabs.Tab> : null}
+                            {activity.planned_comparison ? <Tabs.Tab value="comparison">Comparison</Tabs.Tab> : null}
+                        </Tabs.List>
+
+                        {/* OVERVIEW TAB */}
+                        <Tabs.Panel value="overview">
+                            <Grid gutter="md">
+                                <Grid.Col span={{ base: 12, md: 8 }}>
+                                    <Stack gap="sm">
+                                        {/* Overview Chart (standard mode only) */}
+                                        <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                            <Group justify="space-between" mb="md">
+                                                <Stack gap={4}>
+                                                    <Title order={5} c={ui.textMain}>Activity Charts</Title>
+                                                    {focusMode && <Text size="xs" c={ui.textDim}>Focus mode keeps only key signals for this review objective.</Text>}
+                                                </Stack>
+                                                <Group>
+                                                    <Select
+                                                        size="xs"
+                                                        value={focusObjective}
+                                                        onChange={(value) => setFocusObjective((value as 'pacing' | 'cardio' | 'efficiency') || 'pacing')}
+                                                        data={[
+                                                            { value: 'pacing', label: 'Pacing Discipline' },
+                                                            { value: 'cardio', label: 'Cardio Drift' },
+                                                            { value: 'efficiency', label: 'Power Efficiency' },
+                                                        ]}
+                                                        disabled={!focusMode}
+                                                        w={180}
+                                                    />
+                                                    <Switch
+                                                        checked={focusMode}
+                                                        onChange={(event) => setFocusMode(event.currentTarget.checked)}
+                                                        label="Focus Mode"
+                                                    />
+                                                </Group>
+                                            </Group>
+                                            <Box w="100%" mih={300} style={{ borderRadius: 12 }}>
+                                                <Group mb="sm" gap="xs">
+                                                    <Text size="xs" fw={700}>Show:</Text>
+                                                    <Chip checked={focusSeries.heart_rate} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, heart_rate: !v.heart_rate}))} size="xs" color="red" variant="light">Heart Rate</Chip>
+                                                    {isRunningActivity && (
+                                                        <Chip checked={focusSeries.pace} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, pace: !v.pace}))} size="xs" color="blue" variant="light">Pace</Chip>
+                                                    )}
+                                                    <Chip checked={focusSeries.power} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, power: !v.power}))} size="xs" color="orange" variant="light">Power</Chip>
+                                                    <Chip checked={focusSeries.cadence} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, cadence: !v.cadence}))} size="xs" color="cyan" variant="light">Cadence</Chip>
+                                                    <Chip checked={focusSeries.altitude} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, altitude: !v.altitude}))} size="xs" color="green" variant="light">Altitude</Chip>
+                                                </Group>
+
+                                                <Stack gap="xs">
+                                                    {focusSeries.heart_rate && (
+                                                        <Box h={160} w="100%">
+                                                            <ResponsiveContainer>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
+                                                                    <YAxis dataKey="heart_rate" orientation="right" domain={['dataMin - 5', 'dataMax + 5']} width={40} tick={{fontSize: 10}} />
+                                                                    <Tooltip
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={hrTooltipContent}
+                                                                    />
+                                                                    <Area type="monotone" dataKey="heart_rate" stroke="#fa5252" fill="#fa5252" fillOpacity={0.15} strokeWidth={2} activeDot={{ r: 4 }} />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </Box>
+                                                    )}
+
+                                                    {isRunningActivity && focusSeries.pace && (
+                                                        <Box h={160} w="100%">
+                                                            <ResponsiveContainer>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
+                                                                    <YAxis
+                                                                        dataKey="pace"
+                                                                        orientation="right"
+                                                                        reversed
+                                                                        domain={['dataMin', 'dataMax']}
+                                                                        width={40}
+                                                                        tick={{fontSize: 10}}
+                                                                        tickFormatter={(val) => {
+                                                                            const m = Math.floor(val);
+                                                                            return `${m}:${Math.floor((val-m)*60).toString().padStart(2,'0')}`;
+                                                                        }}
+                                                                    />
+                                                                    <Tooltip
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={paceTooltipContent}
+                                                                    />
+                                                                    <Area type="monotone" dataKey="pace" stroke="#228be6" fill="#228be6" fillOpacity={0.15} strokeWidth={2} connectNulls />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </Box>
+                                                    )}
+
+                                                    {focusSeries.power && (
+                                                        <Box h={160} w="100%">
+                                                            <ResponsiveContainer>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
+                                                                    <YAxis dataKey="power" orientation="right" width={40} tick={{fontSize: 10}} />
+                                                                    <Tooltip
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={powerTooltipContent}
+                                                                    />
+                                                                    <Area type="monotone" dataKey="power" stroke="#fd7e14" fill="#fd7e14" fillOpacity={0.15} strokeWidth={1.5} />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </Box>
+                                                    )}
+
+                                                    {focusSeries.cadence && (
+                                                        <Box h={120} w="100%">
+                                                            <ResponsiveContainer>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
+                                                                    <YAxis dataKey="cadence" orientation="right" domain={['dataMin - 10', 'dataMax + 10']} width={40} tick={{fontSize: 10}} />
+                                                                    <Tooltip
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={cadenceTooltipContent}
+                                                                    />
+                                                                    <Area type="monotone" dataKey="cadence" stroke="#15aabf" fill="#15aabf" fillOpacity={0.1} strokeWidth={1} />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </Box>
+                                                    )}
+
+                                                    {focusSeries.altitude && (
+                                                        <Box h={120} w="100%">
+                                                            <ResponsiveContainer>
+                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
+                                                                    <YAxis dataKey="altitude" orientation="right" domain={['dataMin', 'dataMax']} width={40} tick={{fontSize: 10}} />
+                                                                    <Tooltip
+                                                                        {...sharedTooltipProps}
+                                                                        active={hoveredPointIndex !== null}
+                                                                        content={altitudeTooltipContent}
+                                                                    />
+                                                                    <Area type="monotone" dataKey="altitude" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.1} strokeWidth={1} />
+                                                                </AreaChart>
+                                                            </ResponsiveContainer>
+                                                        </Box>
+                                                    )}
+
+                                                    {/* Shared Axis with Brush at bottom */}
+                                                    <Box h={60} w="100%">
+                                                        <ResponsiveContainer>
+                                                            <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 0, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                                <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} orientation="bottom" tick={{fontSize: 10}} tickFormatter={(val) => { const m = Math.floor(val); const s = Math.round((val - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
+                                                                <YAxis hide domain={[0, 1]} />
+                                                                <Area dataKey="time_min" fill="none" stroke="none" />
+                                                                <Brush dataKey="time_min" height={20} stroke="#8884d8" tickFormatter={(val) => { const m = Math.floor(val); const s = Math.round((val - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
+                                                            </AreaChart>
+                                                        </ResponsiveContainer>
+                                                    </Box>
+                                                </Stack>
+                                            </Box>
+                                        </Paper>
+
+                                        {/* Detailed Stats */}
+                                        <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                            <Title order={5} mb="md" c={ui.textMain}>Detailed Stats</Title>
+                                            <Stack gap="xs">
+                                                 <Group justify="space-between">
+                                                    <Text size="sm" c={ui.textDim}>{activity.sport === 'running' ? 'Avg Pace' : 'Avg Speed'}</Text>
+                                                    <Text size="sm" fw={700} c={ui.textMain}>
+                                                        {activity.sport === 'running'
+                                                            ? formatPace(activity.avg_speed)
+                                                            : ((activity.avg_speed || 0) * 3.6).toFixed(1) + " km/h"}
+                                                    </Text>
+                                                 </Group>
+                                                 {activity.max_speed && (
+                                                    <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>{activity.sport === 'running' ? 'Max Pace' : 'Max Speed'}</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>
+                                                            {activity.sport === 'running'
+                                                                ? formatPace(activity.max_speed)
+                                                                : (activity.max_speed * 3.6).toFixed(1) + " km/h"}
+                                                        </Text>
+                                                    </Group>
+                                                 )}
+                                                 {activity.average_hr && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Avg Heart Rate</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{activity.average_hr.toFixed(0)} bpm</Text>
+                                                     </Group>
+                                                 )}
+                                                 {activity.max_hr != null && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Max Heart Rate</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{activity.max_hr.toFixed(0)} bpm</Text>
+                                                     </Group>
+                                                 )}
+                                                 {activity.total_elevation_gain != null && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Elevation Gain</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{activity.total_elevation_gain.toFixed(0)} m</Text>
+                                                     </Group>
+                                                 )}
+                                                 {activity.average_watts != null && activity.average_watts > 0 && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Avg Power</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{activity.average_watts.toFixed(0)} W</Text>
+                                                     </Group>
+                                                 )}
+                                                 {activity.average_watts != null && activity.average_watts > 0 && activity.weight_at_time != null && activity.weight_at_time > 0 && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Avg Power (w/kg)</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{(activity.average_watts / activity.weight_at_time).toFixed(2)} w/kg</Text>
+                                                     </Group>
+                                                 )}
+                                                 {activity.max_watts != null && activity.max_watts > 0 && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Max Power</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{activity.max_watts.toFixed(0)} W</Text>
+                                                     </Group>
+                                                 )}
+                                                 {isCyclingActivity && overallNormalizedPower != null && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Normalized Power</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{overallNormalizedPower.toFixed(0)} W</Text>
+                                                     </Group>
+                                                 )}
+                                                 {isCyclingActivity && cyclingPerfMetrics?.intensityFactor != null && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Intensity Factor</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.intensityFactor.toFixed(2)}</Text>
+                                                     </Group>
+                                                 )}
+                                                 {isCyclingActivity && cyclingPerfMetrics?.tss != null && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>TSS</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.tss.toFixed(0)}</Text>
+                                                     </Group>
+                                                 )}
+                                                 {isCyclingActivity && cyclingPerfMetrics?.vi != null && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Variability Index</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.vi.toFixed(2)}</Text>
+                                                     </Group>
+                                                 )}
+                                                 {activity.avg_cadence != null && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Avg Cadence</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>
+                                                            {activity.sport === 'running' && activity.avg_cadence < 120
+                                                                ? (activity.avg_cadence * 2).toFixed(0)
+                                                                : activity.avg_cadence.toFixed(0)} {activity.sport === 'running' ? 'spm' : 'rpm'}
+                                                        </Text>
+                                                     </Group>
+                                                 )}
+                                                 {activity.max_cadence != null && (
+                                                     <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Max Cadence</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>
+                                                            {activity.sport === 'running' && activity.max_cadence < 120
+                                                                ? (activity.max_cadence * 2).toFixed(0)
+                                                                : activity.max_cadence.toFixed(0)} {activity.sport === 'running' ? 'spm' : 'rpm'}
+                                                        </Text>
+                                                     </Group>
+                                                 )}
+                                                 <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Calories</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>
+                                                            {activity.total_calories ? activity.total_calories.toFixed(0) : ((activity.average_watts || 0) * activity.duration / 1000 * 1.1).toFixed(0)} kcal (Est)
+                                                        </Text>
+                                                 </Group>
+                                                 <Group justify="space-between">
+                                                        <Text size="sm" c={ui.textDim}>Load Impact</Text>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>
+                                                            +{(activity.aerobic_load || 0).toFixed(1)} Aer · +{(activity.anaerobic_load || 0).toFixed(1)} Ana
+                                                        </Text>
+                                                 </Group>
+                                            </Stack>
+                                        </Paper>
+                                    </Stack>
+                                </Grid.Col>
+
+                                {/* RIGHT COLUMN */}
+                                <Grid.Col span={{ base: 12, md: 4 }}>
+                                    <Stack>
+                                        <SessionFeedbackPanel
+                                            activityId={Number(id)}
+                                            initialActivity={activity}
+                                            canEdit={me?.id === activity.athlete_id}
+                                        />
+                                        {routePositions.length > 0 ? (
+                                            <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
+                                                <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
+                                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
+                                                    <Polyline positions={routePositions} color="blue" weight={4} />
+                                                </MapContainer>
+                                            </Paper>
+                                        ) : (
+                                            <Paper withBorder p="xl" radius="lg" h={200} bg={ui.surface} style={{ borderColor: ui.border }}>
+                                                <Stack align="center" justify="center" h="100%">
+                                                    <IconMap size={40} color="gray" />
+                                                    <Text c={ui.textDim}>No map data available (Virtual Ride or Indoor)</Text>
+                                                </Stack>
+                                            </Paper>
+                                        )}
+                                        <Box>
+                                            <CommentsPanel entityType="activity" entityId={Number(id)} athleteId={activity.athlete_id} />
+                                        </Box>
+                                    </Stack>
+                                </Grid.Col>
+                            </Grid>
+                        </Tabs.Panel>
+
+                        {/* ANALYSIS TAB */}
+                        <Tabs.Panel value="analysis">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Group mb="md">
+                                    <SegmentedControl
+                                        radius="md"
+                                        value={graphMode === 'standard' ? 'hr_zones' : graphMode}
+                                        onChange={(v: any) => setGraphMode(v)}
+                                        data={[
+                                            { label: 'HR Zones', value: 'hr_zones', disabled: hrZoneData.every((z) => z.seconds <= 0) },
+                                            { label: 'Power Curve', value: 'power_curve', disabled: !activity.power_curve },
+                                            ...(isRunningActivity ? [{ label: 'Pace Zones', value: 'pace_zones', disabled: runningPaceZoneData.every((z) => z.seconds <= 0) }] : []),
+                                            ...(isCyclingActivity ? [{ label: 'Power Zones', value: 'power_zones', disabled: cyclingPowerZoneData.every((z) => z.seconds <= 0) }] : []),
+                                        ]}
+                                    />
+                                </Group>
+                                <Box w="100%" mih={300}>
+                                    {(graphMode === 'hr_zones' || graphMode === 'standard') && (
+                                        <Box h={400} w="100%">
+                                            <ResponsiveContainer>
+                                                <BarChart data={hrZoneData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis dataKey="zone" />
+                                                    <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                    <Bar dataKey="seconds" fill="#fa5252" name="Time in Zone" onClick={(entry: any) => entry?.zone && openZoneExplanation('hr', entry.zone)} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                            <Group mt="sm" gap="xs" wrap="wrap">
+                                                {hrZoneData.map((z) => (
+                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('hr', z.zone)} readOnly variant="light" size="xs">{z.zone}</Chip>
+                                                ))}
+                                            </Group>
+                                        </Box>
+                                    )}
+                                    {graphMode === 'power_curve' && (
+                                        <Box h={400} w="100%">
+                                            <ResponsiveContainer>
+                                                <LineChart data={powerCurveData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis dataKey="label" />
+                                                    <YAxis />
+                                                    <Tooltip {...sharedTooltipProps} />
+                                                    <Line type="monotone" dataKey="watts" stroke="#fd7e14" strokeWidth={3} dot={true} name="Max Power" />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </Box>
+                                    )}
+                                    {graphMode === 'pace_zones' && (
+                                        <Box h={400} w="100%">
+                                            <ResponsiveContainer>
+                                                <BarChart data={runningPaceZoneData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis dataKey="zone" />
+                                                    <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                    <Bar dataKey="seconds" fill="#228be6" name="Pace Zone Time" onClick={(entry: any) => entry?.zone && openZoneExplanation('pace', entry.zone)} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                            <Group mt="sm" gap="xs" wrap="wrap">
+                                                {runningPaceZoneData.map((z) => (
+                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('pace', z.zone)} readOnly variant="light" size="xs">{z.zone}</Chip>
+                                                ))}
+                                            </Group>
+                                        </Box>
+                                    )}
+                                    {graphMode === 'power_zones' && (
+                                        <Box h={400} w="100%">
+                                            <ResponsiveContainer>
+                                                <BarChart data={cyclingPowerZoneData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis dataKey="zone" />
+                                                    <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                    <Bar dataKey="seconds" fill="#fd7e14" name="Power Zone Time" onClick={(entry: any) => entry?.zone && openZoneExplanation('power', entry.zone)} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                            <Group mt="sm" gap="xs" wrap="wrap">
+                                                {cyclingPowerZoneData.map((z) => (
+                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('power', z.zone)} readOnly variant="light" size="xs">{z.zone}</Chip>
+                                                ))}
+                                            </Group>
+                                        </Box>
+                                    )}
+                                </Box>
+                            </Paper>
+                        </Tabs.Panel>
+
+                        {/* LAPS TAB */}
+                        {(activity.splits_metric?.length || activity.laps?.length) ? (
+                        <Tabs.Panel value="laps">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Group justify="space-between" mb="md">
+                                    <Title order={5} c={ui.textMain}>{t("Splits")}</Title>
+                                    <Group>
+                                        <SegmentedControl
+                                            radius="md"
+                                            value={splitMode}
+                                            onChange={(v: any) => setSplitMode(v)}
+                                            data={[
+                                                { label: isRunningActivity ? '1 km' : 'Auto', value: 'metric', disabled: !activity.splits_metric?.length },
+                                                { label: isCyclingActivity ? 'Manual' : 'Laps', value: 'laps', disabled: !activity.laps?.length },
+                                            ]}
+                                        />
+                                        <Button size="xs" variant={splitAnnotationsVisible ? "filled" : "light"} onClick={() => setSplitAnnotationsVisible((v) => !v)}>
+                                            {splitAnnotationsVisible ? t("Hide Annotations") : t("Annotate")}
+                                        </Button>
+                                    </Group>
+                                </Group>
+                                <Group gap="xs" mb="sm" wrap="wrap">
+                                    <Text size="xs" c={ui.textDim} fw={700}>{t("Visible stats")}:</Text>
+                                    <Chip size="xs" checked={visibleSplitStats.distance} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, distance: checked }))} variant="light">{t("Distance")}</Chip>
+                                    <Chip size="xs" checked={visibleSplitStats.duration} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, duration: checked }))} variant="light">{t("Time")}</Chip>
+                                    <Chip size="xs" checked={visibleSplitStats.pace_or_speed} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, pace_or_speed: checked }))} variant="light">{isRunningActivity ? t('Pace') : t('Speed')}</Chip>
+                                    <Chip size="xs" checked={visibleSplitStats.avg_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_hr: checked }))} variant="light">{t("Avg HR")}</Chip>
+                                    <Chip size="xs" checked={visibleSplitStats.max_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_hr: checked }))} variant="light">{t("Max HR")}</Chip>
+                                    {isCyclingActivity && (
+                                        <>
+                                            <Chip size="xs" checked={visibleSplitStats.avg_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_watts: checked }))} variant="light">{t("Avg W")}</Chip>
+                                            <Chip size="xs" checked={visibleSplitStats.max_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_watts: checked }))} variant="light">{t("Max W")}</Chip>
+                                            <Chip size="xs" checked={visibleSplitStats.normalized_power} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, normalized_power: checked }))} variant="light">NP</Chip>
+                                        </>
+                                    )}
+                                </Group>
+                                <Table>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th>{t("Split")}</Table.Th>
+                                            {visibleSplitStats.distance && <Table.Th>{t("Distance")}</Table.Th>}
+                                            {visibleSplitStats.duration && <Table.Th>{t("Time")}</Table.Th>}
+                                            {visibleSplitStats.pace_or_speed && <Table.Th>{isRunningActivity ? t('Pace') : t('Avg Speed')}</Table.Th>}
+                                            {visibleSplitStats.avg_hr && <Table.Th>{t("Avg HR")}</Table.Th>}
+                                            {visibleSplitStats.max_hr && <Table.Th>{t("Max HR")}</Table.Th>}
+                                            {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Th>{t("Avg W")}</Table.Th>}
+                                            {isCyclingActivity && visibleSplitStats.max_watts && <Table.Th>{t("Max W")}</Table.Th>}
+                                            {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>NP</Table.Th>}
+                                            {splitAnnotationsVisible && <Table.Th>RPE</Table.Th>}
+                                            {splitAnnotationsVisible && <Table.Th>{t("Lactate")}</Table.Th>}
+                                            {splitAnnotationsVisible && <Table.Th>{t("Note")}</Table.Th>}
+                                        </Table.Tr>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {splitsToDisplayWithPower.map((split: any, idx: number) => (
+                                            <Table.Tr key={split.split}>
+                                                <Table.Td>{split.split}</Table.Td>
+                                                {visibleSplitStats.distance && (
+                                                    <Table.Td>
+                                                        {me?.profile?.preferred_units === 'imperial'
+                                                            ? `${((split.distance || 0) * 0.000621371).toFixed(2)} mi`
+                                                            : `${((split.distance || 0) / 1000).toFixed(2)} km`}
+                                                    </Table.Td>
+                                                )}
+                                                {visibleSplitStats.duration && <Table.Td>{formatDuration(split.duration, true)}</Table.Td>}
+                                                {visibleSplitStats.pace_or_speed && (
+                                                    <Table.Td>
+                                                        {isRunningActivity
+                                                            ? (split.avg_speed
+                                                                ? (me?.profile?.preferred_units === 'imperial'
+                                                                    ? (() => { const pace = 1609.34 / (split.avg_speed * 60); const m = Math.floor(pace); const s = Math.floor((pace - m) * 60); return `${m}:${s.toString().padStart(2, '0')}/mi`; })()
+                                                                    : formatPace(split.avg_speed))
+                                                                : '-')
+                                                            : (split.avg_speed
+                                                                ? (me?.profile?.preferred_units === 'imperial'
+                                                                    ? `${(split.avg_speed * 2.23694).toFixed(1)} mph`
+                                                                    : `${(split.avg_speed * 3.6).toFixed(1)} km/h`)
+                                                                : '-')}
+                                                    </Table.Td>
+                                                )}
+                                                {visibleSplitStats.avg_hr && <Table.Td>{split.avg_hr?.toFixed(0) || '-'}</Table.Td>}
+                                                {visibleSplitStats.max_hr && <Table.Td>{split.max_hr?.toFixed(0) || '-'}</Table.Td>}
+                                                {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Td>{split.avg_watts ? `${split.avg_watts.toFixed(0)} W` : '-'}</Table.Td>}
+                                                {isCyclingActivity && visibleSplitStats.max_watts && <Table.Td>{split.max_watts ? `${split.max_watts.toFixed(0)} W` : '-'}</Table.Td>}
+                                                {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Td>{split.normalized_power ? `${split.normalized_power.toFixed(0)} W` : '-'}</Table.Td>}
+                                                {splitAnnotationsVisible && (
+                                                    <Table.Td>
+                                                        <NumberInput size="xs" w={60} min={1} max={10} allowDecimal={false}
+                                                            value={splitAnnotations[idx]?.rpe ?? ''}
+                                                            onChange={(value) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: typeof value === 'number' ? value : null, lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null, note: prev[idx]?.note ?? '' } })); }}
+                                                        />
+                                                    </Table.Td>
+                                                )}
+                                                {splitAnnotationsVisible && (
+                                                    <Table.Td>
+                                                        <NumberInput size="xs" w={70} min={0} max={40} decimalScale={1}
+                                                            value={splitAnnotations[idx]?.lactate_mmol_l ?? ''}
+                                                            onChange={(value) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: prev[idx]?.rpe ?? null, lactate_mmol_l: typeof value === 'number' ? value : null, note: prev[idx]?.note ?? '' } })); }}
+                                                        />
+                                                    </Table.Td>
+                                                )}
+                                                {splitAnnotationsVisible && (
+                                                    <Table.Td>
+                                                        <TextInput size="xs" w={120} maxLength={220}
+                                                            value={splitAnnotations[idx]?.note ?? ''}
+                                                            onChange={(e) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: prev[idx]?.rpe ?? null, lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null, note: e.currentTarget.value } })); }}
+                                                        />
+                                                    </Table.Td>
+                                                )}
+                                            </Table.Tr>
+                                        ))}
+                                    </Table.Tbody>
+                                </Table>
+                                {splitAnnotationsVisible && splitAnnotationsDirty && (
+                                    <Group justify="flex-end" mt="xs">
+                                        <Button size="xs" loading={updateActivityMutation.isPending}
+                                            onClick={() => {
+                                                const splitType = splitMode === 'metric' ? 'metric' : 'laps';
+                                                const split_annotations = Object.entries(splitAnnotations).map(([index, value]) => ({
+                                                    split_type: splitType as 'metric' | 'laps',
+                                                    split_index: Number(index),
+                                                    rpe: value.rpe,
+                                                    lactate_mmol_l: value.lactate_mmol_l,
+                                                    note: value.note?.trim() ? value.note.trim() : null,
+                                                }));
+                                                updateActivityMutation.mutate({ split_annotations }, {
+                                                    onSuccess: () => setSplitAnnotationsDirty(false)
+                                                });
+                                            }}
+                                        >
+                                            {t("Save Annotations")}
+                                        </Button>
+                                    </Group>
+                                )}
+                            </Paper>
+                        </Tabs.Panel>
+                        ) : null}
+
+                        {/* BEST EFFORTS TAB */}
+                        {activity.best_efforts?.length ? (
+                        <Tabs.Panel value="best_efforts">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Title order={5} mb="md" c={ui.textMain}>{t("Best Efforts")}</Title>
+                                {displayedBestEfforts.length ? (
+                                    <>
+                                        <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                            <Table.Thead>
+                                                <Table.Tr>
+                                                    <Table.Th></Table.Th>
+                                                    <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
+                                                    {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
+                                                    {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
+                                                    {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
+                                                    {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
+                                                    <Table.Th>{t('Heart Rate')}</Table.Th>
+                                                </Table.Tr>
+                                            </Table.Thead>
+                                            <Table.Tbody>
+                                                {displayedBestEfforts.map((effort, idx) => {
+                                                    const key = effort.window || effort.distance || String(idx);
+                                                    const prRank = activity.personal_records?.[key];
+                                                    const weight = me?.profile?.weight;
+                                                    const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
+                                                    return (
+                                                        <Table.Tr key={key}>
+                                                            <Table.Td w={36} style={{ textAlign: 'center' }}>
+                                                                {medalColor && <IconTrophy size={16} color={medalColor} />}
+                                                            </Table.Td>
+                                                            <Table.Td fw={600}>{effort.window || effort.distance}</Table.Td>
+                                                            {isCyclingActivity && <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>}
+                                                            {isCyclingActivity && weight && <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>}
+                                                            {isRunningActivity && <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>}
+                                                            {isRunningActivity && (
+                                                                <Table.Td>
+                                                                    {effort.time_seconds != null && effort.meters
+                                                                        ? (() => { const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60); const mins = Math.floor(paceMinPerKm); const secs = Math.round((paceMinPerKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
+                                                                        : '-'}
+                                                                </Table.Td>
+                                                            )}
+                                                            <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
+                                                        </Table.Tr>
+                                                    );
+                                                })}
+                                            </Table.Tbody>
+                                        </Table>
+                                        {!showAllBestEfforts && hasHiddenBestEfforts ? (
+                                            <Group justify="space-between" mt="xs" mb={4}>
+                                                <Text size="xs" c="dimmed">{t('Only all-time top 3 efforts are shown here')}</Text>
+                                                <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(true)}>{t('Show all efforts')}</Button>
+                                            </Group>
+                                        ) : null}
+                                        {showAllBestEfforts && activity.best_efforts.length > rankedBestEfforts.length ? (
+                                            <Group justify="end" mt="xs" mb={4}>
+                                                <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(false)}>{t('Hide non-ranked efforts')}</Button>
+                                            </Group>
+                                        ) : null}
+                                        <Group gap="md" mt={4}>
+                                            <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">{t('PR')}</Text></Group>
+                                            <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">{t('2nd')}</Text></Group>
+                                            <Group gap={4}><IconTrophy size={12} color="#cd7f32" /><Text size="xs" c="dimmed">{t('3rd')}</Text></Group>
+                                        </Group>
+                                    </>
+                                ) : (
+                                    <Stack gap="xs">
+                                        <Text size="sm" c="dimmed">{t('No all-time top 3 efforts in this activity yet')}</Text>
+                                        <Group>
+                                            <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(true)}>{t('Show all efforts')}</Button>
+                                        </Group>
+                                    </Stack>
+                                )}
+                            </Paper>
+                        </Tabs.Panel>
+                        ) : null}
+
+                        {/* COMPARISON TAB */}
+                        {activity.planned_comparison ? (
+                        <Tabs.Panel value="comparison">
+                            <Paper withBorder p="md" radius="lg" mb="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Group justify="space-between" mb="xs">
+                                    <Title order={5} c={ui.textMain}>Planned vs Actual</Title>
+                                    <Text size="xs" c={ui.textDim}>{activity.planned_comparison.workout_title}</Text>
+                                </Group>
                             <SimpleGrid cols={{ base: 1, md: 6 }} spacing="xs" mb="sm">
                                 {activity.planned_comparison.summary?.has_planned_distance && (
                                 <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
@@ -1365,43 +1990,41 @@ export const ActivityDetailPage = () => {
                                 </Table>
                             )}
                         </Paper>
-                    )}
-
-                        <Modal
-                            opened={executionInfoOpen}
-                            onClose={() => setExecutionInfoOpen(false)}
-                            title="Workout Execution Status"
-                            size="md"
-                            centered
-                        >
-                            <Stack gap="xs">
-                                <Text size="sm" c={ui.textDim}>
-                                    Execution status is a weighted workout-quality score built from available metrics:
-                                    duration match, distance match (when planned), intensity match, and split adherence (when splits are relevant).
-                                </Text>
-                                <Text size="sm" c={ui.textDim}>
-                                    If a workout is steady-state (for example a regular Z2 ride), intensity quality is prioritized over auto-split count.
-                                </Text>
-                                <Text size="sm" fw={700}>Status levels (best to worst):</Text>
-                                <Text size="sm">Great, Good, Ok, Fair, Subpar, Poor, Incomplete.</Text>
-                                <Text size="sm" c={ui.textDim}>
-                                    Incomplete is used when key execution data is missing or the session is not sufficiently complete for reliable scoring.
-                                </Text>
-                                {!!executionTraceRows.length && (
-                                    <>
-                                        <Text size="sm" fw={700}>Traceability breakdown</Text>
-                                        <Table striped highlightOnHover withTableBorder withColumnBorders>
-                                            <Table.Thead>
-                                                <Table.Tr>
-                                                    <Table.Th>Component</Table.Th>
-                                                    <Table.Th>Score</Table.Th>
-                                                    <Table.Th>Weight</Table.Th>
-                                                    <Table.Th>Weighted</Table.Th>
-                                                    <Table.Th>In Score</Table.Th>
-                                                </Table.Tr>
-                                            </Table.Thead>
-                                            <Table.Tbody>
-                                                {executionTraceRows.map((row) => (
+                            <Modal
+                                opened={executionInfoOpen}
+                                onClose={() => setExecutionInfoOpen(false)}
+                                title="Workout Execution Status"
+                                size="md"
+                                centered
+                            >
+                                <Stack gap="xs">
+                                    <Text size="sm" c={ui.textDim}>
+                                        Execution status is a weighted workout-quality score built from available metrics:
+                                        duration match, distance match (when planned), intensity match, and split adherence (when splits are relevant).
+                                    </Text>
+                                    <Text size="sm" c={ui.textDim}>
+                                        If a workout is steady-state (for example a regular Z2 ride), intensity quality is prioritized over auto-split count.
+                                    </Text>
+                                    <Text size="sm" fw={700}>Status levels (best to worst):</Text>
+                                    <Text size="sm">Great, Good, Ok, Fair, Subpar, Poor, Incomplete.</Text>
+                                    <Text size="sm" c={ui.textDim}>
+                                        Incomplete is used when key execution data is missing or the session is not sufficiently complete for reliable scoring.
+                                    </Text>
+                                    {!!executionTraceRows.length && (
+                                        <>
+                                            <Text size="sm" fw={700}>Traceability breakdown</Text>
+                                            <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                                <Table.Thead>
+                                                    <Table.Tr>
+                                                        <Table.Th>Component</Table.Th>
+                                                        <Table.Th>Score</Table.Th>
+                                                        <Table.Th>Weight</Table.Th>
+                                                        <Table.Th>Weighted</Table.Th>
+                                                        <Table.Th>In Score</Table.Th>
+                                                    </Table.Tr>
+                                                </Table.Thead>
+                                                <Table.Tbody>
+                                                    {executionTraceRows.map((row) => (
                                                     <Table.Tr key={`exec-modal-${row.key}`}>
                                                         <Table.Td>{row.label}</Table.Td>
                                                         <Table.Td>{row.componentScorePct != null ? `${row.componentScorePct.toFixed(1)}%` : '-'}</Table.Td>
@@ -1426,709 +2049,12 @@ export const ActivityDetailPage = () => {
                                         </Group>
                                     </>
                                 )}
-                            </Stack>
-                        </Modal>
+                                </Stack>
+                            </Modal>
+                        </Tabs.Panel>
+                        ) : null}
 
-                    {/* Main Content Grid */}
-                    <Grid gutter="md">
-                        {/* LEFT COLUMN: Data & Analysis (8 cols) */}
-                        <Grid.Col span={{ base: 12, md: 8 }}>
-                             <Stack gap="sm">
-                                {/* Charts Section */}
-                                <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                    <Group justify="space-between" mb="md">
-                                        <Stack gap={4}>
-                                            <Title order={5} c={ui.textMain}>Analysis</Title>
-                                            {focusMode && <Text size="xs" c={ui.textDim}>Focus mode keeps only key signals for this review objective.</Text>}
-                                        </Stack>
-                                        <Group>
-                                            <Select
-                                                size="xs"
-                                                value={focusObjective}
-                                                onChange={(value) => setFocusObjective((value as 'pacing' | 'cardio' | 'efficiency') || 'pacing')}
-                                                data={[
-                                                    { value: 'pacing', label: 'Pacing Discipline' },
-                                                    { value: 'cardio', label: 'Cardio Drift' },
-                                                    { value: 'efficiency', label: 'Power Efficiency' },
-                                                ]}
-                                                disabled={!focusMode}
-                                                w={180}
-                                            />
-                                            <Switch
-                                                checked={focusMode}
-                                                onChange={(event) => setFocusMode(event.currentTarget.checked)}
-                                                label="Focus Mode"
-                                            />
-                                        </Group>
-                                        <SegmentedControl
-                                            radius="md"
-                                            value={graphMode}
-                                            onChange={(v: any) => setGraphMode(v)}
-                                            data={[
-                                                { label: 'Overview', value: 'standard'},
-                                                { label: 'Power Curve', value: 'power_curve', disabled: !activity.power_curve },
-                                                { label: 'HR Zones', value: 'hr_zones', disabled: hrZoneData.every((z) => z.seconds <= 0) },
-                                                ...(isRunningActivity ? [{ label: 'Pace Zones', value: 'pace_zones', disabled: runningPaceZoneData.every((z) => z.seconds <= 0) }] : []),
-                                                ...(isCyclingActivity ? [{ label: 'Power Zones', value: 'power_zones', disabled: cyclingPowerZoneData.every((z) => z.seconds <= 0) }] : []),
-                                            ]}
-                                        />
-                                    </Group>
-                                    
-                                    <Box w="100%" mih={300} style={{ borderRadius: 12 }}>
-                                        {graphMode === 'standard' && (
-                                            <>
-                                                <Group mb="sm" gap="xs">
-                                                    <Text size="xs" fw={700}>Show:</Text>
-                                                    <Chip checked={focusSeries.heart_rate} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, heart_rate: !v.heart_rate}))} size="xs" color="red" variant="light">Heart Rate</Chip>
-                                                    {isRunningActivity && (
-                                                        <Chip checked={focusSeries.pace} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, pace: !v.pace}))} size="xs" color="blue" variant="light">Pace</Chip>
-                                                    )}
-                                                    <Chip checked={focusSeries.power} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, power: !v.power}))} size="xs" color="orange" variant="light">Power</Chip>
-                                                    <Chip checked={focusSeries.cadence} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, cadence: !v.cadence}))} size="xs" color="cyan" variant="light">Cadence</Chip>
-                                                    <Chip checked={focusSeries.altitude} disabled={focusMode} onChange={() => setVisibleSeries(v => ({...v, altitude: !v.altitude}))} size="xs" color="green" variant="light">Altitude</Chip>
-                                                </Group>
-
-                                                <Stack gap="xs">
-                                                    {focusSeries.heart_rate && (
-                                                        <Box h={160} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis dataKey="heart_rate" orientation="right" domain={['dataMin - 5', 'dataMax + 5']} width={40} tick={{fontSize: 10}} />
-                                                                    <Tooltip 
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={hrTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="heart_rate" stroke="#fa5252" fill="#fa5252" fillOpacity={0.15} strokeWidth={2} activeDot={{ r: 4 }} />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {isRunningActivity && focusSeries.pace && (
-                                                        <Box h={160} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis 
-                                                                        dataKey="pace" 
-                                                                        orientation="right" 
-                                                                        reversed 
-                                                                        domain={['dataMin', 'dataMax']} 
-                                                                        width={40} 
-                                                                        tick={{fontSize: 10}}
-                                                                        tickFormatter={(val) => {
-                                                                            const m = Math.floor(val);
-                                                                            return `${m}:${Math.floor((val-m)*60).toString().padStart(2,'0')}`;
-                                                                        }}
-                                                                    />
-                                                                    <Tooltip 
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={paceTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="pace" stroke="#228be6" fill="#228be6" fillOpacity={0.15} strokeWidth={2} connectNulls />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {focusSeries.power && (
-                                                        <Box h={160} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis dataKey="power" orientation="right" width={40} tick={{fontSize: 10}} />
-                                                                    <Tooltip 
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={powerTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="power" stroke="#fd7e14" fill="#fd7e14" fillOpacity={0.15} strokeWidth={1.5} />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {focusSeries.cadence && (
-                                                        <Box h={120} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis dataKey="cadence" orientation="right" domain={['dataMin - 10', 'dataMax + 10']} width={40} tick={{fontSize: 10}} />
-                                                                    <Tooltip 
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={cadenceTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="cadence" stroke="#15aabf" fill="#15aabf" fillOpacity={0.1} strokeWidth={1} />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-
-                                                    {focusSeries.altitude && (
-                                                        <Box h={120} w="100%">
-                                                            <ResponsiveContainer>
-                                                                <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 5, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                                    <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} hide />
-                                                                    <YAxis dataKey="altitude" orientation="right" domain={['dataMin', 'dataMax']} width={40} tick={{fontSize: 10}} />
-                                                                    <Tooltip 
-                                                                        {...sharedTooltipProps}
-                                                                        active={hoveredPointIndex !== null}
-                                                                        content={altitudeTooltipContent}
-                                                                    />
-                                                                    <Area type="monotone" dataKey="altitude" stroke="#82ca9d" fill="#82ca9d" fillOpacity={0.1} strokeWidth={1} />
-                                                                </AreaChart>
-                                                            </ResponsiveContainer>
-                                                        </Box>
-                                                    )}
-                                                    
-                                                    {/* Shared Axis with Brush at bottom */}
-                                                    <Box h={60} w="100%">
-                                                         <ResponsiveContainer>
-                                                            <AreaChart data={chartData} syncId="activityGraph" syncMethod="index" margin={{ top: 0, right: 0, left: 0, bottom: 0 }} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                                <XAxis type="number" dataKey="time_min" domain={["dataMin", "dataMax"]} orientation="bottom" tick={{fontSize: 10}} tickFormatter={(val) => { const m = Math.floor(val); const s = Math.round((val - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
-                                                                <YAxis hide domain={[0, 1]} />
-                                                                <Area dataKey="time_min" fill="none" stroke="none" />
-                                                                <Brush dataKey="time_min" height={20} stroke="#8884d8" tickFormatter={(val) => { const m = Math.floor(val); const s = Math.round((val - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
-                                                            </AreaChart>
-                                                         </ResponsiveContainer>
-                                                    </Box>
-                                                </Stack>
-                                            </>
-                                        )}
-
-                                        {graphMode === 'power_curve' && (
-                                            <Box h={400} w="100%">
-                                                <ResponsiveContainer>
-                                                    <LineChart data={powerCurveData}>
-                                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                         <XAxis dataKey="label" />
-                                                         <YAxis />
-                                                         <Tooltip {...sharedTooltipProps} />
-                                                         <Line type="monotone" dataKey="watts" stroke="#fd7e14" strokeWidth={3} dot={true} name="Max Power" />
-                                                    </LineChart>
-                                                </ResponsiveContainer>
-                                            </Box>
-                                        )}
-                                        
-                                        {graphMode === 'pace_zones' && (
-                                            <Box h={400} w="100%">
-                                                <ResponsiveContainer>
-                                                    <BarChart data={runningPaceZoneData}>
-                                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                         <XAxis dataKey="zone" />
-                                                         <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
-                                                         <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
-                                                         <Bar dataKey="seconds" fill="#228be6" name="Pace Zone Time" onClick={(entry: any) => entry?.zone && openZoneExplanation('pace', entry.zone)} />
-                                                    </BarChart>
-                                                </ResponsiveContainer>
-                                                <Group mt="sm" gap="xs" wrap="wrap">
-                                                    {runningPaceZoneData.map((z) => (
-                                                        <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('pace', z.zone)} readOnly variant="light" size="xs">
-                                                            {z.zone}
-                                                        </Chip>
-                                                    ))}
-                                                </Group>
-                                            </Box>
-                                        )}
-
-                                        {graphMode === 'power_zones' && (
-                                            <Box h={400} w="100%">
-                                                <ResponsiveContainer>
-                                                    <BarChart data={cyclingPowerZoneData}>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                        <XAxis dataKey="zone" />
-                                                        <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
-                                                        <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
-                                                        <Bar dataKey="seconds" fill="#fd7e14" name="Power Zone Time" onClick={(entry: any) => entry?.zone && openZoneExplanation('power', entry.zone)} />
-                                                    </BarChart>
-                                                </ResponsiveContainer>
-                                                <Group mt="sm" gap="xs" wrap="wrap">
-                                                    {cyclingPowerZoneData.map((z) => (
-                                                        <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('power', z.zone)} readOnly variant="light" size="xs">
-                                                            {z.zone}
-                                                        </Chip>
-                                                    ))}
-                                                </Group>
-                                            </Box>
-                                        )}
-                                        
-                                        {graphMode === 'hr_zones' && (
-                                            <Box h={400} w="100%">
-                                                <ResponsiveContainer>
-                                                    <BarChart data={hrZoneData}>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                        <XAxis dataKey="zone" />
-                                                        <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
-                                                        <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
-                                                        <Bar dataKey="seconds" fill="#fa5252" name="Time in Zone" onClick={(entry: any) => entry?.zone && openZoneExplanation('hr', entry.zone)} />
-                                                    </BarChart>
-                                                </ResponsiveContainer>
-                                                <Group mt="sm" gap="xs" wrap="wrap">
-                                                    {hrZoneData.map((z) => (
-                                                        <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('hr', z.zone)} readOnly variant="light" size="xs">
-                                                            {z.zone}
-                                                        </Chip>
-                                                    ))}
-                                                </Group>
-                                            </Box>
-                                        )}
-                                    </Box>
-                                    
-                                    {/* Elevation profile moved into the stack if checked, or remove separate one? */}
-                                    {/* The old code had a separate elevation profile. 
-                                        Since I added Altitude to the stack, I should probably remove the separate one 
-                                        to avoid duplication if 'Altitude' is checked. 
-                                        However, users might want to see it separately. 
-                                        I'll leave it but maybe hide it if graphMode is 'standard'? 
-                                        Actually, let's remove the redundant block below if I included it in the options. 
-                                        I'll include it in options and Remove the standalone block.
-                                    */}
-                                </Paper>
-
-                                {/* Best Efforts & Splits Combined Section */}
-                                {!focusMode && (activity.best_efforts?.length || activity.splits_metric?.length || activity.laps?.length) && (
-                                    <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                        <Group justify="space-between" mb="md">
-                                            <Title order={5} c={ui.textMain}>
-                                                {effortsSplitsView === 'efforts' ? t("Best Efforts") : t("Splits")}
-                                            </Title>
-                                            <Group>
-                                                {(activity.best_efforts?.length && (activity.splits_metric?.length || activity.laps?.length)) ? (
-                                                    <SegmentedControl
-                                                        radius="md"
-                                                        value={effortsSplitsView}
-                                                        onChange={(v: any) => setEffortsSplitsView(v)}
-                                                        data={[
-                                                            { label: t('Best Efforts'), value: 'efforts' },
-                                                            { label: t('Splits'), value: 'splits' },
-                                                        ]}
-                                                    />
-                                                ) : null}
-                                                {effortsSplitsView === 'splits' && (
-                                                    <>
-                                                        <SegmentedControl 
-                                                            radius="md"
-                                                            value={splitMode}
-                                                            onChange={(v: any) => setSplitMode(v)}
-                                                            data={[
-                                                                { label: isRunningActivity ? '1 km' : 'Auto', value: 'metric', disabled: !activity.splits_metric?.length },
-                                                                { label: isCyclingActivity ? 'Manual' : 'Laps', value: 'laps', disabled: !activity.laps?.length },
-                                                            ]}
-                                                        />
-                                                        <Button size="xs" variant={splitAnnotationsVisible ? "filled" : "light"} onClick={() => setSplitAnnotationsVisible((v) => !v)}>
-                                                            {splitAnnotationsVisible ? t("Hide Annotations") : t("Annotate")}
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </Group>
-                                        </Group>
-
-                                        {/* Best Efforts Table */}
-                                        {effortsSplitsView === 'efforts' && activity.best_efforts?.length ? (
-                                            <>
-                                            {displayedBestEfforts.length ? (
-                                                <>
-                                                    <Table striped highlightOnHover withTableBorder withColumnBorders>
-                                                        <Table.Thead>
-                                                            <Table.Tr>
-                                                                <Table.Th></Table.Th>
-                                                                <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
-                                                                {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
-                                                                {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
-                                                                {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
-                                                                {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
-                                                                <Table.Th>{t('Heart Rate')}</Table.Th>
-                                                            </Table.Tr>
-                                                        </Table.Thead>
-                                                        <Table.Tbody>
-                                                            {displayedBestEfforts.map((effort, idx) => {
-                                                                const key = effort.window || effort.distance || String(idx);
-                                                                const prRank = activity.personal_records?.[key];
-                                                                const weight = me?.profile?.weight;
-                                                                const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
-                                                                return (
-                                                                    <Table.Tr key={key}>
-                                                                        <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                                                            {medalColor && <IconTrophy size={16} color={medalColor} />}
-                                                                        </Table.Td>
-                                                                        <Table.Td fw={600}>
-                                                                            {effort.window || effort.distance}
-                                                                        </Table.Td>
-                                                                        {isCyclingActivity && (
-                                                                            <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>
-                                                                        )}
-                                                                        {isCyclingActivity && weight && (
-                                                                            <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>
-                                                                        )}
-                                                                        {isRunningActivity && (
-                                                                            <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>
-                                                                        )}
-                                                                        {isRunningActivity && (
-                                                                            <Table.Td>
-                                                                                {effort.time_seconds != null && effort.meters
-                                                                                    ? (() => {
-                                                                                        const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60);
-                                                                                        const mins = Math.floor(paceMinPerKm);
-                                                                                        const secs = Math.round((paceMinPerKm - mins) * 60);
-                                                                                        return `${mins}:${secs.toString().padStart(2, '0')} /km`;
-                                                                                    })()
-                                                                                    : '-'}
-                                                                            </Table.Td>
-                                                                        )}
-                                                                        <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
-                                                                    </Table.Tr>
-                                                                );
-                                                            })}
-                                                        </Table.Tbody>
-                                                    </Table>
-
-                                                    {!showAllBestEfforts && hasHiddenBestEfforts ? (
-                                                        <Group justify="space-between" mt="xs" mb={4}>
-                                                            <Text size="xs" c="dimmed">{t('Only all-time top 3 efforts are shown here')}</Text>
-                                                            <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(true)}>
-                                                                {t('Show all efforts')}
-                                                            </Button>
-                                                        </Group>
-                                                    ) : null}
-
-                                                    {showAllBestEfforts && activity.best_efforts.length > rankedBestEfforts.length ? (
-                                                        <Group justify="end" mt="xs" mb={4}>
-                                                            <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(false)}>
-                                                                {t('Hide non-ranked efforts')}
-                                                            </Button>
-                                                        </Group>
-                                                    ) : null}
-
-                                                    <Group gap="md" mt={4}>
-                                                        <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">{t('PR')}</Text></Group>
-                                                        <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">{t('2nd')}</Text></Group>
-                                                        <Group gap={4}><IconTrophy size={12} color="#cd7f32" /><Text size="xs" c="dimmed">{t('3rd')}</Text></Group>
-                                                    </Group>
-                                                </>
-                                            ) : (
-                                                <Stack gap="xs">
-                                                    <Text size="sm" c="dimmed">{t('No all-time top 3 efforts in this activity yet')}</Text>
-                                                    <Group>
-                                                        <Button size="xs" variant="light" onClick={() => setShowAllBestEfforts(true)}>
-                                                            {t('Show all efforts')}
-                                                        </Button>
-                                                    </Group>
-                                                </Stack>
-                                            )}
-                                            </>
-                                        ) : null}
-                                        {effortsSplitsView === 'splits' && (activity.splits_metric?.length || activity.laps?.length) ? (
-                                            <>
-                                                <Group gap="xs" mb="sm" wrap="wrap">
-                                                    <Text size="xs" c={ui.textDim} fw={700}>{t("Visible stats")}:</Text>
-                                                    <Chip size="xs" checked={visibleSplitStats.distance} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, distance: checked }))} variant="light">{t("Distance")}</Chip>
-                                                    <Chip size="xs" checked={visibleSplitStats.duration} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, duration: checked }))} variant="light">{t("Time")}</Chip>
-                                                    <Chip size="xs" checked={visibleSplitStats.pace_or_speed} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, pace_or_speed: checked }))} variant="light">{isRunningActivity ? t('Pace') : t('Speed')}</Chip>
-                                                    <Chip size="xs" checked={visibleSplitStats.avg_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_hr: checked }))} variant="light">{t("Avg HR")}</Chip>
-                                                    <Chip size="xs" checked={visibleSplitStats.max_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_hr: checked }))} variant="light">{t("Max HR")}</Chip>
-                                                    {isCyclingActivity && (
-                                                        <>
-                                                            <Chip size="xs" checked={visibleSplitStats.avg_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_watts: checked }))} variant="light">{t("Avg W")}</Chip>
-                                                            <Chip size="xs" checked={visibleSplitStats.max_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_watts: checked }))} variant="light">{t("Max W")}</Chip>
-                                                            <Chip size="xs" checked={visibleSplitStats.normalized_power} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, normalized_power: checked }))} variant="light">NP</Chip>
-                                                        </>
-                                                    )}
-                                                </Group>
-                                                <Table>
-                                                    <Table.Thead>
-                                                        <Table.Tr>
-                                                            <Table.Th>{t("Split")}</Table.Th>
-                                                            {visibleSplitStats.distance && <Table.Th>{t("Distance")}</Table.Th>}
-                                                            {visibleSplitStats.duration && <Table.Th>{t("Time")}</Table.Th>}
-                                                            {visibleSplitStats.pace_or_speed && <Table.Th>{isRunningActivity ? t('Pace') : t('Avg Speed')}</Table.Th>}
-                                                            {visibleSplitStats.avg_hr && <Table.Th>{t("Avg HR")}</Table.Th>}
-                                                            {visibleSplitStats.max_hr && <Table.Th>{t("Max HR")}</Table.Th>}
-                                                            {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Th>{t("Avg W")}</Table.Th>}
-                                                            {isCyclingActivity && visibleSplitStats.max_watts && <Table.Th>{t("Max W")}</Table.Th>}
-                                                            {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>NP</Table.Th>}
-                                                            {splitAnnotationsVisible && <Table.Th>RPE</Table.Th>}
-                                                            {splitAnnotationsVisible && <Table.Th>{t("Lactate")}</Table.Th>}
-                                                            {splitAnnotationsVisible && <Table.Th>{t("Note")}</Table.Th>}
-                                                        </Table.Tr>
-                                                    </Table.Thead>
-                                                    <Table.Tbody>
-                                                        {splitsToDisplayWithPower.map((split: any, idx: number) => (
-                                                            <Table.Tr key={split.split}>
-                                                                <Table.Td>{split.split}</Table.Td>
-                                                                {visibleSplitStats.distance && (
-                                                                    <Table.Td>
-                                                                        {me?.profile?.preferred_units === 'imperial'
-                                                                            ? `${((split.distance || 0) * 0.000621371).toFixed(2)} mi`
-                                                                            : `${((split.distance || 0) / 1000).toFixed(2)} km`}
-                                                                    </Table.Td>
-                                                                )}
-                                                                {visibleSplitStats.duration && <Table.Td>{formatDuration(split.duration, true)}</Table.Td>}
-                                                                {visibleSplitStats.pace_or_speed && (
-                                                                    <Table.Td>
-                                                                        {isRunningActivity
-                                                                            ? (split.avg_speed
-                                                                                ? (me?.profile?.preferred_units === 'imperial'
-                                                                                    ? (() => {
-                                                                                        const pace = 1609.34 / (split.avg_speed * 60);
-                                                                                        const m = Math.floor(pace);
-                                                                                        const s = Math.floor((pace - m) * 60);
-                                                                                        return `${m}:${s.toString().padStart(2, '0')}/mi`;
-                                                                                    })()
-                                                                                    : formatPace(split.avg_speed))
-                                                                                : '-')
-                                                                            : (split.avg_speed
-                                                                                ? (me?.profile?.preferred_units === 'imperial'
-                                                                                    ? `${(split.avg_speed * 2.23694).toFixed(1)} mph`
-                                                                                    : `${(split.avg_speed * 3.6).toFixed(1)} km/h`)
-                                                                                : '-')}
-                                                                    </Table.Td>
-                                                                )}
-                                                                {visibleSplitStats.avg_hr && <Table.Td>{split.avg_hr?.toFixed(0) || '-'}</Table.Td>}
-                                                                {visibleSplitStats.max_hr && <Table.Td>{split.max_hr?.toFixed(0) || '-'}</Table.Td>}
-                                                                {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Td>{split.avg_watts ? `${split.avg_watts.toFixed(0)} W` : '-'}</Table.Td>}
-                                                                {isCyclingActivity && visibleSplitStats.max_watts && <Table.Td>{split.max_watts ? `${split.max_watts.toFixed(0)} W` : '-'}</Table.Td>}
-                                                                {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Td>{split.normalized_power ? `${split.normalized_power.toFixed(0)} W` : '-'}</Table.Td>}
-                                                                {splitAnnotationsVisible && (
-                                                                    <Table.Td>
-                                                                        <NumberInput size="xs" w={60} min={1} max={10} allowDecimal={false}
-                                                                            value={splitAnnotations[idx]?.rpe ?? ''}
-                                                                            onChange={(value) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: typeof value === 'number' ? value : null, lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null, note: prev[idx]?.note ?? '' } })); }}
-                                                                        />
-                                                                    </Table.Td>
-                                                                )}
-                                                                {splitAnnotationsVisible && (
-                                                                    <Table.Td>
-                                                                        <NumberInput size="xs" w={70} min={0} max={40} decimalScale={1}
-                                                                            value={splitAnnotations[idx]?.lactate_mmol_l ?? ''}
-                                                                            onChange={(value) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: prev[idx]?.rpe ?? null, lactate_mmol_l: typeof value === 'number' ? value : null, note: prev[idx]?.note ?? '' } })); }}
-                                                                        />
-                                                                    </Table.Td>
-                                                                )}
-                                                                {splitAnnotationsVisible && (
-                                                                    <Table.Td>
-                                                                        <TextInput size="xs" w={120} maxLength={220}
-                                                                            value={splitAnnotations[idx]?.note ?? ''}
-                                                                            onChange={(e) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: prev[idx]?.rpe ?? null, lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null, note: e.currentTarget.value } })); }}
-                                                                        />
-                                                                    </Table.Td>
-                                                                )}
-                                                            </Table.Tr>
-                                                        ))}
-                                                    </Table.Tbody>
-                                                </Table>
-                                                {splitAnnotationsVisible && splitAnnotationsDirty && (
-                                                    <Group justify="flex-end" mt="xs">
-                                                        <Button size="xs" loading={updateActivityMutation.isPending}
-                                                            onClick={() => {
-                                                                const splitType = splitMode === 'metric' ? 'metric' : 'laps';
-                                                                const split_annotations = Object.entries(splitAnnotations).map(([index, value]) => ({
-                                                                    split_type: splitType as 'metric' | 'laps',
-                                                                    split_index: Number(index),
-                                                                    rpe: value.rpe,
-                                                                    lactate_mmol_l: value.lactate_mmol_l,
-                                                                    note: value.note?.trim() ? value.note.trim() : null,
-                                                                }));
-                                                                updateActivityMutation.mutate({ split_annotations }, {
-                                                                    onSuccess: () => setSplitAnnotationsDirty(false)
-                                                                });
-                                                            }}
-                                                        >
-                                                            {t("Save Annotations")}
-                                                        </Button>
-                                                    </Group>
-                                                )}
-                                            </>
-                                        ) : null}
-                                    </Paper>
-                                )}
-
-                                {/* Detailed Stats */}
-                                <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                    <Title order={5} mb="md" c={ui.textMain}>Detailed Stats</Title>
-                                    <Stack gap="xs">
-                                         <Group justify="space-between">
-                                            <Text size="sm" c={ui.textDim}>{activity.sport === 'running' ? 'Avg Pace' : 'Avg Speed'}</Text>
-                                            <Text size="sm" fw={700} c={ui.textMain}>
-                                                {activity.sport === 'running' 
-                                                    ? formatPace(activity.avg_speed)
-                                                    : ((activity.avg_speed || 0) * 3.6).toFixed(1) + " km/h"}
-                                            </Text>
-                                         </Group>
-                                         
-                                         {activity.max_speed && (
-                                            <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>{activity.sport === 'running' ? 'Max Pace' : 'Max Speed'}</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>
-                                                    {activity.sport === 'running' 
-                                                        ? formatPace(activity.max_speed)
-                                                        : (activity.max_speed * 3.6).toFixed(1) + " km/h"}
-                                                </Text>
-                                            </Group>
-                                         )}
-
-                                         {activity.average_hr && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Avg Heart Rate</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.average_hr.toFixed(0)} bpm</Text>
-                                             </Group>
-                                         )}
-                                          
-                                         {activity.max_hr != null && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Max Heart Rate</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.max_hr.toFixed(0)} bpm</Text>
-                                             </Group>
-                                         )}
-                                         
-                                         {activity.total_elevation_gain != null && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Elevation Gain</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.total_elevation_gain.toFixed(0)} m</Text>
-                                             </Group>
-                                         )}
-                                         
-                                         {activity.average_watts != null && activity.average_watts > 0 && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Avg Power</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.average_watts.toFixed(0)} W</Text>
-                                             </Group>
-                                         )}
-
-                                         {activity.average_watts != null && activity.average_watts > 0 && activity.weight_at_time != null && activity.weight_at_time > 0 && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Avg Power (w/kg)</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{(activity.average_watts / activity.weight_at_time).toFixed(2)} w/kg</Text>
-                                             </Group>
-                                         )}
-
-                                         {activity.max_watts != null && activity.max_watts > 0 && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Max Power</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{activity.max_watts.toFixed(0)} W</Text>
-                                             </Group>
-                                         )}
-
-                                         {isCyclingActivity && overallNormalizedPower != null && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Normalized Power</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{overallNormalizedPower.toFixed(0)} W</Text>
-                                             </Group>
-                                         )}
-
-                                         {isCyclingActivity && cyclingPerfMetrics?.intensityFactor != null && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Intensity Factor</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.intensityFactor.toFixed(2)}</Text>
-                                             </Group>
-                                         )}
-
-                                         {isCyclingActivity && cyclingPerfMetrics?.tss != null && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>TSS</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.tss.toFixed(0)}</Text>
-                                             </Group>
-                                         )}
-
-                                         {isCyclingActivity && cyclingPerfMetrics?.vi != null && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Variability Index</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.vi.toFixed(2)}</Text>
-                                             </Group>
-                                         )}
-
-                                         {activity.avg_cadence != null && (
-                                             <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Avg Cadence</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>
-                                                    {activity.sport === 'running' && activity.avg_cadence < 120 
-                                                        ? (activity.avg_cadence * 2).toFixed(0) 
-                                                        : activity.avg_cadence.toFixed(0)} {activity.sport === 'running' ? 'spm' : 'rpm'}
-                                                </Text>
-                                             </Group>
-                                         )}
-
-                                         {activity.max_cadence != null && (
-                                             <Group justify="space-between">
-                                                                <Text size="sm" c={ui.textDim}>Max Cadence</Text>
-                                                                <Text size="sm" fw={700} c={ui.textMain}>
-                                                     {activity.sport === 'running' && activity.max_cadence < 120 
-                                                        ? (activity.max_cadence * 2).toFixed(0) 
-                                                        : activity.max_cadence.toFixed(0)} {activity.sport === 'running' ? 'spm' : 'rpm'}
-                                                </Text>
-                                             </Group>
-                                         )}
-
-                                          <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Calories</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>
-                                                    {activity.total_calories ? activity.total_calories.toFixed(0) : ((activity.average_watts || 0) * activity.duration / 1000 * 1.1).toFixed(0)} kcal (Est)
-                                                </Text>
-                                          </Group>
-
-                                         <Group justify="space-between">
-                                                <Text size="sm" c={ui.textDim}>Load Impact</Text>
-                                                <Text size="sm" fw={700} c={ui.textMain}>
-                                                    +{(activity.aerobic_load || 0).toFixed(1)} Aer · +{(activity.anaerobic_load || 0).toFixed(1)} Ana
-                                                </Text>
-                                         </Group>
-                                    </Stack>
-                                </Paper>
-
-                             </Stack>
-                        </Grid.Col>
-                        
-                        {/* RIGHT COLUMN: Map, Feedback, Stats, Comments (4 cols) */}
-                        <Grid.Col span={{ base: 12, md: 4 }}>
-                            <Stack>
-                                {/* Feedback Panel - Prominent at top of sidebar */}
-                                <SessionFeedbackPanel 
-                                    activityId={Number(id)}
-                                    initialActivity={activity}
-                                    canEdit={me?.id === activity.athlete_id}
-                                />
-
-                                {/* Map */}
-                                {routePositions.length > 0 ? (
-                                    <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
-                                        <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
-                                            <TileLayer
-                                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                            />
-                                            <Polyline positions={routePositions} color="blue" weight={4} />
-                                        </MapContainer>
-                                    </Paper>
-                                ) : (
-                                    <Paper
-                                        withBorder
-                                        p="xl"
-                                        radius="lg"
-                                        h={200}
-                                        bg={ui.surface}
-                                        style={{ borderColor: ui.border }}
-                                    >
-                                        <Stack align="center" justify="center" h="100%">
-                                            <IconMap size={40} color="gray" />
-                                            <Text c={ui.textDim}>No map data available (Virtual Ride or Indoor)</Text>
-                                        </Stack>
-                                    </Paper>
-                                )}
-                                
-                                <Box>
-                                    <CommentsPanel entityType="activity" entityId={Number(id)} athleteId={activity.athlete_id} />
-                                </Box>
-                            </Stack>
-                        </Grid.Col>
-                    </Grid>
+                    </Tabs>
 
                     {canDeleteActivity && (
                         <Paper withBorder p="sm" radius="lg" mt="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
