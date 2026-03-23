@@ -89,8 +89,11 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     const scrollRef = useRef<HTMLDivElement>(null);
     const weekRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const [anchorDate, setAnchorDate] = useState(viewDate);
-    const isScrolling = useRef(false);
     const suppressScrollUpdate = useRef(false);
+    const suppressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    /** Stable ref so scroll handler doesn't depend on viewDate */
+    const viewDateRef = useRef(viewDate);
+    viewDateRef.current = viewDate;
 
     // Build the list of weeks to render
     const weeks = useMemo(
@@ -111,15 +114,21 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         return labels;
     }, [weekStartDay]);
 
+    /** Suppress scroll-handler feedback for a duration after programmatic scroll */
+    const suppressFor = useCallback((ms: number) => {
+        suppressScrollUpdate.current = true;
+        if (suppressTimer.current) clearTimeout(suppressTimer.current);
+        suppressTimer.current = setTimeout(() => { suppressScrollUpdate.current = false; }, ms);
+    }, []);
+
     /* ── initial scroll to anchor week ── */
     useEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
         const anchorRow = weekRowRefs.current.get(weeks[anchorWeekIdx]?.key);
         if (anchorRow) {
-            suppressScrollUpdate.current = true;
+            suppressFor(300);
             el.scrollTop = anchorRow.offsetTop - 36; // minus header height
-            requestAnimationFrame(() => { suppressScrollUpdate.current = false; });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [anchorDate]);
@@ -152,19 +161,21 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         if (closest) {
             const ck = (closest as { key: string; dist: number; start: Date }).key;
             const cs = (closest as { key: string; dist: number; start: Date }).start;
-            const currentAnchorKey = format(startOfWeek(viewDate, { weekStartsOn: weekStartDay as 0 | 1 }), 'yyyy-MM-dd');
+            const currentAnchorKey = format(startOfWeek(viewDateRef.current, { weekStartsOn: weekStartDay as 0 | 1 }), 'yyyy-MM-dd');
             if (ck !== currentAnchorKey) {
+                // Suppress briefly so our own viewDate update doesn't re-anchor
+                suppressFor(250);
                 onViewDateChange(cs);
             }
         }
 
-        // If near edges, re-anchor
+        // If near edges, re-anchor to get more buffer weeks
         if (el.scrollTop < 200 || el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
             if (closest) {
                 setAnchorDate((closest as { key: string; dist: number; start: Date }).start);
             }
         }
-    }, [weeks, viewDate, weekStartDay, onViewDateChange]);
+    }, [weeks, weekStartDay, onViewDateChange, suppressFor]);
 
     useEffect(() => {
         const el = scrollRef.current;
