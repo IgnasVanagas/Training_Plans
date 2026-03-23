@@ -283,9 +283,19 @@ async def _queue_strava_recent_sync_from_webhook(db: AsyncSession, *, user_id: i
     state.cursor = cursor
 
     if getattr(state, "sync_status", "idle") == "syncing":
-        state.sync_message = reason
-        await db.commit()
-        return "sync_already_running"
+        stale_sync_seconds = max(30, int(os.getenv("INTEGRATION_SYNC_STALE_SECONDS", "180")))
+        updated_at = getattr(state, "updated_at", None)
+        is_stale = (
+            updated_at is None
+            or (datetime.utcnow() - updated_at).total_seconds() > stale_sync_seconds
+        )
+        if not is_stale:
+            state.sync_message = reason
+            await db.commit()
+            return "sync_already_running"
+        # Stale sync (backend likely restarted mid-sync) — reset and continue
+        state.sync_status = "idle"
+        state.last_error = None
 
     state.sync_status = "syncing"
     state.sync_message = reason
