@@ -1,10 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { Calendar, dateFnsLocalizer, Views } from 'react-big-calendar';
-import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
-import { format, parse, startOfWeek, getDay, endOfWeek, startOfMonth, endOfMonth, addMonths, addWeeks } from 'date-fns';
-import { enUS } from 'date-fns/locale';
-import 'react-big-calendar/lib/css/react-big-calendar.css';
-import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
+import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, addWeeks } from 'date-fns';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import api from '../api/client';
@@ -19,13 +14,13 @@ import { useNavigate } from 'react-router-dom';
 import CalendarHeader from './calendar/CalendarHeader';
 import { parseDate } from './calendar/dateUtils';
 import { ORIGAMI_ACTIVITY_COLORS, ORIGAMI_THEME } from './calendar/theme';
-import { CalendarEventCard } from './calendar/TrainingCalendarEventRenderers';
 import { resolveActivityAccentColor } from './calendar/activityStyling';
 import { BulkEditModal, DayDetailsModal, WorkoutEditModal } from './calendar/TrainingCalendarModals';
 import { Activity, DuplicateSelectModal } from './ActivitiesView';
 import TrainingCalendarZoneSummaryPanel from './calendar/TrainingCalendarZoneSummaryPanel';
-import { buildTrainingCalendarStyles } from './calendar/trainingCalendarStyles';
+
 import { CalendarWeekSkeleton, CalendarMonthSkeleton } from './common/SkeletonScreens';
+import ContinuousCalendarGrid from './calendar/ContinuousCalendarGrid';
 import {
     AthletePermissionsResponse,
     CalendarEvent,
@@ -38,17 +33,6 @@ import {
 } from './calendar/quickWorkout';
 import { athleteLabel, normalizePlan } from './planner/seasonPlanUtils';
 import { readSnapshot, writeSnapshot } from '../utils/localSnapshot';
-
-// Setup Localizer
-const locales = {
-  'en-US': enUS,
-};
-
-// Localizer will be created dynamically inside the component
-// const localizer = ...
-
-
-const DnDCalendar = withDragAndDrop(Calendar);
 
 // Constants for exact alignment
 const WEEKDAY_HEADER_HEIGHT = 36;
@@ -275,13 +259,6 @@ export const TrainingCalendar = ({
     const canDeleteWorkouts = me?.role === 'coach' || me?.role === 'athlete';
 
     const weekStartDay = me?.profile?.week_start_day === 'sunday' ? 0 : 1;
-    const localizer = useMemo(() => dateFnsLocalizer({
-        format,
-        parse,
-        startOfWeek: (date: Date) => startOfWeek(date, { weekStartsOn: weekStartDay as any }),
-        getDay,
-        locales,
-    }), [weekStartDay]);
 
     const [opened, { open, close }] = useDisclosure(false);
     const [selectedEvent, setSelectedEvent] = useState<Partial<CalendarEvent>>({ sport_type: 'Cycling' });
@@ -308,21 +285,10 @@ export const TrainingCalendar = ({
     const [currentView, setCurrentView] = useState<'month' | 'week'>(isMobileViewport ? 'week' : 'month');
     const monthGridRef = React.useRef<HTMLDivElement | null>(null);
     const [weekRowHeights, setWeekRowHeights] = useState<number[]>([]);
+    const [continuousVisibleWeeks, setContinuousVisibleWeeks] = useState<Array<{ start: Date; end: Date; key: string }>>([]);
 
-    /* ── Scroll-wheel navigation (month / week) ── */
-    const wheelCooldown = useRef(false);
-    const handleCalendarWheel = useCallback((e: React.WheelEvent) => {
-        if (wheelCooldown.current) return;
-        const delta = e.deltaY;
-        if (Math.abs(delta) < 30) return;          // ignore tiny trackpad micro-scrolls
-        wheelCooldown.current = true;
-        setViewDate((prev) =>
-            currentView === 'week'
-                ? addWeeks(prev, delta > 0 ? 1 : -1)
-                : addMonths(prev, delta > 0 ? 1 : -1),
-        );
-        setTimeout(() => { wheelCooldown.current = false; }, 350);
-    }, [currentView]);
+    /** How many weeks to show in the continuous grid (responsive) */
+    const visibleWeekCount = isMobileViewport ? 3 : 4;
 
     const athleteById = useMemo(() => {
         const map = new Map<number, any>();
@@ -392,13 +358,13 @@ export const TrainingCalendar = ({
     }, [athleteId, allAthletes, athleteById]);
 
     const rangeBounds = useMemo(() => {
-        // Always fetch the full visible-month range regardless of view.
-        // Week view filters from this superset, so switching views is instant.
-        const monthStartVisible = startOfWeek(startOfMonth(viewDate), { weekStartsOn: weekStartDay as any });
-        const monthEndVisible = endOfWeek(endOfMonth(viewDate), { weekStartsOn: weekStartDay as any });
+        // Fetch a wide window (±3 months) so the continuous scroll grid has data.
+        // Week view also filters from this superset.
+        const rangeStart = startOfWeek(startOfMonth(addMonths(viewDate, -3)), { weekStartsOn: weekStartDay as any });
+        const rangeEnd = endOfWeek(endOfMonth(addMonths(viewDate, 3)), { weekStartsOn: weekStartDay as any });
         return {
-            start: monthStartVisible,
-            end: monthEndVisible,
+            start: rangeStart,
+            end: rangeEnd,
         };
     }, [viewDate, weekStartDay]);
 
@@ -601,51 +567,9 @@ export const TrainingCalendar = ({
 
     const isInitialCalendarLoading = (eventsLoading || eventsFetching) && events.length === 0;
 
-    const calendarEvents = useMemo(() => {
-        if (currentView === 'week') {
-            return events;
-        }
-
-        const byDate = new Map<string, any[]>();
-        events.forEach((event: any) => {
-            const dateKey = event.resource?.date || event.date;
-            if (!dateKey) return;
-            const list = byDate.get(dateKey) || [];
-            list.push(event);
-            byDate.set(dateKey, list);
-        });
-
-        const limited: any[] = [];
-        byDate.forEach((dateEvents, dateKey) => {
-            if (dateEvents.length <= 2) {
-                limited.push(...dateEvents);
-                return;
-            }
-
-            const first = dateEvents[0];
-            const hiddenCount = dateEvents.length - 1;
-            const dayDate = parseDate(dateKey);
-
-            limited.push(first);
-            limited.push({
-                id: `more-${dateKey}`,
-                title: `+${hiddenCount}`,
-                start: dayDate,
-                end: dayDate,
-                allDay: true,
-                resource: {
-                    id: -1,
-                    date: dateKey,
-                    title: `+${hiddenCount}`,
-                    is_planned: false,
-                    is_more_indicator: true,
-                    hidden_count: hiddenCount,
-                } as CalendarEvent,
-            });
-        });
-
-        return limited;
-    }, [events, currentView]);
+    // The continuous grid handles per-day event limiting internally.
+    // This alias keeps compatibility with the week view and effect dependencies.
+    const calendarEvents = events;
 
     const zoneSummarySnapKey = `zone-summary:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}:${weekStartDay}:${format(viewDate, 'yyyy-MM')}`;
     const { data: zoneSummary } = useQuery({
@@ -1015,15 +939,6 @@ export const TrainingCalendar = ({
         }
     };
 
-     const RealEventComponent = useCallback(({ event }: any) => (
-         <CalendarEventCard
-            event={event}
-            activityColors={activityColors}
-            isDark={isDark}
-            palette={palette}
-            preferredUnits={me?.profile?.preferred_units}
-         />
-        ), [activityColors, isDark, me?.profile?.preferred_units, palette]);
     const handleSlotSelection = useCallback(({ start, slots }: any) => {
         const slotDates = (Array.isArray(slots) && slots.length > 0 ? slots : [start])
             .map((value: Date | string) => typeof value === 'string' ? new Date(value) : value)
@@ -1342,6 +1257,11 @@ export const TrainingCalendar = ({
     const weekEnd = useMemo(() => endOfWeek(viewDate, { weekStartsOn: weekStartDay as any }), [viewDate, weekStartDay]);
 
     const weeksInMonth = useMemo(() => {
+        // In continuous view, use the weeks reported by the grid.
+        if (currentView !== 'week' && continuousVisibleWeeks.length > 0) {
+            return continuousVisibleWeeks;
+        }
+        // Fallback: compute from month boundaries
         const first = startOfWeek(monthStart, { weekStartsOn: weekStartDay as any });
         const last = endOfWeek(monthEnd, { weekStartsOn: weekStartDay as any });
         const weeks: Array<{ start: Date; end: Date; key: string }> = [];
@@ -1360,7 +1280,7 @@ export const TrainingCalendar = ({
             current = next;
         }
         return weeks;
-    }, [monthStart, monthEnd, weekStartDay]);
+    }, [currentView, continuousVisibleWeeks, monthStart, monthEnd, weekStartDay]);
 
     const monthlyCompletedEvents = useMemo(() => {
         return events.filter((event: any) => {
@@ -1425,67 +1345,6 @@ export const TrainingCalendar = ({
     const handleMonthlyTotalsOpen = useCallback(() => {
         setMonthlyOpenSignal((prev) => prev + 1);
     }, []);
-
-    const measureWeekRowHeights = useCallback(() => {
-        if (currentView !== 'month') {
-            setWeekRowHeights([]);
-            return;
-        }
-
-        const host = monthGridRef.current;
-        if (!host) return;
-
-        const rows = Array.from(host.querySelectorAll('.rbc-month-row')) as HTMLElement[];
-        if (rows.length === 0) {
-            setWeekRowHeights([]);
-            return;
-        }
-
-        const nextHeights = rows.map((row) => Math.round(row.getBoundingClientRect().height));
-        setWeekRowHeights((prev) => {
-            const sameLength = prev.length === nextHeights.length;
-            const sameValues = sameLength && prev.every((value, index) => Math.abs(value - nextHeights[index]) <= 1);
-            return sameValues ? prev : nextHeights;
-        });
-    }, [currentView]);
-
-    useEffect(() => {
-        if (currentView !== 'month' || isInitialCalendarLoading) {
-            return;
-        }
-
-        const frame = window.requestAnimationFrame(measureWeekRowHeights);
-        const host = monthGridRef.current;
-        if (!host) {
-            return () => window.cancelAnimationFrame(frame);
-        }
-
-        const observer = new ResizeObserver(() => {
-            measureWeekRowHeights();
-        });
-
-        observer.observe(host);
-        const monthView = host.querySelector('.rbc-month-view') as HTMLElement | null;
-        if (monthView) {
-            observer.observe(monthView);
-        }
-
-        const handleResize = () => measureWeekRowHeights();
-        window.addEventListener('resize', handleResize);
-
-        return () => {
-            window.cancelAnimationFrame(frame);
-            window.removeEventListener('resize', handleResize);
-            observer.disconnect();
-        };
-    }, [
-        currentView,
-        isInitialCalendarLoading,
-        viewDate,
-        calendarEvents.length,
-        isMobileViewport,
-        measureWeekRowHeights,
-    ]);
 
     const athleteOptions = useMemo(() => (athletes || []).map((athlete: any) => ({
         value: athlete.id.toString(),
@@ -1565,109 +1424,6 @@ export const TrainingCalendar = ({
         closeDayModal();
     }, [closeDayModal]);
 
-    // Custom Date Header for Calendar Cells
-    const CustomDateHeader = useCallback(({ date }: { date: Date, label: string }) => {
-        const isToday = date.toDateString() === new Date().toDateString();
-        const dateKey = format(date, 'yyyy-MM-dd');
-        const markers = planningMarkersByDate.get(dateKey) || [];
-        return (
-            <Stack gap={4} p={4} h="100%" justify="space-between">
-                <Group justify="space-between" align="flex-start" wrap="nowrap">
-                    <Text 
-                        size="xs" 
-                        fw={700}
-                        style={{
-                            color: isToday ? activityColors.default : palette.textDim,
-                            opacity: isToday ? 1 : 0.72,
-                            transition: 'color 0.2s ease',
-                            cursor: 'default'
-                        }}
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.color = palette.textMain;
-                            e.currentTarget.style.opacity = '1';
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.color = isToday ? activityColors.default : palette.textDim;
-                            e.currentTarget.style.opacity = isToday ? '1' : '0.72';
-                        }}
-                    >
-                        {format(date, 'MMM d').toUpperCase()}
-                    </Text>
-                </Group>
-                {markers.length > 0 && (
-                    <Group gap={4} wrap="nowrap">
-                        {markers.slice(0, 3).map((marker, index) => {
-                            const visual = buildPlanningMarkerVisual(marker);
-                            const Icon = visual.Icon;
-                            return (
-                                <Group
-                                    key={`${dateKey}-${marker.label}-${index}`}
-                                    gap={3}
-                                    wrap="nowrap"
-                                    title={visual.title}
-                                    style={{
-                                        borderRadius: 999,
-                                        padding: '2px 6px',
-                                        background: isDark ? 'rgba(15, 23, 42, 0.78)' : 'rgba(255, 255, 255, 0.88)',
-                                        border: `1px solid ${visual.color}55`,
-                                        color: visual.color,
-                                        width: 'fit-content',
-                                    }}
-                                >
-                                    <Icon size={16} />
-                                    {visual.shortLabel ? (
-                                        <Text size="11px" fw={800} c={visual.color} style={{ lineHeight: 1 }}>
-                                            {visual.shortLabel}
-                                        </Text>
-                                    ) : null}
-                                </Group>
-                            );
-                        })}
-                        {markers.length > 3 && (
-                            <Text size="11px" fw={700} c={palette.textDim}>+{markers.length - 3}</Text>
-                        )}
-                    </Group>
-                )}
-            </Stack>
-        );
-    }, [activityColors.default, isDark, palette.textDim, palette.textMain, planningMarkersByDate]);
-
-    const calendarComponents = useMemo(() => ({
-        event: RealEventComponent,
-        month: {
-            dateHeader: CustomDateHeader,
-        }
-    }), [CustomDateHeader, RealEventComponent]);
-
-    const calendarDayPropGetter = useCallback((date: Date) => {
-        const classNames: string[] = [];
-        const dateKey = format(date, 'yyyy-MM-dd');
-
-        if (selectedDateRange) {
-            if (dateKey >= selectedDateRange.startDate && dateKey <= selectedDateRange.endDate) {
-                classNames.push('calendar-day-selected');
-            }
-            if (dateKey === selectedDateRange.startDate) {
-                classNames.push('calendar-day-selected-start');
-            }
-            if (dateKey === selectedDateRange.endDate) {
-                classNames.push('calendar-day-selected-end');
-            }
-        }
-
-        if (planningMarkersByDate.has(dateKey)) {
-            classNames.push('calendar-day-has-planning-marker');
-        }
-
-        return classNames.length > 0 ? { className: classNames.join(' ') } : { style: {} };
-    }, [planningMarkersByDate, selectedDateRange]);
-
-    const calendarStyles = useMemo(() => buildTrainingCalendarStyles({
-        isDark,
-        weekdayHeaderHeight: WEEKDAY_HEADER_HEIGHT,
-        palette,
-    }), [isDark, palette]);
-
     const upcomingRacesNode = useMemo(() => {
         const today = format(new Date(), 'yyyy-MM-dd');
         const races = (calendarSeasonPlan?.goal_races || [])
@@ -1694,10 +1450,7 @@ export const TrainingCalendar = ({
             mx="auto"
             w="100%"
             style={{ overflow: 'hidden', minHeight: 0 }}
-            onWheel={handleCalendarWheel}
         >
-            <style>{calendarStyles}</style>
-            
             <CalendarHeader
                 date={viewDate}
                 onNavigate={setViewDate}
@@ -1711,7 +1464,20 @@ export const TrainingCalendar = ({
             
             <Group align="stretch" gap={8} wrap={isMobileViewport ? 'wrap' : 'nowrap'} style={{ flex: 1, minHeight: 0 }}>
                 {currentView === 'week' ? (
-                    <Box className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, minHeight: 0, padding: isMobileViewport ? 6 : 10, overflowY: 'auto' }}>
+                    <Box style={{
+                        flex: 1,
+                        minWidth: 0,
+                        minHeight: 0,
+                        padding: isMobileViewport ? 6 : 10,
+                        overflowY: 'auto',
+                        border: `1px solid ${palette.headerBorder}`,
+                        borderRadius: 12,
+                        overflow: 'hidden',
+                        background: palette.panelBg,
+                        backdropFilter: 'blur(14px)',
+                        height: '100%',
+                        boxShadow: isDark ? '0 28px 56px -40px rgba(15, 23, 42, 0.9)' : '0 28px 56px -44px rgba(15, 23, 42, 0.45)',
+                    }}>
                         {isInitialCalendarLoading ? (
                             <CalendarWeekSkeleton />
                         ) : (
@@ -1791,31 +1557,44 @@ export const TrainingCalendar = ({
                     </Box>
                 ) : (
                     <>
-                        <Box ref={monthGridRef} className="calendar-grid-wrapper" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowX: isMobileViewport ? 'auto' : 'hidden' }}>
+                        <Box ref={monthGridRef} style={{
+                            flex: 1,
+                            minWidth: 0,
+                            minHeight: 0,
+                            overflowX: isMobileViewport ? 'auto' : 'hidden',
+                            border: `1px solid ${palette.headerBorder}`,
+                            borderRadius: 12,
+                            overflow: 'hidden',
+                            background: palette.panelBg,
+                            backdropFilter: 'blur(14px)',
+                            height: '100%',
+                            boxShadow: isDark ? '0 28px 56px -40px rgba(15, 23, 42, 0.9)' : '0 28px 56px -44px rgba(15, 23, 42, 0.45)',
+                        }}>
                             {isInitialCalendarLoading ? (
                                 <CalendarMonthSkeleton />
                             ) : (
-                                <Box style={{ minWidth: isMobileViewport ? 600 : 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
-                                    <DnDCalendar
-                                        localizer={localizer}
-                                        events={calendarEvents}
-                                        startAccessor={(e: any) => e.start}
-                                        endAccessor={(e: any) => e.end}
-                                        onEventDrop={onEventDrop}
-                                        onDropFromOutside={onDropFromOutside}
-                                        selectable
-                                        onSelectSlot={handleSlotSelection}
-                                        onSelectEvent={handleSelectEvent}
-                                        views={[Views.MONTH]}
-                                        defaultView={Views.MONTH}
-                                        toolbar={false}
-                                        onNavigate={(date) => setViewDate(date)}
-                                        date={viewDate}
-                                        popup
-                                        components={calendarComponents}
-                                        dayPropGetter={calendarDayPropGetter}
-                                    />
-                                </Box>
+                                <ContinuousCalendarGrid
+                                    viewDate={viewDate}
+                                    onViewDateChange={setViewDate}
+                                    weekStartDay={weekStartDay}
+                                    events={events}
+                                    visibleWeeks={visibleWeekCount}
+                                    palette={palette}
+                                    isDark={isDark}
+                                    activityColors={activityColors}
+                                    preferredUnits={me?.profile?.preferred_units}
+                                    planningMarkersByDate={planningMarkersByDate}
+                                    buildPlanningMarkerVisual={buildPlanningMarkerVisual}
+                                    onSelectEvent={handleSelectEvent}
+                                    onSelectSlot={handleSlotSelection}
+                                    onEventDrop={onEventDrop}
+                                    onDropFromOutside={onDropFromOutside}
+                                    canEditWorkouts={canEditWorkouts}
+                                    gridRef={monthGridRef}
+                                    onWeekRowHeights={setWeekRowHeights}
+                                    onVisibleWeeks={setContinuousVisibleWeeks}
+                                    selectedDateRange={selectedDateRange}
+                                />
                             )}
                         </Box>
                         <TrainingCalendarZoneSummaryPanel

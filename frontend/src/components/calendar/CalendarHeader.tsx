@@ -33,10 +33,11 @@ const CalendarHeader = ({
     const accentSecondary = '#6E4BF3';
 
     const handleNext = () => {
-        onNavigate(currentView === 'week' ? addWeeks(date, 1) : addMonths(date, 1));
+        // In both continuous and week views, navigate by 1 week for smooth scrolling
+        onNavigate(addWeeks(date, 1));
     };
     const handlePrev = () => {
-        onNavigate(currentView === 'week' ? addWeeks(date, -1) : addMonths(date, -1));
+        onNavigate(addWeeks(date, -1));
     };
     const handleToday = () => {
         onNavigate(new Date());
@@ -130,7 +131,7 @@ const CalendarHeader = ({
                         />
                     )}
 
-                    {!isMobile && currentView === 'month' && monthlyTotalsLabel && onMonthlyTotalsClick && (
+                    {!isMobile && currentView !== 'week' && monthlyTotalsLabel && onMonthlyTotalsClick && (
                         <Button
                             variant="subtle"
                             size="compact-sm"
