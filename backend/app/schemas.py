@@ -432,6 +432,7 @@ class ActivityDetail(ActivityOut):
     planned_comparison: Optional[Any] = None
     ftp_at_time: Optional[float] = None
     weight_at_time: Optional[float] = None
+    strava_activity_url: Optional[str] = None
 
 
 class SplitAnnotationUpdate(BaseModel):

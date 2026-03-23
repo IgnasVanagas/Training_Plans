@@ -1,4 +1,4 @@
-import { Alert, Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
+import { Alert, Anchor, Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
 import { IconInfoCircle } from "@tabler/icons-react";
 import { type ProviderStatus } from "../api/integrations";
 
@@ -69,6 +69,18 @@ export const IntegrationsPanel = ({
                     <Text size="xs" c="dimmed">
                       Imports your last 3 months of activities on first sync.
                     </Text>
+                  )}
+                  {item.provider === "strava" && isConnected && (
+                    <Anchor
+                      href="https://www.strava.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      size="xs"
+                      c="#FC4C02"
+                      underline="hover"
+                    >
+                      Powered by Strava
+                    </Anchor>
                   )}
                   {item.last_sync_at && <Text size="xs" c="dimmed">Last sync: {new Date(item.last_sync_at).toLocaleString()}</Text>}
                   {item.last_error && (

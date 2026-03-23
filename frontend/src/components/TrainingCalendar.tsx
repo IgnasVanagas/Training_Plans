@@ -12,7 +12,7 @@ import { Award, Bandage, CalendarOff, HeartPulse, Medal, Plane, Trophy } from 'l
 import { getLatestSeasonPlan, PlannerConstraint, saveSeasonPlan, SeasonPlan } from '../api/planning';
 import { useI18n } from '../i18n/I18nProvider';
 import { SavedWorkout } from '../types/workout';
-import { Group, Stack, Text, Box, useComputedColorScheme, Paper, Badge } from '@mantine/core';
+import { Group, Stack, Text, Box, useComputedColorScheme, Paper, Badge, Popover, Divider } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useMediaQuery } from '@mantine/hooks';
 import { useNavigate } from 'react-router-dom';
@@ -75,6 +75,86 @@ type PlanningActionMutationInput = {
     targetAthleteId: number;
     targetAthlete: any;
     dateRange: { startDate: string; endDate: string };
+};
+
+const UpcomingRacePill = ({ race, idx, isDark }: { race: any; idx: number; isDark: boolean }) => {
+    const RaceIcon = race.priority === 'A' ? Trophy : race.priority === 'B' ? Medal : Award;
+    const iconColor = race.priority === 'A' ? '#DC2626' : race.priority === 'B' ? '#D97706' : '#2563EB';
+    const daysUntil = Math.max(0, Math.ceil((parseDate(race.date).getTime() - Date.now()) / 86400000));
+    const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
+    const bg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)';
+    const textColor = isDark ? '#E2E8F0' : '#1E293B';
+    const dimColor = isDark ? '#9FB0C8' : '#52617A';
+    const surfaceBg = isDark ? '#12223E' : '#FFFFFF';
+
+    return (
+        <Popover position="bottom-start" withArrow shadow="md" withinPortal>
+            <Popover.Target>
+                <Group
+                    key={idx}
+                    gap={5}
+                    wrap="nowrap"
+                    style={{ padding: '3px 8px', borderRadius: 8, border: `1px solid ${borderColor}`, background: bg, cursor: 'pointer' }}
+                >
+                    <RaceIcon size={11} color={iconColor} style={{ flexShrink: 0 }} />
+                    <Text size="xs" fw={idx === 0 ? 700 : 500} style={{ color: textColor, whiteSpace: 'nowrap' }}>
+                        {format(parseDate(race.date), 'MMM d')} · {race.name}
+                    </Text>
+                    <Text size="xs" fw={700} style={{ color: iconColor, whiteSpace: 'nowrap' }}>{daysUntil}d</Text>
+                </Group>
+            </Popover.Target>
+            <Popover.Dropdown style={{ background: surfaceBg, border: `1px solid ${borderColor}`, borderRadius: 10, minWidth: 220 }}>
+                <Group gap={6} mb={8}>
+                    <RaceIcon size={14} color={iconColor} />
+                    <Text size="sm" fw={700} style={{ color: textColor }}>{race.name}</Text>
+                    <Badge size="xs" variant="light" color={race.priority === 'A' ? 'red' : race.priority === 'B' ? 'orange' : 'blue'}>
+                        {race.priority}-Race
+                    </Badge>
+                </Group>
+                <Divider mb={8} />
+                <Stack gap={4}>
+                    <Group justify="space-between">
+                        <Text size="xs" style={{ color: dimColor }}>Date</Text>
+                        <Text size="xs" fw={600} style={{ color: textColor }}>{format(parseDate(race.date), 'MMMM d, yyyy')}</Text>
+                    </Group>
+                    <Group justify="space-between">
+                        <Text size="xs" style={{ color: dimColor }}>Days away</Text>
+                        <Text size="xs" fw={600} style={{ color: iconColor }}>{daysUntil} days</Text>
+                    </Group>
+                    {race.sport_type && (
+                        <Group justify="space-between">
+                            <Text size="xs" style={{ color: dimColor }}>Sport</Text>
+                            <Text size="xs" fw={600} style={{ color: textColor }}>{race.sport_type}</Text>
+                        </Group>
+                    )}
+                    {race.distance_km != null && (
+                        <Group justify="space-between">
+                            <Text size="xs" style={{ color: dimColor }}>Distance</Text>
+                            <Text size="xs" fw={600} style={{ color: textColor }}>{race.distance_km} km</Text>
+                        </Group>
+                    )}
+                    {race.expected_time && (
+                        <Group justify="space-between">
+                            <Text size="xs" style={{ color: dimColor }}>Goal time</Text>
+                            <Text size="xs" fw={600} style={{ color: textColor }}>{race.expected_time}</Text>
+                        </Group>
+                    )}
+                    {race.location && (
+                        <Group justify="space-between">
+                            <Text size="xs" style={{ color: dimColor }}>Location</Text>
+                            <Text size="xs" fw={600} style={{ color: textColor }}>{race.location}</Text>
+                        </Group>
+                    )}
+                    {race.notes && (
+                        <Box mt={4}>
+                            <Text size="xs" style={{ color: dimColor }} mb={2}>Notes</Text>
+                            <Text size="xs" style={{ color: textColor }}>{race.notes}</Text>
+                        </Box>
+                    )}
+                </Stack>
+            </Popover.Dropdown>
+        </Popover>
+    );
 };
 
 const buildPlanningMarkerVisual = (marker: CalendarPlanningMarker) => {
@@ -1087,6 +1167,38 @@ export const TrainingCalendar = ({
         closeDayModal();
     };
 
+    const handleCreateRestDay = () => {
+        if (!canEditWorkouts) return;
+        if (selectedEvent.date) {
+            const selectedDate = parseDate(selectedEvent.date);
+            const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            if (selectedDay < today) {
+                setDayCreateError('Creating rest days for yesterday or earlier is disabled.');
+                return;
+            }
+        }
+        if (!ensureAthleteSelectedForCreate()) return;
+
+        const targetAthleteId = selectedEvent.user_id || athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined);
+        const payload: CalendarEvent = {
+            title: 'Rest Day',
+            date: selectedEvent.date || format(new Date(), 'yyyy-MM-dd'),
+            sport_type: 'Rest',
+            planned_duration: 0,
+            planned_intensity: 'Rest',
+            description: 'Scheduled rest day — recover and recharge.',
+            user_id: targetAthleteId,
+            structure: [],
+            is_planned: true,
+            recurrence: selectedEvent.recurrence || undefined,
+        };
+
+        createMutation.mutate(payload);
+        closeDayModal();
+    };
+
     const handleDownloadPlannedWorkout = async (workoutId: number) => {
         try {
             const response = await api.get(`/calendar/${workoutId}/download`, { responseType: 'blob' });
@@ -1568,25 +1680,11 @@ export const TrainingCalendar = ({
             .sort((a: any, b: any) => a.date.localeCompare(b.date))
             .slice(0, 2);
         if (!races.length) return null;
-        const borderColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)';
-        const bg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)';
-        const textColor = isDark ? '#E2E8F0' : '#1E293B';
         return (
             <Group gap={6} wrap="nowrap">
-                {races.map((race: any, idx: number) => {
-                    const RaceIcon = race.priority === 'A' ? Trophy : race.priority === 'B' ? Medal : Award;
-                    const iconColor = race.priority === 'A' ? '#DC2626' : race.priority === 'B' ? '#D97706' : '#2563EB';
-                    const daysUntil = Math.max(0, Math.ceil((parseDate(race.date).getTime() - Date.now()) / 86400000));
-                    return (
-                        <Group key={idx} gap={5} wrap="nowrap" style={{ padding: '3px 8px', borderRadius: 8, border: `1px solid ${borderColor}`, background: bg }}>
-                            <RaceIcon size={11} color={iconColor} style={{ flexShrink: 0 }} />
-                            <Text size="xs" fw={idx === 0 ? 700 : 500} style={{ color: textColor, whiteSpace: 'nowrap' }}>
-                                {format(parseDate(race.date), 'MMM d')} · {race.name}
-                            </Text>
-                            <Text size="xs" fw={700} style={{ color: iconColor, whiteSpace: 'nowrap' }}>{daysUntil}d</Text>
-                        </Group>
-                    );
-                })}
+                {races.map((race: any, idx: number) => (
+                    <UpcomingRacePill key={idx} race={race} idx={idx} isDark={isDark} />
+                ))}
             </Group>
         );
     }, [calendarSeasonPlan, isDark]);
@@ -1702,7 +1800,7 @@ export const TrainingCalendar = ({
                             {isInitialCalendarLoading ? (
                                 <CalendarMonthSkeleton />
                             ) : (
-                                <Box style={{ minWidth: isMobileViewport ? 760 : 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
+                                <Box style={{ minWidth: isMobileViewport ? 600 : 0, height: '100%', display: 'flex', flexDirection: 'column' }}>
                                     <DnDCalendar
                                         localizer={localizer}
                                         events={calendarEvents}
@@ -1781,6 +1879,7 @@ export const TrainingCalendar = ({
                 calendarSeasonPlan={calendarSeasonPlan}
                 onOpenWorkoutBuilder={open}
                 onCreateQuickWorkout={handleCreateQuickWorkout}
+                onCreateRestDay={handleCreateRestDay}
                 onLibrarySelect={handleLibrarySelect}
                 dayCreateError={dayCreateError}
             />

@@ -55,6 +55,7 @@ export const ORIGAMI_ACTIVITY_COLORS: Record<'dark' | 'light', Record<ActivityBr
         hike: '#FF6A1A',
         workout: '#7A5AF8',
         virtual: '#5C6CFF',
+        rest: '#64748B',
         default: '#94A3B8'
     },
     light: {
@@ -65,6 +66,7 @@ export const ORIGAMI_ACTIVITY_COLORS: Record<'dark' | 'light', Record<ActivityBr
         hike: '#E95A12',
         workout: '#6E4BF3',
         virtual: '#4C5DFF',
+        rest: '#94A3B8',
         default: '#64748B'
     }
 };

@@ -1,8 +1,9 @@
 import { format } from 'date-fns';
-import { Activity, Award, Bandage, CalendarOff, CheckCircle, HeartPulse, Medal, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
+import { Activity, Award, Bandage, CalendarOff, CheckCircle, HeartPulse, Medal, Moon, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
 import { ActionIcon, Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, SegmentedControl, Text, TextInput, Textarea } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useMediaQuery } from '@mantine/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { WorkoutEditor } from '../builder/WorkoutEditor';
 import { WorkoutLibrary } from '../library/WorkoutLibrary';
@@ -179,12 +180,14 @@ export const DayDetailsModal = ({
   calendarSeasonPlan,
   onOpenWorkoutBuilder,
   onCreateQuickWorkout,
+  onCreateRestDay,
   onLibrarySelect,
   dayCreateError,
   activityColors,
   palette,
 }: any) => {
   const { t } = useI18n();
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [createMode, setCreateMode] = useState<'quick' | 'library'>('quick');
   const [editingMarker, setEditingMarker] = useState<{ type: string; index: number } | null>(null);
   const [editDraft, setEditDraft] = useState<any>(null);
@@ -322,6 +325,7 @@ export const DayDetailsModal = ({
     onClose={onClose}
     title={selectedDayTitle}
     size="lg"
+    fullScreen={isMobile}
     styles={{ content: { fontFamily: '"Inter", sans-serif' } }}
   >
     <Stack>
@@ -676,6 +680,18 @@ export const DayDetailsModal = ({
                   <>
                     <Divider my="xs" />
 
+                    <Button
+                      variant="light"
+                      color="gray"
+                      leftSection={<Moon size={16} />}
+                      fullWidth
+                      mb="sm"
+                      onClick={onCreateRestDay}
+                      disabled={!canEditWorkouts}
+                    >
+                      {t('Rest Day') || 'Rest Day'}
+                    </Button>
+
                     <SegmentedControl 
                         value={createMode}
                         onChange={(val: any) => setCreateMode(val)}
@@ -916,6 +932,7 @@ export const WorkoutEditModal = ({
   handleSave,
 }: any) => {
   const { t } = useI18n();
+  const isMobileEdit = useMediaQuery('(max-width: 48em)');
 
   return (
   <Modal
@@ -923,9 +940,10 @@ export const WorkoutEditModal = ({
     onClose={onClose}
     title={selectedEvent.id ? (t('Edit Workout') || 'Edit Workout') : (t('Plan Workout') || 'Plan Workout')}
     size="90%"
-    centered
+    fullScreen={isMobileEdit}
+    centered={!isMobileEdit}
     styles={{
-      content: { maxWidth: '1200px', maxHeight: '92vh', overflow: 'auto', fontFamily: '"Inter", sans-serif' },
+      content: { maxWidth: '1200px', maxHeight: isMobileEdit ? undefined : '92vh', overflow: 'auto', fontFamily: '"Inter", sans-serif' },
       body: { overflowX: 'hidden' },
     }}
     transitionProps={{ transition: 'fade', duration: 200 }}

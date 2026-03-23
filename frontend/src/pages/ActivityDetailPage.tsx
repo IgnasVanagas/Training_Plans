@@ -1,5 +1,5 @@
-import { ActionIcon, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput } from "@mantine/core";
-import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy } from "@tabler/icons-react";
+import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput } from "@mantine/core";
+import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Brush } from 'recharts';
@@ -63,6 +63,7 @@ type ActivityDetail = {
     notes?: string | null;
     ftp_at_time?: number | null;
     weight_at_time?: number | null;
+    strava_activity_url?: string | null;
     planned_comparison?: {
         workout_id: number;
         workout_title: string;
@@ -199,6 +200,7 @@ export const ActivityDetailPage = () => {
     const [splitAnnotationsDirty, setSplitAnnotationsDirty] = useState(false);
     const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }>>({});
     const [showAllBestEfforts, setShowAllBestEfforts] = useState(false);
+    const [mapFullscreen, setMapFullscreen] = useState(false);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [showDangerZone, setShowDangerZone] = useState(false);
@@ -1111,10 +1113,15 @@ export const ActivityDetailPage = () => {
                     <Title order={4} c={ui.textMain}>{activity.filename}</Title>
                     <Badge color={activity.sport === 'running' ? 'green' : 'blue'} variant="light">{activity.sport || 'activity'}</Badge>
                     {activity.is_deleted && <Badge color="red" variant="light">Deleted</Badge>}
+                    {activity.strava_activity_url && (
+                        <Anchor href={activity.strava_activity_url} target="_blank" rel="noopener noreferrer" size="xs" fw={600} c="#FC5200" style={{ textDecoration: 'underline' }}>
+                            {t("View on Strava")} <IconExternalLink size={12} style={{ verticalAlign: 'middle' }} />
+                        </Anchor>
+                    )}
                 </Group>
             </AppShell.Header>
             <AppShell.Main bg={ui.pageBg}>
-                <Container size="xl" py="sm">
+                <Container size="xl" py="sm" px={{ base: "xs", sm: "md" }}>
                     {completionPulse && (
                         <Paper withBorder p="sm" mb="md" bg={isDark ? 'rgba(124,255,178,0.1)' : 'green.0'} style={{ borderColor: ui.border }} radius="lg">
                             <Group justify="space-between">
@@ -1123,7 +1130,7 @@ export const ActivityDetailPage = () => {
                             </Group>
                         </Paper>
                     )}
-                    <SimpleGrid cols={{ base: 1, md: 4 }} mb="md" spacing="sm" verticalSpacing="sm">
+                    <SimpleGrid cols={{ base: 2, sm: 2, md: 4 }} mb="md" spacing="sm" verticalSpacing="sm">
                         <Card
                             withBorder
                             padding="lg"
@@ -1354,6 +1361,7 @@ export const ActivityDetailPage = () => {
                                                 </Stack>
                                             </Paper>
                                         )}
+                                        <CommentsPanel entityType="activity" entityId={Number(id)} athleteId={activity.athlete_id} />
                                     </Stack>
                                 </Grid.Col>
 
@@ -1366,12 +1374,24 @@ export const ActivityDetailPage = () => {
                                             canEdit={me?.id === activity.athlete_id}
                                         />
                                         {routePositions.length > 0 ? (
-                                            <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
-                                                <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
-                                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
-                                                    <Polyline positions={routePositions} color="blue" weight={4} />
-                                                </MapContainer>
-                                            </Paper>
+                                            <Box style={{ position: 'relative' }}>
+                                                <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
+                                                    <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
+                                                        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
+                                                        <Polyline positions={routePositions} color="blue" weight={4} />
+                                                    </MapContainer>
+                                                </Paper>
+                                                <ActionIcon
+                                                    size="sm"
+                                                    variant="white"
+                                                    radius="sm"
+                                                    style={{ position: 'absolute', top: 8, right: 8, zIndex: 1000, boxShadow: '0 1px 4px rgba(0,0,0,0.3)' }}
+                                                    onClick={() => setMapFullscreen(true)}
+                                                    aria-label="Fullscreen map"
+                                                >
+                                                    <IconArrowsMaximize size={14} />
+                                                </ActionIcon>
+                                            </Box>
                                         ) : (
                                             <Paper withBorder p="xl" radius="lg" h={200} bg={ui.surface} style={{ borderColor: ui.border }}>
                                                 <Stack align="center" justify="center" h="100%">
@@ -1380,9 +1400,6 @@ export const ActivityDetailPage = () => {
                                                 </Stack>
                                             </Paper>
                                         )}
-                                        <Box>
-                                            <CommentsPanel entityType="activity" entityId={Number(id)} athleteId={activity.athlete_id} />
-                                        </Box>
                                     </Stack>
                                 </Grid.Col>
                             </Grid>
@@ -1827,7 +1844,7 @@ export const ActivityDetailPage = () => {
                                     <Title order={5} c={ui.textMain}>Planned vs Actual</Title>
                                     <Text size="xs" c={ui.textDim}>{activity.planned_comparison.workout_title}</Text>
                                 </Group>
-                            <SimpleGrid cols={{ base: 1, md: 6 }} spacing="xs" mb="sm">
+                            <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }} spacing="xs" mb="sm">
                                 {activity.planned_comparison.summary?.has_planned_distance && (
                                 <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
                                     <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Duration Delta</Text>
@@ -2113,6 +2130,18 @@ export const ActivityDetailPage = () => {
                     )}
                 </Container>
 
+                {/* Strava API Brand Guidelines: "Powered by Strava" attribution */}
+                {activity.strava_activity_url && (
+                    <Container size="xl" py="xs">
+                        <Group justify="flex-end" gap="xs">
+                            <Text size="xs" c="dimmed">{t("Powered by Strava")}</Text>
+                            <Anchor href={activity.strava_activity_url} target="_blank" rel="noopener noreferrer" size="xs" fw={600} c="#FC5200" style={{ textDecoration: 'underline' }}>
+                                {t("View on Strava")}
+                            </Anchor>
+                        </Group>
+                    </Container>
+                )}
+
                 <Modal opened={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} title="Confirm delete" centered>
                     <Stack>
                         <Text size="sm">Type DELETE to confirm removing this activity. This action cannot be undone.</Text>
@@ -2143,6 +2172,23 @@ export const ActivityDetailPage = () => {
 
                 <Modal opened={zoneInfoOpen} onClose={() => setZoneInfoOpen(false)} title={zoneInfoTitle} centered>
                     <Text size="sm">{zoneInfoBody}</Text>
+                </Modal>
+
+                <Modal
+                    opened={mapFullscreen}
+                    onClose={() => setMapFullscreen(false)}
+                    size="100%"
+                    padding={0}
+                    withCloseButton
+                    title={activity.filename}
+                    styles={{ body: { height: 'calc(90vh - 60px)', padding: 0 }, content: { height: '90vh' } }}
+                >
+                    {routePositions.length > 0 && (
+                        <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
+                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
+                            <Polyline positions={routePositions} color="blue" weight={4} />
+                        </MapContainer>
+                    )}
                 </Modal>
             </AppShell.Main>
         </AppShell>

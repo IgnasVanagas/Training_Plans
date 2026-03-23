@@ -6,6 +6,7 @@ export type ActivityBrandType =
     | 'hike'
     | 'workout'
     | 'virtual'
+    | 'rest'
     | 'default';
 
 type ActivityStyleRow = {
@@ -15,6 +16,7 @@ type ActivityStyleRow = {
 
 export const resolveActivityBrandType = (sportType?: string, title?: string): ActivityBrandType => {
     const token = `${sportType || ''} ${title || ''}`.toLowerCase();
+    if (token.includes('rest')) return 'rest';
     if (token.includes('virtualride') || token.includes('virtual ride') || token.includes('virtual') || token.includes('indoor') || token.includes('trainer') || token.includes('zwift')) return 'virtual';
     if (token.includes('gym') || token.includes('strength') || token.includes('workout')) return 'workout';
     if (token.includes('swim')) return 'swim';
@@ -31,6 +33,7 @@ export const resolveActivityAccentColor = (activityColors: Record<ActivityBrandT
 
 export const resolveActivityPillLabel = (sportType?: string, title?: string) => {
     const kind = resolveActivityBrandType(sportType, title);
+    if (kind === 'rest') return 'Rest Day';
     if (kind === 'virtual') return 'Virtual Ride';
     if (kind === 'workout') return 'Workout';
     if (kind === 'swim') return 'Swim';
@@ -51,6 +54,7 @@ export const resolveWeekAccentColor = (rows: ActivityStyleRow[], activityColors:
         hike: 0,
         workout: 0,
         virtual: 0,
+        rest: 0,
         default: 0
     };
     rows.forEach((row) => {

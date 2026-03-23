@@ -2816,6 +2816,13 @@ async def get_activity(
         logger.warning("Failed to compute PRs for activity %s", activity.id, exc_info=True)
         pr_flags = {}
 
+    # Build Strava "View on Strava" link (Strava Brand Guidelines §3)
+    strava_activity_url = None
+    if isinstance(stored_data, dict):
+        _meta = stored_data.get("_meta") if isinstance(stored_data.get("_meta"), dict) else {}
+        if _meta.get("source_provider") == "strava" and _meta.get("source_activity_id"):
+            strava_activity_url = f"https://www.strava.com/activities/{_meta['source_activity_id']}"
+
     activity_response = ActivityDetail(
         id=activity.id,
         athlete_id=activity.athlete_id,
@@ -2853,6 +2860,7 @@ async def get_activity(
         notes=activity.notes if activity.notes is not None else legacy_notes,
         ftp_at_time=ftp_at_time,
         weight_at_time=weight_at_time,
+        strava_activity_url=strava_activity_url,
     )
     return activity_response
 

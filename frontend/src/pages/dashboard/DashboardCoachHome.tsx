@@ -201,7 +201,7 @@ const DashboardCoachHome = ({
           </Button>
         </Group>
 
-        <Group align="end" mt="sm" wrap="nowrap">
+        <Group align="end" mt="sm" wrap="wrap">
           <TextInput
             label="Existing athlete email"
             placeholder="athlete@example.com"

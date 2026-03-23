@@ -1,4 +1,5 @@
 import {
+  Anchor,
   Box,
   Button,
   Group,
@@ -179,6 +180,20 @@ export default function DashboardActivityTrackersTab({
                       "Imports your last 3 months of activities on first sync."
                     )}
                   </Text>
+                )}
+
+                {/* Strava API Brand Guidelines: "Powered by Strava" */}
+                {item.provider === "strava" && isConnected && (
+                  <Anchor
+                    href="https://www.strava.com"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    size="xs"
+                    c="#FC4C02"
+                    underline="hover"
+                  >
+                    {t("Powered by Strava")}
+                  </Anchor>
                 )}
 
                 {/* Action buttons */}

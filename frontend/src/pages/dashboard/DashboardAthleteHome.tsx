@@ -91,7 +91,7 @@ const DashboardAthleteHome = ({
       )}
 
       <Paper withBorder p="lg" radius="md" shadow="sm" bg={cardBg} style={{ borderColor: cardBorder }}>
-        <Group justify="space-between" align="flex-start">
+        <Group justify="space-between" align="flex-start" wrap="wrap">
           <Stack gap={4}>
             <Group gap="xs">
               <ThemeIcon color="orange" variant="light" radius="xl"><IconTargetArrow size={16} /></ThemeIcon>

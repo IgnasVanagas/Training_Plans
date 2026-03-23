@@ -211,6 +211,34 @@ def _frontend_callback_url(*, provider: str, status: str, message: str | None = 
     return f"{frontend_base_url}{callback_path}?{urlencode(query)}"
 
 
+async def _purge_provider_activities(
+    db: AsyncSession,
+    *,
+    user_id: int,
+    provider: str,
+) -> int:
+    """Delete all activities sourced from a provider (Strava API §2.14.5, §4.4, §5.4)."""
+    rows = await db.execute(
+        select(Activity).where(
+            Activity.athlete_id == user_id,
+            Activity.file_type == "provider",
+        )
+    )
+    purged = 0
+    for activity in rows.scalars().all():
+        payload = _as_stream_payload(activity.streams)
+        meta = payload.get("_meta") if isinstance(payload.get("_meta"), dict) else {}
+        if str(meta.get("source_provider") or "") != provider:
+            continue
+        activity.streams = None
+        activity.is_deleted = True
+        db.add(activity)
+        purged += 1
+    if purged > 0:
+        await db.commit()
+    return purged
+
+
 async def _disconnect_provider_connection(
     db: AsyncSession,
     *,
@@ -218,6 +246,10 @@ async def _disconnect_provider_connection(
     reason: str,
     last_error: str | None = None,
 ) -> None:
+    # Strava API Agreement §2.14.5 / §4.4 / §5.4: purge all provider data on disconnect.
+    purged = await _purge_provider_activities(
+        db, user_id=connection.user_id, provider=connection.provider,
+    )
     connection.encrypted_access_token = None
     connection.encrypted_refresh_token = None
     connection.token_expires_at = None
@@ -230,7 +262,7 @@ async def _disconnect_provider_connection(
         provider=connection.provider,
         action="disconnect",
         status="warning" if last_error else "ok",
-        message=reason,
+        message=f"{reason} Purged {purged} activities.",
     )
 
 

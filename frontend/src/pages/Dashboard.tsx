@@ -766,7 +766,7 @@ const Dashboard = () => {
                     }}
                   />
                 </Box>
-                {showLibrary && (
+                {showLibrary && !isMobile && (
                     <Box w={320} style={{ borderLeft: '1px solid var(--mantine-color-default-border)' }}>
                         <WorkoutLibrary 
                             onDragStart={setDraggedWorkout} 
