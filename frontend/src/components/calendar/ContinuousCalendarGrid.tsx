@@ -186,16 +186,14 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                 scrollInitiated.current = true;
                 onViewDateChange(cs);
             }
-        }
 
-        // If near edges, re-anchor to get more buffer weeks (preserve scroll position)
-        if (el.scrollTop < 200 || el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
-            if (closest) {
+            // If near edges, re-anchor to get more buffer weeks (preserve scroll position)
+            if (el.scrollTop < 200 || el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
                 const refRow = weekRowRefs.current.get(ck);
                 if (refRow) {
                     reAnchorContext.current = { weekKey: ck, scrollOffset: el.scrollTop - refRow.offsetTop };
                 }
-                setAnchorDate((closest as { key: string; dist: number; start: Date }).start);
+                setAnchorDate(cs);
             }
         }
     }, [weeks, weekStartDay, onViewDateChange, suppressFor]);
