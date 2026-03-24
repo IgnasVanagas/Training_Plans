@@ -147,6 +147,7 @@ export const DayEventItem = ({
   onPlannedSelect,
   onCloseDayModal,
   onDownloadPlannedWorkout,
+  onDuplicateSelect,
 }: {
   r: CalendarEvent;
   isDark: boolean;
@@ -157,6 +158,7 @@ export const DayEventItem = ({
   onPlannedSelect: (event: CalendarEvent) => void;
   onCloseDayModal: () => void;
   onDownloadPlannedWorkout: (workoutId: number) => void;
+  onDuplicateSelect?: (event: CalendarEvent) => void;
 }) => {
   const navigate = useNavigate();
 
@@ -182,6 +184,11 @@ export const DayEventItem = ({
       onClick={() => {
         if (!r.is_planned) {
           if (r.id) {
+            if ((r.duplicate_recordings_count ?? 0) > 0 && onDuplicateSelect) {
+              onDuplicateSelect(r);
+              onCloseDayModal();
+              return;
+            }
             navigate(`/dashboard/activities/${r.id}`, {
               state: {
                 returnTo: athleteId ? `/dashboard/athlete/${athleteId}` : '/dashboard',

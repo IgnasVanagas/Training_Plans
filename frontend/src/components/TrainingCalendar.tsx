@@ -1640,6 +1640,23 @@ export const TrainingCalendar = ({
                     open();
                 }}
                 onDownloadPlannedWorkout={handleDownloadPlannedWorkout}
+                onDuplicateSelect={(event: CalendarEvent) => {
+                    const res = event;
+                    setDuplicateModalActivity({
+                        id: res.id!,
+                        filename: res.title,
+                        sport: res.sport_type ?? null,
+                        created_at: res.date,
+                        distance: res.distance != null ? res.distance * 1000 : null,
+                        duration: res.duration != null ? res.duration * 60 : null,
+                        avg_speed: res.avg_speed ?? null,
+                        average_hr: res.avg_hr ?? null,
+                        average_watts: res.avg_watts ?? null,
+                        athlete_id: res.user_id!,
+                        duplicate_recordings_count: res.duplicate_recordings_count ?? null,
+                        duplicate_of_id: null,
+                    });
+                }}
                 coachNeedsAthleteSelection={coachNeedsAthleteSelection}
                 athleteOptions={athleteOptions}
                 selectedEvent={selectedEvent}

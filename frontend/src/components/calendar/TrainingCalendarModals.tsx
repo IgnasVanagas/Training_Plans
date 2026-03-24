@@ -185,6 +185,7 @@ export const DayDetailsModal = ({
   dayCreateError,
   activityColors,
   palette,
+  onDuplicateSelect,
 }: any) => {
   const { t } = useI18n();
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -479,6 +480,7 @@ export const DayDetailsModal = ({
                   }}
                   onCloseDayModal={onClose}
                   onDownloadPlannedWorkout={onDownloadPlannedWorkout}
+                  onDuplicateSelect={onDuplicateSelect}
                 />
               ))
             )}

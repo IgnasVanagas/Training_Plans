@@ -695,13 +695,20 @@ export default function TrainingCalendarZoneSummaryPanel({
         const gridEl = gridScrollRef?.current;
         const sidebarEl = sidebarScrollRef.current;
         if (!gridEl || !sidebarEl) return;
+        let raf: number;
         const onGridScroll = () => {
-            sidebarEl.scrollTop = gridEl.scrollTop;
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+                sidebarEl.scrollTop = gridEl.scrollTop;
+            });
         };
         // Set initial position
         sidebarEl.scrollTop = gridEl.scrollTop;
         gridEl.addEventListener('scroll', onGridScroll, { passive: true });
-        return () => gridEl.removeEventListener('scroll', onGridScroll);
+        return () => {
+            gridEl.removeEventListener('scroll', onGridScroll);
+            cancelAnimationFrame(raf);
+        };
     }, [gridScrollRef]);
 
     return (

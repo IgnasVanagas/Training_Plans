@@ -217,6 +217,18 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         };
     }, [handleScroll]);
 
+    /* ── Reduce scroll sensitivity (slower scrolling) ── */
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const onWheel = (e: WheelEvent) => {
+            e.preventDefault();
+            el.scrollTop += e.deltaY * 0.45;
+        };
+        el.addEventListener('wheel', onWheel, { passive: false });
+        return () => el.removeEventListener('wheel', onWheel);
+    }, []);
+
     /* ── Expose scroll container ref to parent ── */
     useEffect(() => {
         if (scrollContainerRef) scrollContainerRef.current = scrollRef.current;
