@@ -3,10 +3,10 @@ import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, I
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Brush } from 'recharts';
-import { MapContainer, TileLayer, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
 import { ActivityDetailSkeleton } from "../components/common/SkeletonScreens";
@@ -131,6 +131,35 @@ type ActivityDetail = {
     } | null;
 };
 
+/* ── Fullscreen map helpers ── */
+
+const MapFitBounds = ({ positions }: { positions: [number, number][] }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (positions.length > 1) {
+            map.fitBounds(L.latLngBounds(positions.map(p => L.latLng(p[0], p[1]))), { padding: [30, 30] });
+        }
+    }, [map, positions]);
+    return null;
+};
+
+const MapPanTo = ({ position }: { position: [number, number] | null }) => {
+    const map = useMap();
+    const lastPan = useRef<string | null>(null);
+    useEffect(() => {
+        if (!position) return;
+        const key = `${position[0].toFixed(5)},${position[1].toFixed(5)}`;
+        if (lastPan.current !== key) {
+            lastPan.current = key;
+            // Don't pan on every hover — only if marker is outside visible bounds
+            if (!map.getBounds().contains(L.latLng(position[0], position[1]))) {
+                map.panTo(L.latLng(position[0], position[1]), { animate: true, duration: 0.3 });
+            }
+        }
+    }, [map, position]);
+    return null;
+};
+
 export const ActivityDetailPage = () => {
     const { t } = useI18n();
     const { id } = useParams();
@@ -201,6 +230,7 @@ export const ActivityDetailPage = () => {
     const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }>>({});
     const [showAllBestEfforts, setShowAllBestEfforts] = useState(false);
     const [mapFullscreen, setMapFullscreen] = useState(false);
+    const [fsMapIndex, setFsMapIndex] = useState<number | null>(null);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [showDangerZone, setShowDangerZone] = useState(false);
@@ -387,6 +417,67 @@ export const ActivityDetailPage = () => {
         if (hoveredPointIndex === null) return null;
         return chartData[hoveredPointIndex] || null;
     }, [chartData, hoveredPointIndex]);
+
+    /* Fullscreen map: only points with GPS coords, for elevation graph + marker */
+    const gpsChartData = useMemo(() => {
+        if (!activity) return [];
+        const startTs = streamPoints[0]?.timestamp ? new Date(streamPoints[0].timestamp).getTime() : 0;
+        const isRunning = (activity.sport || '').toLowerCase().includes('run');
+        return streamPoints
+            .filter((p: any) => p.lat && p.lon)
+            .map((p: any) => {
+                let timeMin = 0;
+                if (p.timestamp && startTs) {
+                    timeMin = (new Date(p.timestamp).getTime() - startTs) / 60000;
+                }
+                let paceDisplay: string | null = null;
+                let speedKmh: number | null = null;
+                if (p.speed && p.speed > 0.1) {
+                    speedKmh = p.speed * 3.6;
+                    if (isRunning) {
+                        const mpm = p.speed * 60;
+                        const paceVal = 1000 / mpm;
+                        if (paceVal <= 20) {
+                            const pm = Math.floor(paceVal);
+                            const ps = Math.round((paceVal - pm) * 60);
+                            paceDisplay = `${pm}:${ps.toString().padStart(2, '0')}/km`;
+                        }
+                    }
+                }
+                return {
+                    lat: p.lat,
+                    lon: p.lon,
+                    altitude: p.altitude ?? null,
+                    heart_rate: p.heart_rate ?? null,
+                    power: p.power ?? null,
+                    speedKmh,
+                    paceDisplay,
+                    timeMin,
+                    distance_km: p.distance ? p.distance / 1000 : 0,
+                };
+            });
+    }, [activity, streamPoints]);
+
+    const fsMapPoint = useMemo(() => {
+        if (fsMapIndex === null || !gpsChartData[fsMapIndex]) return null;
+        return gpsChartData[fsMapIndex];
+    }, [fsMapIndex, gpsChartData]);
+
+    const fsMapMarkerPos = useMemo<[number, number] | null>(() => {
+        if (!fsMapPoint) return null;
+        return [fsMapPoint.lat, fsMapPoint.lon];
+    }, [fsMapPoint]);
+
+    const handleFsElevationMove = useCallback((state: any) => {
+        const idx = state?.activeTooltipIndex;
+        if (typeof idx === 'number' && Number.isFinite(idx)) {
+            setFsMapIndex(idx);
+        }
+    }, []);
+
+    const handleFsElevationLeave = useCallback(() => {
+        setFsMapIndex(null);
+    }, []);
 
     const handleSharedChartMouseMove = (state: any) => {
         const idx = state?.activeTooltipIndex;
@@ -1381,7 +1472,7 @@ export const ActivityDetailPage = () => {
                                             initialActivity={activity}
                                             canEdit={me?.id === activity.athlete_id}
                                         />
-                                        {routePositions.length > 0 ? (
+                                        {routePositions.length > 0 && !mapFullscreen ? (
                                             <Box style={{ position: 'relative' }}>
                                                 <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
                                                     <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
@@ -2201,18 +2292,85 @@ export const ActivityDetailPage = () => {
 
                 <Modal
                     opened={mapFullscreen}
-                    onClose={() => setMapFullscreen(false)}
+                    onClose={() => { setMapFullscreen(false); setFsMapIndex(null); }}
                     size="100%"
                     padding={0}
                     withCloseButton
                     title={activity.filename}
-                    styles={{ body: { height: 'calc(90vh - 60px)', padding: 0 }, content: { height: '90vh' } }}
+                    styles={{ body: { height: 'calc(90vh - 60px)', padding: 0, display: 'flex', flexDirection: 'column' }, content: { height: '90vh' } }}
                 >
                     {routePositions.length > 0 && (
-                        <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
-                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
-                            <Polyline positions={routePositions} color="blue" weight={4} />
-                        </MapContainer>
+                        <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                            {/* Map */}
+                            <Box style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+                                <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
+                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
+                                    <Polyline positions={routePositions} color="blue" weight={4} opacity={0.6} />
+                                    <MapFitBounds positions={routePositions} />
+                                    {fsMapMarkerPos && <MapPanTo position={fsMapMarkerPos} />}
+                                    {fsMapMarkerPos && (
+                                        <CircleMarker center={fsMapMarkerPos} radius={8} pathOptions={{ color: '#fff', fillColor: '#E95A12', fillOpacity: 1, weight: 3 }}>
+                                            {fsMapPoint && (
+                                                <LeafletTooltip permanent direction="top" offset={[0, -12]}>
+                                                    <div style={{ fontSize: 12, lineHeight: 1.5, minWidth: 110 }}>
+                                                        <div style={{ fontWeight: 600, marginBottom: 2 }}>
+                                                            {Math.floor(fsMapPoint.timeMin)}:{Math.round((fsMapPoint.timeMin % 1) * 60).toString().padStart(2, '0')} elapsed
+                                                        </div>
+                                                        {fsMapPoint.heart_rate != null && (
+                                                            <div>HR: {fsMapPoint.heart_rate} bpm</div>
+                                                        )}
+                                                        {fsMapPoint.paceDisplay != null && (
+                                                            <div>Pace: {fsMapPoint.paceDisplay}</div>
+                                                        )}
+                                                        {fsMapPoint.paceDisplay == null && fsMapPoint.speedKmh != null && (
+                                                            <div>Speed: {fsMapPoint.speedKmh.toFixed(1)} km/h</div>
+                                                        )}
+                                                        {fsMapPoint.power != null && fsMapPoint.power > 0 && (
+                                                            <div>Power: {Math.round(fsMapPoint.power)} W</div>
+                                                        )}
+                                                        {fsMapPoint.altitude != null && (
+                                                            <div>Elev: {Math.round(fsMapPoint.altitude)} m</div>
+                                                        )}
+                                                    </div>
+                                                </LeafletTooltip>
+                                            )}
+                                        </CircleMarker>
+                                    )}
+                                </MapContainer>
+                            </Box>
+                            {/* Elevation graph */}
+                            {gpsChartData.length > 0 && (
+                                <Box style={{ height: 120, flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}` }} px="xs">
+                                    <ResponsiveContainer width="100%" height={120}>
+                                        <AreaChart data={gpsChartData} onMouseMove={handleFsElevationMove} onMouseLeave={handleFsElevationLeave} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+                                            <defs>
+                                                <linearGradient id="fsElevGrad" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor={isDark ? '#60A5FA' : '#3B82F6'} stopOpacity={0.4} />
+                                                    <stop offset="100%" stopColor={isDark ? '#60A5FA' : '#3B82F6'} stopOpacity={0.05} />
+                                                </linearGradient>
+                                            </defs>
+                                            <XAxis dataKey="distance_km" tick={{ fontSize: 10, fill: ui.textDim }} tickFormatter={(v: number) => `${v.toFixed(1)}`} axisLine={false} tickLine={false} />
+                                            <YAxis tick={{ fontSize: 10, fill: ui.textDim }} axisLine={false} tickLine={false} width={35} domain={['dataMin - 10', 'dataMax + 10']} tickFormatter={(v: number) => `${Math.round(v)}m`} />
+                                            <Tooltip
+                                                content={({ active, payload }) => {
+                                                    if (!active || !payload?.[0]) return null;
+                                                    const d = payload[0].payload;
+                                                    return (
+                                                        <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt} style={{ fontSize: 11 }}>
+                                                            <Text size="xs" fw={600} c={ui.textDim}>{d.distance_km?.toFixed(2)} km</Text>
+                                                            <Text size="xs" c={ui.textMain}>Elevation: {Math.round(d.altitude ?? 0)} m</Text>
+                                                        </Paper>
+                                                    );
+                                                }}
+                                                isAnimationActive={false}
+                                                cursor={{ stroke: ui.accent, strokeWidth: 1 }}
+                                            />
+                                            <Area type="monotone" dataKey="altitude" stroke={isDark ? '#60A5FA' : '#3B82F6'} strokeWidth={1.5} fill="url(#fsElevGrad)" isAnimationActive={false} dot={false} connectNulls />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </Box>
+                            )}
+                        </Box>
                     )}
                 </Modal>
             </AppShell.Main>
