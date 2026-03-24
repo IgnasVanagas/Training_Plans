@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Group, Stack, Text } from '@mantine/core';
 import { format, addDays, startOfWeek, addWeeks, getMonth, getYear } from 'date-fns';
 import { CalendarEventCard } from './TrainingCalendarEventRenderers';
@@ -94,6 +94,10 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     /** Stable ref so scroll handler doesn't depend on viewDate */
     const viewDateRef = useRef(viewDate);
     viewDateRef.current = viewDate;
+    /** Tracks whether a viewDate change originated from the scroll handler */
+    const scrollInitiated = useRef(false);
+    /** Context for preserving visual position during edge re-anchors */
+    const reAnchorContext = useRef<{ weekKey: string; scrollOffset: number } | null>(null);
 
     // Build the list of weeks to render
     const weeks = useMemo(
@@ -121,20 +125,35 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         suppressTimer.current = setTimeout(() => { suppressScrollUpdate.current = false; }, ms);
     }, []);
 
-    /* ── initial scroll to anchor week ── */
-    useEffect(() => {
+    /* ── scroll to anchor week (runs before paint to avoid flicker) ── */
+    useLayoutEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
-        const anchorRow = weekRowRefs.current.get(weeks[anchorWeekIdx]?.key);
-        if (anchorRow) {
+        if (reAnchorContext.current) {
+            // Edge re-anchor: preserve visual scroll position
+            const { weekKey, scrollOffset } = reAnchorContext.current;
+            reAnchorContext.current = null;
             suppressFor(300);
-            el.scrollTop = anchorRow.offsetTop - 36; // minus header height
+            const row = weekRowRefs.current.get(weekKey);
+            if (row) el.scrollTop = row.offsetTop + scrollOffset;
+        } else {
+            // External navigation or initial load: scroll to anchor
+            const anchorRow = weekRowRefs.current.get(weeks[anchorWeekIdx]?.key);
+            if (anchorRow) {
+                suppressFor(300);
+                el.scrollTop = anchorRow.offsetTop - 36; // minus header height
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [anchorDate]);
 
     /* ── When viewDate changes externally (header nav), re-anchor ── */
     useEffect(() => {
+        // Skip re-anchoring when the viewDate change came from the scroll handler
+        if (scrollInitiated.current) {
+            scrollInitiated.current = false;
+            return;
+        }
         const vk = format(startOfWeek(viewDate, { weekStartsOn: weekStartDay as 0 | 1 }), 'yyyy-MM-dd');
         const ak = format(startOfWeek(anchorDate, { weekStartsOn: weekStartDay as 0 | 1 }), 'yyyy-MM-dd');
         if (vk !== ak) {
@@ -163,15 +182,19 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
             const cs = (closest as { key: string; dist: number; start: Date }).start;
             const currentAnchorKey = format(startOfWeek(viewDateRef.current, { weekStartsOn: weekStartDay as 0 | 1 }), 'yyyy-MM-dd');
             if (ck !== currentAnchorKey) {
-                // Suppress briefly so our own viewDate update doesn't re-anchor
-                suppressFor(250);
+                // Mark as scroll-originated so the viewDate sync effect skips re-anchoring
+                scrollInitiated.current = true;
                 onViewDateChange(cs);
             }
         }
 
-        // If near edges, re-anchor to get more buffer weeks
+        // If near edges, re-anchor to get more buffer weeks (preserve scroll position)
         if (el.scrollTop < 200 || el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
             if (closest) {
+                const refRow = weekRowRefs.current.get(ck);
+                if (refRow) {
+                    reAnchorContext.current = { weekKey: ck, scrollOffset: el.scrollTop - refRow.offsetTop };
+                }
                 setAnchorDate((closest as { key: string; dist: number; start: Date }).start);
             }
         }
@@ -344,7 +367,6 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                     flex: 1,
                     overflowY: 'auto',
                     overflowX: 'hidden',
-                    scrollBehavior: 'smooth',
                     minHeight: 0,
                     /* hide scrollbar for cleaner look */
                     scrollbarWidth: 'thin',
