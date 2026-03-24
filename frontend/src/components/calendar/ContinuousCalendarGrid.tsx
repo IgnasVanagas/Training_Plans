@@ -27,9 +27,11 @@ export type ContinuousCalendarGridProps = {
     canEditWorkouts: boolean;
     /** Ref forwarded so parent can measure week row heights */
     gridRef?: React.RefObject<HTMLDivElement | null>;
-    /** Notify parent of rendered week row heights */
+    /** Ref exposed so parent can synchronize sidebar scroll */
+    scrollContainerRef?: React.MutableRefObject<HTMLDivElement | null>;
+    /** Notify parent of rendered week row heights (all rendered weeks) */
     onWeekRowHeights?: (heights: number[]) => void;
-    /** Notify parent of which weeks are visible (for sidebar) */
+    /** Notify parent of all rendered weeks (for sidebar) */
     onVisibleWeeks?: (weeks: Array<{ start: Date; end: Date; key: string }>) => void;
     selectedDateRange?: { startDate: string; endDate: string } | null;
 };
@@ -82,6 +84,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     onDropFromOutside,
     canEditWorkouts,
     gridRef,
+    scrollContainerRef,
     onWeekRowHeights,
     onVisibleWeeks,
     selectedDateRange,
@@ -214,17 +217,20 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         };
     }, [handleScroll]);
 
-    /* ── Measure & report week row heights ── */
+    /* ── Expose scroll container ref to parent ── */
+    useEffect(() => {
+        if (scrollContainerRef) scrollContainerRef.current = scrollRef.current;
+    });
+
+    /* ── Measure & report ALL week row heights ── */
     useEffect(() => {
         if (!onWeekRowHeights) return;
         const el = scrollRef.current;
         if (!el) return;
         const measure = () => {
-            const viewWeekStart = startOfWeek(viewDate, { weekStartsOn: weekStartDay as 0 | 1 });
             const heights: number[] = [];
-            for (let i = 0; i < visibleWeeks; i++) {
-                const wk = format(addWeeks(viewWeekStart, i), 'yyyy-MM-dd');
-                const row = weekRowRefs.current.get(wk);
+            for (const week of weeks) {
+                const row = weekRowRefs.current.get(week.key);
                 heights.push(row ? Math.round(row.getBoundingClientRect().height) : 0);
             }
             onWeekRowHeights(heights);
@@ -233,23 +239,18 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         const observer = new ResizeObserver(measure);
         observer.observe(el);
         return () => observer.disconnect();
-    }, [viewDate, weekStartDay, visibleWeeks, onWeekRowHeights]);
+    }, [weeks, onWeekRowHeights]);
 
-    /* ── Notify parent of visible weeks ── */
+    /* ── Notify parent of ALL rendered weeks ── */
     useEffect(() => {
         if (!onVisibleWeeks) return;
-        const viewWeekStart = startOfWeek(viewDate, { weekStartsOn: weekStartDay as 0 | 1 });
-        const result: Array<{ start: Date; end: Date; key: string }> = [];
-        for (let i = 0; i < visibleWeeks; i++) {
-            const ws = addWeeks(viewWeekStart, i);
-            result.push({
-                start: ws,
-                end: addDays(ws, 6),
-                key: format(ws, 'yyyy-MM-dd'),
-            });
-        }
+        const result: Array<{ start: Date; end: Date; key: string }> = weeks.map((w) => ({
+            start: w.start,
+            end: addDays(w.start, 6),
+            key: w.key,
+        }));
         onVisibleWeeks(result);
-    }, [viewDate, weekStartDay, visibleWeeks, onVisibleWeeks]);
+    }, [weeks, onVisibleWeeks]);
 
     /* ── DnD state ── */
     const [dragOverDate, setDragOverDate] = useState<string | null>(null);
@@ -374,7 +375,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                 {weeks.map((week, weekIdx) => {
                     const monthLabel = monthHeaders.get(weekIdx);
                     return (
-                        <React.Fragment key={week.key}>
+                        <Box key={week.key} ref={setWeekRowRef(week.key)}>
                             {/* Month boundary label */}
                             {monthLabel && (
                                 <Box
@@ -405,13 +406,13 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
 
                             {/* Week row — 7 day cells */}
                             <Box
-                                ref={setWeekRowRef(week.key)}
                                 data-week-key={week.key}
                                 style={{
                                     display: 'grid',
                                     gridTemplateColumns: 'repeat(7, 1fr)',
+                                    gridTemplateRows: '1fr',
                                     borderBottom: `1px solid ${palette.dayCellBorder || palette.headerBorder}`,
-                                    minHeight: 80,
+                                    height: 110,
                                 }}
                             >
                                 {week.days.map((day) => {
@@ -448,9 +449,10 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                                             ? (isDark ? 'rgba(59, 130, 246, 0.14)' : 'rgba(59, 130, 246, 0.10)')
                                                             : 'transparent',
                                                 position: 'relative',
-                                                minHeight: 80,
+                                                height: '100%',
                                                 display: 'flex',
                                                 flexDirection: 'column',
+                                                overflow: 'hidden',
                                             }}
                                         >
                                             {/* Day header */}
@@ -580,7 +582,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                     );
                                 })}
                             </Box>
-                        </React.Fragment>
+                        </Box>
                     );
                 })}
             </Box>

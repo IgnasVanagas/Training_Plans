@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Box, Group, SegmentedControl, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { endOfWeek, format, startOfWeek } from 'date-fns';
@@ -30,6 +30,8 @@ type ZoneSummaryPanelProps = {
     weekStartDay: number;
     weekdayHeaderHeight: number;
     panelWidth: number;
+    /** Ref to the grid's inner scroll container, for synced scrolling */
+    gridScrollRef?: React.MutableRefObject<HTMLDivElement | null>;
 };
 
 const formatTotalMinutes = (minutes: number) => {
@@ -170,7 +172,9 @@ export default function TrainingCalendarZoneSummaryPanel({
     weekStartDay,
     weekdayHeaderHeight,
     panelWidth,
+    gridScrollRef,
 }: ZoneSummaryPanelProps) {
+    const sidebarScrollRef = useRef<HTMLDivElement>(null);
     const [zoneDetailModal, setZoneDetailModal] = useState<ZoneDetailModalData | null>(null);
     const [weeklyZoneMetricMode, setWeeklyZoneMetricMode] = useState<'hr' | 'performance'>('performance');
     const lastHandledMonthlySignalRef = useRef(0);
@@ -686,6 +690,20 @@ export default function TrainingCalendarZoneSummaryPanel({
         return `repeat(${Math.max(weeksInMonth.length, 1)}, minmax(0, 1fr))`;
     }, [weekRowHeights, weeksInMonth.length]);
 
+    /* ── Sync sidebar scroll to grid scroll ── */
+    useEffect(() => {
+        const gridEl = gridScrollRef?.current;
+        const sidebarEl = sidebarScrollRef.current;
+        if (!gridEl || !sidebarEl) return;
+        const onGridScroll = () => {
+            sidebarEl.scrollTop = gridEl.scrollTop;
+        };
+        // Set initial position
+        sidebarEl.scrollTop = gridEl.scrollTop;
+        gridEl.addEventListener('scroll', onGridScroll, { passive: true });
+        return () => gridEl.removeEventListener('scroll', onGridScroll);
+    }, [gridScrollRef]);
+
     return (
         <Stack w={panelWidth} miw={panelWidth} h="100%" gap={0} style={{ overflow: 'hidden' }}>
             <Box
@@ -717,18 +735,23 @@ export default function TrainingCalendarZoneSummaryPanel({
             </Box>
 
             <Box
+                ref={sidebarScrollRef}
                 flex={1}
                 style={{
                     border: `1px solid ${palette.headerBorder}`,
                     borderRadius: '0 0 12px 12px',
                     background: palette.panelBg,
                     backdropFilter: 'blur(14px)',
-                    display: 'grid',
-                    gridTemplateRows: weeklyRowsTemplate,
-                    overflow: 'hidden',
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    scrollbarWidth: 'none',        /* hide scrollbar — grid is the scroll leader */
                     minHeight: 0
                 }}
             >
+                <Box style={{
+                    display: 'grid',
+                    gridTemplateRows: weeklyRowsTemplate,
+                }}>
                 {weeksInMonth.map((week, index) => {
                     const weekEvents = completedEvents.filter((event: any) => {
                         const eventDate = event.start as Date;
@@ -790,6 +813,7 @@ export default function TrainingCalendarZoneSummaryPanel({
                         </Box>
                     );
                 })}
+                </Box>
             </Box>
 
             <TrainingCalendarZoneDetailModal

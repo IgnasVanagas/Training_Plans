@@ -284,6 +284,7 @@ export const TrainingCalendar = ({
     const [viewDate, setViewDate] = useState(parsedInitialViewDate || new Date());
     const [currentView, setCurrentView] = useState<'month' | 'week'>(isMobileViewport ? 'week' : 'month');
     const monthGridRef = React.useRef<HTMLDivElement | null>(null);
+    const gridScrollRef = React.useRef<HTMLDivElement | null>(null);
     const [weekRowHeights, setWeekRowHeights] = useState<number[]>([]);
     const [continuousVisibleWeeks, setContinuousVisibleWeeks] = useState<Array<{ start: Date; end: Date; key: string }>>([]);
 
@@ -1591,6 +1592,7 @@ export const TrainingCalendar = ({
                                     onDropFromOutside={onDropFromOutside}
                                     canEditWorkouts={canEditWorkouts}
                                     gridRef={monthGridRef}
+                                    scrollContainerRef={gridScrollRef}
                                     onWeekRowHeights={setWeekRowHeights}
                                     onVisibleWeeks={setContinuousVisibleWeeks}
                                     selectedDateRange={selectedDateRange}
@@ -1615,6 +1617,7 @@ export const TrainingCalendar = ({
                             weekStartDay={weekStartDay}
                             weekdayHeaderHeight={WEEKDAY_HEADER_HEIGHT}
                             panelWidth={WEEKLY_TOTALS_PANEL_WIDTH}
+                            gridScrollRef={gridScrollRef}
                         />
                     </>
                 )}
