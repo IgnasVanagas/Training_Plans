@@ -54,17 +54,21 @@ const DashboardSettingsTab = ({
     fontFamily: '"Inter", sans-serif',
   } as const;
 
+  const showingAthleteSettings = !!(me.role === "coach" && initialAthleteId);
+
   return (
     <Stack w="100%">
-      <SettingsForm
-        user={me}
-        onSubmit={onSaveProfile}
-        isSaving={isSavingProfile}
-        requestingEmailConfirmation={requestingEmailConfirmation}
-        changingPassword={changingPassword}
-        onRequestEmailConfirmation={onRequestEmailConfirmation}
-        onChangePassword={onChangePassword}
-      />
+      {!showingAthleteSettings && (
+        <SettingsForm
+          user={me}
+          onSubmit={onSaveProfile}
+          isSaving={isSavingProfile}
+          requestingEmailConfirmation={requestingEmailConfirmation}
+          changingPassword={changingPassword}
+          onRequestEmailConfirmation={onRequestEmailConfirmation}
+          onChangePassword={onChangePassword}
+        />
+      )}
 
       {me.role === "coach" && (
         <>

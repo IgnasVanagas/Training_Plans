@@ -26,6 +26,7 @@ import DashboardAthleteProfileTab from "./dashboard/DashboardAthleteProfileTab";
 import DashboardTrainingZonesTab from "./dashboard/DashboardTrainingZonesTab";
 import DashboardActivityTrackersTab from "./dashboard/DashboardActivityTrackersTab";
 import DashboardSettingsTab from "./dashboard/DashboardSettingsTab";
+import AdminPanel from "./dashboard/AdminPanel";
 import { useI18n } from "../i18n/I18nProvider";
 import {
   ActivityFeedRow,
@@ -50,7 +51,7 @@ const toLocalDateKey = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle"]);
+const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health"]);
 
 const Dashboard = () => {
   const location = useLocation();
@@ -67,7 +68,7 @@ const Dashboard = () => {
   const [inviteEmail, setInviteEmail] = useState("");
 
   // Resolve initial tab: navigation state > URL ?tab= > default "dashboard"
-  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle";
+  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health";
   const resolvedInitialTab: DashboardTab = (() => {
     if (navigationState.activeTab && VALID_TABS.has(navigationState.activeTab)) return navigationState.activeTab;
     const urlTab = searchParams.get("tab");
@@ -162,7 +163,9 @@ const Dashboard = () => {
   // Default athletes to Calendar (plan) tab when no explicit tab is in the URL
   useEffect(() => {
     if (didDefaultTab || !meQuery.data) return;
-    if (meQuery.data.role !== "coach" && activeTab === "dashboard" && !searchParams.get("tab") && !navigationState.activeTab) {
+    if (meQuery.data.role === "admin" && activeTab === "dashboard" && !searchParams.get("tab") && !navigationState.activeTab) {
+      setActiveTab("admin-users");
+    } else if (meQuery.data.role !== "coach" && activeTab === "dashboard" && !searchParams.get("tab") && !navigationState.activeTab) {
       setActiveTab("plan");
     }
     setDidDefaultTab(true);
@@ -714,7 +717,7 @@ const Dashboard = () => {
       activeTab={activeTab}
       setActiveTab={setActiveTab}
       headerRight={headerRight}
-      onQuickAddActivity={me.role !== "coach" ? () => setUploadModalOpened(true) : undefined}
+      onQuickAddActivity={me.role === "athlete" ? () => setUploadModalOpened(true) : undefined}
       role={me.role}
       supportEmail={me.email}
       athletes={athletesQuery.data || []}
@@ -750,7 +753,12 @@ const Dashboard = () => {
           selectedMetricRows={selectedMetricRows}
         />
 
-        {activeTab === "activities" ? (
+        {activeTab === "admin-users" || activeTab === "admin-logs" || activeTab === "admin-health" ? (
+          <AdminPanel
+            activeTab={activeTab as "admin-users" | "admin-logs" | "admin-health"}
+            onTabChange={setActiveTab}
+          />
+        ) : activeTab === "activities" ? (
           <ActivitiesView
             athleteId={athleteIdNum}
             currentUserRole={me.role}

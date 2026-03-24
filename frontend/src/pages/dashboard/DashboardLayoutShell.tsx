@@ -56,7 +56,7 @@ import api from "../../api/client";
 
 const appLogo = "/origami-logo.png";
 
-type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle";
+type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health";
 
 type SidebarAthlete = {
   id: number;
@@ -110,7 +110,8 @@ const DashboardLayoutShell = ({
   const accentPrimary = "#E95A12";
   const accentSecondary = "#6E4BF3";
   const isCoachDesktop = role === "coach" && !isMobile;
-  const isAthleteDesktop = role !== "coach" && !isMobile;
+  const isAthleteDesktop = role === "athlete" && !isMobile;
+  const isAdminDesktop = role === "admin" && !isMobile;
   const [teamExpanded, setTeamExpanded] = useState(true);
   type AthleteSort = "az" | "za" | "recent";
   const [athleteSort, setAthleteSort] = useState<AthleteSort>("az");
@@ -132,7 +133,12 @@ const DashboardLayoutShell = ({
     { key: "notifications", icon: IconBell, label: t("Notifications") },
     { key: "settings", icon: IconSettings, label: t("Settings") },
   ];
-  const navItems = role === "coach" ? coachNavItems : athleteNavItems;
+  const adminNavItems: NavItem[] = [
+    { key: "admin-users", icon: IconUsersGroup, label: "Users", color: "#E95A12" },
+    { key: "admin-logs", icon: IconActivity, label: "Audit Logs", color: "#6E4BF3" },
+    { key: "admin-health", icon: IconLayoutDashboard, label: "System Health", color: "#2E8B57" },
+  ];
+  const navItems = role === "coach" ? coachNavItems : role === "admin" ? adminNavItems : athleteNavItems;
 
   const getAthleteName = (athlete: SidebarAthlete) =>
     (athlete.profile?.first_name || athlete.profile?.last_name)
@@ -302,7 +308,7 @@ const DashboardLayoutShell = ({
     <AppShell
       header={{ height: 60 }}
       navbar={{
-        width: isMobile ? 260 : (isCoachDesktop ? 250 : (isAthleteDesktop ? 220 : 96)),
+        width: isMobile ? 260 : (isCoachDesktop ? 250 : (isAthleteDesktop || isAdminDesktop ? 220 : 96)),
         breakpoint: "sm",
         collapsed: { mobile: !opened },
       }}
@@ -316,14 +322,15 @@ const DashboardLayoutShell = ({
         <ScrollArea h="100%" scrollbarSize={4} type="auto">
         <Stack h="100%" justify="space-between" gap="md">
           {/* Profile section at top of sidebar */}
-          {(isCoachDesktop || isAthleteDesktop) && (
+          {(isCoachDesktop || isAthleteDesktop || isAdminDesktop) && (
             <Group gap="sm" px={4} pt={4} pb={0}>
-              <Avatar color={role === "coach" ? "orange" : "blue"} radius="xl" size="md">
+              <Avatar color={role === "coach" ? "orange" : role === "admin" ? "red" : "blue"} radius="xl" size="md">
                 {meDisplayName[0]?.toUpperCase() || "U"}
               </Avatar>
               <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
                 <Text size="sm" fw={700} c={isDark ? "#E2E8F0" : "#1E293B"} lineClamp={1}>{meDisplayName}</Text>
                 {role === "coach" && <Text size="xs" c="dimmed">{t("Coach")}</Text>}
+                {role === "admin" && <Text size="xs" c="dimmed">Admin</Text>}
               </Stack>
               {isAthleteDesktop && (
                 <ActionIcon

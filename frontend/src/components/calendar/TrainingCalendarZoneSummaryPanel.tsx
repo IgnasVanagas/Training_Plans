@@ -12,6 +12,11 @@ import { readSnapshot, writeSnapshot } from '../../utils/localSnapshot';
 
 type WeekRange = { start: Date; end: Date; key: string };
 
+type ZoneSummaryRenderApi = {
+    renderWeekRow: (week: WeekRange, index: number) => React.ReactNode;
+    headerContent: React.ReactNode;
+};
+
 type ZoneSummaryPanelProps = {
     monthlyOpenSignal: number;
     zoneSummary?: ZoneSummaryResponse;
@@ -33,6 +38,8 @@ type ZoneSummaryPanelProps = {
     /** Ref to the grid's inner scroll container, for synced scrolling */
     gridScrollRef?: React.MutableRefObject<HTMLDivElement | null>;
     isLoading?: boolean;
+    /** Render prop: when provided, panel renders inline (no own scroll container) */
+    children?: (api: ZoneSummaryRenderApi) => React.ReactNode;
 };
 
 const formatTotalMinutes = (minutes: number) => {
@@ -175,6 +182,7 @@ export default function TrainingCalendarZoneSummaryPanel({
     panelWidth,
     gridScrollRef,
     isLoading,
+    children,
 }: ZoneSummaryPanelProps) {
     const sidebarScrollRef = useRef<HTMLDivElement>(null);
     const [zoneDetailModal, setZoneDetailModal] = useState<ZoneDetailModalData | null>(null);
@@ -713,6 +721,83 @@ export default function TrainingCalendarZoneSummaryPanel({
         };
     }, [gridScrollRef]);
 
+    /* ── Inline (merged) rendering mode ── */
+    if (children) {
+        const headerContent = (
+            <Box px={10} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '100%', width: '100%' }}>
+                <Text size="10px" fw={800} c={palette.textDim} style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                    Weekly Totals
+                </Text>
+                <SegmentedControl
+                    size="xs"
+                    radius="md"
+                    value={weeklyZoneMetricMode}
+                    onChange={(value) => setWeeklyZoneMetricMode(value as 'hr' | 'performance')}
+                    data={[
+                        { value: 'hr', label: 'HR' },
+                        { value: 'performance', label: 'Pace/Power' }
+                    ]}
+                />
+            </Box>
+        );
+
+        const renderWeekRow = (week: WeekRange, _index: number) => {
+            const weekEvents = completedEvents.filter((event: any) => {
+                const eventDate = event.start as Date;
+                return eventDate >= week.start && eventDate <= week.end;
+            });
+            const weekMetrics = calculateMetrics(weekEvents);
+            const accentColor = resolveWeekAccentColor(weekEvents.map((evt: any) => evt.resource as CalendarEvent), activityColors);
+            const { totals: weekZones, zoneCount: weekZoneCount } = buildWeeklyDistribution(weekEvents, weeklyZoneMetricMode, week);
+            const weekAvgHr = formatAvgHr(weekMetrics.avgHr);
+
+            return (
+                <Box
+                    style={{
+                        padding: '8px 10px',
+                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : 'rgba(255, 255, 255, 0.7)',
+                        borderLeft: `3px solid ${accentColor}`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        fontFamily: '"Inter", sans-serif',
+                        cursor: 'pointer',
+                        height: '100%',
+                    }}
+                    onClick={() => { void openMoreModal(
+                        `${format(week.start, 'MMM d')} - ${format(week.end, 'MMM d')}`,
+                        week.start,
+                        week.end
+                    ); }}
+                >
+                    <Stack gap={1} miw={0}>
+                        <Text size="10px" fw={800} c={isDark ? '#F8FAFC' : '#0F172A'} style={{ letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                            {format(week.start, 'MMM d')} - {format(week.end, 'MMM d')}
+                        </Text>
+                        <Text size="sm" fw={800} c={isDark ? '#E2E8F0' : '#1E293B'} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {weekMetrics.totalDistanceKm.toFixed(1)} km / {formatTotalMinutes(weekMetrics.totalDurationMin)}
+                        </Text>
+                        <Text size="10px" fw={700} c={palette.textDim} style={{ opacity: 0.88 }}>
+                            Avg HR: {weekAvgHr}
+                        </Text>
+                    </Stack>
+                    <Box mt={5}>{renderStackedZoneBar(weekZones, weekZoneCount, 8, palette.dayCellBorder)}</Box>
+                </Box>
+            );
+        };
+
+        return (
+            <>
+                {children({ renderWeekRow, headerContent })}
+                <TrainingCalendarZoneDetailModal
+                    data={zoneDetailModal}
+                    onClose={() => setZoneDetailModal(null)}
+                />
+            </>
+        );
+    }
+
+    /* ── Standalone (sidebar) rendering mode ── */
     return (
         <Stack w={panelWidth} miw={panelWidth} h="100%" gap={0} style={{ overflow: 'hidden' }}>
             <Box

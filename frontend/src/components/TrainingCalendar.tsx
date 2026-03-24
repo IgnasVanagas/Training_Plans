@@ -1459,7 +1459,6 @@ export const TrainingCalendar = ({
                 onViewChange={setCurrentView}
                 monthlyTotalsLabel={monthlyHeaderLabel}
                 onMonthlyTotalsClick={handleMonthlyTotalsOpen}
-                monthlyTotalsWidth={WEEKLY_TOTALS_PANEL_WIDTH}
                 actionButtons={upcomingRacesNode ?? actionButtons}
             />
             
@@ -1557,7 +1556,76 @@ export const TrainingCalendar = ({
                         )}
                     </Box>
                 ) : (
-                    <>
+                    !isMobileViewport ? (
+                        <TrainingCalendarZoneSummaryPanel
+                            monthlyOpenSignal={monthlyOpenSignal}
+                            zoneSummary={zoneSummary}
+                            events={events}
+                            weeksInMonth={weeksInMonth}
+                            weekRowHeights={weekRowHeights}
+                            palette={palette}
+                            isDark={isDark}
+                            activityColors={activityColors}
+                            athletes={athletes}
+                            me={me}
+                            athleteId={athleteId}
+                            allAthletes={allAthletes}
+                            monthStart={monthStart}
+                            monthEnd={monthEnd}
+                            weekStartDay={weekStartDay}
+                            weekdayHeaderHeight={WEEKDAY_HEADER_HEIGHT}
+                            panelWidth={WEEKLY_TOTALS_PANEL_WIDTH}
+                            gridScrollRef={gridScrollRef}
+                            isLoading={isInitialCalendarLoading}
+                        >
+                            {({ renderWeekRow, headerContent }) => (
+                                <Box ref={monthGridRef} style={{
+                                    flex: 1,
+                                    minWidth: 0,
+                                    minHeight: 0,
+                                    border: `1px solid ${palette.headerBorder}`,
+                                    borderRadius: 12,
+                                    overflow: 'hidden',
+                                    background: palette.panelBg,
+                                    backdropFilter: 'blur(14px)',
+                                    height: '100%',
+                                    boxShadow: isDark ? '0 28px 56px -40px rgba(15, 23, 42, 0.9)' : '0 28px 56px -44px rgba(15, 23, 42, 0.45)',
+                                }}>
+                                    {isInitialCalendarLoading ? (
+                                        <CalendarMonthSkeleton />
+                                    ) : (
+                                        <ContinuousCalendarGrid
+                                            viewDate={viewDate}
+                                            onViewDateChange={setViewDate}
+                                            weekStartDay={weekStartDay}
+                                            events={events}
+                                            visibleWeeks={visibleWeekCount}
+                                            palette={palette}
+                                            isDark={isDark}
+                                            activityColors={activityColors}
+                                            preferredUnits={me?.profile?.preferred_units}
+                                            planningMarkersByDate={planningMarkersByDate}
+                                            buildPlanningMarkerVisual={buildPlanningMarkerVisual}
+                                            onSelectEvent={handleSelectEvent}
+                                            onSelectSlot={handleSlotSelection}
+                                            onEventDrop={onEventDrop}
+                                            onDropFromOutside={onDropFromOutside}
+                                            canEditWorkouts={canEditWorkouts}
+                                            gridRef={monthGridRef}
+                                            scrollContainerRef={gridScrollRef}
+                                            onWeekRowHeights={setWeekRowHeights}
+                                            onVisibleWeeks={setContinuousVisibleWeeks}
+                                            selectedDateRange={selectedDateRange}
+                                            isMobile={isMobileViewport}
+                                            weekSuffixWidth={WEEKLY_TOTALS_PANEL_WIDTH}
+                                            weekSuffixHeader={headerContent}
+                                            renderWeekSuffix={(week, idx) => renderWeekRow(week as any, idx)}
+                                        />
+                                    )}
+                                </Box>
+                            )}
+                        </TrainingCalendarZoneSummaryPanel>
+                    ) : (
                         <Box ref={monthGridRef} style={{
                             flex: 1,
                             minWidth: 0,
@@ -1599,30 +1667,7 @@ export const TrainingCalendar = ({
                                 />
                             )}
                         </Box>
-                        {!isMobileViewport && (
-                        <TrainingCalendarZoneSummaryPanel
-                            monthlyOpenSignal={monthlyOpenSignal}
-                            zoneSummary={zoneSummary}
-                            events={events}
-                            weeksInMonth={weeksInMonth}
-                            weekRowHeights={weekRowHeights}
-                            palette={palette}
-                            isDark={isDark}
-                            activityColors={activityColors}
-                            athletes={athletes}
-                            me={me}
-                            athleteId={athleteId}
-                            allAthletes={allAthletes}
-                            monthStart={monthStart}
-                            monthEnd={monthEnd}
-                            weekStartDay={weekStartDay}
-                            weekdayHeaderHeight={WEEKDAY_HEADER_HEIGHT}
-                            panelWidth={WEEKLY_TOTALS_PANEL_WIDTH}
-                            gridScrollRef={gridScrollRef}
-                            isLoading={isInitialCalendarLoading}
-                        />
-                        )}
-                    </>
+                    )
                 )}
             </Group>
             

@@ -6,7 +6,7 @@ import os
 from sqlalchemy import text
 
 from .database import Base, engine
-from .routers import auth, users, activities, calendar, workouts, integrations, communications, planning
+from .routers import auth, users, activities, calendar, workouts, integrations, communications, planning, admin
 from .seed import seed_data
 
 logger = logging.getLogger(__name__)
@@ -128,3 +128,4 @@ app.include_router(workouts.router)
 app.include_router(integrations.router)
 app.include_router(communications.router)
 app.include_router(planning.router)
+app.include_router(admin.router)

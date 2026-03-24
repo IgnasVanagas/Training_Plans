@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Group, Stack, Text } from '@mantine/core';
-import { format, addDays, startOfWeek, addWeeks, getMonth, getYear } from 'date-fns';
+import { format, addDays, startOfWeek, addWeeks, getMonth, getYear, getDate } from 'date-fns';
 import { CalendarEventCard } from './TrainingCalendarEventRenderers';
 import { CalendarEvent } from './types';
 
@@ -36,6 +36,12 @@ export type ContinuousCalendarGridProps = {
     selectedDateRange?: { startDate: string; endDate: string } | null;
     /** Mobile viewport — enables horizontal swipe for days */
     isMobile?: boolean;
+    /** Inline weekly totals — width of the suffix column */
+    weekSuffixWidth?: number;
+    /** Render function for each week's suffix cell (weekly totals) */
+    renderWeekSuffix?: (week: { start: Date; end: Date; key: string }, weekIndex: number) => React.ReactNode;
+    /** Header content for the suffix column */
+    weekSuffixHeader?: React.ReactNode;
 };
 
 /* ── Helpers ── */
@@ -91,7 +97,11 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     onVisibleWeeks,
     selectedDateRange,
     isMobile,
+    weekSuffixWidth,
+    renderWeekSuffix,
+    weekSuffixHeader,
 }) => {
+    const hasSuffix = !!(renderWeekSuffix && weekSuffixWidth && !isMobile);
     const scrollRef = useRef<HTMLDivElement>(null);
     const weekRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -349,33 +359,32 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
             }}
         >
             <Box style={{ ...(isMobile ? { minWidth: 770 } : {}), display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-            {/* Weekday column headers */}
-            <Box
-                style={{
-                    display: 'grid',
-                    gridTemplateColumns: isMobile ? 'repeat(7, minmax(110px, 1fr))' : 'repeat(7, 1fr)',
-                    borderBottom: `1px solid ${palette.headerBorder}`,
-                    minHeight: 36,
-                    flexShrink: 0,
-                }}
-            >
-                {weekdayHeaders.map((label) => (
-                    <Box
-                        key={label}
-                        style={{
-                            textAlign: 'center',
-                            padding: '8px 0',
-                            color: palette.textDim,
-                            textTransform: 'uppercase',
-                            fontSize: '0.68rem',
-                            letterSpacing: '0.9px',
-                            fontWeight: 700,
-                            fontFamily: '"Inter", sans-serif',
-                        }}
-                    >
-                        {label}
+            {/* Weekday column headers + optional suffix header */}
+            <Box style={{ display: 'flex', borderBottom: `1px solid ${palette.headerBorder}`, minHeight: 36, flexShrink: 0 }}>
+                <Box style={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: isMobile ? 'repeat(7, minmax(110px, 1fr))' : 'repeat(7, 1fr)' }}>
+                    {weekdayHeaders.map((label) => (
+                        <Box
+                            key={label}
+                            style={{
+                                textAlign: 'center',
+                                padding: '8px 0',
+                                color: palette.textDim,
+                                textTransform: 'uppercase',
+                                fontSize: '0.68rem',
+                                letterSpacing: '0.9px',
+                                fontWeight: 700,
+                                fontFamily: '"Inter", sans-serif',
+                            }}
+                        >
+                            {label}
+                        </Box>
+                    ))}
+                </Box>
+                {hasSuffix && weekSuffixHeader && (
+                    <Box style={{ width: weekSuffixWidth, flexShrink: 0, borderLeft: `1px solid ${palette.headerBorder}`, display: 'flex', alignItems: 'center' }}>
+                        {weekSuffixHeader}
                     </Box>
-                ))}
+                )}
             </Box>
 
             {/* Scrollable weeks container */}
@@ -421,14 +430,16 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                 </Box>
                             )}
 
-                            {/* Week row — 7 day cells */}
+                            {/* Week row — 7 day cells + optional suffix */}
+                            <Box style={{ display: 'flex', borderBottom: `1px solid ${palette.dayCellBorder || palette.headerBorder}` }}>
                             <Box
                                 data-week-key={week.key}
                                 style={{
+                                    flex: 1,
+                                    minWidth: 0,
                                     display: 'grid',
                                     gridTemplateColumns: isMobile ? 'repeat(7, minmax(110px, 1fr))' : 'repeat(7, 1fr)',
                                     gridTemplateRows: '1fr',
-                                    borderBottom: `1px solid ${palette.dayCellBorder || palette.headerBorder}`,
                                     height: isMobile ? 120 : 110,
                                     ...(isMobile ? { minWidth: 770 } : {}),
                                 }}
@@ -465,7 +476,9 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                                         ? (palette.todayBg || (isDark ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.06)'))
                                                         : isSelected
                                                             ? (isDark ? 'rgba(59, 130, 246, 0.14)' : 'rgba(59, 130, 246, 0.10)')
-                                                            : 'transparent',
+                                                            : getMonth(day) % 2 === 0
+                                                                ? (isDark ? 'rgba(30, 41, 66, 0.45)' : 'rgba(241, 245, 249, 0.70)')
+                                                                : 'transparent',
                                                 position: 'relative',
                                                 height: '100%',
                                                 display: 'flex',
@@ -485,7 +498,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                                             fontFamily: '"Inter", sans-serif',
                                                         }}
                                                     >
-                                                        {format(day, 'd')}
+                                                        {getDate(day) === 1 ? format(day, 'MMM d') : format(day, 'd')}
                                                     </Text>
                                                 </Group>
                                                 {markers.length > 0 && (
@@ -599,6 +612,12 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                         </Box>
                                     );
                                 })}
+                            </Box>
+                            {hasSuffix && (
+                                <Box style={{ width: weekSuffixWidth, flexShrink: 0, borderLeft: `1px solid ${palette.dayCellBorder || palette.headerBorder}` }}>
+                                    {renderWeekSuffix!({ start: week.start, end: addDays(week.start, 6), key: week.key }, weekIdx)}
+                                </Box>
+                            )}
                             </Box>
                         </Box>
                     );
