@@ -1,6 +1,6 @@
 import { format } from 'date-fns';
-import { Activity, Award, Bandage, CalendarOff, CheckCircle, HeartPulse, Medal, Moon, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
-import { ActionIcon, Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, SegmentedControl, Text, TextInput, Textarea } from '@mantine/core';
+import { Activity, Award, Bandage, CalendarOff, CheckCircle, HelpCircle, HeartPulse, Medal, Moon, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
+import { ActionIcon, Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, SegmentedControl, Text, TextInput, Textarea, Tooltip } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
@@ -12,6 +12,7 @@ import { formatMinutesHm, parseDate } from './dateUtils';
 import { DayEventItem } from './TrainingCalendarEventRenderers';
 import { useI18n } from '../../i18n/I18nProvider';
 import { getDayNotes, upsertDayNote, deleteDayNote, DayNote } from '../../api/dayNotes';
+import { parseWorkoutText, isParseError } from './parseWorkoutText';
 
 const weekdayOptions = (t: (value: string) => string) => [
   { value: '0', label: t('Monday') || 'Monday' },
@@ -186,10 +187,13 @@ export const DayDetailsModal = ({
   activityColors,
   palette,
   onDuplicateSelect,
+  textWorkoutInput,
+  setTextWorkoutInput,
+  onCreateTextWorkout,
 }: any) => {
   const { t } = useI18n();
   const isMobile = useMediaQuery('(max-width: 48em)');
-  const [createMode, setCreateMode] = useState<'quick' | 'library'>('quick');
+  const [createMode, setCreateMode] = useState<'quick' | 'library' | 'text'>('quick');
   const [editingMarker, setEditingMarker] = useState<{ type: string; index: number } | null>(null);
   const [editDraft, setEditDraft] = useState<any>(null);
   const [pendingRaceAction, setPendingRaceAction] = useState<{ type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string } | null>(null);
@@ -701,6 +705,7 @@ export const DayDetailsModal = ({
                         onChange={(val: any) => setCreateMode(val)}
                         data={[
                             { label: t('Create Workout') || 'Create Workout', value: 'quick' },
+                            { label: t('Text') || 'Text', value: 'text' },
                             { label: t('Library') || 'Library', value: 'library' }
                         ]}
                         fullWidth
@@ -713,7 +718,99 @@ export const DayDetailsModal = ({
                       disabled={!canEditWorkouts}
                     />
 
-                    {createMode === 'quick' ? (
+                    {createMode === 'text' ? (() => {
+                      const textParseResult = textWorkoutInput?.trim() ? parseWorkoutText(textWorkoutInput, quickWorkout.sport_type) : null;
+                      const textParseOk = textParseResult && !isParseError(textParseResult) ? textParseResult : null;
+                      const textParseErr = textParseResult && isParseError(textParseResult) ? textParseResult : null;
+                      return (
+                        <>
+                          <Select
+                            label={t('Sport') || 'Sport'}
+                            data={['Cycling', 'Running']}
+                            value={quickWorkout.sport_type}
+                            onChange={(value) => {
+                              if (!value) return;
+                              setQuickWorkout({ ...quickWorkout, sport_type: value });
+                            }}
+                            mb="xs"
+                          />
+                          <Textarea
+                            label={
+                              <Group gap={4} align="center">
+                                <span>{t('Workout shorthand') || 'Workout shorthand'}</span>
+                                <Tooltip
+                                  label={
+                                    <Stack gap={4}>
+                                      <Text size="xs" fw={600}>{'Supported syntax'}</Text>
+                                      <Text size="xs">{'Durations: 15min, 5km, 800m, 2h, 30s'}</Text>
+                                      <Text size="xs">{'Intervals: 3x5min@200w/4min'}</Text>
+                                      <Text size="xs">{'Targets: @200w @4:30 @Z3 @150bpm @RPE7'}</Text>
+                                      <Text size="xs">{'Keywords: wu, cd, rest (or auto-detected)'}</Text>
+                                      <Text size="xs">{'Separate segments with +'}</Text>
+                                      <Text size="xs" c="dimmed" mt={2}>{'Examples:'}</Text>
+                                      <Text size="xs" ff="monospace">{'15min wu + 3x5min@200w/4min + 10min cd'}</Text>
+                                      <Text size="xs" ff="monospace">{'15min + 5x1km/1min + 10min'}</Text>
+                                    </Stack>
+                                  }
+                                  multiline
+                                  w={300}
+                                  position="top"
+                                  withArrow
+                                >
+                                  <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                                    <HelpCircle size={14} style={{ opacity: 0.5 }} />
+                                  </span>
+                                </Tooltip>
+                              </Group>
+                            }
+                            placeholder="e.g. 15min + 3x5min@200w/4min + 10min"
+                            value={textWorkoutInput || ''}
+                            onChange={(e) => setTextWorkoutInput(e.currentTarget.value)}
+                            autosize
+                            minRows={2}
+                            maxRows={4}
+                            mb="xs"
+                          />
+                          {textParseOk && (
+                            <Paper withBorder p="xs" radius="md" mb="xs">
+                              <Group gap="xs">
+                                <CheckCircle size={14} style={{ color: '#22c55e' }} />
+                                <Text size="sm" fw={600}>{textParseOk.title} {quickWorkout.sport_type}</Text>
+                              </Group>
+                              <Text size="xs" c="dimmed">
+                                {textParseOk.structure.length} {t('steps') || 'steps'} · ~{textParseOk.durationMinutes}{t('min') || 'min'}
+                              </Text>
+                            </Paper>
+                          )}
+                          {textParseErr && (
+                            <Text size="xs" c="red" mb="xs">{textParseErr.error}</Text>
+                          )}
+                          <Group grow>
+                            <Button
+                              leftSection={<Activity size={16} />}
+                              variant="subtle"
+                              c="#E95A12"
+                              onClick={() => {
+                                if (!canEditWorkouts) return;
+                                if (!ensureAthleteSelectedForCreate()) return;
+                                onClose();
+                                onOpenWorkoutBuilder();
+                              }}
+                              disabled={!canEditWorkouts}
+                            >
+                              {t('Open Workout Builder') || 'Open Workout Builder'}
+                            </Button>
+                            <Button
+                              onClick={onCreateTextWorkout}
+                              disabled={!canEditWorkouts || !textParseOk}
+                              styles={{ root: { background: '#E95A12', border: 'none' } }}
+                            >
+                              {t('Add Workout') || 'Add Workout'}
+                            </Button>
+                          </Group>
+                        </>
+                      );
+                    })() : createMode === 'quick' ? (
                       <>
                     <Group grow>
                       <Select

@@ -32,6 +32,7 @@ import {
     buildQuickWorkoutStructure,
     buildQuickWorkoutZoneDetails,
 } from './calendar/quickWorkout';
+import { parseWorkoutText, isParseError } from './calendar/parseWorkoutText';
 import { athleteLabel, normalizePlan } from './planner/seasonPlanUtils';
 import { readSnapshot, writeSnapshot } from '../utils/localSnapshot';
 
@@ -625,6 +626,7 @@ export const TrainingCalendar = ({
         minutes: 45,
         distanceKm: 10,
     });
+    const [textWorkoutInput, setTextWorkoutInput] = useState('');
 
     const createMutation = useMutation({
         mutationFn: (newWorkout: CalendarEvent) => {
@@ -1095,6 +1097,44 @@ export const TrainingCalendar = ({
         };
 
         createMutation.mutate(payload);
+        closeDayModal();
+    };
+
+    const handleCreateTextWorkout = () => {
+        if (!canEditWorkouts) return;
+        if (selectedEvent.date) {
+            const selectedDate = parseDate(selectedEvent.date);
+            const selectedDay = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            if (selectedDay < today) {
+                setDayCreateError('Creating workouts for yesterday or earlier is disabled.');
+                return;
+            }
+        }
+        if (!ensureAthleteSelectedForCreate()) return;
+
+        const result = parseWorkoutText(textWorkoutInput, quickWorkout.sport_type);
+        if (isParseError(result)) {
+            setDayCreateError(result.error);
+            return;
+        }
+
+        const targetAthleteId = selectedEvent.user_id || athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined);
+        const payload: CalendarEvent = {
+            title: `${result.title} ${quickWorkout.sport_type}`,
+            date: selectedEvent.date || format(new Date(), 'yyyy-MM-dd'),
+            sport_type: quickWorkout.sport_type,
+            planned_duration: result.durationMinutes,
+            description: textWorkoutInput,
+            user_id: targetAthleteId,
+            structure: result.structure,
+            is_planned: true,
+            recurrence: selectedEvent.recurrence || undefined,
+        };
+
+        createMutation.mutate(payload);
+        setTextWorkoutInput('');
         closeDayModal();
     };
 
@@ -1743,6 +1783,9 @@ export const TrainingCalendar = ({
                 calendarSeasonPlan={calendarSeasonPlan}
                 onOpenWorkoutBuilder={open}
                 onCreateQuickWorkout={handleCreateQuickWorkout}
+                onCreateTextWorkout={handleCreateTextWorkout}
+                textWorkoutInput={textWorkoutInput}
+                setTextWorkoutInput={setTextWorkoutInput}
                 onCreateRestDay={handleCreateRestDay}
                 onLibrarySelect={handleLibrarySelect}
                 dayCreateError={dayCreateError}
