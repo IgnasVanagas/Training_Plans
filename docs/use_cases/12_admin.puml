@@ -1,0 +1,24 @@
+@startuml 12 – Administration
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Admin as ADM
+
+rectangle "12. Administration" {
+  (View all users)              as L1
+  (Activate / deactivate user)  as L2
+  (View integration audit logs) as L3
+  (View system health)          as L4
+}
+
+ADM --> L1
+ADM --> L2
+ADM --> L3
+ADM --> L4
+
+@enduml

@@ -17,6 +17,7 @@ type Props = {
   onUpdateAthletePermission: (athleteId: number, permissions: AthletePermissions["permissions"]) => void;
   savingAthleteProfileId: number | null;
   onSaveAthleteProfile: (athleteId: number, profile: Profile) => void;
+  initialAthleteId?: string | null;
   // kept for call-site compatibility
   providers?: unknown[];
   connectingProvider?: string | null;
@@ -43,6 +44,7 @@ const DashboardSettingsTab = ({
   onUpdateAthletePermission,
   savingAthleteProfileId,
   onSaveAthleteProfile,
+  initialAthleteId,
 }: Props) => {
   const isDark = useComputedColorScheme("light") === "dark";
   const { t } = useI18n();
@@ -128,6 +130,7 @@ const DashboardSettingsTab = ({
               athletes={athletes}
               savingAthleteId={savingAthleteProfileId}
               onSave={onSaveAthleteProfile}
+              initialAthleteId={initialAthleteId}
             />
           </Paper>
         </>

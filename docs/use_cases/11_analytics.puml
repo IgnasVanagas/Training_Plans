@@ -1,0 +1,34 @@
+@startuml 11 – Training Zones & Analytics
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete as ATH
+actor Coach   as COA
+actor Admin   as ADM
+
+COA --|> ATH
+
+rectangle "11. Training Zones & Analytics" {
+  (Configure HR zones)         as K1
+  (Configure power zones)      as K2
+  (Configure pace zones)       as K3
+  (View zone distribution)     as K4
+  (View training load history) as K5
+  (View power curve)           as K6
+  (Compare activities)         as K7
+}
+
+ATH --> K1
+ATH --> K2
+ATH --> K3
+ATH --> K4
+ATH --> K5
+ATH --> K6
+ATH --> K7
+
+@enduml

@@ -84,13 +84,16 @@ export const CalendarEventCard = ({
   };
 
   const timeLabel = formatClockTime(event.start);
+  const isRestDay = r.sport_type?.toLowerCase() === 'rest' || r.title?.toLowerCase() === 'rest day';
   const durationLabel = r.is_planned ? formatDuration(r.planned_duration) : formatDuration(r.duration);
   const distanceLabel = r.is_planned ? formatDist(r.planned_distance) : formatDist(r.distance);
-  const primaryMetric = (distanceLabel !== '-' && durationLabel !== '-')
-    ? `${distanceLabel} / ${durationLabel}`
-    : distanceLabel !== '-'
-      ? distanceLabel
-      : (durationLabel !== '-' ? durationLabel : '—');
+  const primaryMetric = isRestDay
+    ? 'Rest Day'
+    : (distanceLabel !== '-' && durationLabel !== '-')
+      ? `${distanceLabel} / ${durationLabel}`
+      : distanceLabel !== '-'
+        ? distanceLabel
+        : (durationLabel !== '-' ? durationLabel : '—');
   const metricParts = [timeLabel].filter(Boolean);
 
   return (
@@ -133,6 +136,11 @@ export const CalendarEventCard = ({
           {primaryMetric}
         </Text>
       </Group>
+      {r.title && !isRestDay && (
+        <Text size="10px" c={palette.textDim} pl={1} style={{ lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {r.title}
+        </Text>
+      )}
     </Box>
   );
 };

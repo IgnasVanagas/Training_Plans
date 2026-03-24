@@ -1,0 +1,59 @@
+@startuml 00 – System Overview
+
+skinparam actorStyle awesome
+skinparam rectangleBorderColor #555555
+skinparam rectangleFontStyle bold
+skinparam rectangleFontSize 13
+skinparam arrowColor #555555
+skinparam defaultFontSize 12
+left to right direction
+
+actor Athlete         as ATH
+actor Coach           as COA
+actor Admin           as ADM
+actor "External\nProvider" as EXT <<system>>
+actor "Email\nSystem"      as MAIL <<system>>
+
+COA --|> ATH
+
+rectangle "1. Authentication"        as S01
+rectangle "2. User & Profile"        as S02
+rectangle "3. Organization"          as S03
+rectangle "4. Activity Management"   as S04
+rectangle "5. Training Calendar"     as S05
+rectangle "6. Structured Workouts"   as S06
+rectangle "7. Season Planning"       as S07
+rectangle "8. Integrations"          as S08
+rectangle "9. Wellness Tracking"     as S09
+rectangle "10. Communication"        as S10
+rectangle "11. Zones & Analytics"    as S11
+rectangle "12. Administration"       as S12
+
+ATH  --> S01
+ATH  --> S02
+ATH  --> S03
+ATH  --> S04
+ATH  --> S05
+ATH  --> S08
+ATH  --> S09
+ATH  --> S10
+ATH  --> S11
+COA  --> S06
+COA  --> S07
+ADM  --> S01
+ADM  --> S02
+ADM  --> S03
+ADM  --> S04
+ADM  --> S05
+ADM  --> S06
+ADM  --> S07
+ADM  --> S08
+ADM  --> S09
+ADM  --> S10
+ADM  --> S11
+ADM  --> S12
+EXT  --> S04
+EXT  --> S09
+MAIL --> S01
+
+@enduml

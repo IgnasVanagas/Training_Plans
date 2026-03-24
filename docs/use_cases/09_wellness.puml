@@ -1,0 +1,34 @@
+@startuml 09 – Wellness Tracking
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete            as ATH
+actor Coach              as COA
+actor Admin              as ADM
+actor "External\nProvider" as EXT <<system>>
+
+COA --|> ATH
+
+rectangle "9. Wellness Tracking" {
+  (Log manual wellness entry) as I1
+  (View wellness summary)     as I2
+  (View HRV history)          as I3
+  (View resting HR history)   as I4
+  (View sleep data)           as I5
+  (View stress data)          as I6
+}
+
+ATH --> I1
+ATH --> I2
+ATH --> I3
+ATH --> I4
+ATH --> I5
+ATH --> I6
+EXT --> I1
+
+@enduml

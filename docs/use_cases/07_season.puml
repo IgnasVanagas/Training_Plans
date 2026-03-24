@@ -1,0 +1,38 @@
+@startuml 07 – Season Planning
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete as ATH
+actor Coach   as COA
+actor Admin   as ADM
+
+rectangle "7. Season Planning" {
+  (Define goal races)          as G1
+  (Define training constraints) as G2
+  (Preview AI season plan)     as G3
+  (Save season plan)           as G4
+  (Edit season plan)           as G5
+  (Delete season plan)         as G6
+  (Apply season plan)          as G7
+  (View current season plan)   as G8
+
+  G3 ..> G1 : <<include>>
+  G3 ..> G2 : <<include>>
+  G7 ..> G4 : <<include>>
+}
+
+COA --> G1
+COA --> G2
+COA --> G3
+COA --> G4
+COA --> G5
+COA --> G6
+COA --> G7
+ATH --> G8
+
+@enduml

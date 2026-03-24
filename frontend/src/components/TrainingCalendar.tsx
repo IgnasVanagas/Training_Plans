@@ -1562,7 +1562,6 @@ export const TrainingCalendar = ({
                             flex: 1,
                             minWidth: 0,
                             minHeight: 0,
-                            overflowX: isMobileViewport ? 'auto' : 'hidden',
                             border: `1px solid ${palette.headerBorder}`,
                             borderRadius: 12,
                             overflow: 'hidden',
@@ -1596,9 +1595,11 @@ export const TrainingCalendar = ({
                                     onWeekRowHeights={setWeekRowHeights}
                                     onVisibleWeeks={setContinuousVisibleWeeks}
                                     selectedDateRange={selectedDateRange}
+                                    isMobile={isMobileViewport}
                                 />
                             )}
                         </Box>
+                        {!isMobileViewport && (
                         <TrainingCalendarZoneSummaryPanel
                             monthlyOpenSignal={monthlyOpenSignal}
                             zoneSummary={zoneSummary}
@@ -1618,7 +1619,9 @@ export const TrainingCalendar = ({
                             weekdayHeaderHeight={WEEKDAY_HEADER_HEIGHT}
                             panelWidth={WEEKLY_TOTALS_PANEL_WIDTH}
                             gridScrollRef={gridScrollRef}
+                            isLoading={isInitialCalendarLoading}
                         />
+                        )}
                     </>
                 )}
             </Group>

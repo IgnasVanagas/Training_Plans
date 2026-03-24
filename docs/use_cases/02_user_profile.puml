@@ -1,0 +1,42 @@
+@startuml 02 – User & Profile Management
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete as ATH
+actor Coach   as COA
+actor Admin   as ADM
+
+COA --|> ATH
+
+rectangle "2. User & Profile Management" {
+  (View own profile)        as B1
+  (Edit own profile)        as B2
+  (Configure preferences)   as B3
+  (Log metric)              as B4
+  (View metric history)     as B5
+  (View athlete profile)    as B6
+  (Edit athlete profile)    as B7
+  (View athlete permissions) as B8
+  (Set athlete permissions) as B9
+  (Invite athlete by link)  as B10
+  (Invite athlete by email) as B11
+}
+
+ATH --> B1
+ATH --> B2
+ATH --> B3
+ATH --> B4
+ATH --> B5
+ATH --> B8
+COA --> B6
+COA --> B7
+COA --> B9
+COA --> B10
+COA --> B11
+
+@enduml

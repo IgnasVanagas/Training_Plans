@@ -1,0 +1,40 @@
+@startuml 08 – Integrations
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete as ATH
+actor Coach   as COA
+actor Admin   as ADM
+
+COA --|> ATH
+
+rectangle "8. Integrations" {
+  (View available providers)            as H1
+  (Connect provider)                    as H2
+  (Disconnect provider)                 as H3
+  (View connection status)              as H4
+  (Configure auto-sync settings)        as H5
+  (Configure Strava import preferences) as H6
+  (Trigger manual sync)                 as H7
+  (View sync progress)                  as H8
+  (Cancel active sync)                  as H9
+  (View sync error details)             as H10
+}
+
+ATH --> H1
+ATH --> H2
+ATH --> H3
+ATH --> H4
+ATH --> H5
+ATH --> H6
+ATH --> H7
+ATH --> H8
+ATH --> H9
+ATH --> H10
+
+@enduml

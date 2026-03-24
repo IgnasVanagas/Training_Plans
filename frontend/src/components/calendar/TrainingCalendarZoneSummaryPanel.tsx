@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
-import { Box, Group, SegmentedControl, Stack, Text } from '@mantine/core';
+import { Box, Group, Skeleton, SegmentedControl, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { endOfWeek, format, startOfWeek } from 'date-fns';
 import api from '../../api/client';
@@ -32,6 +32,7 @@ type ZoneSummaryPanelProps = {
     panelWidth: number;
     /** Ref to the grid's inner scroll container, for synced scrolling */
     gridScrollRef?: React.MutableRefObject<HTMLDivElement | null>;
+    isLoading?: boolean;
 };
 
 const formatTotalMinutes = (minutes: number) => {
@@ -173,6 +174,7 @@ export default function TrainingCalendarZoneSummaryPanel({
     weekdayHeaderHeight,
     panelWidth,
     gridScrollRef,
+    isLoading,
 }: ZoneSummaryPanelProps) {
     const sidebarScrollRef = useRef<HTMLDivElement>(null);
     const [zoneDetailModal, setZoneDetailModal] = useState<ZoneDetailModalData | null>(null);
@@ -755,6 +757,28 @@ export default function TrainingCalendarZoneSummaryPanel({
                     minHeight: 0
                 }}
             >
+                {isLoading ? (
+                    <Stack gap={0}>
+                        {Array.from({ length: 5 }).map((_, i) => (
+                            <Box
+                                key={i}
+                                style={{
+                                    padding: '8px 10px',
+                                    borderTop: i === 0 ? 'none' : `1px solid ${palette.dayCellBorder}`,
+                                    borderLeft: '3px solid var(--mantine-color-default-border)',
+                                    minHeight: 90,
+                                }}
+                            >
+                                <Stack gap={6}>
+                                    <Skeleton width={100} height={10} />
+                                    <Skeleton width={130} height={14} />
+                                    <Skeleton width={80} height={10} />
+                                    <Skeleton height={8} mt={4} />
+                                </Stack>
+                            </Box>
+                        ))}
+                    </Stack>
+                ) : (
                 <Box style={{
                     display: 'grid',
                     gridTemplateRows: weeklyRowsTemplate,
@@ -821,6 +845,7 @@ export default function TrainingCalendarZoneSummaryPanel({
                     );
                 })}
                 </Box>
+                )}
             </Box>
 
             <TrainingCalendarZoneDetailModal

@@ -82,6 +82,7 @@ const Dashboard = () => {
   // Wrapper that also keeps the URL ?tab= param in sync
   const setActiveTab = (tab: DashboardTab) => {
     _setActiveTab(tab);
+    if (tab !== "settings") setSettingsAthleteId(null);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (tab === "dashboard") {
@@ -93,6 +94,7 @@ const Dashboard = () => {
     }, { replace: true });
   };
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(navigationState.selectedAthleteId ?? null);
+  const [settingsAthleteId, setSettingsAthleteId] = useState<string | null>(null);
   const initialCalendarViewDate = useMemo(() => {
     const navEntry = (typeof window !== "undefined"
       ? (window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)
@@ -718,6 +720,10 @@ const Dashboard = () => {
       selectedAthleteId={selectedAthleteId}
       onSelectAthlete={setSelectedAthleteId}
       organizationName={organizationName}
+      onAthleteSettings={(athleteId) => {
+        setSettingsAthleteId(athleteId);
+        setActiveTab("settings");
+      }}
     >
       <Container size="xl" px={{ base: 0, sm: "md" }}>
         <Modal
@@ -847,6 +853,7 @@ const Dashboard = () => {
             permissionsRows={athletePermissionsQuery.data || []}
             isSavingProfile={profileUpdateMutation.isPending}
             onSaveProfile={(data) => profileUpdateMutation.mutate(data)}
+            initialAthleteId={settingsAthleteId}
             providers={integrationsQuery.data || []}
             connectingProvider={connectingProvider}
             disconnectingProvider={disconnectingProvider}

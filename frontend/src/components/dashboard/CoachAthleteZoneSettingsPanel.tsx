@@ -8,6 +8,7 @@ type Props = {
   athletes: User[];
   savingAthleteId: number | null;
   onSave: (athleteId: number, profile: Profile) => void;
+  initialAthleteId?: string | null;
 };
 
 const normalizeProfileDraft = (profile?: Profile | null): Profile => ({
@@ -19,7 +20,7 @@ const normalizeProfileDraft = (profile?: Profile | null): Profile => ({
   zone_settings: profile?.zone_settings ?? null,
 });
 
-const CoachAthleteZoneSettingsPanel = ({ athletes, savingAthleteId, onSave }: Props) => {
+const CoachAthleteZoneSettingsPanel = ({ athletes, savingAthleteId, onSave, initialAthleteId }: Props) => {
   const { t } = useI18n();
   const athleteOptions = useMemo(() => athletes.map((athlete) => ({
     value: athlete.id.toString(),
@@ -27,13 +28,21 @@ const CoachAthleteZoneSettingsPanel = ({ athletes, savingAthleteId, onSave }: Pr
       ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
       : athlete.email,
   })), [athletes]);
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(athleteOptions[0]?.value || null);
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(
+    (initialAthleteId && athleteOptions.some((o) => o.value === initialAthleteId))
+      ? initialAthleteId
+      : athleteOptions[0]?.value || null
+  );
   const selectedAthlete = athletes.find((athlete) => String(athlete.id) === selectedAthleteId) || null;
   const [draft, setDraft] = useState<Profile>(normalizeProfileDraft(selectedAthlete?.profile));
   const [zoneSport, setZoneSport] = useState<"running" | "cycling">("running");
   const [zoneMetric, setZoneMetric] = useState<"hr" | "pace" | "power">("hr");
 
   useEffect(() => {
+    if (initialAthleteId && athleteOptions.some((o) => o.value === initialAthleteId)) {
+      setSelectedAthleteId(initialAthleteId);
+      return;
+    }
     if (!selectedAthleteId && athleteOptions[0]?.value) {
       setSelectedAthleteId(athleteOptions[0].value);
       return;
@@ -41,7 +50,7 @@ const CoachAthleteZoneSettingsPanel = ({ athletes, savingAthleteId, onSave }: Pr
     if (selectedAthleteId && !athleteOptions.some((option) => option.value === selectedAthleteId)) {
       setSelectedAthleteId(athleteOptions[0]?.value || null);
     }
-  }, [athleteOptions, selectedAthleteId]);
+  }, [athleteOptions, selectedAthleteId, initialAthleteId]);
 
   useEffect(() => {
     setDraft(normalizeProfileDraft(selectedAthlete?.profile));

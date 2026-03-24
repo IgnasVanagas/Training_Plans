@@ -34,6 +34,8 @@ export type ContinuousCalendarGridProps = {
     /** Notify parent of all rendered weeks (for sidebar) */
     onVisibleWeeks?: (weeks: Array<{ start: Date; end: Date; key: string }>) => void;
     selectedDateRange?: { startDate: string; endDate: string } | null;
+    /** Mobile viewport — enables horizontal swipe for days */
+    isMobile?: boolean;
 };
 
 /* ── Helpers ── */
@@ -88,6 +90,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     onWeekRowHeights,
     onVisibleWeeks,
     selectedDateRange,
+    isMobile,
 }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
     const weekRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -340,14 +343,17 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                 flexDirection: 'column',
                 height: '100%',
                 minHeight: 0,
-                overflow: 'hidden',
+                overflowX: isMobile ? 'auto' : 'hidden',
+                overflowY: 'hidden',
+                WebkitOverflowScrolling: 'touch' as any,
             }}
         >
+            <Box style={{ ...(isMobile ? { minWidth: 770 } : {}), display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
             {/* Weekday column headers */}
             <Box
                 style={{
                     display: 'grid',
-                    gridTemplateColumns: 'repeat(7, 1fr)',
+                    gridTemplateColumns: isMobile ? 'repeat(7, minmax(110px, 1fr))' : 'repeat(7, 1fr)',
                     borderBottom: `1px solid ${palette.headerBorder}`,
                     minHeight: 36,
                     flexShrink: 0,
@@ -380,7 +386,6 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                     overflowY: 'auto',
                     overflowX: 'hidden',
                     minHeight: 0,
-                    /* hide scrollbar for cleaner look */
                     scrollbarWidth: 'thin',
                 }}
             >
@@ -421,10 +426,11 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                 data-week-key={week.key}
                                 style={{
                                     display: 'grid',
-                                    gridTemplateColumns: 'repeat(7, 1fr)',
+                                    gridTemplateColumns: isMobile ? 'repeat(7, minmax(110px, 1fr))' : 'repeat(7, 1fr)',
                                     gridTemplateRows: '1fr',
                                     borderBottom: `1px solid ${palette.dayCellBorder || palette.headerBorder}`,
-                                    height: 110,
+                                    height: isMobile ? 120 : 110,
+                                    ...(isMobile ? { minWidth: 770 } : {}),
                                 }}
                             >
                                 {week.days.map((day) => {
@@ -597,6 +603,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                         </Box>
                     );
                 })}
+            </Box>
             </Box>
         </Box>
     );

@@ -1,0 +1,47 @@
+@startuml 01 – Authentication
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete       as ATH
+actor Coach         as COA
+actor Admin         as ADM
+actor "Email\nSystem" as MAIL <<system>>
+
+COA --|> ATH
+
+rectangle "1. Authentication" {
+  (Register account)       as A1
+  (Log in)                 as A2
+  (Log out)                as A3
+  (Refresh access token)   as A4
+  (Verify email)           as A5
+  (Request password reset) as A6
+  (Reset password)         as A7
+  (Change password)        as A8
+
+  A1 ..> A5 : <<include>>
+}
+
+ATH  --> A1
+ATH  --> A2
+ATH  --> A3
+ATH  --> A4
+ATH  --> A5
+ATH  --> A6
+ATH  --> A7
+ATH  --> A8
+ADM  --> A2
+ADM  --> A3
+ADM  --> A4
+ADM  --> A6
+ADM  --> A7
+ADM  --> A8
+MAIL --> A5
+MAIL --> A6
+
+@enduml

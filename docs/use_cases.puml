@@ -1,0 +1,360 @@
+@startuml Training Plans – Full Use Case Diagram
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 11
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+skinparam defaultFontSize 11
+skinparam wrapWidth 160
+skinparam maxMessageSize 160
+
+scale max 4096 width
+scale max 4096 height
+
+' ─── ACTORS ──────────────────────────────────────────────────────────────────
+actor Athlete         as ATH
+actor Coach           as COA
+actor Admin           as ADM
+actor "External\nProvider" as EXT  <<system>>
+actor "Email\nSystem"      as MAIL <<system>>
+
+' Coach is a specialisation of Athlete — inherits all Athlete use cases
+COA --|> ATH
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 1. AUTHENTICATION
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "1. Authentication" {
+  (Register account)         as A1
+  (Log in)                   as A2
+  (Log out)                  as A3
+  (Refresh access token)     as A4
+  (Verify email)             as A5
+  (Request password reset)   as A6
+  (Reset password)           as A7
+  (Change password)          as A8
+
+  A1 ..> A5 : <<include>>
+}
+
+ATH  --> A1
+ATH  --> A2
+ATH  --> A3
+ATH  --> A4
+ATH  --> A5
+ATH  --> A6
+ATH  --> A7
+ATH  --> A8
+ADM  --> A2
+ADM  --> A3
+ADM  --> A4
+ADM  --> A6
+ADM  --> A7
+ADM  --> A8
+MAIL --> A5
+MAIL --> A6
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 2. USER & PROFILE MANAGEMENT
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "2. User & Profile Management" {
+  (View own profile)           as B1
+  (Edit own profile)           as B2
+  (Configure preferences)      as B3
+  (Log metric)                 as B4
+  (View metric history)        as B5
+  (View athlete profile)       as B6
+  (Edit athlete profile)       as B7
+  (View athlete permissions)   as B8
+  (Set athlete permissions)    as B9
+  (Invite athlete by link)     as B10
+  (Invite athlete by email)    as B11
+}
+
+ATH --> B1
+ATH --> B2
+ATH --> B3
+ATH --> B4
+ATH --> B5
+ATH --> B8
+COA --> B6
+COA --> B7
+COA --> B9
+COA --> B10
+COA --> B11
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 3. ORGANIZATION MANAGEMENT
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "3. Organization Management" {
+  (Create organization)           as C1
+  (Discover organizations)        as C2
+  (Request to join organization)  as C3
+  (Accept / decline invitation)   as C4
+  (Leave organization)            as C5
+  (Approve pending athlete)       as C6
+  (Reject pending athlete)        as C7
+  (View organization members)     as C8
+  (Remove member)                 as C9
+  (Post group message)            as C10
+  (View group messages)           as C11
+  (Send direct message)           as C12
+  (View direct messages)          as C13
+}
+
+ATH --> C2
+ATH --> C3
+ATH --> C4
+ATH --> C5
+ATH --> C10
+ATH --> C11
+ATH --> C12
+ATH --> C13
+COA --> C1
+COA --> C6
+COA --> C7
+COA --> C8
+COA --> C9
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 4. ACTIVITY MANAGEMENT
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "4. Activity Management" {
+  (Upload activity file)                as D1
+  (Create activity manually)            as D2
+  (View activity list)                  as D3
+  (View activity details)               as D4
+  (Edit activity)                       as D5
+  (Delete activity)                     as D6
+  (Re-parse activity file)              as D7
+  (View duplicate activities)           as D8
+  (Mark activity as primary duplicate)  as D9
+  (View personal records)               as D10
+  (View best efforts)                   as D11
+  (View execution score)                as D12
+  (View training status)                as D13
+
+  note right of D6
+    Athlete requires
+    coach permission
+  end note
+}
+
+ATH  --> D1
+ATH  --> D2
+ATH  --> D3
+ATH  --> D4
+ATH  --> D5
+ATH  --> D6
+ATH  --> D7
+ATH  --> D8
+ATH  --> D9
+ATH  --> D10
+ATH  --> D11
+ATH  --> D12
+ATH  --> D13
+EXT  --> D1
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 5. TRAINING CALENDAR
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "5. Training Calendar" {
+  (View own training calendar)  as E1
+  (View athlete's calendar)     as E2
+  (Create planned workout)      as E3
+  (Edit planned workout)        as E4
+  (Delete planned workout)      as E5
+  (Copy planned workout)        as E6
+  (Download workout as ICS)     as E7
+  (View compliance status)      as E8
+  (View recent coach workouts)  as E9
+  (Create day note)             as E10
+  (View day notes)              as E11
+  (Delete day note)             as E12
+
+  note right of E4
+    Athlete requires
+    coach permission
+  end note
+  note right of E5
+    Athlete requires
+    coach permission
+  end note
+}
+
+ATH --> E1
+ATH --> E4
+ATH --> E5
+ATH --> E7
+ATH --> E8
+ATH --> E9
+ATH --> E10
+ATH --> E11
+ATH --> E12
+COA --> E2
+COA --> E3
+COA --> E6
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 6. STRUCTURED WORKOUTS
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "6. Structured Workouts" {
+  (Create workout template)       as F1
+  (Edit workout template)         as F2
+  (Delete workout template)       as F3
+  (View workout library)          as F4
+  (Search / filter library)       as F5
+  (View workout template details) as F6
+  (Mark workout as favourite)     as F7
+  (Tag workout template)          as F8
+}
+
+COA --> F1
+COA --> F2
+COA --> F3
+COA --> F4
+COA --> F5
+COA --> F6
+COA --> F7
+COA --> F8
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 7. SEASON PLANNING
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "7. Season Planning" {
+  (Define goal races)         as G1
+  (Define training constraints) as G2
+  (Preview AI season plan)    as G3
+  (Save season plan)          as G4
+  (Edit season plan)          as G5
+  (Delete season plan)        as G6
+  (Apply season plan)         as G7
+  (View current season plan)  as G8
+
+  G3 ..> G1 : <<include>>
+  G3 ..> G2 : <<include>>
+  G7 ..> G4 : <<include>>
+}
+
+COA --> G1
+COA --> G2
+COA --> G3
+COA --> G4
+COA --> G5
+COA --> G6
+COA --> G7
+ATH --> G8
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 8. INTEGRATIONS
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "8. Integrations" {
+  (View available providers)          as H1
+  (Connect provider)                  as H2
+  (Disconnect provider)               as H3
+  (View connection status)            as H4
+  (Configure auto-sync settings)      as H5
+  (Configure Strava import preferences) as H6
+  (Trigger manual sync)               as H7
+  (View sync progress)                as H8
+  (Cancel active sync)                as H9
+  (View sync error details)           as H10
+}
+
+ATH --> H1
+ATH --> H2
+ATH --> H3
+ATH --> H4
+ATH --> H5
+ATH --> H6
+ATH --> H7
+ATH --> H8
+ATH --> H9
+ATH --> H10
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 9. WELLNESS TRACKING
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "9. Wellness Tracking" {
+  (Log manual wellness entry) as I1
+  (View wellness summary)     as I2
+  (View HRV history)          as I3
+  (View resting HR history)   as I4
+  (View sleep data)           as I5
+  (View stress data)          as I6
+}
+
+ATH --> I1
+ATH --> I2
+ATH --> I3
+ATH --> I4
+ATH --> I5
+ATH --> I6
+EXT --> I1
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 10. COMMUNICATION
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "10. Communication" {
+  (Add comment to activity)      as J1
+  (View activity comments)       as J2
+  (Add comment to workout)       as J3
+  (View workout comments)        as J4
+  (Create acknowledgement)       as J5
+  (View acknowledgements)        as J6
+  (View acknowledgement history) as J7
+  (View notifications feed)      as J8
+  (Mark notification as read)    as J9
+  (Submit support request)       as J10
+}
+
+ATH --> J1
+ATH --> J2
+ATH --> J3
+ATH --> J4
+ATH --> J6
+ATH --> J8
+ATH --> J9
+ATH --> J10
+COA --> J5
+COA --> J7
+ADM --> J10
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 11. TRAINING ZONES & ANALYTICS
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "11. Training Zones & Analytics" {
+  (Configure HR zones)          as K1
+  (Configure power zones)       as K2
+  (Configure pace zones)        as K3
+  (View zone distribution)      as K4
+  (View training load history)  as K5
+  (View power curve)            as K6
+  (Compare activities)          as K7
+}
+
+ATH --> K1
+ATH --> K2
+ATH --> K3
+ATH --> K4
+ATH --> K5
+ATH --> K6
+ATH --> K7
+
+' ═════════════════════════════════════════════════════════════════════════════
+' 12. ADMINISTRATION
+' ═════════════════════════════════════════════════════════════════════════════
+rectangle "12. Administration" {
+  (View all users)              as L1
+  (Activate / deactivate user)  as L2
+  (View integration audit logs) as L3
+  (View system health)          as L4
+}
+
+ADM --> L1
+ADM --> L2
+ADM --> L3
+ADM --> L4
+
+@enduml

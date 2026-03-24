@@ -1,0 +1,53 @@
+@startuml 05 – Training Calendar
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete as ATH
+actor Coach   as COA
+actor Admin   as ADM
+
+COA --|> ATH
+
+rectangle "5. Training Calendar" {
+  (View own training calendar) as E1
+  (View athlete's calendar)    as E2
+  (Create planned workout)     as E3
+  (Edit planned workout)       as E4
+  (Delete planned workout)     as E5
+  (Copy planned workout)       as E6
+  (Download workout as ICS)    as E7
+  (View compliance status)     as E8
+  (View recent coach workouts) as E9
+  (Create day note)            as E10
+  (View day notes)             as E11
+  (Delete day note)            as E12
+
+  note right of E4
+    Athlete action requires
+    coach permission
+  end note
+  note right of E5
+    Athlete action requires
+    coach permission
+  end note
+}
+
+ATH --> E1
+ATH --> E4
+ATH --> E5
+ATH --> E7
+ATH --> E8
+ATH --> E9
+ATH --> E10
+ATH --> E11
+ATH --> E12
+COA --> E2
+COA --> E3
+COA --> E6
+
+@enduml

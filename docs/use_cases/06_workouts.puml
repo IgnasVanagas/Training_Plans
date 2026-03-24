@@ -1,0 +1,33 @@
+@startuml 06 – Structured Workouts
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Coach as COA
+actor Admin as ADM
+
+rectangle "6. Structured Workouts" {
+  (Create workout template)       as F1
+  (Edit workout template)         as F2
+  (Delete workout template)       as F3
+  (View workout library)          as F4
+  (Search / filter library)       as F5
+  (View workout template details) as F6
+  (Mark workout as favourite)     as F7
+  (Tag workout template)          as F8
+}
+
+COA --> F1
+COA --> F2
+COA --> F3
+COA --> F4
+COA --> F5
+COA --> F6
+COA --> F7
+COA --> F8
+
+@enduml

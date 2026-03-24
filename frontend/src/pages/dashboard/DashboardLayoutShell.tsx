@@ -81,6 +81,7 @@ type Props = {
   selectedAthleteId?: string | null;
   onSelectAthlete?: (athleteId: string | null) => void;
   organizationName?: string | null;
+  onAthleteSettings?: (athleteId: string) => void;
 };
 
 const DashboardLayoutShell = ({
@@ -98,6 +99,7 @@ const DashboardLayoutShell = ({
   selectedAthleteId,
   onSelectAthlete,
   organizationName,
+  onAthleteSettings,
 }: Props) => {
   const { language, setLanguage, t } = useI18n();
   const { setColorScheme } = useMantineColorScheme();
@@ -507,9 +509,24 @@ const DashboardLayoutShell = ({
                             </Avatar>
                           }
                           rightSection={
-                            athlete.has_upcoming_coach_workout
-                              ? null
-                              : <Badge size="xs" color="orange" variant="light">{t("Needs Plan")}</Badge>
+                            <Group gap={4} wrap="nowrap">
+                              {!athlete.has_upcoming_coach_workout && (
+                                <Badge size="xs" color="orange" variant="light">{t("Needs Plan")}</Badge>
+                              )}
+                              <ActionIcon
+                                size="xs"
+                                variant="subtle"
+                                color={isDark ? "gray" : "dark"}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  onAthleteSettings?.(String(athlete.id));
+                                }}
+                                aria-label={t("Settings")}
+                              >
+                                <IconSettings size={14} />
+                              </ActionIcon>
+                            </Group>
                           }
                           active={isSelected}
                           onClick={() => {

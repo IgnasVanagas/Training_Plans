@@ -823,7 +823,7 @@ export const ActivityDetailPage = () => {
     const overallNormalizedPower = useMemo(() => {
         const powerSamples = streamPoints
             .map((sample: any) => Number(sample?.power ?? -1))
-            .filter((value: number) => Number.isFinite(value) && value > 0);
+            .filter((value: number) => Number.isFinite(value) && value >= 0);
         return calculateNormalizedPower(powerSamples);
     }, [streamPoints]);
 
@@ -885,18 +885,22 @@ export const ActivityDetailPage = () => {
                 });
             }
 
-            const powerSamples = segmentPoints
+            const allPowerSamples = segmentPoints
                 .map((point: any) => Number(point?.power ?? -1))
-                .filter((value: number) => Number.isFinite(value) && value > 0);
+                .filter((value: number) => Number.isFinite(value) && value >= 0);
+            const positivePowerSamples = allPowerSamples.filter((value) => value > 0);
 
-            const avgFromSegment = powerSamples.length
-                ? powerSamples.reduce((sum: number, value: number) => sum + value, 0) / powerSamples.length
+            const avgFromSegment = positivePowerSamples.length
+                ? positivePowerSamples.reduce((sum: number, value: number) => sum + value, 0) / positivePowerSamples.length
                 : null;
             const avgFromSplit = Number(split?.avg_power);
             const avgWatts = Number.isFinite(avgFromSplit) && avgFromSplit > 0 ? avgFromSplit : avgFromSegment;
 
-            const maxWatts = powerSamples.length ? Math.max(...powerSamples) : null;
-            const normalizedPower = calculateNormalizedPower(powerSamples);
+            const maxWatts = positivePowerSamples.length ? Math.max(...positivePowerSamples) : null;
+            let normalizedPower = calculateNormalizedPower(allPowerSamples);
+            if (normalizedPower != null && avgWatts != null && normalizedPower < avgWatts) {
+                normalizedPower = avgWatts;
+            }
 
             return {
                 ...split,
@@ -1684,7 +1688,8 @@ export const ActivityDetailPage = () => {
                                         </>
                                     )}
                                 </Group>
-                                <Table>
+                                <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                <Table style={{ whiteSpace: 'nowrap' }}>
                                     <Table.Thead>
                                         <Table.Tr>
                                             <Table.Th>{t("Split")}</Table.Th>
@@ -1761,6 +1766,7 @@ export const ActivityDetailPage = () => {
                                         ))}
                                     </Table.Tbody>
                                 </Table>
+                                </Box>
                                 {splitAnnotationsVisible && splitAnnotationsDirty && (
                                     <Group justify="flex-end" mt="xs">
                                         <Button size="xs" loading={updateActivityMutation.isPending}
@@ -1798,7 +1804,8 @@ export const ActivityDetailPage = () => {
                                         </Button>
                                     )}
                                 </Group>
-                                <Table striped highlightOnHover withTableBorder withColumnBorders>
+                                <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                <Table striped highlightOnHover withTableBorder withColumnBorders style={{ whiteSpace: 'nowrap' }}>
                                     <Table.Thead>
                                         <Table.Tr>
                                             <Table.Th></Table.Th>
@@ -1844,6 +1851,7 @@ export const ActivityDetailPage = () => {
                                         })}
                                     </Table.Tbody>
                                 </Table>
+                                </Box>
                                 <Group gap="md" mt="sm">
                                     <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">{t('PR')}</Text></Group>
                                     <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">{t('2nd')}</Text></Group>

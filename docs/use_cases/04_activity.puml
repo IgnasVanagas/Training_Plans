@@ -1,0 +1,53 @@
+@startuml 04 – Activity Management
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete            as ATH
+actor Coach              as COA
+actor Admin              as ADM
+actor "External\nProvider" as EXT <<system>>
+
+COA --|> ATH
+
+rectangle "4. Activity Management" {
+  (Upload activity file)               as D1
+  (Create activity manually)           as D2
+  (View activity list)                 as D3
+  (View activity details)              as D4
+  (Edit activity)                      as D5
+  (Delete activity)                    as D6
+  (Re-parse activity file)             as D7
+  (View duplicate activities)          as D8
+  (Mark activity as primary duplicate) as D9
+  (View personal records)              as D10
+  (View best efforts)                  as D11
+  (View execution score)               as D12
+  (View training status)               as D13
+
+  note right of D6
+    Athlete action requires
+    coach permission
+  end note
+}
+
+ATH --> D1
+ATH --> D2
+ATH --> D3
+ATH --> D4
+ATH --> D5
+ATH --> D6
+ATH --> D7
+ATH --> D8
+ATH --> D9
+ATH --> D10
+ATH --> D11
+ATH --> D12
+ATH --> D13
+EXT --> D1
+
+@enduml

@@ -58,9 +58,9 @@ const CalendarHeader = ({
                 fontFamily: '"Inter", sans-serif'
             }}
         >
-            <Group justify="space-between" align="center" wrap="nowrap">
+            <Group justify="space-between" align="center" wrap="nowrap" style={{ overflow: 'hidden' }}>
                 {/* Left: navigation arrows + month/year + Today */}
-                <Group gap={6} wrap="nowrap">
+                <Group gap={isMobile ? 2 : 6} wrap="nowrap">
                     <ActionIcon
                         variant="subtle"
                         onClick={handlePrev}
@@ -77,7 +77,7 @@ const CalendarHeader = ({
                                 size="compact-sm"
                                 fw={800}
                                 onClick={open}
-                                styles={{ root: { borderRadius: 8, color: isDark ? '#E2E8F0' : '#1E293B', letterSpacing: '-0.01em', fontSize: 15 } }}
+                                styles={{ root: { borderRadius: 8, color: isDark ? '#E2E8F0' : '#1E293B', letterSpacing: '-0.01em', fontSize: isMobile ? 13 : 15, padding: isMobile ? '0 4px' : undefined } }}
                             >
                                 {format(date, 'MMM yyyy')}
                             </Button>
@@ -115,7 +115,7 @@ const CalendarHeader = ({
                 </Group>
 
                 {/* Right: action buttons */}
-                <Group gap={6} wrap="nowrap" justify="flex-end">
+                <Group gap={isMobile ? 2 : 6} wrap="nowrap" justify="flex-end" style={{ flexShrink: 0 }}>
                     {actionButtons}
 
                     {!isMobile && onViewChange && (

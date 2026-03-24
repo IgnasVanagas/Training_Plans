@@ -1,0 +1,46 @@
+@startuml 03 – Organization Management
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete as ATH
+actor Coach   as COA
+actor Admin   as ADM
+
+COA --|> ATH
+
+rectangle "3. Organization Management" {
+  (Create organization)          as C1
+  (Discover organizations)       as C2
+  (Request to join organization) as C3
+  (Accept / decline invitation)  as C4
+  (Leave organization)           as C5
+  (Approve pending athlete)      as C6
+  (Reject pending athlete)       as C7
+  (View organization members)    as C8
+  (Remove member)                as C9
+  (Post group message)           as C10
+  (View group messages)          as C11
+  (Send direct message)          as C12
+  (View direct messages)         as C13
+}
+
+ATH --> C2
+ATH --> C3
+ATH --> C4
+ATH --> C5
+ATH --> C10
+ATH --> C11
+ATH --> C12
+ATH --> C13
+COA --> C1
+COA --> C6
+COA --> C7
+COA --> C8
+COA --> C9
+
+@enduml

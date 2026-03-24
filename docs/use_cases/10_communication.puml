@@ -1,0 +1,41 @@
+@startuml 10 – Communication
+
+skinparam packageStyle rectangle
+skinparam usecaseFontSize 12
+skinparam actorStyle awesome
+skinparam packageBorderColor #444444
+skinparam usecaseBorderColor #666666
+left to right direction
+
+actor Athlete as ATH
+actor Coach   as COA
+actor Admin   as ADM
+
+COA --|> ATH
+
+rectangle "10. Communication" {
+  (Add comment to activity)      as J1
+  (View activity comments)       as J2
+  (Add comment to workout)       as J3
+  (View workout comments)        as J4
+  (Create acknowledgement)       as J5
+  (View acknowledgements)        as J6
+  (View acknowledgement history) as J7
+  (View notifications feed)      as J8
+  (Mark notification as read)    as J9
+  (Submit support request)       as J10
+}
+
+ATH --> J1
+ATH --> J2
+ATH --> J3
+ATH --> J4
+ATH --> J6
+ATH --> J8
+ATH --> J9
+ATH --> J10
+COA --> J5
+COA --> J7
+ADM --> J10
+
+@enduml
