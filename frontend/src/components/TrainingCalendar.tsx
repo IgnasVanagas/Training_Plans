@@ -3,6 +3,7 @@ import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addMonths, ad
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import api from '../api/client';
+import { DayNote, getDayNotesRange } from '../api/dayNotes';
 import { Award, Bandage, CalendarOff, HeartPulse, Medal, Plane, Trophy } from 'lucide-react';
 import { getLatestSeasonPlan, PlannerConstraint, saveSeasonPlan, SeasonPlan } from '../api/planning';
 import { useI18n } from '../i18n/I18nProvider';
@@ -445,6 +446,25 @@ export const TrainingCalendar = ({
         }
         return { ...resource, title };
     }, [allAthletes, athleteById]);
+
+    /* ── Day notes for calendar range ── */
+    const rangeStartStr = format(rangeBounds.start, 'yyyy-MM-dd');
+    const rangeEndStr = format(rangeBounds.end, 'yyyy-MM-dd');
+    const { data: dayNotesRange = [] } = useQuery({
+        queryKey: ['day-notes-range', rangeStartStr, rangeEndStr, athleteId],
+        queryFn: () => getDayNotesRange(rangeStartStr, rangeEndStr, athleteId || undefined),
+        staleTime: 1000 * 60 * 2,
+        placeholderData: (prev) => prev,
+    });
+    const notesByDate = useMemo(() => {
+        const map = new Map<string, DayNote[]>();
+        for (const note of dayNotesRange) {
+            const list = map.get(note.date) || [];
+            list.push(note);
+            map.set(note.date, list);
+        }
+        return map;
+    }, [dayNotesRange]);
 
     const buildCalendarEventEnvelope = useCallback((resource: CalendarEvent) => {
         const displayResource = buildCalendarDisplayResource(resource);
@@ -1620,6 +1640,7 @@ export const TrainingCalendar = ({
                                             weekSuffixWidth={WEEKLY_TOTALS_PANEL_WIDTH}
                                             weekSuffixHeader={headerContent}
                                             renderWeekSuffix={(week, idx) => renderWeekRow(week as any, idx)}
+                                            notesByDate={notesByDate}
                                         />
                                     )}
                                 </Box>
@@ -1664,6 +1685,7 @@ export const TrainingCalendar = ({
                                     onVisibleWeeks={setContinuousVisibleWeeks}
                                     selectedDateRange={selectedDateRange}
                                     isMobile={isMobileViewport}
+                                    notesByDate={notesByDate}
                                 />
                             )}
                         </Box>

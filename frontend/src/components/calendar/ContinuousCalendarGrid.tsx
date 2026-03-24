@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Box, Group, Stack, Text } from '@mantine/core';
 import { format, addDays, startOfWeek, addWeeks, getMonth, getYear, getDate } from 'date-fns';
+import { MessageSquareText } from 'lucide-react';
 import { CalendarEventCard } from './TrainingCalendarEventRenderers';
 import { CalendarEvent } from './types';
 
@@ -42,6 +43,8 @@ export type ContinuousCalendarGridProps = {
     renderWeekSuffix?: (week: { start: Date; end: Date; key: string }, weekIndex: number) => React.ReactNode;
     /** Header content for the suffix column */
     weekSuffixHeader?: React.ReactNode;
+    /** Day notes indexed by date key (yyyy-MM-dd) */
+    notesByDate?: Map<string, any[]>;
 };
 
 /* ── Helpers ── */
@@ -100,6 +103,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     weekSuffixWidth,
     renderWeekSuffix,
     weekSuffixHeader,
+    notesByDate,
 }) => {
     const hasSuffix = !!(renderWeekSuffix && weekSuffixWidth && !isMobile);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -453,6 +457,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                         : false;
                                     const isDragOver = dragOverDate === dateKey;
                                     const markers = planningMarkersByDate.get(dateKey) || [];
+                                    const dayNotes = notesByDate?.get(dateKey);
 
                                     // Limit to 2 events, show +N more
                                     const shownEvents = dayEvents.slice(0, 2);
@@ -500,6 +505,9 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                                     >
                                                         {getDate(day) === 1 ? format(day, 'MMM d') : format(day, 'd')}
                                                     </Text>
+                                                    {dayNotes && dayNotes.length > 0 && (
+                                                        <MessageSquareText size={12} style={{ color: isDark ? '#60A5FA' : '#3B82F6', flexShrink: 0, opacity: 0.8 }} />
+                                                    )}
                                                 </Group>
                                                 {markers.length > 0 && (
                                                     <Group gap={4} wrap="nowrap">

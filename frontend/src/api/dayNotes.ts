@@ -22,6 +22,17 @@ export const getDayNotes = async (
   return response.data;
 };
 
+export const getDayNotesRange = async (
+  start: string,
+  end: string,
+  athleteId?: number,
+): Promise<DayNote[]> => {
+  const params: Record<string, string | number> = { start, end };
+  if (athleteId) params.athlete_id = athleteId;
+  const response = await client.get<DayNote[]>("/calendar/day-notes-range", { params });
+  return response.data;
+};
+
 export const upsertDayNote = async (
   date: string,
   content: string,

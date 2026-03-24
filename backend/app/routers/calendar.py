@@ -814,6 +814,50 @@ async def get_day_notes(
     return results
 
 
+@router.get("/day-notes-range", response_model=list[DayNoteOut])
+async def get_day_notes_range(
+    start: str = Query(...),
+    end: str = Query(...),
+    athlete_id: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    target_id = await _resolve_athlete_id(current_user, athlete_id, db)
+    start_date = date.fromisoformat(start)
+    end_date = date.fromisoformat(end)
+
+    rows = await db.execute(
+        select(DayNote)
+        .where(DayNote.athlete_id == target_id, DayNote.date >= start_date, DayNote.date <= end_date)
+        .order_by(DayNote.date, DayNote.created_at)
+    )
+    notes = rows.scalars().all()
+
+    author_cache: dict[int, tuple] = {}
+    results: list[DayNoteOut] = []
+    for n in notes:
+        if n.author_id not in author_cache:
+            author_profile = await db.scalar(select(Profile).where(Profile.user_id == n.author_id))
+            author_user = await db.scalar(select(User).where(User.id == n.author_id))
+            author_cache[n.author_id] = (
+                _note_display_name(author_profile) or (author_user.email if author_user else None),
+                author_user.role.value if author_user else None,
+            )
+        author_name, author_role = author_cache[n.author_id]
+        results.append(DayNoteOut(
+            id=n.id,
+            athlete_id=n.athlete_id,
+            author_id=n.author_id,
+            author_name=author_name,
+            author_role=author_role,
+            date=n.date,
+            content=n.content,
+            created_at=n.created_at,
+            updated_at=n.updated_at,
+        ))
+    return results
+
+
 @router.put("/day-notes", response_model=DayNoteOut)
 async def upsert_day_note(
     payload: DayNoteUpsert,

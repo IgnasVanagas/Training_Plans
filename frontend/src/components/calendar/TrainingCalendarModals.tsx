@@ -210,6 +210,7 @@ export const DayDetailsModal = ({
     mutationFn: async (content: string) => upsertDayNote(noteDateKey!, content, athleteId || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['day-notes', noteDateKey, athleteId] });
+      queryClient.invalidateQueries({ queryKey: ['day-notes-range'] });
       setNoteText('');
       setEditingNoteId(null);
     },
@@ -219,6 +220,7 @@ export const DayDetailsModal = ({
     mutationFn: (noteId: number) => deleteDayNote(noteId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['day-notes', noteDateKey, athleteId] });
+      queryClient.invalidateQueries({ queryKey: ['day-notes-range'] });
     },
   });
 
