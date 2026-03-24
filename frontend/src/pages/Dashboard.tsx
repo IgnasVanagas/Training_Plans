@@ -210,6 +210,7 @@ const Dashboard = () => {
     disconnectingProvider,
     cancelingProvider,
     syncingProvider,
+    syncStatus,
     connectIntegrationMutation,
     disconnectIntegrationMutation,
     syncIntegrationMutation,
@@ -816,6 +817,7 @@ const Dashboard = () => {
             connectingProvider={connectingProvider}
             disconnectingProvider={disconnectingProvider}
             syncingProvider={syncingProvider}
+            syncStatus={syncStatus}
             cancelingProvider={cancelingProvider}
             onConnect={(provider) => connectIntegrationMutation.mutate(provider)}
             onDisconnect={(provider) => disconnectIntegrationMutation.mutate(provider)}

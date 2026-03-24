@@ -184,6 +184,35 @@ async def seed_data():
                 OrganizationMember.organization_id == organization_id
             ), role
 
+        # --- Admin ---
+        result = await db.execute(select(User).where(User.email == "admin@example.com"))
+        admin = result.scalar_one_or_none()
+
+        admin_password = os.getenv("SEED_ADMIN_PASSWORD", "Adm!nTP#2024")
+        if not admin:
+            admin = User(
+                email="admin@example.com",
+                password_hash=get_password_hash(admin_password),
+                role=RoleEnum.admin
+            )
+            db.add(admin)
+            await db.flush()
+            logger.info(f"Created Admin: admin@example.com / {admin_password}")
+        else:
+            admin.password_hash = get_password_hash(admin_password)
+            admin.role = RoleEnum.admin
+            logger.info(f"Admin already exists - reset password (SEED_ADMIN_PASSWORD or default)")
+
+        result = await db.execute(select(Profile).where(Profile.user_id == admin.id))
+        admin_profile = result.scalar_one_or_none()
+        if not admin_profile:
+            admin_profile = Profile(user_id=admin.id)
+            db.add(admin_profile)
+
+        admin_profile.first_name = "System"
+        admin_profile.last_name = "Admin"
+        admin_profile.timezone = "UTC"
+
         # --- Coach ---
         result = await db.execute(select(User).where(User.email == "coach@example.com"))
         coach = result.scalar_one_or_none()

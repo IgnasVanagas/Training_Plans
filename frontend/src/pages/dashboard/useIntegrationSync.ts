@@ -8,6 +8,7 @@ import {
   getIntegrationSyncStatus,
   syncIntegrationNow,
   type ProviderStatus,
+  type ProviderSyncResponse,
 } from "../../api/integrations";
 import { extractApiErrorMessage } from "./utils";
 import { User } from "./types";
@@ -26,6 +27,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
   const [disconnectingProvider, setDisconnectingProvider] = useState<string | null>(null);
   const [cancelingProvider, setCancelingProvider] = useState<string | null>(null);
   const [syncingProvider, setSyncingProvider] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<ProviderSyncResponse | null>(null);
   const autoSyncRequestedRef = useRef<Set<string>>(new Set());
   const lastLiveRefreshAtRef = useRef<number>(0);
   const lastKnownSyncAtRef = useRef<string | null | undefined>(undefined);
@@ -43,16 +45,15 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
         if (!isActive) return;
 
         if (status.status === "completed") {
-          notifications.update({
-            id: notificationId,
+          notifications.show({
             title: `${provider} sync complete`,
             message: status.message || "Sync completed",
             color: "green",
-            loading: false,
             autoClose: 4500,
             withCloseButton: true,
             position: "bottom-right",
           });
+          setSyncStatus(null);
           setSyncingProvider(null);
           queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
           queryClient.invalidateQueries({ queryKey: ["wellness-summary"] });
@@ -65,16 +66,15 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
         }
 
         if (status.status === "failed") {
-          notifications.update({
-            id: notificationId,
+          notifications.show({
             title: `${provider} sync failed`,
             message: status.last_error || status.message || "Sync failed",
             color: "red",
-            loading: false,
             autoClose: 7000,
             withCloseButton: true,
             position: "bottom-right",
           });
+          setSyncStatus(null);
           setSyncingProvider(null);
           queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
           queryClient.invalidateQueries({ queryKey: ["calendar"] });
@@ -83,17 +83,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
         }
 
         if (status.status === "syncing") {
-          const remaining = status.total > 0 ? Math.max(status.total - status.progress, 0) : null;
-          const remainingText = remaining === null ? "Remaining: calculating..." : `Remaining: ${remaining}`;
-          notifications.update({
-            id: notificationId,
-            title: `${provider} syncing`,
-            message: `${status.message || "Sync in progress"} • ${remainingText}`,
-            loading: true,
-            autoClose: false,
-            withCloseButton: false,
-            position: "bottom-right",
-          });
+          setSyncStatus(status);
 
           // Live-refresh key dashboards while sync is active so newly imported
           // activities appear without manual page reload.
@@ -108,16 +98,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
           return;
         }
 
-        notifications.update({
-          id: notificationId,
-          title: `${provider} sync`,
-          message: status.message || "No active sync.",
-          color: "blue",
-          loading: false,
-          autoClose: 3500,
-          withCloseButton: true,
-          position: "bottom-right",
-        });
+        setSyncStatus(null);
         setSyncingProvider(null);
       } catch (error) {
         if (!isActive) return;
@@ -166,15 +147,6 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
         if (status.status === "syncing") {
           // Webhook triggered a sync — start tracking it
           setSyncingProvider("strava");
-          notifications.show({
-            id: "integration-sync-strava",
-            title: "Strava sync",
-            message: status.message || "New activities syncing...",
-            loading: true,
-            autoClose: false,
-            withCloseButton: false,
-            position: "bottom-right",
-          });
           return;
         }
         // Detect completed syncs we didn't see "syncing" for
@@ -230,15 +202,6 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
         window.sessionStorage.removeItem(STRAVA_LOGIN_RECENT_SYNC_FLAG);
         autoSyncRequestedRef.current.add("strava");
         setSyncingProvider("strava");
-        notifications.show({
-          id: "integration-sync-strava",
-          title: "strava sync",
-          message: "Sync queued...",
-          loading: true,
-          autoClose: false,
-          withCloseButton: false,
-          position: "bottom-right",
-        });
         void syncIntegrationNow("strava")
           .then(() => {
             queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
@@ -246,16 +209,15 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
             queryClient.invalidateQueries({ queryKey: ["activities"] });
           })
           .catch((error) => {
-            notifications.update({
-              id: "integration-sync-strava",
+            notifications.show({
               title: "strava sync failed",
               message: extractApiErrorMessage(error),
               color: "red",
-              loading: false,
               autoClose: 7000,
               withCloseButton: true,
               position: "bottom-right",
             });
+            setSyncStatus(null);
             setSyncingProvider(null);
           });
       } else {
@@ -360,29 +322,12 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
     ),
     onMutate: (provider) => {
       setSyncingProvider(provider);
-      notifications.show({
-        id: `integration-sync-${provider}`,
-        title: `${provider} sync`,
-        message: "Sync queued...",
-        loading: true,
-        autoClose: false,
-        withCloseButton: false,
-        position: "bottom-right",
-      });
     },
-    onSuccess: (data, provider) => {
-      notifications.update({
-        id: `integration-sync-${provider}`,
-        title: `${provider} sync`,
-        message: data.message || data.status || "Sync queued",
-        loading: true,
-        autoClose: false,
-        withCloseButton: false,
-        position: "bottom-right",
-      });
+    onSuccess: (_data, provider) => {
       queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
       queryClient.invalidateQueries({ queryKey: ["wellness-summary"] });
       queryClient.invalidateQueries({ queryKey: ["activities"] });
+      void provider;
     },
     onError: (error, provider) => {
       notifications.update({
@@ -403,36 +348,24 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
     mutationFn: (provider: string) => cancelIntegrationSync(provider),
     onMutate: (provider) => {
       setCancelingProvider(provider);
-      notifications.update({
-        id: `integration-sync-${provider}`,
-        title: `${provider} sync`,
-        message: "Cancel requested...",
-        loading: true,
-        autoClose: false,
-        withCloseButton: false,
-        position: "bottom-right",
-      });
+      void provider;
     },
     onSuccess: (data, provider) => {
-      notifications.update({
-        id: `integration-sync-${provider}`,
+      notifications.show({
         title: `${provider} sync`,
         message: data.message || "Cancel requested.",
-        loading: true,
-        autoClose: false,
-        withCloseButton: false,
+        color: "blue",
+        autoClose: 3500,
         position: "bottom-right",
       });
       setSyncingProvider(provider);
       queryClient.invalidateQueries({ queryKey: ["integration-providers"] });
     },
     onError: (error, provider) => {
-      notifications.update({
-        id: `integration-sync-${provider}`,
+      notifications.show({
         title: `${provider} cancel failed`,
         message: extractApiErrorMessage(error),
         color: "red",
-        loading: false,
         autoClose: 7000,
         withCloseButton: true,
         position: "bottom-right",
@@ -448,6 +381,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
     disconnectingProvider,
     cancelingProvider,
     syncingProvider,
+    syncStatus,
     connectIntegrationMutation,
     disconnectIntegrationMutation,
     syncIntegrationMutation,

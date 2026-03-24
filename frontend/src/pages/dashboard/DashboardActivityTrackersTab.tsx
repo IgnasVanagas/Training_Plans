@@ -4,6 +4,7 @@ import {
   Button,
   Group,
   Paper,
+  Progress,
   SimpleGrid,
   Stack,
   Text,
@@ -17,7 +18,7 @@ import {
   IconPlugConnected,
 } from "@tabler/icons-react";
 import { useComputedColorScheme } from "@mantine/core";
-import { type ProviderStatus } from "../../api/integrations";
+import { type ProviderStatus, type ProviderSyncResponse } from "../../api/integrations";
 import { useI18n } from "../../i18n/I18nProvider";
 
 type Props = {
@@ -25,6 +26,7 @@ type Props = {
   connectingProvider?: string | null;
   disconnectingProvider?: string | null;
   syncingProvider?: string | null;
+  syncStatus?: ProviderSyncResponse | null;
   cancelingProvider?: string | null;
   onConnect: (provider: string) => void;
   onDisconnect: (provider: string) => void;
@@ -60,6 +62,7 @@ export default function DashboardActivityTrackersTab({
   connectingProvider,
   disconnectingProvider,
   syncingProvider,
+  syncStatus,
   cancelingProvider,
   onConnect,
   onDisconnect,
@@ -194,6 +197,23 @@ export default function DashboardActivityTrackersTab({
                   >
                     {t("Powered by Strava")}
                   </Anchor>
+                )}
+
+                {/* Sync progress */}
+                {isSyncing && (
+                  <Stack gap={4}>
+                    <Progress
+                      value={syncStatus && syncStatus.total > 0 ? (syncStatus.progress / syncStatus.total) * 100 : 100}
+                      animated
+                      size="sm"
+                      color="teal"
+                    />
+                    <Text size="xs" c="dimmed">
+                      {syncStatus && syncStatus.total > 0
+                        ? `Synced ${syncStatus.progress} of ${syncStatus.total}`
+                        : syncStatus?.message || "Syncing..."}
+                    </Text>
+                  </Stack>
                 )}
 
                 {/* Action buttons */}
