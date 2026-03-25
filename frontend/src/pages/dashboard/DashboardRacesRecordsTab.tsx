@@ -14,6 +14,16 @@ import {
 } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { IconTrophy, IconCalendarEvent, IconMapPin } from "@tabler/icons-react";
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ReferenceLine,
+} from "recharts";
 import { useI18n } from "../../i18n/I18nProvider";
 import { getPersonalRecords, type PersonalRecordsResponse } from "../../api/activities";
 import { getLatestSeasonPlan, type PlannerGoalRace } from "../../api/planning";
@@ -58,6 +68,19 @@ const medalColor = (rank: number): string => {
   if (rank === 2) return "#a0a0a0";
   return "#cd7f32";
 };
+
+/** Parse a window label like "5s", "1min", "120min" into seconds for sorting */
+const windowToSeconds = (w: string): number => {
+  const m = w.match(/^(\d+)(s|min)$/);
+  if (!m) return 0;
+  return Number(m[1]) * (m[2] === "min" ? 60 : 1);
+};
+
+const sortedWindowKeys = (keys: string[]): string[] =>
+  [...keys].sort((a, b) => windowToSeconds(a) - windowToSeconds(b));
+
+const sortedDistanceKeys = (keys: string[]): string[] =>
+  [...keys].sort((a, b) => getMetersFromDistance(a) - getMetersFromDistance(b));
 
 const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
   const { t } = useI18n();
@@ -127,8 +150,8 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
     };
 
     if (data.sport === "cycling") {
-      const windows = data.power ? Object.keys(data.power) : [];
-      const distances = data.best_efforts ? Object.keys(data.best_efforts) : [];
+      const windows = data.power ? sortedWindowKeys(Object.keys(data.power)) : [];
+      const distances = data.best_efforts ? sortedDistanceKeys(Object.keys(data.best_efforts)) : [];
       if (!windows.length && !distances.length)
         return renderEmptyState();
       const weight = me.profile?.weight;
@@ -166,6 +189,62 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
               </Table.Tbody>
             </Table>
           )}
+          {windows.length > 0 && (() => {
+            const curveData = windows
+              .map((w) => {
+                const entry = data.power![w]?.[0];
+                return entry ? { label: w, seconds: windowToSeconds(w), power: entry.value } : null;
+              })
+              .filter(Boolean) as { label: string; seconds: number; power: number }[];
+            if (curveData.length < 2) return null;
+            return (
+              <>
+                <Title order={5}>{t("Power Curve")}</Title>
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={curveData} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 11, fill: isDark ? "#94A3B8" : "#64748B" }}
+                      tickLine={false}
+                      axisLine={false}
+                      unit="W"
+                      width={52}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: isDark ? "#1E293B" : "#FFFFFF",
+                        border: `1px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}`,
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      formatter={(value: number) => [`${value}W`, t("Power (W)")]}
+                    />
+                    {weight && (
+                      <ReferenceLine
+                        y={weight * 4}
+                        stroke={isDark ? "#94A3B8" : "#64748B"}
+                        strokeDasharray="4 4"
+                        label={{ value: "4 W/kg", position: "insideTopRight", fontSize: 10, fill: isDark ? "#94A3B8" : "#64748B" }}
+                      />
+                    )}
+                    <Line
+                      type="monotone"
+                      dataKey="power"
+                      stroke="#3B82F6"
+                      strokeWidth={2.5}
+                      dot={{ r: 3, fill: "#3B82F6" }}
+                      activeDot={{ r: 5, stroke: "#3B82F6", strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </>
+            );
+          })()}
           {distances.length > 0 && (
             <>
               <Title order={5}>{t("Distance Records")}</Title>
@@ -208,7 +287,7 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
     }
 
     if (data.sport === "running" && data.best_efforts) {
-      const distances = Object.keys(data.best_efforts);
+      const distances = sortedDistanceKeys(Object.keys(data.best_efforts));
       if (!distances.length)
         return renderEmptyState();
       return (

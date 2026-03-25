@@ -579,6 +579,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Open detailed view": "Atidaryti detalų vaizdą"
     ,"Compare workouts, weeks, or months side by side.": "Palyginkite treniruotes, savaites ar mėnesius šalia viena kitos."
     ,"Power Curve Comparison": "Galios kreivės palyginimas"
+    ,"Power Curve": "Galios kreivė"
     ,"Zone Distribution": "Zonų pasiskirstymas"
     ,"Weekday Distribution": "Savaitės dienų pasiskirstymas"
     ,"Split Comparison": "Atkarpų palyginimas"

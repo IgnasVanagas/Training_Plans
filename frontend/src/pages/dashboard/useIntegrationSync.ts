@@ -232,10 +232,11 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
     }
 
     const cooldownMs = 15 * 60 * 1000;
+    const stravaCooldownMs = 30 * 60 * 1000;
     const now = Date.now();
     const connectedProviders = integrations.filter((provider) => {
       if (provider.connection_status !== "connected") return false;
-      return provider.provider.trim().toLowerCase() !== "strava";
+      return true;
     });
 
     const toSync = connectedProviders.filter((provider) => {
@@ -243,12 +244,21 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
       if (!provider.last_sync_at) return true;
       const lastSync = new Date(provider.last_sync_at).getTime();
       if (!Number.isFinite(lastSync)) return true;
-      return now - lastSync >= cooldownMs;
+      const providerCooldown =
+        provider.provider.trim().toLowerCase() === "strava" ? stravaCooldownMs : cooldownMs;
+      return now - lastSync >= providerCooldown;
     });
 
     if (toSync.length === 0) return;
 
     toSync.forEach((provider) => autoSyncRequestedRef.current.add(provider.provider));
+
+    const hasStrava = toSync.some(
+      (p) => p.provider.trim().toLowerCase() === "strava",
+    );
+    if (hasStrava && !syncingProvider) {
+      setSyncingProvider("strava");
+    }
 
     void Promise.allSettled(toSync.map((provider) => syncIntegrationNow(provider.provider))).then(() => {
       queryClient.invalidateQueries({ queryKey: ["integration-providers"] });

@@ -415,7 +415,11 @@ export default function TrainingCalendarZoneSummaryPanel({
         queryKey: ['zone-week-range-activities-supplemental', athleteId, allAthletes, weekStartDay, ...boundaryWeeksWithActivities.map((week) => week.key)],
         enabled: boundaryWeeksWithActivities.length > 0,
         staleTime: 1000 * 60 * 5,
-        initialData: () => readSnapshot<ActivityZoneSummary[]>(supplementalSnapshotKey) || [],
+        placeholderData: (prev) => prev,
+        initialData: () => {
+            const snap = readSnapshot<ActivityZoneSummary[]>(supplementalSnapshotKey);
+            return snap && snap.length > 0 ? snap : undefined;
+        },
         queryFn: async () => {
             const byId = new Map<number, ActivityZoneSummary>();
 

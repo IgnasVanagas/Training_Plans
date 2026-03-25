@@ -312,6 +312,7 @@ async def _queue_strava_recent_sync_from_webhook(db: AsyncSession, *, user_id: i
     state = await get_or_create_sync_state(db, user_id=user_id, provider="strava")
     cursor = dict(state.cursor or {})
     cursor.pop("cancel_requested", None)
+    cursor["strava_recent_only"] = True
     state.cursor = cursor
 
     if getattr(state, "sync_status", "idle") == "syncing":
@@ -1013,52 +1014,52 @@ async def _sync_provider_task(provider: str, user_id: int):
                                 f"(daily Strava limit {strava_daily_request_limit} reached)."
                             )
                             await db.commit()
-                            continue
+                            # Fall through to ingest the activity without enrichment
+                        else:
+                            payload = record.payload if isinstance(record.payload, dict) else {}
+                            detail_payload = payload.get("detail") if isinstance(payload.get("detail"), dict) else None
+                            has_local_detail = isinstance(detail_payload, dict) and (
+                                isinstance(detail_payload.get("data"), list)
+                                or isinstance(detail_payload.get("laps"), list)
+                                or isinstance(detail_payload.get("stats"), dict)
+                            )
 
-                        payload = record.payload if isinstance(record.payload, dict) else {}
-                        detail_payload = payload.get("detail") if isinstance(payload.get("detail"), dict) else None
-                        has_local_detail = isinstance(detail_payload, dict) and (
-                            isinstance(detail_payload.get("data"), list)
-                            or isinstance(detail_payload.get("laps"), list)
-                            or isinstance(detail_payload.get("stats"), dict)
-                        )
+                            if not has_local_detail:
+                                try:
+                                    async def _on_strava_request_debug(requests_last_10m: int):
+                                        updated_cursor_dbg = dict(state.cursor or {})
+                                        updated_cursor_dbg["strava_requests_last_10m"] = requests_last_10m
+                                        state.cursor = updated_cursor_dbg
 
-                        if not has_local_detail:
-                            try:
-                                async def _on_strava_request_debug(requests_last_10m: int):
-                                    updated_cursor_dbg = dict(state.cursor or {})
-                                    updated_cursor_dbg["strava_requests_last_10m"] = requests_last_10m
-                                    state.cursor = updated_cursor_dbg
+                                    fetched_detail = await connector.fetch_activity_deep_data(
+                                        access_token=access_token,
+                                        activity_id=record.provider_activity_id,
+                                        start_time=record.start_time,
+                                        request_debug_callback=_on_strava_request_debug,
+                                    )
+                                    payload = dict(payload)
+                                    payload["detail"] = fetched_detail
+                                    record.payload = payload
 
-                                fetched_detail = await connector.fetch_activity_deep_data(
-                                    access_token=access_token,
-                                    activity_id=record.provider_activity_id,
-                                    start_time=record.start_time,
-                                    request_debug_callback=_on_strava_request_debug,
-                                )
-                                payload = dict(payload)
-                                payload["detail"] = fetched_detail
-                                record.payload = payload
+                                    updated_cursor = dict(state.cursor or {})
+                                    updated_cursor["strava_request_day"] = request_day
+                                    updated_cursor["strava_request_count"] = request_used + estimated_cost
+                                    updated_cursor["strava_request_limit"] = strava_daily_request_limit
+                                    state.cursor = updated_cursor
+                                    request_used += estimated_cost
+                                except Exception as enrich_error:
+                                    # Keep sync resilient; activity summary still imports and can be enriched later.
+                                    await log_integration_audit(
+                                        db,
+                                        user_id=user_id,
+                                        provider=provider,
+                                        action="activity_detail_enrich_failed",
+                                        status="warning",
+                                        message=f"Failed to enrich activity {record.provider_activity_id}: {enrich_error}",
+                                    )
 
-                                updated_cursor = dict(state.cursor or {})
-                                updated_cursor["strava_request_day"] = request_day
-                                updated_cursor["strava_request_count"] = request_used + estimated_cost
-                                updated_cursor["strava_request_limit"] = strava_daily_request_limit
-                                state.cursor = updated_cursor
-                                request_used += estimated_cost
-                            except Exception as enrich_error:
-                                # Keep sync resilient; activity summary still imports and can be enriched later.
-                                await log_integration_audit(
-                                    db,
-                                    user_id=user_id,
-                                    provider=provider,
-                                    action="activity_detail_enrich_failed",
-                                    status="warning",
-                                    message=f"Failed to enrich activity {record.provider_activity_id}: {enrich_error}",
-                                )
-
-                            if strava_enrich_delay_seconds > 0:
-                                await asyncio.sleep(strava_enrich_delay_seconds)
+                                if strava_enrich_delay_seconds > 0:
+                                    await asyncio.sleep(strava_enrich_delay_seconds)
 
                     activity, created = await ingest_provider_activity(
                         db,

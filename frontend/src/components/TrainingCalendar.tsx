@@ -417,10 +417,12 @@ export const TrainingCalendar = ({
         queryKey: ['calendar', format(rangeBounds.start, 'yyyy-MM-dd'), format(rangeBounds.end, 'yyyy-MM-dd'), athleteId, allAthletes],
         initialData: () => {
             const snapKey = `calendar:v2:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
-            const snap = readSnapshot<any[]>(snapKey) || [];
-            return snap
+            const snap = readSnapshot<any[]>(snapKey);
+            if (!snap || snap.length === 0) return undefined;
+            const normalized = snap
                 .map(normalizeCalendarEvent)
                 .filter((event): event is any => Boolean(event));
+            return normalized.length > 0 ? normalized : undefined;
         },
         queryFn: async () => {
             const rows = await fetchEvents(rangeBounds.start, rangeBounds.end);
@@ -601,9 +603,9 @@ export const TrainingCalendar = ({
     // This alias keeps compatibility with the week view and effect dependencies.
     const calendarEvents = events;
 
-    const zoneSummarySnapKey = `zone-summary:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}:${weekStartDay}:${format(viewDate, 'yyyy-MM')}`;
+    const zoneSummarySnapKey = `zone-summary:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}:${weekStartDay}:${viewMonthKey}`;
     const { data: zoneSummary } = useQuery({
-        queryKey: ['zone-summary', format(viewDate, 'yyyy-MM-dd'), athleteId, allAthletes, weekStartDay],
+        queryKey: ['zone-summary', viewMonthKey, athleteId, allAthletes, weekStartDay],
         initialData: () => readSnapshot<ZoneSummaryResponse>(zoneSummarySnapKey) ?? undefined,
         queryFn: async () => {
             const params = new URLSearchParams();
