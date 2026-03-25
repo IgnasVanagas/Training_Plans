@@ -50,7 +50,13 @@ async def healthcheck() -> dict[str, str]:
 @app.on_event("startup")
 async def on_startup() -> None:
     logger.info("Starting up...")
-    try:
+
+    # All DB work is wrapped in a timeout so the server always binds its port.
+    # Uvicorn only opens the listening socket AFTER startup events complete, so
+    # a hanging DB connection would cause Render's port-detection to time out.
+    _STARTUP_DB_TIMEOUT = 45  # seconds
+
+    async def _run_migrations() -> None:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS hrv_ms DOUBLE PRECISION"))
@@ -74,12 +80,19 @@ async def on_startup() -> None:
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS rpe FLOAT"))
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS notes TEXT"))
         logger.info("Database schema ready")
+
+    try:
+        await asyncio.wait_for(_run_migrations(), timeout=_STARTUP_DB_TIMEOUT)
+    except asyncio.TimeoutError:
+        logger.error("Database migration timed out after %ds (non-fatal)", _STARTUP_DB_TIMEOUT)
     except Exception as exc:
         logger.error("Database migration failed (non-fatal): %s", exc)
 
     if os.getenv("AUTO_SEED_DEMO", "true").lower() in {"1", "true", "yes", "on"}:
         try:
-            await seed_data()
+            await asyncio.wait_for(seed_data(), timeout=_STARTUP_DB_TIMEOUT)
+        except asyncio.TimeoutError:
+            logger.error("Seed data timed out (non-fatal)")
         except Exception as exc:
             logger.error("Seed data failed (non-fatal): %s", exc)
 
@@ -89,8 +102,12 @@ async def on_startup() -> None:
             from .integrations.registry import get_connector
             connector = get_connector("strava")
             if connector.is_webhook_configured():
-                result = await connector.ensure_webhook_subscription()
+                result = await asyncio.wait_for(
+                    connector.ensure_webhook_subscription(), timeout=15,
+                )
                 logger.info("Strava webhook subscription: %s", result.get("status"))
+        except asyncio.TimeoutError:
+            logger.warning("Strava webhook subscription timed out")
         except Exception as exc:
             logger.warning("Strava webhook subscription check failed: %s", exc)
 
@@ -99,9 +116,11 @@ async def on_startup() -> None:
     # startup — only touches rows where duplicate_of_id IS NULL.
     try:
         from .services.activity_dedupe import _backfill_duplicates
-        marked = await _backfill_duplicates(engine)
+        marked = await asyncio.wait_for(_backfill_duplicates(engine), timeout=_STARTUP_DB_TIMEOUT)
         if marked:
             logger.info("Duplicate backfill: marked %d historic duplicate(s)", marked)
+    except asyncio.TimeoutError:
+        logger.warning("Duplicate backfill timed out (non-fatal)")
     except Exception as exc:
         logger.warning("Duplicate backfill failed (non-fatal): %s", exc)
 

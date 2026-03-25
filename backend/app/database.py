@@ -37,6 +37,7 @@ engine = create_async_engine(
     max_overflow=max(0, _env_int("DB_MAX_OVERFLOW", 5)),
     pool_timeout=max(1, _env_int("DB_POOL_TIMEOUT_SECONDS", 30)),
     pool_use_lifo=True,
+    connect_args={"timeout": 10, "command_timeout": 30},
 )
 AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
