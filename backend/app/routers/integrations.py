@@ -1297,6 +1297,9 @@ async def sync_provider_now(
         cursor.pop("cancel_requested", None)
         cursor.pop("strava_recent_only_once", None)
         cursor.pop("strava_no_auto_history", None)
+        if requested_mode == "full":
+            # Force a fresh 3-month look-back so any missed history gets imported
+            cursor.pop("initial_sync_done", None)
         state.cursor = cursor
     else:
         cursor = dict(state.cursor or {})

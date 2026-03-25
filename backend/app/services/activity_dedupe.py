@@ -7,7 +7,6 @@ from typing import Any, Optional
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import load_only
 
 from ..models import Activity
 
@@ -147,10 +146,7 @@ async def find_duplicate_activity(
         window_start = created_at - timedelta(seconds=900)
         window_end = created_at + timedelta(seconds=900)
         rows = await db.execute(
-            select(Activity).options(load_only(
-                Activity.id, Activity.sport, Activity.created_at,
-                Activity.duration, Activity.distance, Activity.duplicate_of_id,
-            )).where(
+            select(Activity).where(
                 Activity.athlete_id == athlete_id,
                 Activity.duplicate_of_id.is_(None),
                 Activity.created_at.between(window_start, window_end),
