@@ -7,7 +7,7 @@ from ..models import User, Activity, OrganizationMember, RoleEnum, Profile, Prof
 from ..integrations.crypto import decrypt_token, encrypt_token
 from ..integrations.registry import get_connector
 from ..integrations.service import get_connection
-from ..schemas import ActivityOut, ActivityDetail, ActivityUpdate, ActivityManualCreate
+from ..schemas import ActivityOut, ActivityDetail, ActivityUpdate, ActivityManualCreate, TrendDataPoint, PerformanceTrendResponse
 from ..auth import get_current_user
 from ..parsing import parse_activity_file
 from ..services.compliance import match_and_score
@@ -2312,6 +2312,135 @@ async def get_training_status(
         "tsb": round(tsb, 1),
         "training_status": _resolve_training_status(tsb, ctl)
     }
+
+@router.get("/performance-trend", response_model=PerformanceTrendResponse)
+async def get_performance_trend(
+    days: int = Query(default=180, ge=30, le=365),
+    athlete_id: int | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Return daily Fitness/Fatigue/Form series for the Performance Trend Chart."""
+    ref_date = date.today()
+    target_athlete_id = current_user.id
+
+    if athlete_id is not None and athlete_id != current_user.id:
+        if current_user.role != RoleEnum.coach:
+            raise HTTPException(status_code=403, detail="Not authorized for this athlete")
+        access_stmt = select(OrganizationMember).where(
+            OrganizationMember.user_id == athlete_id,
+            OrganizationMember.status == 'active',
+            OrganizationMember.organization_id.in_(
+                select(OrganizationMember.organization_id).where(
+                    OrganizationMember.user_id == current_user.id,
+                    OrganizationMember.role == RoleEnum.coach.value,
+                    OrganizationMember.status == 'active'
+                )
+            )
+        )
+        access_res = await db.execute(access_stmt)
+        if access_res.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="Not authorized for this athlete")
+        target_athlete_id = athlete_id
+    elif athlete_id is not None:
+        target_athlete_id = athlete_id
+
+    profile = await db.scalar(select(Profile).where(Profile.user_id == target_athlete_id))
+    _profile_ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+    max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
+
+    # Need enough warmup for the 42-day fitness EWA — fetch days + 89 extra
+    warmup = 89
+    total_window = days + warmup
+    window_start = ref_date - timedelta(days=total_window)
+    start_dt = datetime.combine(window_start, datetime.min.time())
+    end_dt = datetime.combine(ref_date, datetime.max.time())
+
+    _pt_ftp_hist_res = await db.execute(
+        select(ProfileMetricHistory)
+        .where(
+            ProfileMetricHistory.user_id == target_athlete_id,
+            ProfileMetricHistory.metric == "ftp",
+        )
+        .order_by(ProfileMetricHistory.recorded_at)
+    )
+    _pt_ftp_hist: list[tuple[datetime, float]] = [
+        (row.recorded_at, row.value) for row in _pt_ftp_hist_res.scalars().all()
+    ]
+
+    activities_stmt = select(
+        Activity,
+        Activity.streams['_meta'].label('streams_meta'),
+    ).options(defer(Activity.streams)).where(
+        Activity.athlete_id == target_athlete_id,
+        Activity.created_at >= start_dt,
+        Activity.created_at <= end_dt,
+        Activity.duplicate_of_id.is_(None)
+    )
+    activities_res = await db.execute(activities_stmt)
+    rows = activities_res.all()
+
+    daily_aerobic: dict[date, float] = defaultdict(float)
+    daily_anaerobic: dict[date, float] = defaultdict(float)
+    needs_full_streams: list[int] = []
+
+    for activity, streams_meta in rows:
+        meta = streams_meta if isinstance(streams_meta, dict) else {}
+        if meta.get("deleted"):
+            continue
+        sport = _normalize_sport_name(activity.sport)
+        ftp = _hist_lookup(_pt_ftp_hist, activity.created_at, _profile_ftp)
+        cached = _load_from_meta_dict(meta)
+        if cached is not None:
+            aerobic, anaerobic = cached
+        else:
+            estimated = _estimate_load_from_activity_summary(
+                activity, sport=sport, ftp=ftp, max_hr=max_hr, profile=profile,
+            )
+            if estimated is not None:
+                aerobic, anaerobic = estimated
+            else:
+                needs_full_streams.append(activity.id)
+                continue
+        activity_day = activity.created_at.date()
+        daily_aerobic[activity_day] += aerobic
+        daily_anaerobic[activity_day] += anaerobic
+
+    if needs_full_streams:
+        full_stmt = select(Activity).where(Activity.id.in_(needs_full_streams))
+        full_res = await db.execute(full_stmt)
+        for activity in full_res.scalars().all():
+            ftp = _hist_lookup(_pt_ftp_hist, activity.created_at, _profile_ftp)
+            aerobic, anaerobic = _activity_training_load(activity, ftp, max_hr, profile)
+            activity_day = activity.created_at.date()
+            daily_aerobic[activity_day] += aerobic
+            daily_anaerobic[activity_day] += anaerobic
+
+    _DECAY_FITNESS = 1.0 - math.exp(-1.0 / 42)
+    _DECAY_FATIGUE = 1.0 - math.exp(-1.0 / 7)
+    fitness = 0.0
+    fatigue = 0.0
+
+    series_start = ref_date - timedelta(days=days - 1)
+    result_points: list[TrendDataPoint] = []
+
+    day_cursor = window_start
+    while day_cursor <= ref_date:
+        day_load = daily_aerobic.get(day_cursor, 0.0) + daily_anaerobic.get(day_cursor, 0.0)
+        fitness += (day_load - fitness) * _DECAY_FITNESS
+        fatigue += (day_load - fatigue) * _DECAY_FATIGUE
+        if day_cursor >= series_start:
+            result_points.append(TrendDataPoint(
+                date=day_cursor.isoformat(),
+                fitness=round(fitness, 2),
+                fatigue=round(fatigue, 2),
+                form=round(fitness - fatigue, 2),
+                load=round(day_load, 1),
+            ))
+        day_cursor += timedelta(days=1)
+
+    return PerformanceTrendResponse(data=result_points)
+
 
 @router.get("/personal-records")
 async def get_personal_records_endpoint(

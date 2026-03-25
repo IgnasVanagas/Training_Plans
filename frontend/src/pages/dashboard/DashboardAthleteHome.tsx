@@ -10,7 +10,6 @@ import {
 } from "@tabler/icons-react";
 import { DashboardCalendarEvent, MetricKey, TrainingStatus, User } from "./types";
 import { formatDuration, formatMinutesHm } from "./utils";
-import { CoachComparisonPanel } from "../../components/CoachComparisonPanel";
 
 type Props = {
   isDark: boolean;
@@ -227,7 +226,6 @@ const DashboardAthleteHome = ({
           )}
         </SimpleGrid>
       )}
-      <CoachComparisonPanel athletes={[]} me={me as any} isAthlete />
     </Stack>
   );
 };

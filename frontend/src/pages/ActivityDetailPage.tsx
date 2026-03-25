@@ -1,4 +1,4 @@
-import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput } from "@mantine/core";
+import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput, Tooltip as MantineTooltip } from "@mantine/core";
 import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -1365,25 +1365,45 @@ export const ActivityDetailPage = () => {
                                                  )}
                                                  {isCyclingActivity && overallNormalizedPower != null && (
                                                      <Group justify="space-between">
-                                                        <Text size="sm" c={ui.textDim}>Normalized Power</Text>
+                                                        <Group gap={4} align="center">
+                                                          <Text size="sm" c={ui.textDim}>Weighted Avg Power (WAP)</Text>
+                                                          <MantineTooltip label="Average power misleads on variable rides (hilly/coasting). WAP weights intense surges more heavily by raising 30-second rolling averages to the 4th power. A big gap between WAP and Avg Power means the ride was 'surgy' and metabolically expensive." multiline w={280} withArrow>
+                                                            <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
+                                                          </MantineTooltip>
+                                                        </Group>
                                                         <Text size="sm" fw={700} c={ui.textMain}>{overallNormalizedPower.toFixed(0)} W</Text>
                                                      </Group>
                                                  )}
                                                  {isCyclingActivity && cyclingPerfMetrics?.intensityFactor != null && (
                                                      <Group justify="space-between">
-                                                        <Text size="sm" c={ui.textDim}>Intensity Factor</Text>
+                                                        <Group gap={4} align="center">
+                                                          <Text size="sm" c={ui.textDim}>Relative Intensity (RI)</Text>
+                                                          <MantineTooltip label="WAP ÷ FTP. ≤0.75: Recovery/Endurance. 0.85–0.95: Tempo/Sweet Spot. 1.0+: Hard interval or short race effort. Tells you how hard this session was relative to your current fitness level." multiline w={280} withArrow>
+                                                            <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
+                                                          </MantineTooltip>
+                                                        </Group>
                                                         <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.intensityFactor.toFixed(2)}</Text>
                                                      </Group>
                                                  )}
                                                  {isCyclingActivity && cyclingPerfMetrics?.tss != null && (
                                                      <Group justify="space-between">
-                                                        <Text size="sm" c={ui.textDim}>TSS</Text>
+                                                        <Group gap={4} align="center">
+                                                          <Text size="sm" c={ui.textDim}>Training Load (TL)</Text>
+                                                          <MantineTooltip label="Combines duration and intensity: (seconds × WAP × RI) / (FTP × 3600) × 100. A value of 100 equals riding at your threshold for exactly 1 hour. The universal currency for comparing a 4-hour easy ride to a 1-hour brutal interval session." multiline w={280} withArrow>
+                                                            <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
+                                                          </MantineTooltip>
+                                                        </Group>
                                                         <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.tss.toFixed(0)}</Text>
                                                      </Group>
                                                  )}
                                                  {isCyclingActivity && cyclingPerfMetrics?.vi != null && (
                                                      <Group justify="space-between">
-                                                        <Text size="sm" c={ui.textDim}>Variability Index</Text>
+                                                        <Group gap={4} align="center">
+                                                          <Text size="sm" c={ui.textDim}>Variability Index (VI)</Text>
+                                                          <MantineTooltip label="WAP ÷ Avg Power. 1.0–1.05: Steady time-trial/triathlon effort. 1.2+: Highly variable criterium/mountain bike. High values indicate frequent anaerobic bursts and fast-twitch fiber recruitment." multiline w={280} withArrow>
+                                                            <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
+                                                          </MantineTooltip>
+                                                        </Group>
                                                         <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.vi.toFixed(2)}</Text>
                                                      </Group>
                                                  )}

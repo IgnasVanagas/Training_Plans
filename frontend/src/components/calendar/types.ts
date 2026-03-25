@@ -57,6 +57,7 @@ export interface CalendarEvent {
   avg_watts?: number;
   avg_speed?: number;
   duplicate_recordings_count?: number | null;
+  training_load?: number | null;
 }
 
 export interface ZoneSportSummary {

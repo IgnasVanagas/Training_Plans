@@ -1356,16 +1356,19 @@ export const TrainingCalendar = ({
     const monthlyHeaderMetrics = useMemo(() => {
         let totalDistanceKm = 0;
         let totalDurationMin = 0;
+        let totalLoad = 0;
         monthlyCompletedEvents.forEach((evt: any) => {
             totalDistanceKm += evt.resource.distance || 0;
             totalDurationMin += evt.resource.duration || 0;
+            totalLoad += evt.resource.training_load || 0;
         });
-        return { totalDistanceKm, totalDurationMin };
+        return { totalDistanceKm, totalDurationMin, totalLoad };
     }, [monthlyCompletedEvents]);
 
     const monthlyHeaderLabel = useMemo(() => {
-        return `${monthlyHeaderMetrics.totalDistanceKm.toFixed(1)} km / ${formatTotalMinutes(monthlyHeaderMetrics.totalDurationMin)}`;
-    }, [monthlyHeaderMetrics.totalDistanceKm, monthlyHeaderMetrics.totalDurationMin]);
+        const base = `${monthlyHeaderMetrics.totalDistanceKm.toFixed(1)} km / ${formatTotalMinutes(monthlyHeaderMetrics.totalDurationMin)}`;
+        return monthlyHeaderMetrics.totalLoad > 0 ? `${base} / ${monthlyHeaderMetrics.totalLoad.toFixed(0)} TL` : base;
+    }, [monthlyHeaderMetrics.totalDistanceKm, monthlyHeaderMetrics.totalDurationMin, monthlyHeaderMetrics.totalLoad]);
 
     const weeklyEvents = useMemo(() => {
         return events
@@ -1380,12 +1383,14 @@ export const TrainingCalendar = ({
     const weeklyTotals = useMemo(() => {
         let totalDistanceKm = 0;
         let totalDurationMin = 0;
+        let totalLoad = 0;
         weeklyCompleted.forEach((event: any) => {
             const resource = event.resource as CalendarEvent;
             totalDistanceKm += resource.distance || 0;
             totalDurationMin += resource.duration || 0;
+            totalLoad += resource.training_load || 0;
         });
-        return { totalDistanceKm, totalDurationMin };
+        return { totalDistanceKm, totalDurationMin, totalLoad };
     }, [weeklyCompleted]);
 
     const formatPaceFromSpeed = (speed?: number | null) => {
@@ -1548,7 +1553,7 @@ export const TrainingCalendar = ({
                                         {format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d')}
                                     </Text>
                                     <Text size="sm" fw={800} c={palette.textMain}>
-                                        {weeklyTotals.totalDistanceKm.toFixed(1)} km / {formatTotalMinutes(weeklyTotals.totalDurationMin)}
+                                        {weeklyTotals.totalDistanceKm.toFixed(1)} km / {formatTotalMinutes(weeklyTotals.totalDurationMin)}{weeklyTotals.totalLoad > 0 ? ` / ${weeklyTotals.totalLoad.toFixed(0)} TL` : ''}
                                     </Text>
                                 </Group>
                             </Paper>

@@ -17,6 +17,8 @@ import { MetricHistoryModal } from "../components/dashboard/MetricHistoryModal";
 import ActivityUploadPanel from "../components/dashboard/ActivityUploadPanel";
 import SupportContactButton from "../components/common/SupportContactButton";
 import DashboardAthleteHome from "./dashboard/DashboardAthleteHome";
+import InsightsPage from "./dashboard/InsightsPage";
+import { CoachComparisonPanel } from "../components/CoachComparisonPanel";
 import DashboardCoachHome from "./dashboard/DashboardCoachHome";
 import DashboardLayoutShell from "./dashboard/DashboardLayoutShell";
 import DashboardNotificationsTab from "./dashboard/DashboardNotificationsTab";
@@ -51,7 +53,7 @@ const toLocalDateKey = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health"]);
+const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health", "comparison"]);
 
 const Dashboard = () => {
   const location = useLocation();
@@ -68,7 +70,7 @@ const Dashboard = () => {
   const [inviteEmail, setInviteEmail] = useState("");
 
   // Resolve initial tab: navigation state > URL ?tab= > default "dashboard"
-  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health";
+  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health" | "comparison";
   const resolvedInitialTab: DashboardTab = (() => {
     if (navigationState.activeTab && VALID_TABS.has(navigationState.activeTab)) return navigationState.activeTab;
     const urlTab = searchParams.get("tab");
@@ -794,18 +796,20 @@ const Dashboard = () => {
         ) : activeTab === "races" ? (
           <DashboardRacesRecordsTab me={me} athleteId={athleteIdNum} />
         ) : activeTab === "insights" ? (
-          <DashboardAthleteHome
+          <InsightsPage
             isDark={isDark}
             me={me}
-            todayWorkout={featuredWorkout}
-            isTodayWorkout={Boolean(todayWorkout && featuredWorkout?.date === todayWorkout.date)}
-            wellnessSummary={wellnessSummaryQuery.data}
-            integrations={integrationsQuery.data || []}
             trainingStatus={trainingStatusQuery.data}
-            onOpenPlan={() => setActiveTab("plan")}
+            wellnessSummary={wellnessSummaryQuery.data}
             onSelectMetric={(metric) => setSelectedMetric(metric)}
-            respondingInvitation={respondInvitationMutation.isPending}
-            onRespondInvitation={(organizationId, action) => respondInvitationMutation.mutate({ organizationId, action })}
+            athleteId={athleteIdNum}
+            athletes={athletesQuery.data || []}
+          />
+        ) : activeTab === "comparison" ? (
+          <CoachComparisonPanel
+            athletes={athletesQuery.data || []}
+            me={me as any}
+            isAthlete={me.role === "athlete"}
           />
         ) : activeTab === "profile" ? (
           <DashboardAthleteProfileTab

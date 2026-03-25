@@ -305,6 +305,7 @@ async def get_calendar_events(
     # Count duplicate recordings for each primary activity
     primary_ids = [a.id for a in activities]
     dup_count_map: dict[int, int] = {}
+    training_load_map: dict[int, float] = {}
     if primary_ids:
         dup_counts_res = await db.execute(
             select(Activity.duplicate_of_id, func.count(Activity.id).label("cnt"))
@@ -313,6 +314,18 @@ async def get_calendar_events(
         )
         for row in dup_counts_res.all():
             dup_count_map[row[0]] = row[1]
+
+        meta_res = await db.execute(
+            select(Activity.id, Activity.streams['_meta'].label('meta'))
+            .where(Activity.id.in_(primary_ids))
+        )
+        for row in meta_res.all():
+            m = row.meta if isinstance(row.meta, dict) else {}
+            aerobic = float(m.get('aerobic_load') or 0)
+            anaerobic = float(m.get('anaerobic_load') or 0)
+            total = round(aerobic + anaerobic, 1)
+            if total > 0:
+                training_load_map[row.id] = total
 
     visible_activity_ids = {activity.id for activity in activities}
     workout_by_matched_activity_id = {
@@ -423,6 +436,7 @@ async def get_calendar_events(
             avg_watts=a.average_watts,
             avg_speed=a.avg_speed,
             duplicate_recordings_count=dup_count_map.get(a.id, 0) or None,
+            training_load=training_load_map.get(a.id),
             start_time=a.created_at
         ))
         

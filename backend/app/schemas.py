@@ -549,9 +549,22 @@ class CalendarEvent(BaseModel):
     avg_watts: Optional[float] = None
     avg_speed: Optional[float] = None
     duplicate_recordings_count: Optional[int] = None
+    training_load: Optional[float] = None
 
     # Sorting helper
     start_time: Optional[datetime] = None
+
+
+class TrendDataPoint(BaseModel):
+    date: str
+    fitness: float    # 42-day exponential avg (open-source equiv of CTL)
+    fatigue: float    # 7-day exponential avg (open-source equiv of ATL)
+    form: float       # fitness − fatigue (open-source equiv of TSB)
+    load: float       # daily aerobic + anaerobic load
+
+
+class PerformanceTrendResponse(BaseModel):
+    data: List[TrendDataPoint]
 
 
 # Structured Workout Schemas

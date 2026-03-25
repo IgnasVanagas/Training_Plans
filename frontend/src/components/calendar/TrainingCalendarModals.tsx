@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { WorkoutEditor } from '../builder/WorkoutEditor';
-import { WorkoutLibrary } from '../library/WorkoutLibrary';
+
 import { CalendarEvent, WorkoutRecurrenceRule } from './types';
 import { formatMinutesHm, parseDate } from './dateUtils';
 import { DayEventItem } from './TrainingCalendarEventRenderers';
@@ -193,7 +193,7 @@ export const DayDetailsModal = ({
 }: any) => {
   const { t } = useI18n();
   const isMobile = useMediaQuery('(max-width: 48em)');
-  const [createMode, setCreateMode] = useState<'quick' | 'library' | 'text'>('quick');
+  const [createMode, setCreateMode] = useState<'quick' | 'text'>('text');
   const [editingMarker, setEditingMarker] = useState<{ type: string; index: number } | null>(null);
   const [editDraft, setEditDraft] = useState<any>(null);
   const [pendingRaceAction, setPendingRaceAction] = useState<{ type: 'goal_race'; priority: 'A' | 'B' | 'C'; label: string } | null>(null);
@@ -335,7 +335,8 @@ export const DayDetailsModal = ({
     fullScreen={isMobile}
     styles={{ content: { fontFamily: '"Inter", sans-serif' } }}
   >
-    <Stack>
+    <Stack gap="md">
+      {/* ── Planning markers (races, constraints) ── */}
       {dayMarkers.length > 0 && (
         <Stack gap="xs">
           {dayMarkers.map((marker: any, idx: number) => {
@@ -491,69 +492,8 @@ export const DayDetailsModal = ({
               ))
             )}
 
-            {/* Day Notes */}
-            <Divider label={t('Day notes') || 'Day notes'} labelPosition="left" my={4} />
-            <Stack gap="xs">
-              {(notesQuery.data || []).map((note: DayNote) => (
-                <Paper key={note.id} withBorder radius="md" p="xs" style={{ borderLeft: '3px solid var(--mantine-color-blue-5)' }}>
-                  {editingNoteId === note.id ? (
-                    <Stack gap="xs">
-                      <Textarea
-                        value={noteText}
-                        onChange={(e) => setNoteText(e.currentTarget.value)}
-                        minRows={2}
-                        autosize
-                      />
-                      <Group justify="flex-end" gap="xs">
-                        <Button variant="subtle" size="xs" onClick={() => { setEditingNoteId(null); setNoteText(''); }}>
-                          {t('Cancel') || 'Cancel'}
-                        </Button>
-                        <Button size="xs" onClick={() => upsertNoteMutation.mutate(noteText)} loading={upsertNoteMutation.isPending} disabled={!noteText.trim()}>
-                          {t('Save') || 'Save'}
-                        </Button>
-                      </Group>
-                    </Stack>
-                  ) : (
-                    <Group gap="sm" wrap="nowrap" align="flex-start">
-                      <Box style={{ flex: 1, minWidth: 0 }}>
-                        <Group gap="xs" mb={2}>
-                          <Text size="xs" fw={600} c="blue">{note.author_name || '?'}</Text>
-                          <Text size="xs" c="dimmed">{note.author_role === 'coach' ? (t('Coach') || 'Coach') : (t('Athlete') || 'Athlete')}</Text>
-                        </Group>
-                        <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{note.content}</Text>
-                      </Box>
-                      <Group gap={4} style={{ flexShrink: 0 }}>
-                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => { setEditingNoteId(note.id); setNoteText(note.content); }} title={t('Edit') || 'Edit'}>
-                          <Pencil size={14} />
-                        </ActionIcon>
-                        <ActionIcon size="sm" variant="subtle" color="red" onClick={() => deleteNoteMutation.mutate(note.id)} loading={deleteNoteMutation.isPending} title={t('Delete') || 'Delete'}>
-                          <Trash2 size={14} />
-                        </ActionIcon>
-                      </Group>
-                    </Group>
-                  )}
-                </Paper>
-              ))}
-              {editingNoteId === null && (
-                <Group gap="xs" align="flex-end">
-                  <Textarea
-                    placeholder={t('Add a note for this day...') || 'Add a note for this day...'}
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.currentTarget.value)}
-                    minRows={1}
-                    autosize
-                    style={{ flex: 1 }}
-                  />
-                  <Button size="xs" variant="light" onClick={() => upsertNoteMutation.mutate(noteText)} loading={upsertNoteMutation.isPending} disabled={!noteText.trim()}>
-                    {t('Add note') || 'Add note'}
-                  </Button>
-                </Group>
-              )}
-            </Stack>
-
             {!isPastCreationDate && (
               <>
-
                 {coachNeedsAthleteSelection && (
                   <Select
                     label={t('Assign to Athlete') || 'Assign to Athlete'}
@@ -565,24 +505,300 @@ export const DayDetailsModal = ({
                       setDayCreateError(null);
                     }}
                     searchable
-                    mb="xs"
                   />
                 )}
 
-                <Stack gap="xs" mb="sm">
-                  <Text fw={600}>{t('Calendar actions') || 'Calendar actions'}</Text>
-                  <Text size="sm" c="dimmed">
+                {!isRangeSelection && (
+                  <>
+                    {/* ── Workout creation card ── */}
+                    <Box
+                      style={{
+                        borderRadius: 12,
+                        border: `1px solid ${isDark ? 'rgba(0,195,245,0.22)' : 'rgba(0,145,181,0.18)'}`,
+                        overflow: 'hidden',
+                        background: isDark ? 'rgba(0,195,245,0.025)' : 'rgba(0,145,181,0.02)',
+                      }}
+                    >
+                      <Box
+                        style={{
+                          padding: '10px 14px 8px',
+                          borderBottom: `1px solid ${isDark ? 'rgba(0,195,245,0.12)' : 'rgba(0,145,181,0.10)'}`,
+                          background: isDark ? 'rgba(0,195,245,0.06)' : 'rgba(0,145,181,0.045)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          flexWrap: 'wrap',
+                        }}
+                      >
+                        <Text
+                          size="xs"
+                          fw={800}
+                          tt="uppercase"
+                          style={{ letterSpacing: '0.07em', color: isDark ? '#00c3f5' : '#007a96', whiteSpace: 'nowrap' }}
+                        >
+                          {t('Add Workout') || 'Add Workout'}
+                        </Text>
+                        <SegmentedControl
+                          value={createMode}
+                          onChange={(val: any) => setCreateMode(val)}
+                          data={[
+                            { label: '✦ Text Builder', value: 'text' },
+                            { label: t('Quick') || 'Quick', value: 'quick' },
+                          ]}
+                          size="xs"
+                          styles={{ root: { background: 'transparent' } }}
+                        />
+                      </Box>
+
+                      <Box p="md">
+                        {createMode === 'text' && (() => {
+                          const textParseResult = textWorkoutInput?.trim() ? parseWorkoutText(textWorkoutInput, quickWorkout.sport_type) : null;
+                          const textParseOk = textParseResult && !isParseError(textParseResult) ? textParseResult : null;
+                          const textParseErr = textParseResult && isParseError(textParseResult) ? textParseResult : null;
+                          return (
+                            <Stack gap="sm">
+                              <Select
+                                label={t('Sport') || 'Sport'}
+                                data={['Cycling', 'Running']}
+                                value={quickWorkout.sport_type}
+                                onChange={(value) => {
+                                  if (!value) return;
+                                  setQuickWorkout({ ...quickWorkout, sport_type: value });
+                                }}
+                              />
+                              <Textarea
+                                label={
+                                  <Group gap={4} align="center">
+                                    <span>{t('Workout shorthand') || 'Workout shorthand'}</span>
+                                    <Tooltip
+                                      label={
+                                        <Stack gap={4}>
+                                          <Text size="xs" fw={600}>{'Supported syntax'}</Text>
+                                          <Text size="xs">{'Durations: 15min, 5km, 800m, 2h, 30s'}</Text>
+                                          <Text size="xs">{'Intervals: 3x5min@200w/4min'}</Text>
+                                          <Text size="xs">{'Targets: @200w @4:30 @Z3 @150bpm @RPE7'}</Text>
+                                          <Text size="xs">{'Keywords: wu, cd, rest (or auto-detected)'}</Text>
+                                          <Text size="xs">{'Separate segments with +'}</Text>
+                                          <Text size="xs" c="dimmed" mt={2}>{'Examples:'}</Text>
+                                          <Text size="xs" ff="monospace">{'15min wu + 3x5min@200w/4min + 10min cd'}</Text>
+                                          <Text size="xs" ff="monospace">{'15min + 5x1km/1min + 10min'}</Text>
+                                        </Stack>
+                                      }
+                                      multiline
+                                      w={300}
+                                      position="top"
+                                      withArrow
+                                    >
+                                      <span style={{ display: 'inline-flex', cursor: 'help' }}>
+                                        <HelpCircle size={14} style={{ opacity: 0.5 }} />
+                                      </span>
+                                    </Tooltip>
+                                  </Group>
+                                }
+                                placeholder="e.g. 15min + 3x5min@200w/4min + 10min"
+                                value={textWorkoutInput || ''}
+                                onChange={(e) => setTextWorkoutInput(e.currentTarget.value)}
+                                autosize
+                                minRows={2}
+                                maxRows={4}
+                                styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
+                              />
+                              {textParseOk && (
+                                <Paper withBorder p="xs" radius="md" style={{ borderLeft: '3px solid #22c55e' }}>
+                                  <Group gap="xs">
+                                    <CheckCircle size={14} style={{ color: '#22c55e' }} />
+                                    <Text size="sm" fw={600}>{textParseOk.title} {quickWorkout.sport_type}</Text>
+                                  </Group>
+                                  <Text size="xs" c="dimmed" mt={2}>
+                                    {textParseOk.structure.length} {t('steps') || 'steps'} · ~{textParseOk.durationMinutes}{t('min') || 'min'}
+                                  </Text>
+                                </Paper>
+                              )}
+                              {textParseErr && (
+                                <Text size="xs" c="red">{textParseErr.error}</Text>
+                              )}
+                              <Group grow>
+                                <Button
+                                  leftSection={<Activity size={15} />}
+                                  variant="subtle"
+                                  c="#E95A12"
+                                  onClick={() => {
+                                    if (!canEditWorkouts) return;
+                                    if (!ensureAthleteSelectedForCreate()) return;
+                                    onClose();
+                                    onOpenWorkoutBuilder();
+                                  }}
+                                  disabled={!canEditWorkouts}
+                                >
+                                  {t('Open Workout Builder') || 'Open Workout Builder'}
+                                </Button>
+                                <Button
+                                  onClick={onCreateTextWorkout}
+                                  disabled={!canEditWorkouts || !textParseOk}
+                                  styles={{ root: { background: '#E95A12', border: 'none' } }}
+                                >
+                                  {t('Add Workout') || 'Add Workout'}
+                                </Button>
+                              </Group>
+                            </Stack>
+                          );
+                        })()}
+
+                        {createMode === 'quick' && (
+                          <Stack gap="sm">
+                            <SimpleGrid cols={2}>
+                              <Select
+                                label={t('Sport') || 'Sport'}
+                                data={['Cycling', 'Running']}
+                                value={quickWorkout.sport_type}
+                                onChange={(value) => {
+                                  if (!value) return;
+                                  const zoneMax = value === 'Running' ? 5 : 7;
+                                  const nextZone = Math.min(quickWorkout.zone, zoneMax);
+                                  setQuickWorkout({ ...quickWorkout, sport_type: value, zone: nextZone });
+                                }}
+                              />
+                              <NumberInput
+                                label={t('Zone') || 'Zone'}
+                                min={1}
+                                max={quickWorkout.sport_type === 'Running' ? 5 : 7}
+                                value={quickWorkout.zone}
+                                onChange={(value) => {
+                                  const numericValue = typeof value === 'number' ? value : Number(value || 1);
+                                  const zoneMax = quickWorkout.sport_type === 'Running' ? 5 : 7;
+                                  setQuickWorkout({ ...quickWorkout, zone: Math.max(1, Math.min(zoneMax, numericValue)) });
+                                }}
+                              />
+                            </SimpleGrid>
+
+                            <SimpleGrid cols={2}>
+                              <Select
+                                label={t('Quick Workout Type') || 'Quick Workout Type'}
+                                data={[
+                                  { value: 'time', label: t('Time in Zone') || 'Time in Zone' },
+                                  { value: 'distance', label: t('Distance in Zone (km)') || 'Distance in Zone (km)' },
+                                ]}
+                                value={quickWorkout.mode}
+                                onChange={(value) => {
+                                  if (!value) return;
+                                  setQuickWorkout({ ...quickWorkout, mode: value as 'time' | 'distance' });
+                                }}
+                              />
+                              {quickWorkout.mode === 'time' ? (
+                                <Group grow align="end">
+                                  <NumberInput
+                                    label={t('Hours') || 'Hours'}
+                                    min={0}
+                                    step={1}
+                                    value={Math.floor((quickWorkout.minutes || 0) / 60)}
+                                    onChange={(value) => {
+                                      const hours = Math.max(0, typeof value === 'number' ? value : Number(value || 0));
+                                      const currentMinutesRemainder = Math.max(0, (quickWorkout.minutes || 0) % 60);
+                                      const totalMinutes = Math.max(5, Math.round(hours * 60 + currentMinutesRemainder));
+                                      setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                                    }}
+                                  />
+                                  <NumberInput
+                                    label={t('Minutes') || 'Minutes'}
+                                    min={0}
+                                    max={59}
+                                    step={5}
+                                    value={Math.max(0, (quickWorkout.minutes || 0) % 60)}
+                                    description={formatMinutesHm(quickWorkout.minutes)}
+                                    onChange={(value) => {
+                                      const mins = Math.max(0, Math.min(59, typeof value === 'number' ? value : Number(value || 0)));
+                                      const currentHours = Math.floor((quickWorkout.minutes || 0) / 60);
+                                      const totalMinutes = Math.max(5, Math.round(currentHours * 60 + mins));
+                                      setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                                    }}
+                                  />
+                                </Group>
+                              ) : (
+                                <NumberInput
+                                  label={t('Distance (km)') || 'Distance (km)'}
+                                  min={1}
+                                  step={0.5}
+                                  value={quickWorkout.distanceKm}
+                                  onChange={(value) => {
+                                    const numericValue = typeof value === 'number' ? value : Number(value || 0);
+                                    setQuickWorkout({ ...quickWorkout, distanceKm: Math.max(1, numericValue) });
+                                  }}
+                                />
+                              )}
+                            </SimpleGrid>
+
+                            <Group grow>
+                              <Button
+                                leftSection={<Activity size={15} />}
+                                variant="subtle"
+                                c="#E95A12"
+                                onClick={() => {
+                                  if (!canEditWorkouts) return;
+                                  if (!ensureAthleteSelectedForCreate()) return;
+                                  onClose();
+                                  onOpenWorkoutBuilder();
+                                }}
+                                disabled={!canEditWorkouts}
+                              >
+                                {t('Open Workout Builder') || 'Open Workout Builder'}
+                              </Button>
+                              <Button
+                                onClick={onCreateQuickWorkout}
+                                disabled={!canEditWorkouts}
+                                styles={{ root: { background: '#E95A12', border: 'none' } }}
+                              >
+                                {t('Add Workout') || 'Add Workout'}
+                              </Button>
+                            </Group>
+                          </Stack>
+                        )}
+
+                      </Box>
+                    </Box>
+
+                    <RecurringWorkoutFields
+                        selectedEvent={selectedEvent}
+                        setSelectedEvent={setSelectedEvent}
+                        disabled={!canEditWorkouts}
+                      />
+
+                    <Button
+                      variant="subtle"
+                      color="gray"
+                      leftSection={<Moon size={16} />}
+                      fullWidth
+                      onClick={onCreateRestDay}
+                      disabled={!canEditWorkouts}
+                    >
+                      {t('Rest Day') || 'Rest Day'}
+                    </Button>
+                  </>
+                )}
+
+                {/* ── Calendar planning actions ── */}
+                <Stack gap="xs">
+                  <Divider
+                    label={
+                      <Text size="xs" fw={700} tt="uppercase" style={{ letterSpacing: '0.06em' }} c="dimmed">
+                        {isRangeSelection ? (t('Plan this range') || 'Plan this range') : (t('Plan this day') || 'Plan this day')}
+                      </Text>
+                    }
+                    labelPosition="left"
+                  />
+                  <Text size="xs" c="dimmed">
                     {isRangeSelection
                       ? (t('Save this date range as travel, sickness, injury, or holiday for planning.') || 'Save this date range as travel, sickness, injury, or holiday for planning.')
                       : (t('Add a goal race or availability marker directly from the calendar.') || 'Add a goal race or availability marker directly from the calendar.')}
                   </Text>
-                  <Group gap="xs">
+                  <Group gap="xs" wrap="wrap">
                     {planningOptions.map((option) => (
                       <Button
                         key={option.label}
-                        variant={pendingRaceAction?.priority === (option.action as any).priority && option.action.type === 'goal_race' ? 'filled' : 'light'}
+                        variant={pendingRaceAction?.priority === (option.action as any).priority && option.action.type === 'goal_race' ? 'filled' : 'subtle'}
+                        color="gray"
                         size="xs"
-                        leftSection={<option.icon size={14} />}
+                        leftSection={<option.icon size={13} />}
                         onClick={() => {
                           if (option.action.type === 'goal_race') {
                             setPendingRaceAction(option.action as any);
@@ -601,7 +817,7 @@ export const DayDetailsModal = ({
                   </Group>
 
                   {pendingRaceAction && pendingRaceDraft && (
-                    <Paper withBorder radius="md" p="sm" mt={4}>
+                    <Paper withBorder radius="md" p="sm">
                       <Stack gap="xs">
                         <Text fw={600} size="sm">
                           {pendingRaceAction.priority === 'A' ? t('A race') || 'A race' : pendingRaceAction.priority === 'B' ? t('B race') || 'B race' : t('C race') || 'C race'}
@@ -684,260 +900,77 @@ export const DayDetailsModal = ({
                   )}
                 </Stack>
 
-                {!isRangeSelection && (
-                  <>
-                    <Divider my="xs" />
-
-                    <Button
-                      variant="light"
-                      color="gray"
-                      leftSection={<Moon size={16} />}
-                      fullWidth
-                      mb="sm"
-                      onClick={onCreateRestDay}
-                      disabled={!canEditWorkouts}
-                    >
-                      {t('Rest Day') || 'Rest Day'}
-                    </Button>
-
-                    <SegmentedControl 
-                        value={createMode}
-                        onChange={(val: any) => setCreateMode(val)}
-                        data={[
-                            { label: t('Create Workout') || 'Create Workout', value: 'quick' },
-                            { label: t('Text') || 'Text', value: 'text' },
-                            { label: t('Library') || 'Library', value: 'library' }
-                        ]}
-                        fullWidth
-                        mb="sm"
-                    />
-
-                    <RecurringWorkoutFields
-                      selectedEvent={selectedEvent}
-                      setSelectedEvent={setSelectedEvent}
-                      disabled={!canEditWorkouts}
-                    />
-
-                    {createMode === 'text' ? (() => {
-                      const textParseResult = textWorkoutInput?.trim() ? parseWorkoutText(textWorkoutInput, quickWorkout.sport_type) : null;
-                      const textParseOk = textParseResult && !isParseError(textParseResult) ? textParseResult : null;
-                      const textParseErr = textParseResult && isParseError(textParseResult) ? textParseResult : null;
-                      return (
-                        <>
-                          <Select
-                            label={t('Sport') || 'Sport'}
-                            data={['Cycling', 'Running']}
-                            value={quickWorkout.sport_type}
-                            onChange={(value) => {
-                              if (!value) return;
-                              setQuickWorkout({ ...quickWorkout, sport_type: value });
-                            }}
-                            mb="xs"
-                          />
-                          <Textarea
-                            label={
-                              <Group gap={4} align="center">
-                                <span>{t('Workout shorthand') || 'Workout shorthand'}</span>
-                                <Tooltip
-                                  label={
-                                    <Stack gap={4}>
-                                      <Text size="xs" fw={600}>{'Supported syntax'}</Text>
-                                      <Text size="xs">{'Durations: 15min, 5km, 800m, 2h, 30s'}</Text>
-                                      <Text size="xs">{'Intervals: 3x5min@200w/4min'}</Text>
-                                      <Text size="xs">{'Targets: @200w @4:30 @Z3 @150bpm @RPE7'}</Text>
-                                      <Text size="xs">{'Keywords: wu, cd, rest (or auto-detected)'}</Text>
-                                      <Text size="xs">{'Separate segments with +'}</Text>
-                                      <Text size="xs" c="dimmed" mt={2}>{'Examples:'}</Text>
-                                      <Text size="xs" ff="monospace">{'15min wu + 3x5min@200w/4min + 10min cd'}</Text>
-                                      <Text size="xs" ff="monospace">{'15min + 5x1km/1min + 10min'}</Text>
-                                    </Stack>
-                                  }
-                                  multiline
-                                  w={300}
-                                  position="top"
-                                  withArrow
-                                >
-                                  <span style={{ display: 'inline-flex', cursor: 'help' }}>
-                                    <HelpCircle size={14} style={{ opacity: 0.5 }} />
-                                  </span>
-                                </Tooltip>
-                              </Group>
-                            }
-                            placeholder="e.g. 15min + 3x5min@200w/4min + 10min"
-                            value={textWorkoutInput || ''}
-                            onChange={(e) => setTextWorkoutInput(e.currentTarget.value)}
-                            autosize
-                            minRows={2}
-                            maxRows={4}
-                            mb="xs"
-                          />
-                          {textParseOk && (
-                            <Paper withBorder p="xs" radius="md" mb="xs">
-                              <Group gap="xs">
-                                <CheckCircle size={14} style={{ color: '#22c55e' }} />
-                                <Text size="sm" fw={600}>{textParseOk.title} {quickWorkout.sport_type}</Text>
-                              </Group>
-                              <Text size="xs" c="dimmed">
-                                {textParseOk.structure.length} {t('steps') || 'steps'} · ~{textParseOk.durationMinutes}{t('min') || 'min'}
-                              </Text>
-                            </Paper>
-                          )}
-                          {textParseErr && (
-                            <Text size="xs" c="red" mb="xs">{textParseErr.error}</Text>
-                          )}
-                          <Group grow>
-                            <Button
-                              leftSection={<Activity size={16} />}
-                              variant="subtle"
-                              c="#E95A12"
-                              onClick={() => {
-                                if (!canEditWorkouts) return;
-                                if (!ensureAthleteSelectedForCreate()) return;
-                                onClose();
-                                onOpenWorkoutBuilder();
-                              }}
-                              disabled={!canEditWorkouts}
-                            >
-                              {t('Open Workout Builder') || 'Open Workout Builder'}
-                            </Button>
-                            <Button
-                              onClick={onCreateTextWorkout}
-                              disabled={!canEditWorkouts || !textParseOk}
-                              styles={{ root: { background: '#E95A12', border: 'none' } }}
-                            >
-                              {t('Add Workout') || 'Add Workout'}
-                            </Button>
-                          </Group>
-                        </>
-                      );
-                    })() : createMode === 'quick' ? (
-                      <>
-                    <Group grow>
-                      <Select
-                        label={t('Sport') || 'Sport'}
-                        data={['Cycling', 'Running']}
-                        value={quickWorkout.sport_type}
-                        onChange={(value) => {
-                          if (!value) return;
-                          const zoneMax = value === 'Running' ? 5 : 7;
-                          const nextZone = Math.min(quickWorkout.zone, zoneMax);
-                          setQuickWorkout({ ...quickWorkout, sport_type: value, zone: nextZone });
-                        }}
-                      />
-                      <NumberInput
-                        label={t('Zone') || 'Zone'}
-                        min={1}
-                        max={quickWorkout.sport_type === 'Running' ? 5 : 7}
-                        value={quickWorkout.zone}
-                        onChange={(value) => {
-                          const numericValue = typeof value === 'number' ? value : Number(value || 1);
-                          const zoneMax = quickWorkout.sport_type === 'Running' ? 5 : 7;
-                          setQuickWorkout({ ...quickWorkout, zone: Math.max(1, Math.min(zoneMax, numericValue)) });
-                        }}
-                      />
-                    </Group>
-
-                    <Group grow>
-                      <Select
-                        label={t('Quick Workout Type') || 'Quick Workout Type'}
-                        data={[
-                          { value: 'time', label: t('Time in Zone') || 'Time in Zone' },
-                          { value: 'distance', label: t('Distance in Zone (km)') || 'Distance in Zone (km)' },
-                        ]}
-                        value={quickWorkout.mode}
-                        onChange={(value) => {
-                          if (!value) return;
-                          setQuickWorkout({ ...quickWorkout, mode: value as 'time' | 'distance' });
-                        }}
-                      />
-
-                      {quickWorkout.mode === 'time' ? (
-                        <Group grow align="end">
-                          <NumberInput
-                            label={t('Hours') || 'Hours'}
-                            min={0}
-                            step={1}
-                            value={Math.floor((quickWorkout.minutes || 0) / 60)}
-                            onChange={(value) => {
-                              const hours = Math.max(0, typeof value === 'number' ? value : Number(value || 0));
-                              const currentMinutesRemainder = Math.max(0, (quickWorkout.minutes || 0) % 60);
-                              const totalMinutes = Math.max(5, Math.round(hours * 60 + currentMinutesRemainder));
-                              setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
-                            }}
-                          />
-                          <NumberInput
-                            label={t('Minutes') || 'Minutes'}
-                            min={0}
-                            max={59}
-                            step={5}
-                            value={Math.max(0, (quickWorkout.minutes || 0) % 60)}
-                            description={formatMinutesHm(quickWorkout.minutes)}
-                            onChange={(value) => {
-                              const mins = Math.max(0, Math.min(59, typeof value === 'number' ? value : Number(value || 0)));
-                              const currentHours = Math.floor((quickWorkout.minutes || 0) / 60);
-                              const totalMinutes = Math.max(5, Math.round(currentHours * 60 + mins));
-                              setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
-                            }}
-                          />
-                        </Group>
-                      ) : (
-                        <NumberInput
-                          label={t('Distance (km)') || 'Distance (km)'}
-                          min={1}
-                          step={0.5}
-                          value={quickWorkout.distanceKm}
-                          onChange={(value) => {
-                            const numericValue = typeof value === 'number' ? value : Number(value || 0);
-                            setQuickWorkout({ ...quickWorkout, distanceKm: Math.max(1, numericValue) });
-                          }}
-                        />
-                      )}
-                    </Group>
-
-                    <Group grow>
-                      <Button
-                        leftSection={<Activity size={16} />}
-                        variant="subtle"
-                        c="#E95A12"
-                        onClick={() => {
-                          if (!canEditWorkouts) return;
-                          if (!ensureAthleteSelectedForCreate()) return;
-                          onClose();
-                          onOpenWorkoutBuilder();
-                        }}
-                        disabled={!canEditWorkouts}
-                      >
-                        {t('Open Workout Builder') || 'Open Workout Builder'}
-                      </Button>
-
-                      <Button
-                        onClick={onCreateQuickWorkout}
-                        disabled={!canEditWorkouts}
-                        styles={{ root: { background: '#E95A12', border: 'none' } }}
-                      >
-                        {t('Add Workout') || 'Add Workout'}
-                      </Button>
-                    </Group>
-                      </>
-                    ) : (
-                        <Box h={400} style={{ border: '1px solid var(--mantine-color-default-border)', borderRadius: 4 }}>
-                             <WorkoutLibrary 
-                                 onSelect={(workout) => {
-                                     if (!canEditWorkouts) return;
-                                     if (!ensureAthleteSelectedForCreate()) return;
-                                     onLibrarySelect(workout);
-                                     onClose();
-                                 }}
-                             />
-                        </Box>
-                    )}
-                  </>
-                )}
-
                 {!canEditWorkouts && <Text c="dimmed" size="sm">{t('Coach has disabled workout editing for your account.') || 'Coach has disabled workout editing for your account.'}</Text>}
                 {dayCreateError && <Text c="red" size="sm">{dayCreateError}</Text>}
               </>
             )}
+
+            {/* ── Day Notes ── */}
+            <Stack gap="xs">
+              <Divider
+                label={
+                  <Text size="xs" fw={700} tt="uppercase" style={{ letterSpacing: '0.06em' }} c="dimmed">
+                    {t('Day notes') || 'Day notes'}
+                  </Text>
+                }
+                labelPosition="left"
+              />
+              {(notesQuery.data || []).map((note: DayNote) => (
+                <Paper key={note.id} withBorder radius="md" p="xs" style={{ borderLeft: '3px solid var(--mantine-color-blue-5)' }}>
+                  {editingNoteId === note.id ? (
+                    <Stack gap="xs">
+                      <Textarea
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.currentTarget.value)}
+                        minRows={2}
+                        autosize
+                      />
+                      <Group justify="flex-end" gap="xs">
+                        <Button variant="subtle" size="xs" onClick={() => { setEditingNoteId(null); setNoteText(''); }}>
+                          {t('Cancel') || 'Cancel'}
+                        </Button>
+                        <Button size="xs" onClick={() => upsertNoteMutation.mutate(noteText)} loading={upsertNoteMutation.isPending} disabled={!noteText.trim()}>
+                          {t('Save') || 'Save'}
+                        </Button>
+                      </Group>
+                    </Stack>
+                  ) : (
+                    <Group gap="sm" wrap="nowrap" align="flex-start">
+                      <Box style={{ flex: 1, minWidth: 0 }}>
+                        <Group gap="xs" mb={2}>
+                          <Text size="xs" fw={600} c="blue">{note.author_name || '?'}</Text>
+                          <Text size="xs" c="dimmed">{note.author_role === 'coach' ? (t('Coach') || 'Coach') : (t('Athlete') || 'Athlete')}</Text>
+                        </Group>
+                        <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{note.content}</Text>
+                      </Box>
+                      <Group gap={4} style={{ flexShrink: 0 }}>
+                        <ActionIcon size="sm" variant="subtle" color="gray" onClick={() => { setEditingNoteId(note.id); setNoteText(note.content); }} title={t('Edit') || 'Edit'}>
+                          <Pencil size={14} />
+                        </ActionIcon>
+                        <ActionIcon size="sm" variant="subtle" color="red" onClick={() => deleteNoteMutation.mutate(note.id)} loading={deleteNoteMutation.isPending} title={t('Delete') || 'Delete'}>
+                          <Trash2 size={14} />
+                        </ActionIcon>
+                      </Group>
+                    </Group>
+                  )}
+                </Paper>
+              ))}
+              {editingNoteId === null && (
+                <Group gap="xs" align="flex-end">
+                  <Textarea
+                    placeholder={t('Add a note for this day...') || 'Add a note for this day...'}
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.currentTarget.value)}
+                    minRows={1}
+                    autosize
+                    style={{ flex: 1 }}
+                  />
+                  <Button size="xs" variant="light" onClick={() => upsertNoteMutation.mutate(noteText)} loading={upsertNoteMutation.isPending} disabled={!noteText.trim()}>
+                    {t('Add note') || 'Add note'}
+                  </Button>
+                </Group>
+              )}
+            </Stack>
           </>
         );
       })()}
