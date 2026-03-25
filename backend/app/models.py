@@ -181,7 +181,7 @@ class Activity(Base):
 
     athlete = relationship("User", back_populates="activities")
     matched_workout = relationship("PlannedWorkout", back_populates="matched_activity", uselist=False)
-    duplicate_recordings = relationship("Activity", foreign_keys="Activity.duplicate_of_id", back_populates="duplicate_of", lazy="dynamic")
+    duplicate_recordings = relationship("Activity", foreign_keys="Activity.duplicate_of_id", back_populates="duplicate_of", lazy="noload")
     duplicate_of = relationship("Activity", foreign_keys="Activity.duplicate_of_id", remote_side="Activity.id", back_populates="duplicate_recordings")
 
 
