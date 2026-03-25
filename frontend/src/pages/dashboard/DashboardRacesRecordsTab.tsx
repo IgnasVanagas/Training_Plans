@@ -48,6 +48,7 @@ const getMetersFromDistance = (dist: string): number => {
     "2km": 2000, "5km": 5000, "5mi": 8047, "10km": 10000, "10mi": 16094,
     "15km": 15000, "Half Marathon": 21097, "20mi": 32187,
     "Marathon": 42195, "50km": 50000, "50mi": 80467, "100km": 100000, "100mi": 160934,
+    "160km": 160000, "200km": 200000, "250km": 250000, "320km": 320000,
   };
   return distMap[dist] || 0;
 };
@@ -101,7 +102,10 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
     const data = prsQuery.data;
     if (!data) return false;
     if (data.sport === "cycling") {
-      return Boolean(data.power && Object.keys(data.power).length > 0);
+      return Boolean(
+        (data.power && Object.keys(data.power).length > 0) ||
+        (data.best_efforts && Object.keys(data.best_efforts).length > 0)
+      );
     }
     if (data.sport === "running") {
       return Boolean(data.best_efforts && Object.keys(data.best_efforts).length > 0);
@@ -122,42 +126,84 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
       return <Text c="dimmed" size="sm">{t("No personal records yet")}</Text>;
     };
 
-    if (data.sport === "cycling" && data.power) {
-      const windows = Object.keys(data.power);
-      if (!windows.length)
+    if (data.sport === "cycling") {
+      const windows = data.power ? Object.keys(data.power) : [];
+      const distances = data.best_efforts ? Object.keys(data.best_efforts) : [];
+      if (!windows.length && !distances.length)
         return renderEmptyState();
       const weight = me.profile?.weight;
       return (
-        <Table striped highlightOnHover withTableBorder withColumnBorders>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>{t("Window")}</Table.Th>
-              <Table.Th>{t("Power (W)")}</Table.Th>
-              {weight && <Table.Th>W/kg</Table.Th>}
-              <Table.Th>{t("Heart Rate")}</Table.Th>
-              <Table.Th>{t("Date")}</Table.Th>
-              <Table.Th></Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {windows.map((window) => {
-              const entry = data.power![window][0];
-              if (!entry) return null;
-              return (
-                <Table.Tr key={window}>
-                  <Table.Td fw={600}>{window}</Table.Td>
-                  <Table.Td>{entry.value}W</Table.Td>
-                  {weight && <Table.Td>{(entry.value / weight).toFixed(2)}</Table.Td>}
-                  <Table.Td>{entry.avg_hr ? `${entry.avg_hr} bpm` : "—"}</Table.Td>
-                  <Table.Td>{entry.date ? new Date(entry.date).toLocaleDateString() : "—"}</Table.Td>
-                  <Table.Td>
-                    <IconTrophy size={16} color={medalColor(1)} />
-                  </Table.Td>
+        <Stack gap="md">
+          {windows.length > 0 && (
+            <Table striped highlightOnHover withTableBorder withColumnBorders>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>{t("Window")}</Table.Th>
+                  <Table.Th>{t("Power (W)")}</Table.Th>
+                  {weight && <Table.Th>W/kg</Table.Th>}
+                  <Table.Th>{t("Heart Rate")}</Table.Th>
+                  <Table.Th>{t("Date")}</Table.Th>
+                  <Table.Th></Table.Th>
                 </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {windows.map((window) => {
+                  const entry = data.power![window][0];
+                  if (!entry) return null;
+                  return (
+                    <Table.Tr key={window}>
+                      <Table.Td fw={600}>{window}</Table.Td>
+                      <Table.Td>{entry.value}W</Table.Td>
+                      {weight && <Table.Td>{(entry.value / weight).toFixed(2)}</Table.Td>}
+                      <Table.Td>{entry.avg_hr ? `${entry.avg_hr} bpm` : "—"}</Table.Td>
+                      <Table.Td>{entry.date ? new Date(entry.date).toLocaleDateString() : "—"}</Table.Td>
+                      <Table.Td>
+                        <IconTrophy size={16} color={medalColor(1)} />
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          )}
+          {distances.length > 0 && (
+            <>
+              <Title order={5}>{t("Distance Records")}</Title>
+              <Table striped highlightOnHover withTableBorder withColumnBorders>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>{t("Distance")}</Table.Th>
+                    <Table.Th>{t("Time")}</Table.Th>
+                    <Table.Th>{t("Speed")}</Table.Th>
+                    <Table.Th>{t("Heart Rate")}</Table.Th>
+                    <Table.Th>{t("Date")}</Table.Th>
+                    <Table.Th></Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {distances.map((dist) => {
+                    const entry = data.best_efforts![dist][0];
+                    if (!entry) return null;
+                    const meters = getMetersFromDistance(dist);
+                    const speedKmh = meters && entry.value > 0 ? (meters / 1000) / (entry.value / 3600) : 0;
+                    return (
+                      <Table.Tr key={dist}>
+                        <Table.Td fw={600}>{dist}</Table.Td>
+                        <Table.Td>{formatTime(entry.value)}</Table.Td>
+                        <Table.Td>{speedKmh > 0 ? `${speedKmh.toFixed(1)} km/h` : "—"}</Table.Td>
+                        <Table.Td>{entry.avg_hr ? `${entry.avg_hr} bpm` : "—"}</Table.Td>
+                        <Table.Td>{entry.date ? new Date(entry.date).toLocaleDateString() : "—"}</Table.Td>
+                        <Table.Td>
+                          <IconTrophy size={16} color={medalColor(1)} />
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            </>
+          )}
+        </Stack>
       );
     }
 

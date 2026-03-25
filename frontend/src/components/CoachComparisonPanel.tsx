@@ -1036,7 +1036,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const hasHrStreams = streamChartData.some((d) => d.hrA != null || d.hrB != null);
   const hasPowerStreams = streamChartData.some((d) => d.pwA != null || d.pwB != null);
 
-  const POWER_CURVE_WINDOWS = ['5s', '15s', '30s', '1min', '2min', '5min', '10min', '20min', '60min'];
+  const POWER_CURVE_WINDOWS = ['5s', '15s', '30s', '1min', '2min', '5min', '10min', '20min', '60min', '120min'];
 
   const powerCurveChartData = useMemo(() => {
     if (mode !== 'workouts') return [];

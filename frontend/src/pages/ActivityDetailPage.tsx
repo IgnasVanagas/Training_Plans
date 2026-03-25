@@ -1916,15 +1916,19 @@ export const ActivityDetailPage = () => {
                                     )}
                                 </Group>
                                 <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                {(() => {
+                                    const hasCyclingDistEfforts = isCyclingActivity && displayedBestEfforts.some(e => e.distance);
+                                    return (
                                 <Table striped highlightOnHover withTableBorder withColumnBorders style={{ whiteSpace: 'nowrap' }}>
                                     <Table.Thead>
                                         <Table.Tr>
                                             <Table.Th></Table.Th>
-                                            <Table.Th>{isCyclingActivity ? t('Time') : t('Distance')}</Table.Th>
+                                            <Table.Th>{t('Effort')}</Table.Th>
                                             {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
                                             {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
-                                            {isRunningActivity && <Table.Th>{t('Time')}</Table.Th>}
+                                            {(isRunningActivity || hasCyclingDistEfforts) && <Table.Th>{t('Time')}</Table.Th>}
                                             {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
+                                            {hasCyclingDistEfforts && <Table.Th>{t('Speed')}</Table.Th>}
                                             <Table.Th>{t('Heart Rate')}</Table.Th>
                                         </Table.Tr>
                                     </Table.Thead>
@@ -1948,11 +1952,18 @@ export const ActivityDetailPage = () => {
                                                     <Table.Td fw={600}>{effort.window || effort.distance}</Table.Td>
                                                     {isCyclingActivity && <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>}
                                                     {isCyclingActivity && weight && <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>}
-                                                    {isRunningActivity && <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>}
+                                                    {(isRunningActivity || hasCyclingDistEfforts) && <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>}
                                                     {isRunningActivity && (
                                                         <Table.Td>
                                                             {effort.time_seconds != null && effort.meters
                                                                 ? (() => { const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60); const mins = Math.floor(paceMinPerKm); const secs = Math.round((paceMinPerKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
+                                                                : '-'}
+                                                        </Table.Td>
+                                                    )}
+                                                    {hasCyclingDistEfforts && (
+                                                        <Table.Td>
+                                                            {effort.time_seconds != null && effort.meters
+                                                                ? `${((effort.meters / 1000) / (effort.time_seconds / 3600)).toFixed(1)} km/h`
                                                                 : '-'}
                                                         </Table.Td>
                                                     )}
@@ -1962,6 +1973,8 @@ export const ActivityDetailPage = () => {
                                         })}
                                     </Table.Tbody>
                                 </Table>
+                                    );
+                                })()}
                                 </Box>
                                 <Group gap="md" mt="sm">
                                     <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">{t('PR')}</Text></Group>

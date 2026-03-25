@@ -273,8 +273,8 @@ const dominantZone = (zones: Record<string, number>) => {
 };
 
 /* ───────────────── power curve data helpers ───────────────── */
-const POWER_CURVE_WINDOWS = ['5s', '15s', '30s', '1min', '2min', '3min', '5min', '8min', '10min', '15min', '20min', '30min', '45min', '60min'];
-const POWER_CURVE_LABELS: Record<string, string> = { '5s': '5s', '15s': '15s', '30s': '30s', '1min': '1m', '2min': '2m', '3min': '3m', '5min': '5m', '8min': '8m', '10min': '10m', '15min': '15m', '20min': '20m', '30min': '30m', '45min': '45m', '60min': '60m' };
+const POWER_CURVE_WINDOWS = ['5s', '15s', '30s', '1min', '2min', '3min', '5min', '8min', '10min', '15min', '20min', '30min', '45min', '60min', '120min'];
+const POWER_CURVE_LABELS: Record<string, string> = { '5s': '5s', '15s': '15s', '30s': '30s', '1min': '1m', '2min': '2m', '3min': '3m', '5min': '5m', '8min': '8m', '10min': '10m', '15min': '15m', '20min': '20m', '30min': '30m', '45min': '45m', '60min': '60m', '120min': '120m' };
 
 const buildPowerCurveData = (leftCurve: Record<string, number> | null | undefined, rightCurve: Record<string, number> | null | undefined) => {
   return POWER_CURVE_WINDOWS.map((w) => ({

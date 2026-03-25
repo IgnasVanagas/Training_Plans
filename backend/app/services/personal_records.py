@@ -27,7 +27,16 @@ CYCLING_EFFORT_WINDOWS = {
     "1s": 1, "5s": 5, "15s": 15, "30s": 30,
     "1min": 60, "2min": 120, "3min": 180, "5min": 300,
     "8min": 480, "10min": 600, "15min": 900, "20min": 1200,
-    "30min": 1800, "45min": 2700, "60min": 3600,
+    "30min": 1800, "45min": 2700, "60min": 3600, "120min": 7200,
+}
+
+# ---------------------------------------------------------------------------
+# Cycling: distance-based best-efforts (5 km to 320 km / ~200 mi)
+# ---------------------------------------------------------------------------
+CYCLING_DISTANCES = {
+    "5km": 5000, "10km": 10000, "20km": 20000, "40km": 40000,
+    "50km": 50000, "80km": 80000, "100km": 100000, "160km": 160000,
+    "200km": 200000, "250km": 250000, "320km": 320000,
 }
 
 # ---------------------------------------------------------------------------
@@ -152,6 +161,47 @@ def _cycling_best_efforts(points: list) -> list[dict] | None:
             "elevation": round(elev_gain),
         })
 
+    # ---- distance-based efforts (fastest segment for each target distance) ----
+    raw_dist: list[float | None] = []
+    for p in points:
+        d = p.get("distance")
+        raw_dist.append(float(d) if d is not None else None)
+    distances = _ffill(raw_dist)
+    if distances and len(distances) >= 2:
+        total_dist = distances[-1] - distances[0]
+        for label_d, target_m in CYCLING_DISTANCES.items():
+            if total_dist < target_m:
+                continue
+            best_time: float | None = None
+            best_i = 0
+            best_j = 0
+            j = 0
+            for i in range(n):
+                while j < n and (distances[j] - distances[i]) < target_m:
+                    j += 1
+                if j < n:
+                    elapsed = float(j - i)
+                    if best_time is None or elapsed < best_time:
+                        best_time = elapsed
+                        best_i = i
+                        best_j = j
+            if best_time is None or best_time <= 0:
+                continue
+            span = best_j - best_i if best_j > best_i else 1
+            avg_hr_d = (psum_hr[best_j + 1] - psum_hr[best_i]) / (span + 1)
+            elev_gain_d = 0.0
+            for k in range(best_i + 1, min(best_j + 1, n)):
+                diff = alts[k] - alts[k - 1]
+                if diff > 0:
+                    elev_gain_d += diff
+            efforts.append({
+                "distance": label_d,
+                "meters": target_m,
+                "time_seconds": best_time,
+                "avg_hr": round(avg_hr_d) if avg_hr_d > 0 else None,
+                "elevation": round(elev_gain_d),
+            })
+
     return efforts if efforts else None
 
 
@@ -275,12 +325,13 @@ async def get_personal_records(
     backfill_updated_count = 0
 
     if target_sport == "cycling":
-        records, used_fallback = _agg_cycling_prs_rows(sport_rows)
+        records, dist_records, used_fallback = _agg_cycling_prs_rows(sport_rows)
     else:
         records = _agg_running_prs_rows(sport_rows)
+        dist_records = {}
         used_fallback = False
 
-    records_empty = len(records) == 0
+    records_empty = len(records) == 0 and len(dist_records) == 0
 
     if auto_backfill and has_activities and records_empty and missing_best_efforts_count > 0:
         configured_batch = max(1, int(os.getenv("PERSONAL_RECORDS_BACKFILL_BATCH_SIZE", "150")))
@@ -302,11 +353,12 @@ async def get_personal_records(
         missing_best_efforts_count = sum(1 for _, _, best_efforts, _ in sport_rows if not _has_best_efforts(best_efforts))
 
         if target_sport == "cycling":
-            records, used_fallback = _agg_cycling_prs_rows(sport_rows)
+            records, dist_records, used_fallback = _agg_cycling_prs_rows(sport_rows)
         else:
             records = _agg_running_prs_rows(sport_rows)
+            dist_records = {}
             used_fallback = False
-        records_empty = len(records) == 0
+        records_empty = len(records) == 0 and len(dist_records) == 0
 
     backfill_status = (
         "processing"
@@ -319,6 +371,7 @@ async def get_personal_records(
         return {
             "sport": "cycling",
             "power": records,
+            "best_efforts": dist_records,
             "has_activities_for_sport": has_activities,
             "missing_best_efforts_count": missing_best_efforts_count,
             "backfill_status": backfill_status,
@@ -401,9 +454,10 @@ async def backfill_missing_best_efforts(
     }
 
 
-def _agg_cycling_prs(activities: list) -> dict:
-    """``{window: [{value, activity_id, date}, ...]}`` -- top 3 power per window."""
-    all_vals: dict = {}
+def _agg_cycling_prs(activities: list) -> tuple[dict, dict]:
+    """Return ``(power_bests, distance_bests)`` -- top 3 per window / distance."""
+    all_power: dict = {}
+    all_dist: dict = {}
     for act in activities:
         efforts = _stored_efforts(act)
         if efforts:
@@ -411,19 +465,28 @@ def _agg_cycling_prs(activities: list) -> dict:
                 w = e.get("window")
                 v = e.get("power", 0)
                 if w and v and v > 0:
-                    all_vals.setdefault(w, []).append(_pr_entry(v, act))
+                    all_power.setdefault(w, []).append(_pr_entry(v, act))
+                d = e.get("distance")
+                t = e.get("time_seconds", 0)
+                if d and t and t > 0:
+                    all_dist.setdefault(d, []).append(_pr_entry(t, act))
         else:
             pc = _streams_key(act, "power_curve")
             if isinstance(pc, dict):
                 for w, v in pc.items():
                     if v and v > 0:
-                        all_vals.setdefault(w, []).append(_pr_entry(v, act))
+                        all_power.setdefault(w, []).append(_pr_entry(v, act))
     # keep top 3 per window (highest power)
-    bests: dict = {}
-    for w, entries in all_vals.items():
+    power_bests: dict = {}
+    for w, entries in all_power.items():
         entries.sort(key=lambda x: x["value"], reverse=True)
-        bests[w] = entries[:3]
-    return bests
+        power_bests[w] = entries[:3]
+    # keep top 3 per distance (lowest time)
+    dist_bests: dict = {}
+    for d, entries in all_dist.items():
+        entries.sort(key=lambda x: x["value"])
+        dist_bests[d] = entries[:3]
+    return power_bests, dist_bests
 
 
 def _pr_entry_row(value, activity_id: int, created_at, *, avg_hr=None) -> dict:
@@ -437,28 +500,40 @@ def _pr_entry_row(value, activity_id: int, created_at, *, avg_hr=None) -> dict:
     return entry
 
 
-def _agg_cycling_prs_rows(rows: list) -> tuple[dict, bool]:
-    """Lightweight version that works with (id, created_at, best_efforts, power_curve) rows."""
-    all_vals: dict = {}
+def _agg_cycling_prs_rows(rows: list) -> tuple[dict, dict, bool]:
+    """Return ``(power_bests, distance_bests, used_fallback)`` from DB rows."""
+    all_power: dict = {}
+    all_dist: dict = {}
     used_fallback = False
     for activity_id, created_at, best_efforts, power_curve in rows:
         if isinstance(best_efforts, list):
             for e in best_efforts:
-                w = e.get("window") if isinstance(e, dict) else None
-                v = e.get("power", 0) if isinstance(e, dict) else 0
+                if not isinstance(e, dict):
+                    continue
+                w = e.get("window")
+                v = e.get("power", 0)
                 if w and v and v > 0:
-                    avg_hr = e.get("avg_hr") if isinstance(e, dict) else None
-                    all_vals.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at, avg_hr=avg_hr))
+                    avg_hr = e.get("avg_hr")
+                    all_power.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at, avg_hr=avg_hr))
+                d = e.get("distance")
+                t = e.get("time_seconds", 0)
+                if d and t and t > 0:
+                    avg_hr = e.get("avg_hr")
+                    all_dist.setdefault(d, []).append(_pr_entry_row(t, activity_id, created_at, avg_hr=avg_hr))
         elif isinstance(power_curve, dict):
             used_fallback = True
             for w, v in power_curve.items():
                 if v and v > 0:
-                    all_vals.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at))
-    bests: dict = {}
-    for w, entries in all_vals.items():
+                    all_power.setdefault(w, []).append(_pr_entry_row(v, activity_id, created_at))
+    power_bests: dict = {}
+    for w, entries in all_power.items():
         entries.sort(key=lambda x: x["value"], reverse=True)
-        bests[w] = entries[:3]
-    return bests, used_fallback
+        power_bests[w] = entries[:3]
+    dist_bests: dict = {}
+    for d, entries in all_dist.items():
+        entries.sort(key=lambda x: x["value"])
+        dist_bests[d] = entries[:3]
+    return power_bests, dist_bests, used_fallback
 
 
 def _agg_running_prs(activities: list) -> dict:
@@ -521,6 +596,11 @@ async def get_activity_prs(
             for rank, info in enumerate(entries, 1):
                 if info.get("activity_id") == activity.id:
                     flags[w] = rank
+                    break
+        for d, entries in all_prs.get("best_efforts", {}).items():
+            for rank, info in enumerate(entries, 1):
+                if info.get("activity_id") == activity.id:
+                    flags[d] = rank
                     break
     elif sport == "running":
         for d, entries in all_prs.get("best_efforts", {}).items():
