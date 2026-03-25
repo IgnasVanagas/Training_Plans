@@ -699,7 +699,7 @@ export const ComparisonPage = () => {
                   <MetricCard label={t('Distance') || 'Distance'} leftVal={safeNum(leftW.distance) / 1000} rightVal={safeNum(rightW.distance) / 1000} suffix=" km" t={t} />
                   <MetricCard label={t('Avg HR') || 'Avg HR'} leftVal={leftW.average_hr ?? null} rightVal={rightW.average_hr ?? null} suffix=" bpm" lowerBetter t={t} />
                   <MetricCard label={t('Avg Power') || 'Avg Power'} leftVal={leftW.average_watts ?? null} rightVal={rightW.average_watts ?? null} suffix=" W" t={t} />
-                  <MetricCard label={t('Load') || 'Load'} leftVal={safeNum(leftW.total_load_impact)} rightVal={safeNum(rightW.total_load_impact)} t={t} />
+                  <MetricCard label={t('Training Load') || 'Training Load'} leftVal={safeNum(leftW.total_load_impact)} rightVal={safeNum(rightW.total_load_impact)} t={t} />
                   <MetricCard label={t('Elevation') || 'Elevation'} leftVal={leftW.total_elevation_gain ?? null} rightVal={rightW.total_elevation_gain ?? null} suffix=" m" t={t} />
                 </SimpleGrid>
               )}
@@ -709,7 +709,7 @@ export const ComparisonPage = () => {
                   <MetricCard label={t('Total time') || 'Total time'} leftVal={leftAgg.totalMinutes} rightVal={rightAgg.totalMinutes} suffix=" min" t={t} />
                   <MetricCard label={t('Distance') || 'Distance'} leftVal={leftAgg.totalDistanceKm} rightVal={rightAgg.totalDistanceKm} suffix=" km" t={t} />
                   <MetricCard label={t('Avg Power') || 'Avg Power'} leftVal={leftAgg.avgPower} rightVal={rightAgg.avgPower} suffix=" W" t={t} />
-                  <MetricCard label={t('Load') || 'Load'} leftVal={leftAgg.totalLoadImpact} rightVal={rightAgg.totalLoadImpact} t={t} />
+                  <MetricCard label={t('Training Load') || 'Training Load'} leftVal={leftAgg.totalLoadImpact} rightVal={rightAgg.totalLoadImpact} t={t} />
                   <MetricCard label={t('Feedback') || 'Feedback'} leftVal={leftAgg.feedbackCoveragePct} rightVal={rightAgg.feedbackCoveragePct} suffix="%" t={t} />
                 </SimpleGrid>
               )}
@@ -725,7 +725,7 @@ export const ComparisonPage = () => {
                     {[
                       { lab: t('Duration change') || 'Duration change', val: formatDeltaPct(safeNum(leftW.duration), safeNum(rightW.duration)) },
                       { lab: t('Distance change') || 'Distance change', val: formatDeltaPct(safeNum(leftW.distance), safeNum(rightW.distance)) },
-                      { lab: t('Load difference') || 'Load difference', val: compareValue(safeNum(leftW.total_load_impact), safeNum(rightW.total_load_impact)) },
+                      { lab: t('TL difference') || 'TL difference', val: compareValue(safeNum(leftW.total_load_impact), safeNum(rightW.total_load_impact)) },
                       { lab: t('Calories') || 'Calories', val: compareValue(safeNum(leftW.total_calories), safeNum(rightW.total_calories), ' kcal') },
                       { lab: t('Split count') || 'Split count', val: `${leftSplits.length} → ${rightSplits.length}` },
                       ...(leftW.rpe != null || rightW.rpe != null ? [{ lab: t('RPE shift') || 'RPE shift', val: compareValue(leftW.rpe ?? null, rightW.rpe ?? null) }] : []),
@@ -982,7 +982,7 @@ const WorkoutDetailCard = ({ detail, label, athleteMap, isDark, t, navigate }: {
             <Text fw={700}>{isRunning ? formatPace(detail.avg_speed ? 1000 / (detail.avg_speed * 60) : null) : (detail.average_watts ? `${Math.round(detail.average_watts)} W` : '-')}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Load Impact') || 'Load Impact'}</Text>
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Training Load (TL)') || 'Training Load (TL)'}</Text>
             <Text fw={700}>{safeNum(detail.total_load_impact).toFixed(1)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
@@ -1137,7 +1137,7 @@ const KeySessionsTable = ({ sessions, t }: { sessions: ActivityDetail[]; t: (v: 
       <Table.Tr>
         <Table.Th>{t('Session') || 'Session'}</Table.Th>
         <Table.Th>{t('Time') || 'Time'}</Table.Th>
-        <Table.Th>{t('Load') || 'Load'}</Table.Th>
+        <Table.Th>{t('TL') || 'TL'}</Table.Th>
       </Table.Tr>
     </Table.Thead>
     <Table.Tbody>

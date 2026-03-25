@@ -321,7 +321,7 @@ export function ActivitiesView({
                         </Group>
                         )}
                             <Group justify="apart">
-                                <Text size="sm" c={ui.textDim}>Load Impact</Text>
+                                <Text size="sm" c={ui.textDim}>Training Load (TL)</Text>
                                 <Text size="sm" fw={700} c={ui.textMain}>
                                   +{(act.aerobic_load || 0).toFixed(1)} Aer · +{(act.anaerobic_load || 0).toFixed(1)} Ana
                                 </Text>

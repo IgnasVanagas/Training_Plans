@@ -196,7 +196,7 @@ const DashboardAthleteHome = ({
           </Group>
           <Text fw={700} size="xl">{trainingStatus?.training_status || "-"}</Text>
           <Text size="xs" c="dimmed" mt="xs">
-            TSB {trainingStatus ? ((trainingStatus.tsb ?? 0) >= 0 ? "+" : "") + (trainingStatus.tsb?.toFixed(1) ?? "-") : "-"}
+            Form {trainingStatus ? ((trainingStatus.tsb ?? 0) >= 0 ? "+" : "") + (trainingStatus.tsb?.toFixed(1) ?? "-") : "-"}
           </Text>
         </Card>
       </SimpleGrid>

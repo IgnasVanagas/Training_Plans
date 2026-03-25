@@ -30,16 +30,16 @@ export const metricDescriptions: Record<MetricKey, string> = {
   ftp: "Functional Threshold Power: the highest power you can sustain for about 60 minutes. Used for cycling intensity zones.",
   rhr: "Resting Heart Rate (RHR): your baseline morning heart rate, used as a recovery and readiness marker.",
   hrv: "Heart Rate Variability (HRV): your autonomic nervous system balance marker, tracked in milliseconds.",
-  aerobic_load: "ATL (Acute Training Load): 7-day exponential weighted average of daily training stress. Reflects recent fatigue.",
-  anaerobic_load: "CTL (Chronic Training Load): 42-day exponential weighted average of daily training stress. Reflects fitness level.",
-  training_status: "Training Status is derived from TSB (Training Stress Balance = CTL − ATL). Positive TSB means fresh; negative means fatigued.",
+  aerobic_load: "Fatigue (short-term load): 7-day exponential weighted average of daily Training Load. Reflects how tired you are right now.",
+  anaerobic_load: "Fitness (long-term load): 42-day exponential weighted average of daily Training Load. Reflects your aerobic engine size.",
+  training_status: "Form = Fitness − Fatigue. Positive Form means fresh and ready to perform; negative means fatigued from recent hard training.",
 };
 
 export const metricModalTitle: Record<MetricKey, string> = {
   ftp: "FTP",
   rhr: "Resting Heart Rate",
   hrv: "HRV",
-  aerobic_load: "ATL — Acute Training Load",
-  anaerobic_load: "CTL — Chronic Training Load",
+  aerobic_load: "Fatigue — Short-term Load",
+  anaerobic_load: "Fitness — Long-term Load",
   training_status: "Training Status",
 };

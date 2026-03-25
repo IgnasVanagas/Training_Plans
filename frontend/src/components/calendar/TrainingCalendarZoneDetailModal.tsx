@@ -246,7 +246,7 @@ export default function TrainingCalendarZoneDetailModal({ data, onClose }: Props
                                         <Text size="sm" fw={700}>{formatPower(data.metrics.cyclingMaxPower)}</Text>
                                     </Paper>
                                     <Paper withBorder p="xs" radius="sm">
-                                        <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Cycling Normalized Power</Text>
+                                        <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Weighted Avg Power (WAP)</Text>
                                         <Text size="sm" fw={700}>{formatPower(data.metrics.cyclingNormalizedPower)}</Text>
                                     </Paper>
                                 </SimpleGrid>

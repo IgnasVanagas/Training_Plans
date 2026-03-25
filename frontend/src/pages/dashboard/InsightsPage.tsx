@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import {
-  Alert, Box, Button, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, Title, ThemeIcon,
+  Alert, Box, Button, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, Title, ThemeIcon, Tooltip, UnstyledButton,
 } from '@mantine/core';
 import {
-  IconActivity, IconBolt, IconHeart, IconRun, IconTargetArrow,
+  IconActivity, IconBolt, IconHeart, IconRun, IconTargetArrow, IconHelpCircle,
 } from '@tabler/icons-react';
 import {
   ComposedChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartTooltip,
@@ -14,7 +14,7 @@ import { format, parseISO } from 'date-fns';
 import api from '../../api/client';
 import { MetricKey, TrainingStatus, User } from './types';
 import { formatDuration, formatMinutesHm } from './utils';
-import { CoachComparisonPanel } from '../../components/CoachComparisonPanel';
+
 
 type TrendPoint = {
   date: string;
@@ -51,6 +51,14 @@ const InsightsPage = ({
   athletes = [],
 }: Props) => {
   const [rangeDays, setRangeDays] = useState(180);
+  const [activeExplanation, setActiveExplanation] = useState<string | null>(null);
+
+  const SERIES_INFO = [
+    { color: '#3b82f6', label: 'Daily TL', tip: 'Daily Training Load — the total aerobic and anaerobic stress from all activities on a given day. It is the raw input that drives both Fitness and Fatigue. A high-load day will spike Fatigue quickly; repeated high-load days over months build Fitness.' },
+    { color: '#22c55e', label: 'Fitness', tip: 'Long-term load — a 42-day exponential rolling average of daily Training Load. Represents the size of your aerobic engine. It builds slowly with consistent training and decays slowly with rest. The only way to grow it is sustained training over months.' },
+    { color: '#f97316', label: 'Fatigue', tip: 'Short-term load — a 7-day exponential rolling average of daily Training Load. Represents how tired you are right now. Rises quickly after hard blocks and falls quickly with recovery. A rising Fatigue means you are accumulating stress faster than you can absorb it.' },
+    { color: '#a855f7', label: 'Form', tip: 'Fitness minus Fatigue. Positive = fresh and ready to perform. Negative = fatigued from recent hard training. The sweet spot for racing is +5 to +15. Below −25 means you are over-reached. Continuously positive means you are under-training.' },
+  ] as const;
   const cardBg = isDark ? 'rgba(22, 34, 58, 0.62)' : 'rgba(255, 255, 255, 0.92)';
   const cardBorder = isDark ? 'rgba(148, 163, 184, 0.26)' : 'rgba(15, 23, 42, 0.14)';
 
@@ -140,7 +148,12 @@ const InsightsPage = ({
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('aerobic_load')}>
           <Group justify="space-between" mb="xs">
-            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Fatigue</Text>
+            <Group gap={4} align="center">
+              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Fatigue</Text>
+              <Tooltip label="Your short-term load — a 7-day exponential rolling average of daily Training Load. It tells you how tired you are right now. A rising Fatigue means you are accumulating stress faster than you can absorb it." multiline w={260} withArrow>
+                <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.5 }} />
+              </Tooltip>
+            </Group>
             <IconActivity size={20} color="#E95A12" />
           </Group>
           <Text fw={700} size="xl">{trainingStatus?.atl?.toFixed(1) ?? '-'}</Text>
@@ -149,7 +162,12 @@ const InsightsPage = ({
 
         <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('anaerobic_load')}>
           <Group justify="space-between" mb="xs">
-            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Fitness</Text>
+            <Group gap={4} align="center">
+              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Fitness</Text>
+              <Tooltip label="Your long-term load — a 42-day exponential rolling average of daily Training Load. It represents the size of your aerobic engine. It builds slowly and decays slowly; consistent training over months is the only way to grow it." multiline w={260} withArrow>
+                <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.5 }} />
+              </Tooltip>
+            </Group>
             <IconBolt size={20} color="#2563eb" />
           </Group>
           <Text fw={700} size="xl">{trainingStatus?.ctl?.toFixed(1) ?? '-'}</Text>
@@ -158,7 +176,12 @@ const InsightsPage = ({
 
         <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('training_status')}>
           <Group justify="space-between" mb="xs">
-            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Form</Text>
+            <Group gap={4} align="center">
+              <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Form</Text>
+              <Tooltip label="Fitness minus Fatigue. Positive = fresh and ready to perform. Negative = fatigued from recent hard training. The sweet spot for racing is +5 to +15. Below −25 means you are over-reached. Continuously positive means you are under-training." multiline w={260} withArrow>
+                <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.5 }} />
+              </Tooltip>
+            </Group>
             <ThemeIcon color={trainingStatusColor} variant="light" size="sm" radius="xl">
               <IconTargetArrow size={13} />
             </ThemeIcon>
@@ -173,9 +196,50 @@ const InsightsPage = ({
       {/* Performance Trend Chart */}
       <Paper withBorder p="md" radius="md" bg={cardBg} style={{ borderColor: cardBorder }}>
         <Group justify="space-between" mb="md" align="center">
-          <Stack gap={0}>
+          <Stack gap={6}>
             <Text fw={700} size="sm">Performance Trend</Text>
-            <Text size="xs" c="dimmed">Fitness · Fatigue · Form · Daily Load</Text>
+            <Group gap={4} wrap="wrap">
+              {SERIES_INFO.map(({ color, label }) => {
+                const isActive = activeExplanation === label;
+                return (
+                  <UnstyledButton
+                    key={label}
+                    onClick={() => setActiveExplanation(isActive ? null : label)}
+                    style={{
+                      borderRadius: 6,
+                      padding: '3px 7px',
+                      border: `1px solid ${isActive ? color : 'transparent'}`,
+                      background: isActive ? (isDark ? `${color}22` : `${color}14`) : 'transparent',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <Group gap={5} align="center">
+                      <Box style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0 }} />
+                      <Text size="xs" c={isActive ? 'inherit' : 'dimmed'} fw={isActive ? 600 : 400}>{label}</Text>
+                      <IconHelpCircle size={12} style={{ opacity: isActive ? 0.7 : 0.4 }} />
+                    </Group>
+                  </UnstyledButton>
+                );
+              })}
+            </Group>
+            {activeExplanation && (() => {
+              const info = SERIES_INFO.find((s) => s.label === activeExplanation);
+              if (!info) return null;
+              return (
+                <Paper p="xs" radius="sm" style={{ borderLeft: `3px solid ${info.color}`, background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)' }}>
+                  <Group justify="space-between" mb={4}>
+                    <Group gap={6}>
+                      <Box style={{ width: 8, height: 8, borderRadius: 2, background: info.color }} />
+                      <Text size="xs" fw={700}>{info.label}</Text>
+                    </Group>
+                    <UnstyledButton onClick={() => setActiveExplanation(null)}>
+                      <Text size="xs" c="dimmed" lh={1}>✕</Text>
+                    </UnstyledButton>
+                  </Group>
+                  <Text size="xs" c="dimmed" lh={1.5}>{info.tip}</Text>
+                </Paper>
+              );
+            })()}
           </Stack>
           <Group gap="xs">
             {RANGE_OPTIONS.map((opt) => (
@@ -208,7 +272,35 @@ const InsightsPage = ({
                 formatter={(value: number, name: string) => [value.toFixed(1), name]}
                 labelFormatter={(label) => `Date: ${label}`}
               />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Legend
+                content={({ payload }) => (
+                  <Group gap={4} justify="center" wrap="wrap" style={{ marginTop: 4 }}>
+                    {(payload || []).map((entry: any) => {
+                      const isActive = activeExplanation === entry.value;
+                      const info = SERIES_INFO.find((s) => s.label === entry.value);
+                      if (!info) return null;
+                      return (
+                        <UnstyledButton
+                          key={entry.value}
+                          onClick={() => setActiveExplanation(isActive ? null : entry.value)}
+                          style={{
+                            borderRadius: 5,
+                            padding: '2px 6px',
+                            border: `1px solid ${isActive ? info.color : 'transparent'}`,
+                            background: isActive ? (isDark ? `${info.color}22` : `${info.color}14`) : 'transparent',
+                          }}
+                        >
+                          <Group gap={4} align="center">
+                            <Box style={{ width: 9, height: 9, borderRadius: 2, background: info.color, flexShrink: 0 }} />
+                            <Text size="xs" c={isActive ? 'inherit' : 'dimmed'} fw={isActive ? 600 : 400}>{entry.value}</Text>
+                            <IconHelpCircle size={11} style={{ opacity: isActive ? 0.7 : 0.35 }} />
+                          </Group>
+                        </UnstyledButton>
+                      );
+                    })}
+                  </Group>
+                )}
+              />
               <Bar yAxisId="load" dataKey="load" name="Daily TL" fill="#3b82f6" opacity={0.35} barSize={4} />
               <Area yAxisId="trend" type="monotone" dataKey="fitness" name="Fitness" stroke="#22c55e" fill="#22c55e" fillOpacity={0.12} strokeWidth={2} dot={false} />
               <Area yAxisId="trend" type="monotone" dataKey="fatigue" name="Fatigue" stroke="#f97316" fill="#f97316" fillOpacity={0.10} strokeWidth={2} dot={false} />

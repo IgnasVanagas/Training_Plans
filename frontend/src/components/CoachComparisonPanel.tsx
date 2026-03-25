@@ -12,17 +12,24 @@ import {
   SegmentedControl,
   Select,
   SimpleGrid,
+  Slider,
   Stack,
   Table,
+  Tabs,
   Text,
   Title,
+  Tooltip,
   UnstyledButton,
   useComputedColorScheme,
 } from '@mantine/core';
 import { DatePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconExternalLink, IconInfoCircle } from '@tabler/icons-react';
+import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconChartLine, IconExternalLink, IconInfoCircle, IconAdjustmentsHorizontal } from '@tabler/icons-react';
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartTooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 import api from '../api/client';
 import ZoneBars from './coachComparison/ZoneBars';
 import {
@@ -366,7 +373,7 @@ const dominantZone = (zones: Record<string, number>) => {
   return { zone: winner, sharePct: total > 0 ? (seconds / total) * 100 : 0 };
 };
 
-const WorkoutSummaryTable = ({ detail, title, t }: { detail: ActivityDetail; title: string; t: (value: string) => string }) => {
+const WorkoutSummaryTable = ({ detail, title, t, sideColor }: { detail: ActivityDetail; title: string; t: (value: string) => string; sideColor?: string }) => {
   const isRunning = normalizeSport(detail.sport) === 'running';
   const bestPower5 = extractBestCurveValue(detail.power_curve, ['5s']);
   const bestPower60 = extractBestCurveValue(detail.power_curve, ['1min', '60s']);
@@ -375,7 +382,7 @@ const WorkoutSummaryTable = ({ detail, title, t }: { detail: ActivityDetail; tit
   const bestPace1200 = extractBestCurveValue(detail.pace_curve, ['20min', '1200s']);
 
   return (
-    <Paper withBorder p="sm" radius="md">
+    <Paper withBorder p="sm" radius="md" style={sideColor ? { borderLeft: `4px solid ${sideColor}` } : undefined}>
       <Stack gap="sm">
         <Group justify="space-between">
           <Box>
@@ -409,7 +416,7 @@ const WorkoutSummaryTable = ({ detail, title, t }: { detail: ActivityDetail; tit
             <Text fw={700}>{isRunning ? formatPace(detail.avg_speed ? 1000 / (detail.avg_speed * 60) : null) : (detail.average_watts ? `${Math.round(detail.average_watts)} W` : '-')}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Load Impact') || 'Load Impact'}</Text>
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Training Load (TL)') || 'Training Load (TL)'}</Text>
             <Text fw={700}>{safeNum(detail.total_load_impact).toFixed(1)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
@@ -630,7 +637,7 @@ const PeriodSummaryTable = ({
               <Table.Tr>
                 <Table.Th>{t('Session') || 'Session'}</Table.Th>
                 <Table.Th>{t('Time') || 'Time'}</Table.Th>
-                <Table.Th>{t('Load') || 'Load'}</Table.Th>
+                <Table.Th>{t('TL') || 'TL'}</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -832,6 +839,8 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const [rightAthleteId, setRightAthleteId] = useState<string | null>(null);
   const [leftPeriodKey, setLeftPeriodKey] = useState<string | null>(null);
   const [rightPeriodKey, setRightPeriodKey] = useState<string | null>(null);
+  const [streamOffset, setStreamOffset] = useState(0);
+  const [streamMetric, setStreamMetric] = useState<'hr' | 'power'>('hr');
 
   const allAthletes = useMemo(() => {
     const existing = new Map<number, AthleteLike>();
@@ -996,6 +1005,77 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     }));
   }, [leftSplits, rightSplits]);
 
+  const chartColors = { sideA: '#E95A12', sideB: '#6E4BF3' };
+
+  const streamChartData = useMemo(() => {
+    if (mode !== 'workouts') return [];
+    const ls = leftWorkout?.streams;
+    const rs = rightWorkout?.streams;
+    if (!Array.isArray(ls) || !ls.length || !Array.isArray(rs) || !rs.length) return [];
+    const aStart = streamOffset < 0 ? Math.abs(streamOffset) : 0;
+    const bStart = streamOffset > 0 ? streamOffset : 0;
+    const len = Math.max(ls.length - aStart, rs.length - bStart);
+    const step = Math.max(1, Math.floor(len / 400));
+    const result: { t: number; hrA: number | null; hrB: number | null; pwA: number | null; pwB: number | null }[] = [];
+    for (let i = 0; i < len; i += step) {
+      const lIdx = i + aStart;
+      const rIdx = i + bStart;
+      const lr = lIdx < ls.length ? (ls[lIdx] as any) : null;
+      const rr = rIdx < rs.length ? (rs[rIdx] as any) : null;
+      result.push({
+        t: +(i / 60).toFixed(1),
+        hrA: lr?.hr != null ? Math.round(lr.hr) : null,
+        hrB: rr?.hr != null ? Math.round(rr.hr) : null,
+        pwA: lr?.power != null ? Math.round(lr.power) : null,
+        pwB: rr?.power != null ? Math.round(rr.power) : null,
+      });
+    }
+    return result;
+  }, [mode, leftWorkout, rightWorkout, streamOffset]);
+
+  const hasHrStreams = streamChartData.some((d) => d.hrA != null || d.hrB != null);
+  const hasPowerStreams = streamChartData.some((d) => d.pwA != null || d.pwB != null);
+
+  const POWER_CURVE_WINDOWS = ['5s', '15s', '30s', '1min', '2min', '5min', '10min', '20min', '60min'];
+
+  const powerCurveChartData = useMemo(() => {
+    if (mode !== 'workouts') return [];
+    if (!leftWorkout?.power_curve && !rightWorkout?.power_curve) return [];
+    return POWER_CURVE_WINDOWS
+      .map((w) => ({
+        window: w,
+        sideA: leftWorkout?.power_curve?.[w] != null ? Math.round(safeNum(leftWorkout.power_curve[w])) : null,
+        sideB: rightWorkout?.power_curve?.[w] != null ? Math.round(safeNum(rightWorkout.power_curve[w])) : null,
+      }))
+      .filter((row) => row.sideA != null || row.sideB != null);
+  }, [mode, leftWorkout, rightWorkout]);
+
+  const zoneChartData = useMemo(() => {
+    if (mode === 'workouts') {
+      if (!leftWorkout || !rightWorkout) return [];
+      const lz = extractZonesForDetail(leftWorkout, athleteMap.get(leftWorkout.athlete_id));
+      const rz = extractZonesForDetail(rightWorkout, athleteMap.get(rightWorkout.athlete_id));
+      const isCycling = lz.sport === 'cycling' || rz.sport === 'cycling';
+      const lZones = isCycling ? lz.cycling : lz.running;
+      const rZones = isCycling ? rz.cycling : rz.running;
+      const count = isCycling ? 7 : 5;
+      return Array.from({ length: count }, (_, idx) => ({
+        zone: `Z${idx + 1}`,
+        sideA: Math.round((lZones[`Z${idx + 1}`] || 0) / 60),
+        sideB: Math.round((rZones[`Z${idx + 1}`] || 0) / 60),
+      })).filter((row) => row.sideA > 0 || row.sideB > 0);
+    }
+    const isCycling = Object.values(leftAggregate.cyclingZones).some((v) => v > 0) || Object.values(rightAggregate.cyclingZones).some((v) => v > 0);
+    const lZones = isCycling ? leftAggregate.cyclingZones : leftAggregate.runningZones;
+    const rZones = isCycling ? rightAggregate.cyclingZones : rightAggregate.runningZones;
+    const count = isCycling ? 7 : 5;
+    return Array.from({ length: count }, (_, idx) => ({
+      zone: `Z${idx + 1}`,
+      sideA: Math.round((lZones[`Z${idx + 1}`] || 0) / 60),
+      sideB: Math.round((rZones[`Z${idx + 1}`] || 0) / 60),
+    })).filter((row) => row.sideA > 0 || row.sideB > 0);
+  }, [mode, leftWorkout, rightWorkout, leftAggregate, rightAggregate, athleteMap]);
+
   const leftPeriodLabel = mode === 'weeks'
     ? (leftPeriodKey ? parseWeekLabel(leftPeriodKey) : '-')
     : (leftPeriodKey ? parseMonthLabel(leftPeriodKey) : '-');
@@ -1008,7 +1088,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     const insights: string[] = [];
     insights.push(`${t('Duration change') || 'Duration change'}: ${formatDeltaPct(safeNum(leftWorkout.duration), safeNum(rightWorkout.duration))}`);
     insights.push(`${t('Distance change') || 'Distance change'}: ${formatDeltaPct(safeNum(leftWorkout.distance), safeNum(rightWorkout.distance))}`);
-    insights.push(`${t('Load difference') || 'Load difference'}: ${compareValue(safeNum(leftWorkout.total_load_impact), safeNum(rightWorkout.total_load_impact))}`);
+    insights.push(`${t('TL difference') || 'TL difference'}: ${compareValue(safeNum(leftWorkout.total_load_impact), safeNum(rightWorkout.total_load_impact))}`);
     if (leftWorkout.rpe != null || rightWorkout.rpe != null) {
       insights.push(`${t('RPE shift') || 'RPE shift'}: ${compareValue(leftWorkout.rpe ?? null, rightWorkout.rpe ?? null)}`);
     }
@@ -1094,11 +1174,16 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   return (
     <Paper withBorder p="lg" radius="lg">
       <Stack gap="md">
-        <Group justify="space-between" align="flex-start">
+        <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
           <Box>
-            <Group gap="xs">
+            <Group gap="xs" mb={2}>
               <IconChartBar size={18} />
               <Title order={4}>{isAthlete ? (t('Training Comparison') || 'Training Comparison') : (t('Coach Split-Screen Analysis') || 'Coach Split-Screen Analysis')}</Title>
+            </Group>
+            <Group gap="xs" mb={4}>
+              <Badge size="xs" style={{ background: '#E95A12', color: '#fff' }}>A</Badge>
+              <Text size="xs" c="dimmed">vs</Text>
+              <Badge size="xs" style={{ background: '#6E4BF3', color: '#fff' }}>B</Badge>
             </Group>
             <Text size="sm" c="dimmed">
               {isAthlete
@@ -1108,7 +1193,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           </Box>
           <SegmentedControl
             value={mode}
-            onChange={(value) => setMode(value as AnalysisMode)}
+            onChange={(value) => { setMode(value as AnalysisMode); setStreamOffset(0); }}
             data={[
               { value: 'workouts', label: t('Workouts') || 'Workouts' },
               { value: 'weeks', label: t('Weeks') || 'Weeks' },
@@ -1159,9 +1244,9 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           <Stack gap="md">
             <SimpleGrid cols={{ base: 1, md: 2, xl: 4 }} spacing="sm">
               {compareCards.map((item) => (
-                <Paper key={item.label} withBorder p="sm" radius="md">
-                  <Text size="xs" c="dimmed">{item.label}</Text>
-                  <Text fw={700}>{item.value}</Text>
+                <Paper key={item.label} withBorder p="sm" radius="md" style={{ borderTop: `3px solid transparent`, background: isDark ? 'rgba(22,34,58,0.5)' : undefined }}>
+                  <Text size="10px" c="dimmed" tt="uppercase" fw={600} mb={4}>{item.label}</Text>
+                  <Text fw={700} size="lg">{item.value}</Text>
                 </Paper>
               ))}
             </SimpleGrid>
@@ -1178,12 +1263,167 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
               </Stack>
             </Paper>
 
+            {/* ── Charts Section ── */}
+            {(streamChartData.length > 0 || powerCurveChartData.length > 0 || zoneChartData.length > 0) && (
+              <Paper withBorder p="sm" radius="md">
+                <Tabs defaultValue={streamChartData.length > 0 ? 'stream' : powerCurveChartData.length > 0 ? 'curve' : 'zones'}>
+                  <Tabs.List mb="sm">
+                    {streamChartData.length > 0 && (
+                      <Tabs.Tab value="stream" leftSection={<IconChartLine size={13} />}>
+                        Stream Overlay
+                      </Tabs.Tab>
+                    )}
+                    {powerCurveChartData.length > 0 && (
+                      <Tabs.Tab value="curve" leftSection={<IconChartBar size={13} />}>
+                        Power Curve
+                      </Tabs.Tab>
+                    )}
+                    {zoneChartData.length > 0 && (
+                      <Tabs.Tab value="zones" leftSection={<IconAdjustmentsHorizontal size={13} />}>
+                        Zone Distribution
+                      </Tabs.Tab>
+                    )}
+                  </Tabs.List>
+
+                  {streamChartData.length > 0 && (
+                    <Tabs.Panel value="stream">
+                      <Stack gap="sm">
+                        <Group gap="sm" wrap="wrap" justify="space-between">
+                          <Group gap="sm">
+                            {(hasHrStreams && hasPowerStreams) && (
+                              <SegmentedControl
+                                size="xs"
+                                value={streamMetric}
+                                onChange={(v) => setStreamMetric(v as 'hr' | 'power')}
+                                data={[
+                                  { value: 'hr', label: 'Heart Rate' },
+                                  { value: 'power', label: 'Power' },
+                                ]}
+                              />
+                            )}
+                            <Group gap={6}>
+                              <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideA }} />
+                              <Text size="xs" c="dimmed">Side A</Text>
+                              <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideB, marginLeft: 6 }} />
+                              <Text size="xs" c="dimmed">Side B</Text>
+                            </Group>
+                          </Group>
+                          <Group gap="xs" align="center">
+                            <Tooltip label="Drag the slider to shift Side B in time — align effort zones, intervals, or peaks from different parts of two activities" multiline w={240} withArrow>
+                              <Text size="xs" c="dimmed" style={{ cursor: 'help' }}>
+                                B offset: {streamOffset > 0 ? `+${streamOffset}s` : streamOffset < 0 ? `${streamOffset}s` : '0s (aligned)'}
+                              </Text>
+                            </Tooltip>
+                            {streamOffset !== 0 && (
+                              <Button size="xs" variant="subtle" color="gray" onClick={() => setStreamOffset(0)}>Reset</Button>
+                            )}
+                          </Group>
+                        </Group>
+                        <Box px={4}>
+                          <Slider
+                            size="xs"
+                            min={-300}
+                            max={300}
+                            step={5}
+                            value={streamOffset}
+                            onChange={setStreamOffset}
+                            label={(v) => v === 0 ? 'aligned' : `${v > 0 ? '+' : ''}${v}s`}
+                            marks={[{ value: -300, label: '-5min' }, { value: 0, label: '0' }, { value: 300, label: '+5min' }]}
+                            styles={{ markLabel: { fontSize: 10 } }}
+                          />
+                        </Box>
+                        <ResponsiveContainer width="100%" height={240}>
+                          <ComposedChart data={streamChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.07)'} />
+                            <XAxis dataKey="t" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} label={{ value: 'min', position: 'insideBottomRight', offset: -4, fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} />
+                            <YAxis tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} />
+                            <RechartTooltip
+                              contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, fontSize: 11 }}
+                              formatter={(v: number, name: string) => [v, name]}
+                              labelFormatter={(l) => `${l} min`}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                            {(streamMetric === 'hr' || !hasPowerStreams) && hasHrStreams && (
+                              <>
+                                <Line dataKey="hrA" name="HR — A" stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
+                                <Line dataKey="hrB" name="HR — B" stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
+                              </>
+                            )}
+                            {(streamMetric === 'power' || !hasHrStreams) && hasPowerStreams && (
+                              <>
+                                <Line dataKey="pwA" name="Power — A" stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
+                                <Line dataKey="pwB" name="Power — B" stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
+                              </>
+                            )}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </Stack>
+                    </Tabs.Panel>
+                  )}
+
+                  {powerCurveChartData.length > 0 && (
+                    <Tabs.Panel value="curve">
+                      <Stack gap="xs">
+                        <Group gap={6}>
+                          <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideA }} />
+                          <Text size="xs" c="dimmed">Side A</Text>
+                          <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideB, marginLeft: 6 }} />
+                          <Text size="xs" c="dimmed">Side B</Text>
+                        </Group>
+                        <ResponsiveContainer width="100%" height={240}>
+                          <ComposedChart data={powerCurveChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.07)'} />
+                            <XAxis dataKey="window" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} />
+                            <YAxis tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} label={{ value: 'W', angle: -90, position: 'insideLeft', offset: 8, fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} />
+                            <RechartTooltip
+                              contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, fontSize: 11 }}
+                              formatter={(v: number, name: string) => [`${v} W`, name]}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                            <Bar dataKey="sideA" name="Side A" fill={chartColors.sideA} opacity={0.85} radius={[3, 3, 0, 0]} barSize={14} />
+                            <Bar dataKey="sideB" name="Side B" fill={chartColors.sideB} opacity={0.85} radius={[3, 3, 0, 0]} barSize={14} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </Stack>
+                    </Tabs.Panel>
+                  )}
+
+                  {zoneChartData.length > 0 && (
+                    <Tabs.Panel value="zones">
+                      <Stack gap="xs">
+                        <Group gap={6}>
+                          <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideA }} />
+                          <Text size="xs" c="dimmed">Side A</Text>
+                          <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideB, marginLeft: 6 }} />
+                          <Text size="xs" c="dimmed">Side B</Text>
+                        </Group>
+                        <ResponsiveContainer width="100%" height={220}>
+                          <ComposedChart data={zoneChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.07)'} />
+                            <XAxis dataKey="zone" tick={{ fontSize: 11, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} />
+                            <YAxis tick={{ fontSize: 11, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} label={{ value: 'min', angle: -90, position: 'insideLeft', offset: 8, fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} />
+                            <RechartTooltip
+                              contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, fontSize: 11 }}
+                              formatter={(v: number, name: string) => [`${v} min`, name]}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                            <Bar dataKey="sideA" name="Side A" fill={chartColors.sideA} opacity={0.85} radius={[3, 3, 0, 0]} barSize={18} />
+                            <Bar dataKey="sideB" name="Side B" fill={chartColors.sideB} opacity={0.85} radius={[3, 3, 0, 0]} barSize={18} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </Stack>
+                    </Tabs.Panel>
+                  )}
+                </Tabs>
+              </Paper>
+            )}
+
             {mode === 'workouts' ? (
               <>
                 {leftWorkout && rightWorkout && (
                   <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
-                    <WorkoutSummaryTable detail={leftWorkout} title={leftSideLabel} t={t} />
-                    <WorkoutSummaryTable detail={rightWorkout} title={rightSideLabel} t={t} />
+                    <WorkoutSummaryTable detail={leftWorkout} title={leftSideLabel} t={t} sideColor={chartColors.sideA} />
+                    <WorkoutSummaryTable detail={rightWorkout} title={rightSideLabel} t={t} sideColor={chartColors.sideB} />
                   </SimpleGrid>
                 )}
 
@@ -1194,8 +1434,18 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                       <Table.Thead>
                         <Table.Tr>
                           <Table.Th>{t('Split') || 'Split'}</Table.Th>
-                          <Table.Th>{t('Side A') || 'Side A'}</Table.Th>
-                          <Table.Th>{t('Side B') || 'Side B'}</Table.Th>
+                          <Table.Th>
+                            <Group gap={4}>
+                              <Box style={{ width: 8, height: 8, borderRadius: 2, background: chartColors.sideA, flexShrink: 0 }} />
+                              <Text size="xs" fw={600}>{t('Side A') || 'Side A'}</Text>
+                            </Group>
+                          </Table.Th>
+                          <Table.Th>
+                            <Group gap={4}>
+                              <Box style={{ width: 8, height: 8, borderRadius: 2, background: chartColors.sideB, flexShrink: 0 }} />
+                              <Text size="xs" fw={600}>{t('Side B') || 'Side B'}</Text>
+                            </Group>
+                          </Table.Th>
                           <Table.Th>{t('Delta') || 'Delta'}</Table.Th>
                         </Table.Tr>
                       </Table.Thead>

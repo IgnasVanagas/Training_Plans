@@ -69,13 +69,13 @@ export const MetricHistoryModal = ({
           {selectedMetric === "training_status" && (
             <Paper withBorder p="sm" radius="sm">
               <Stack gap={4}>
-                <Text size="sm" fw={600}>{isLt ? "TSB pagrįstos būsenos" : "TSB-based statuses (CTL − ATL)"}</Text>
-                <Text size="sm"><b>{isLt ? "Formos kritimas" : "Detraining"}</b>{isLt ? ": CTL < 5; treniruočių stimulas nepakankamas." : ": CTL < 5; insufficient training stimulus."}</Text>
-                <Text size="sm"><b>{isLt ? "Šviežia" : "Fresh"}</b>{isLt ? ": TSB > 15; gerai pailsėjęs, tačiau gali netekti formos." : ": TSB > 15; well rested but fitness may be tapering."}</Text>
-                <Text size="sm"><b>{isLt ? "Produktyvu" : "Productive"}</b>{isLt ? ": 5 ≤ TSB ≤ 15; optimalus progreso langas." : ": 5 ≤ TSB ≤ 15; optimal adaptation window."}</Text>
-                <Text size="sm"><b>{isLt ? "Palaikymas" : "Maintaining"}</b>{isLt ? ": −10 ≤ TSB < 5; subalansuotas krūvis." : ": −10 ≤ TSB < 5; balanced load."}</Text>
-                <Text size="sm"><b>{isLt ? "Pavargęs" : "Fatigued"}</b>{isLt ? ": −25 ≤ TSB < −10; reikalingas papildomas poilsis." : ": −25 ≤ TSB < −10; additional recovery needed."}</Text>
-                <Text size="sm"><b>{isLt ? "Perkrautas" : "Strained"}</b>{isLt ? ": TSB < −25; didelė traumų rizika." : ": TSB < −25; high injury risk."}</Text>
+                <Text size="sm" fw={600}>{isLt ? "Formos būsenos (Fitness − Fatigue)" : "Form-based statuses (Fitness − Fatigue)"}</Text>
+                <Text size="sm"><b>{isLt ? "Formos kritimas" : "Detraining"}</b>{isLt ? ": Fitness < 5; treniruočių stimulas nepakankamas." : ": Fitness < 5; insufficient training stimulus."}</Text>
+                <Text size="sm"><b>{isLt ? "Šviežia" : "Fresh"}</b>{isLt ? ": Form > 15; gerai pailsėjęs, tačiau gali netekti formos." : ": Form > 15; well rested but fitness may be tapering."}</Text>
+                <Text size="sm"><b>{isLt ? "Produktyvu" : "Productive"}</b>{isLt ? ": 5 ≤ Form ≤ 15; optimalus progreso langas." : ": 5 ≤ Form ≤ 15; optimal adaptation window."}</Text>
+                <Text size="sm"><b>{isLt ? "Palaikymas" : "Maintaining"}</b>{isLt ? ": −10 ≤ Form < 5; subalansuotas krūvis." : ": −10 ≤ Form < 5; balanced load."}</Text>
+                <Text size="sm"><b>{isLt ? "Pavargęs" : "Fatigued"}</b>{isLt ? ": −25 ≤ Form < −10; reikalingas papildomas poilsis." : ": −25 ≤ Form < −10; additional recovery needed."}</Text>
+                <Text size="sm"><b>{isLt ? "Perkrautas" : "Strained"}</b>{isLt ? ": Form < −25; didelė traumų rizika." : ": Form < −25; high injury risk."}</Text>
               </Stack>
             </Paper>
           )}
@@ -101,18 +101,18 @@ export const MetricHistoryModal = ({
                     )}
 
                     {selectedMetric === "aerobic_load" && (
-                      <Line type="monotone" dataKey="atl" name="ATL" stroke="#E95A12" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="atl" name="Fatigue" stroke="#E95A12" strokeWidth={2} dot={false} />
                     )}
 
                     {selectedMetric === "anaerobic_load" && (
-                      <Line type="monotone" dataKey="ctl" name="CTL" stroke="#2563eb" strokeWidth={2} dot={false} />
+                      <Line type="monotone" dataKey="ctl" name="Fitness" stroke="#2563eb" strokeWidth={2} dot={false} />
                     )}
 
                     {selectedMetric === "training_status" && (
                       <>
-                        <Line type="monotone" dataKey="atl" name="ATL" stroke="#E95A12" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="ctl" name="CTL" stroke="#2563eb" strokeWidth={2} dot={false} />
-                        <Line type="monotone" dataKey="tsb" name="TSB" stroke="#9775fa" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="atl" name="Fatigue" stroke="#E95A12" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="ctl" name="Fitness" stroke="#2563eb" strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="tsb" name="Form" stroke="#9775fa" strokeWidth={2} dot={false} />
                       </>
                     )}
                   </LineChart>

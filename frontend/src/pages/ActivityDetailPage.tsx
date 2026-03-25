@@ -1434,7 +1434,7 @@ export const ActivityDetailPage = () => {
                                                         </Text>
                                                  </Group>
                                                  <Group justify="space-between">
-                                                        <Text size="sm" c={ui.textDim}>Load Impact</Text>
+                                                        <Text size="sm" c={ui.textDim}>Training Load (TL)</Text>
                                                         <Text size="sm" fw={700} c={ui.textMain}>
                                                             +{(activity.aerobic_load || 0).toFixed(1)} Aer · +{(activity.anaerobic_load || 0).toFixed(1)} Ana
                                                         </Text>

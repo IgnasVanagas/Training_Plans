@@ -28,7 +28,7 @@ export const metricOptions: Array<{ group: string; items: Array<{ value: Intensi
 		group: 'Power-based',
 		items: [
 			{ value: 'percent_ftp', label: '% FTP' },
-			{ value: 'np', label: 'NP' },
+			{ value: 'np', label: 'WAP' },
 			{ value: 'watts', label: 'Watts' },
 			{ value: 'wkg', label: 'W/kg' }
 		]

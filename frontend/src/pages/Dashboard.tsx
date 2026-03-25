@@ -554,7 +554,7 @@ const Dashboard = () => {
           ? row.atl
           : selectedMetric === "anaerobic_load"
             ? row.ctl
-            : `${row.training_status} (ATL ${row.atl?.toFixed(1) ?? "-"} / CTL ${row.ctl?.toFixed(1) ?? "-"} / TSB ${(row.tsb ?? 0) >= 0 ? "+" : ""}${row.tsb?.toFixed(1) ?? "-"})`,
+            : `${row.training_status} (Fatigue ${row.atl?.toFixed(1) ?? "-"} / Fitness ${row.ctl?.toFixed(1) ?? "-"} / Form ${(row.tsb ?? 0) >= 0 ? "+" : ""}${row.tsb?.toFixed(1) ?? "-"})`,
     }));
   }, [profileMetricHistory, selectedMetric, trainingStatusHistoryQuery.data]);
 
