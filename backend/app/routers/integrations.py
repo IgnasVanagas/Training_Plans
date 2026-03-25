@@ -545,6 +545,15 @@ async def list_providers(
             item["connection_status"] = connection.status
             item["last_sync_at"] = connection.last_sync_at
             item["last_error"] = connection.last_error
+        if item["provider"] == "strava":
+            sync_state = await db.scalar(
+                select(ProviderSyncState).where(
+                    ProviderSyncState.user_id == current_user.id,
+                    ProviderSyncState.provider == "strava",
+                )
+            )
+            cursor = sync_state.cursor if sync_state and isinstance(sync_state.cursor, dict) else {}
+            item["history_imported"] = bool(cursor.get("initial_sync_done"))
     return [ProviderStatusOut(**item) for item in matrix]
 
 

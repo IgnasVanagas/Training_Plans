@@ -12,6 +12,7 @@ export type ProviderStatus = {
   connection_status: string;
   last_sync_at?: string | null;
   last_error?: string | null;
+  history_imported?: boolean;
 };
 
 export type ProviderConnectResponse = {

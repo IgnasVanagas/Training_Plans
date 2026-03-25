@@ -360,16 +360,20 @@ export const TrainingCalendar = ({
         });
     }, [athleteId, allAthletes, athleteById]);
 
+    // Snap viewDate to the first of its month so the query key only changes
+    // when the user crosses a month boundary — not on every weekly scroll tick.
+    const viewMonthKey = format(viewDate, 'yyyy-MM');
+    const viewMonth = useMemo(() => startOfMonth(viewDate), [viewMonthKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const rangeBounds = useMemo(() => {
         // Fetch a wide window (±3 months) so the continuous scroll grid has data.
-        // Week view also filters from this superset.
-        const rangeStart = startOfWeek(startOfMonth(addMonths(viewDate, -3)), { weekStartsOn: weekStartDay as any });
-        const rangeEnd = endOfWeek(endOfMonth(addMonths(viewDate, 3)), { weekStartsOn: weekStartDay as any });
+        const rangeStart = startOfWeek(startOfMonth(addMonths(viewMonth, -3)), { weekStartsOn: weekStartDay as any });
+        const rangeEnd = endOfWeek(endOfMonth(addMonths(viewMonth, 3)), { weekStartsOn: weekStartDay as any });
         return {
             start: rangeStart,
             end: rangeEnd,
         };
-    }, [viewDate, weekStartDay]);
+    }, [viewMonth, weekStartDay]);
 
     const toEventDate = (value: unknown, fallbackDate?: string): Date | null => {
         if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -587,7 +591,11 @@ export const TrainingCalendar = ({
         return nextPlan;
     }, [me?.profile?.main_sport]);
 
-    const isInitialCalendarLoading = (eventsLoading || eventsFetching) && events.length === 0;
+    // Track whether we've ever successfully loaded events so we never
+    // unmount the grid during a background refetch (query key change).
+    const calendarEverLoaded = useRef(false);
+    if (events.length > 0) calendarEverLoaded.current = true;
+    const isInitialCalendarLoading = !calendarEverLoaded.current && (eventsLoading || eventsFetching) && events.length === 0;
 
     // The continuous grid handles per-day event limiting internally.
     // This alias keeps compatibility with the week view and effect dependencies.

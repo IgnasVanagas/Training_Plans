@@ -726,6 +726,7 @@ class ProviderStatusOut(BaseModel):
     connection_status: str = "disconnected"
     last_sync_at: Optional[datetime] = None
     last_error: Optional[str] = None
+    history_imported: bool = False
 
 
 class ProviderConnectOut(BaseModel):

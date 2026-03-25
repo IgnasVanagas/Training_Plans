@@ -145,6 +145,29 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     // Group events by date for fast lookup
     const eventsByDate = useMemo(() => groupEventsByDate(events), [events]);
 
+    /**
+     * Preserve scroll position when event content changes (rows resize).
+     * Before React paints, we re-anchor the scroll so the visible week row
+     * stays in the same visual position.
+     */
+    const reAnchorContext = useRef<{ weekKey: string; scrollOffset: number } | null>(null);
+    // Snapshot the visual anchor BEFORE DOM changes from new events are committed.
+    const prevEventsRef = useRef(events);
+    if (events !== prevEventsRef.current) {
+        prevEventsRef.current = events;
+        const el = scrollRef.current;
+        if (el && el.scrollTop > 0) {
+            // Find the top-visible week row
+            for (const week of weeks) {
+                const refRow = weekRowRefs.current.get(week.key);
+                if (refRow && refRow.offsetTop + refRow.offsetHeight > el.scrollTop) {
+                    reAnchorContext.current = { weekKey: week.key, scrollOffset: el.scrollTop - refRow.offsetTop };
+                    break;
+                }
+            }
+        }
+    }
+
     // Build weekday header labels starting from weekStartDay
     const weekdayHeaders = useMemo(() => {
         const labels: string[] = [];
@@ -176,6 +199,23 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [anchorKey]);
+
+    /* ── Restore scroll position when event data changes and row heights shift ── */
+    useLayoutEffect(() => {
+        const ctx = reAnchorContext.current;
+        if (!ctx) return;
+        reAnchorContext.current = null;
+        const el = scrollRef.current;
+        if (!el) return;
+        const row = weekRowRefs.current.get(ctx.weekKey);
+        if (row) {
+            const desired = row.offsetTop + ctx.scrollOffset;
+            if (Math.abs(el.scrollTop - desired) > 2) {
+                suppressFor(200);
+                el.scrollTop = desired;
+            }
+        }
+    }, [eventsByDate, suppressFor]);
 
     /* ── When viewDate changes externally (header nav), re-anchor ── */
     useEffect(() => {

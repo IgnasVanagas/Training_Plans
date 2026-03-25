@@ -181,14 +181,22 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
   const [hrCol, setHrCol] = useState<ColumnState>(buildInitialHR);
   const [paceCol, setPaceCol] = useState<ColumnState>(buildInitialPace);
 
+  // Local raw text for pace threshold input — allows free typing, parsed on blur
+  const [paceRawText, setPaceRawText] = useState<string>(
+    () => paceCol.threshold ? fmtPace(paceCol.threshold) : ""
+  );
+
   // Reset columns when sport changes
   const handleSportChange = (s: Sport) => {
     setSport(s);
   };
 
   useEffect(() => {
-    setHrCol(buildInitialHR());
-    setPaceCol(buildInitialPace());
+    const nextHr = buildInitialHR();
+    const nextPace = buildInitialPace();
+    setHrCol(nextHr);
+    setPaceCol(nextPace);
+    setPaceRawText(nextPace.threshold ? fmtPace(nextPace.threshold) : "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sport]);
 
@@ -255,7 +263,11 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
   };
 
   const handleDiscardHR = () => setHrCol(buildInitialHR());
-  const handleDiscardPace = () => setPaceCol(buildInitialPace());
+  const handleDiscardPace = () => {
+    const initial = buildInitialPace();
+    setPaceCol(initial);
+    setPaceRawText(initial.threshold ? fmtPace(initial.threshold) : "");
+  };
 
   const updateHrZone = (idx: number, field: "low" | "high", val: number) => {
     setHrCol((prev) => {
@@ -515,11 +527,30 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
                 <TextInput
                   size="sm"
                   w={120}
-                  placeholder="00:00"
-                  value={paceCol.threshold ? fmtPace(paceCol.threshold) : ""}
+                  placeholder="m:ss"
+                  value={paceRawText}
                   onChange={(e) => {
-                    const sec = parsePaceInput(e.currentTarget.value);
-                    if (sec !== null) setPaceCol((prev) => ({ ...prev, threshold: sec }));
+                    let v = e.currentTarget.value.replace(/[^0-9:]/g, "");
+                    // Auto-insert colon after minutes digit(s) if user types only digits
+                    if (v.length >= 2 && !v.includes(":")) {
+                      v = v.slice(0, -2) + ":" + v.slice(-2);
+                    }
+                    setPaceRawText(v);
+                    // Eagerly update threshold if already valid
+                    const sec = parsePaceInput(v);
+                    if (sec !== null && sec > 0) setPaceCol((prev) => ({ ...prev, threshold: sec }));
+                  }}
+                  onBlur={() => {
+                    const sec = parsePaceInput(paceRawText);
+                    if (sec !== null && sec > 0) {
+                      setPaceCol((prev) => ({ ...prev, threshold: sec }));
+                      setPaceRawText(fmtPace(sec));
+                    } else if (paceCol.threshold) {
+                      // Revert to last valid value
+                      setPaceRawText(fmtPace(paceCol.threshold));
+                    } else {
+                      setPaceRawText("");
+                    }
                   }}
                   rightSection={<Text size="xs" c="dimmed">/km</Text>}
                 />
@@ -576,7 +607,10 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
                 size="xs"
                 variant="outline"
                 color="gray"
-                onClick={() => setPaceCol((prev) => ({ ...prev, editing: true, threshold: paceThreshold }))}
+                onClick={() => {
+                  setPaceCol((prev) => ({ ...prev, editing: true, threshold: paceThreshold }));
+                  setPaceRawText(paceThreshold ? fmtPace(paceThreshold) : "");
+                }}
               >
                 {t("Adjust zones")}
               </Button>

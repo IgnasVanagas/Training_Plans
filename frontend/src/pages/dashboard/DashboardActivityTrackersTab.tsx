@@ -178,11 +178,16 @@ export default function DashboardActivityTrackersTab({
 
                 {/* Strava connected note */}
                 {item.provider === "strava" && isConnected && (
-                  <Text size="xs" c="dimmed">
-                    {t(
-                      "Imports your last 3 months of activities on first sync."
+                  <Group gap={6} align="center">
+                    <Text size="xs" c={item.history_imported ? "teal" : "dimmed"}>
+                      {item.history_imported
+                        ? t("3-month history imported")
+                        : t("Imports your last 3 months of activities on first sync.")}
+                    </Text>
+                    {item.history_imported && (
+                      <IconCheck size={13} color="var(--mantine-color-teal-6)" />
                     )}
-                  </Text>
+                  </Group>
                 )}
 
                 {/* Strava API Brand Guidelines: "Powered by Strava" */}
