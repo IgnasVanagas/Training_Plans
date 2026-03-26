@@ -364,25 +364,28 @@ export const TrainingCalendar = ({
     // when the user crosses a month boundary — not on every weekly scroll tick.
     const viewMonthKey = format(viewDate, 'yyyy-MM');
 
-    // Snap fetch centre to the **quarter** boundary of the current viewDate
-    // so the calendar query key only changes ~4× per year instead of every
+    // Snap fetch centre to the **half-year** boundary of the current viewDate
+    // so the calendar query key only changes 2× per year instead of every
     // month-boundary scroll tick.  This prevents activities from flickering
-    // or disappearing when the user scrolls past month edges.
-    const fetchQuarter = useMemo(() => {
-        const q = Math.floor(viewDate.getMonth() / 3) * 3;
-        return new Date(viewDate.getFullYear(), q, 1);
+    // or disappearing when the user scrolls past month/quarter edges.
+    // Returns a stable string so downstream memos don't re-run on every month change.
+    const fetchHalfYearKey = useMemo(() => {
+        const h = viewDate.getMonth() < 6 ? 0 : 6;
+        return `${viewDate.getFullYear()}-${String(h + 1).padStart(2, '0')}-01`;
     }, [viewMonthKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const rangeBounds = useMemo(() => {
-        // Fetch a wide window (±4 months) from the quarterly anchor so the
-        // continuous scroll grid always has data for the visible range.
-        const rangeStart = startOfWeek(startOfMonth(addMonths(fetchQuarter, -4)), { weekStartsOn: weekStartDay as any });
-        const rangeEnd = endOfWeek(endOfMonth(addMonths(fetchQuarter, 4)), { weekStartsOn: weekStartDay as any });
+        // Parse the stable half-year anchor string back to a Date
+        const anchor = parseDate(fetchHalfYearKey);
+        // Fetch a wide window (±7 months) from the half-year anchor so the
+        // continuous scroll grid (±26 weeks ≈ ±6 months) always has data.
+        const rangeStart = startOfWeek(startOfMonth(addMonths(anchor, -7)), { weekStartsOn: weekStartDay as any });
+        const rangeEnd = endOfWeek(endOfMonth(addMonths(anchor, 7)), { weekStartsOn: weekStartDay as any });
         return {
             start: rangeStart,
             end: rangeEnd,
         };
-    }, [fetchQuarter, weekStartDay]);
+    }, [fetchHalfYearKey, weekStartDay]);
 
     const toEventDate = (value: unknown, fallbackDate?: string): Date | null => {
         if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -422,24 +425,16 @@ export const TrainingCalendar = ({
         };
     };
 
+    const rangeStartStr = useMemo(() => format(rangeBounds.start, 'yyyy-MM-dd'), [rangeBounds]);
+    const rangeEndStr = useMemo(() => format(rangeBounds.end, 'yyyy-MM-dd'), [rangeBounds]);
+
     const { data: events = [], isLoading: eventsLoading, isFetching: eventsFetching } = useQuery({
-        queryKey: ['calendar', format(rangeBounds.start, 'yyyy-MM-dd'), format(rangeBounds.end, 'yyyy-MM-dd'), athleteId, allAthletes],
-        initialData: () => {
-            const snapKey = `calendar:v2:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
-            const snap = readSnapshot<any[]>(snapKey);
-            if (!snap || snap.length === 0) return undefined;
-            const normalized = snap
-                .map(normalizeCalendarEvent)
-                .filter((event): event is any => Boolean(event));
-            return normalized.length > 0 ? normalized : undefined;
-        },
+        queryKey: ['calendar', rangeStartStr, rangeEndStr, athleteId, allAthletes],
         queryFn: async () => {
             const rows = await fetchEvents(rangeBounds.start, rangeBounds.end);
             const safeRows = rows
                 .map(normalizeCalendarEvent)
                 .filter((event): event is any => Boolean(event));
-            const snapKey = `calendar:v2:${format(rangeBounds.start, 'yyyy-MM-dd')}:${format(rangeBounds.end, 'yyyy-MM-dd')}:${athleteId || 'self'}:${allAthletes ? 'all' : 'single'}`;
-            writeSnapshot(snapKey, safeRows);
             return safeRows;
         },
         staleTime: 1000 * 60 * 5,
@@ -464,8 +459,6 @@ export const TrainingCalendar = ({
     }, [allAthletes, athleteById]);
 
     /* ── Day notes for calendar range ── */
-    const rangeStartStr = format(rangeBounds.start, 'yyyy-MM-dd');
-    const rangeEndStr = format(rangeBounds.end, 'yyyy-MM-dd');
     const { data: dayNotesRange = [] } = useQuery({
         queryKey: ['day-notes-range', rangeStartStr, rangeEndStr, athleteId],
         queryFn: () => getDayNotesRange(rangeStartStr, rangeEndStr, athleteId || undefined),
@@ -1331,8 +1324,10 @@ export const TrainingCalendar = ({
         return `${h}h ${m}m`;
     };
 
-    const monthStart = useMemo(() => new Date(viewDate.getFullYear(), viewDate.getMonth(), 1), [viewDate]);
-    const monthEnd = useMemo(() => new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0), [viewDate]);
+    // Use viewMonthKey (string) as dependency so these only recalculate at
+    // actual month boundaries, not on every scroll-tick viewDate change.
+    const monthStart = useMemo(() => new Date(viewDate.getFullYear(), viewDate.getMonth(), 1), [viewMonthKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    const monthEnd = useMemo(() => new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0), [viewMonthKey]); // eslint-disable-line react-hooks/exhaustive-deps
     const weekStart = useMemo(() => startOfWeek(viewDate, { weekStartsOn: weekStartDay as any }), [viewDate, weekStartDay]);
     const weekEnd = useMemo(() => endOfWeek(viewDate, { weekStartsOn: weekStartDay as any }), [viewDate, weekStartDay]);
 

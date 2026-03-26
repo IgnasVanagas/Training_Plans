@@ -132,6 +132,11 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     viewDateRef.current = viewDate;
     /** Tracks whether a viewDate change originated from the scroll handler */
     const scrollInitiated = useRef(false);
+    /** Stable ref for the weeks→Date mapping so handleScroll doesn't depend on `weeks` */
+    const weekMapRef = useRef<Map<string, Date>>(new Map());
+    /** Throttle timer for viewDate updates from scroll */
+    const viewDateThrottleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const pendingViewDate = useRef<Date | null>(null);
 
     // Build the list of weeks to render
     const weeks = useMemo(
@@ -141,6 +146,13 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
 
     // The anchor week index (center)
     const anchorWeekIdx = BUFFER_WEEKS;
+
+    // Keep weekMap ref in sync with weeks array
+    useMemo(() => {
+        const map = new Map<string, Date>();
+        for (const w of weeks) map.set(w.key, w.start);
+        weekMapRef.current = map;
+    }, [weeks]);
 
     // Group events by date for fast lookup
     const eventsByDate = useMemo(() => groupEventsByDate(events), [events]);
@@ -233,32 +245,56 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     }, [viewDate, weekStartDay]);
 
     /* ── scroll handler — update viewDate to match visible center ── */
+    /* Uses refs (weekMapRef, viewDateRef) instead of `weeks` so the callback
+       and its event listener stay stable across re-renders. */
+    const onViewDateChangeRef = useRef(onViewDateChange);
+    onViewDateChangeRef.current = onViewDateChange;
+    const getWeekKeyRef = useRef(getWeekKey);
+    getWeekKeyRef.current = getWeekKey;
+
+    const flushPendingViewDate = useCallback(() => {
+        const d = pendingViewDate.current;
+        if (d) {
+            pendingViewDate.current = null;
+            scrollInitiated.current = true;
+            onViewDateChangeRef.current(d);
+        }
+    }, []);
+
     const handleScroll = useCallback(() => {
         if (suppressScrollUpdate.current) return;
         const el = scrollRef.current;
         if (!el) return;
         const scrollCenter = el.scrollTop + el.clientHeight / 2;
-        let closest: { key: string; dist: number; start: Date } | null = null;
+        let closestKey: string | null = null;
+        let closestDist = Infinity;
         weekRowRefs.current.forEach((row, key) => {
             const mid = row.offsetTop + row.offsetHeight / 2;
             const dist = Math.abs(mid - scrollCenter);
-            if (!closest || dist < closest.dist) {
-                const week = weeks.find((w) => w.key === key);
-                if (week) closest = { key, dist, start: week.start };
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestKey = key;
             }
         });
-        if (closest) {
-            const ck = (closest as { key: string; dist: number; start: Date }).key;
-            const cs = (closest as { key: string; dist: number; start: Date }).start;
-            const currentViewKey = getWeekKey(viewDateRef.current);
-            if (ck !== currentViewKey) {
-                scrollInitiated.current = true;
-                onViewDateChange(cs);
+        if (closestKey) {
+            const currentViewKey = getWeekKeyRef.current(viewDateRef.current);
+            if (closestKey !== currentViewKey) {
+                const weekStart = weekMapRef.current.get(closestKey);
+                if (weekStart) {
+                    // Throttle parent re-renders: batch viewDate updates at ~8 Hz
+                    pendingViewDate.current = weekStart;
+                    if (!viewDateThrottleRef.current) {
+                        viewDateThrottleRef.current = setTimeout(() => {
+                            viewDateThrottleRef.current = null;
+                            flushPendingViewDate();
+                        }, 120);
+                    }
+                }
             }
         }
-        // No edge re-anchoring from scroll — buffer is large enough (±26 weeks = ±6 months)
-    }, [weeks, weekStartDay, onViewDateChange, getWeekKey]);
+    }, [flushPendingViewDate]);
 
+    /* Attach scroll listener once and keep it stable */
     useEffect(() => {
         const el = scrollRef.current;
         if (!el) return;
@@ -271,20 +307,17 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         return () => {
             el.removeEventListener('scroll', onScroll);
             cancelAnimationFrame(raf);
+            if (viewDateThrottleRef.current) {
+                clearTimeout(viewDateThrottleRef.current);
+                viewDateThrottleRef.current = null;
+            }
+            // Flush any pending viewDate on unmount
+            flushPendingViewDate();
         };
-    }, [handleScroll]);
+    }, [handleScroll, flushPendingViewDate]);
 
-    /* ── Reduce scroll sensitivity (slower scrolling) ── */
-    useEffect(() => {
-        const el = scrollRef.current;
-        if (!el) return;
-        const onWheel = (e: WheelEvent) => {
-            e.preventDefault();
-            el.scrollTop += e.deltaY * 0.45;
-        };
-        el.addEventListener('wheel', onWheel, { passive: false });
-        return () => el.removeEventListener('wheel', onWheel);
-    }, []);
+    /* Native scrolling — no custom wheel handler; the browser provides
+       smooth momentum/inertia scrolling out of the box. */
 
     /* ── Expose scroll container ref to parent ── */
     useEffect(() => {

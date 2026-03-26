@@ -584,7 +584,7 @@ async def get_activity_prs(
     db: AsyncSession, activity: Activity
 ) -> dict[str, int]:
     """Return ``{effort_key: rank}`` where rank is 1 (PR), 2, or 3."""
-    sport = (activity.sport or "").lower()
+    sport = normalize_pr_sport(activity.sport)
     if sport not in ("cycling", "running"):
         return {}
 

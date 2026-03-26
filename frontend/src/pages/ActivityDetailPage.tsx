@@ -2,7 +2,7 @@ import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group
 import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink } from "@tabler/icons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Brush } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Brush, Cell } from 'recharts';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
@@ -692,19 +692,37 @@ export const ActivityDetailPage = () => {
         };
     }, [executionTraceRows, plannedSummary]);
 
+    const HR_ZONE_COLORS = ['#22C55E', '#84CC16', '#EAB308', '#F97316', '#EF4444'];
+
     const hrZoneData = useMemo(() => {
         const zoneSeconds = Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>;
 
         const maxHr = Number(me?.profile?.max_hr || activity?.max_hr || 190);
+
+        // Resolve profile HR zone upper bounds (absolute bpm)
+        const sport = (activity?.sport || '').toLowerCase();
+        const sportKey = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride') ? 'cycling' : 'running';
+        const upperBounds: number[] | undefined = (me?.profile as any)?.zone_settings?.[sportKey]?.hr?.upper_bounds;
+
+        const classifyHr = (hr: number): number => {
+            if (upperBounds?.length) {
+                for (let i = 0; i < upperBounds.length; i++) {
+                    if (hr <= upperBounds[i]) return i + 1;
+                }
+                return upperBounds.length;
+            }
+            const ratio = hr / maxHr;
+            return ratio < 0.6 ? 1 : ratio < 0.7 ? 2 : ratio < 0.8 ? 3 : ratio < 0.9 ? 4 : 5;
+        };
+
         const validHrSamples = streamPoints
             .map((sample: any) => Number(sample?.heart_rate || 0))
             .filter((hr: number) => Number.isFinite(hr) && hr > 0);
 
-        if (validHrSamples.length > 0 && maxHr > 0) {
+        if (validHrSamples.length > 0 && (upperBounds?.length || maxHr > 0)) {
             const sampleSeconds = activity?.duration && activity.duration > 0 ? activity.duration / validHrSamples.length : 1;
             validHrSamples.forEach((hr: number) => {
-                const ratio = hr / maxHr;
-                const zone = ratio < 0.6 ? 1 : ratio < 0.7 ? 2 : ratio < 0.8 ? 3 : ratio < 0.9 ? 4 : 5;
+                const zone = classifyHr(hr);
                 zoneSeconds[`Z${zone}`] += Math.round(sampleSeconds);
             });
         } else if (activity?.hr_zones && typeof activity.hr_zones === 'object' && Object.keys(activity.hr_zones).length > 0) {
@@ -712,8 +730,7 @@ export const ActivityDetailPage = () => {
                 zoneSeconds[`Z${zone}`] += Number((activity.hr_zones as any)[`Z${zone}`] || 0);
             }
         } else if (activity?.average_hr && activity?.duration) {
-            const ratio = Number(activity.average_hr) / maxHr;
-            const zone = ratio < 0.6 ? 1 : ratio < 0.7 ? 2 : ratio < 0.8 ? 3 : ratio < 0.9 ? 4 : 5;
+            const zone = classifyHr(Number(activity.average_hr));
             zoneSeconds[`Z${zone}`] += Math.round(activity.duration);
         }
 
@@ -721,7 +738,7 @@ export const ActivityDetailPage = () => {
             const zone = `Z${idx + 1}`;
             return { zone, seconds: zoneSeconds[zone] || 0 };
         });
-    }, [activity, streamPoints, me?.profile?.max_hr]);
+    }, [activity, streamPoints, me?.profile?.max_hr, me?.profile]);
 
     const powerCurveData = useMemo(() => {
         if (!activity?.power_curve) return [];
@@ -1700,12 +1717,16 @@ export const ActivityDetailPage = () => {
                                                     <XAxis dataKey="zone" />
                                                     <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
                                                     <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
-                                                    <Bar dataKey="seconds" fill="#fa5252" name="Time in Zone" onClick={(entry: any) => entry?.zone && openZoneExplanation('hr', entry.zone)} />
+                                                    <Bar dataKey="seconds" name="Time in Zone" onClick={(entry: any) => entry?.zone && openZoneExplanation('hr', entry.zone)}>
+                                                        {hrZoneData.map((_entry, index) => (
+                                                            <Cell key={`hr-cell-${index}`} fill={HR_ZONE_COLORS[index] || '#fa5252'} />
+                                                        ))}
+                                                    </Bar>
                                                 </BarChart>
                                             </ResponsiveContainer>
                                             <Group mt="sm" gap="xs" wrap="wrap">
-                                                {hrZoneData.map((z) => (
-                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('hr', z.zone)} readOnly variant="light" size="xs">{z.zone}</Chip>
+                                                {hrZoneData.map((z, index) => (
+                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('hr', z.zone)} readOnly variant="light" size="xs" styles={{ label: { borderColor: HR_ZONE_COLORS[index] } }}>{z.zone}</Chip>
                                                 ))}
                                             </Group>
                                         </Box>

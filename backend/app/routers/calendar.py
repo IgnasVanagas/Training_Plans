@@ -306,6 +306,7 @@ async def get_calendar_events(
     primary_ids = [a.id for a in activities]
     dup_count_map: dict[int, int] = {}
     training_load_map: dict[int, float] = {}
+    local_date_map: dict[int, date] = {}
     if primary_ids:
         dup_counts_res = await db.execute(
             select(Activity.duplicate_of_id, func.count(Activity.id).label("cnt"))
@@ -316,7 +317,12 @@ async def get_calendar_events(
             dup_count_map[row[0]] = row[1]
 
         meta_res = await db.execute(
-            select(Activity.id, Activity.streams['_meta'].label('meta'))
+            select(
+                Activity.id,
+                Activity.streams['_meta'].label('meta'),
+                Activity.streams['provider_payload']['summary']['start_date_local'].label('summary_local'),
+                Activity.streams['provider_payload']['detail']['start_date_local'].label('detail_local'),
+            )
             .where(Activity.id.in_(primary_ids))
         )
         for row in meta_res.all():
@@ -326,6 +332,14 @@ async def get_calendar_events(
             total = round(aerobic + anaerobic, 1)
             if total > 0:
                 training_load_map[row.id] = total
+            # Resolve local date from provider_payload JSONB paths
+            for candidate in (row.summary_local, row.detail_local):
+                if candidate and isinstance(candidate, str):
+                    try:
+                        local_date_map[row.id] = date.fromisoformat(candidate.split("T")[0])
+                        break
+                    except (ValueError, AttributeError):
+                        pass
 
     visible_activity_ids = {activity.id for activity in activities}
     workout_by_matched_activity_id = {
@@ -408,7 +422,7 @@ async def get_calendar_events(
         if matched_workout is not None:
             created_by_user_id, created_by_name, created_by_email = _creator_payload(matched_workout)
         
-        display_date = _resolve_activity_local_date(a)
+        display_date = local_date_map.get(a.id) or (a.created_at.date() if a.created_at else date.today())
 
         events.append(CalendarEvent(
             id=a.id,
