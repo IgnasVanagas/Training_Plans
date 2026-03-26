@@ -3117,7 +3117,7 @@ async def delete_activity(
         )
         if not is_duplicate_cleanup:
             athlete_permissions = await get_athlete_permissions(db, current_user.id)
-            if not athlete_permissions.get('allow_delete_activities', False):
+            if not athlete_permissions.get('allow_delete_activities', True):
                 raise HTTPException(status_code=403, detail="Coach has not allowed activity deletion")
 
     activity_date = activity.created_at.date()

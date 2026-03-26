@@ -926,11 +926,60 @@ async def update_organization(
     await db.refresh(org)
     return org
 
-    # Update fields
-    for field, value in profile_update.dict(exclude_unset=True).items():
-        setattr(current_user.profile, field, value)
-    
+
+@router.delete("/organizations/{org_id}/membership")
+async def leave_organization(
+    org_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Current user leaves the specified organization."""
+    stmt = select(OrganizationMember).where(
+        OrganizationMember.user_id == current_user.id,
+        OrganizationMember.organization_id == org_id,
+    )
+    membership = (await db.execute(stmt)).scalar_one_or_none()
+    if not membership:
+        raise HTTPException(status_code=404, detail="Membership not found")
+
+    await db.delete(membership)
     await db.commit()
-    await db.refresh(current_user)
-    
-    return current_user
+    return {"status": "ok", "detail": "Left organization"}
+
+
+@router.delete("/organizations/{org_id}/members/{user_id}")
+async def remove_organization_member(
+    org_id: int,
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Coach removes a member from their organization."""
+    if current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Only coaches can remove members")
+
+    # Verify current user is an active coach in this org
+    coach_stmt = select(OrganizationMember).where(
+        OrganizationMember.user_id == current_user.id,
+        OrganizationMember.organization_id == org_id,
+        OrganizationMember.role == RoleEnum.coach.value,
+        OrganizationMember.status == "active",
+    )
+    coach_membership = (await db.execute(coach_stmt)).scalar_one_or_none()
+    if not coach_membership:
+        raise HTTPException(status_code=403, detail="You are not a coach in this organization")
+
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself; use leave instead")
+
+    target_stmt = select(OrganizationMember).where(
+        OrganizationMember.user_id == user_id,
+        OrganizationMember.organization_id == org_id,
+    )
+    target_membership = (await db.execute(target_stmt)).scalar_one_or_none()
+    if not target_membership:
+        raise HTTPException(status_code=404, detail="Member not found in this organization")
+
+    await db.delete(target_membership)
+    await db.commit()
+    return {"status": "ok", "detail": "Member removed"}

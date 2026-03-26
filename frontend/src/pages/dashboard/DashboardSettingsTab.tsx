@@ -75,12 +75,12 @@ const DashboardSettingsTab = ({
           <Paper withBorder p="md" radius="md" style={panelStyle}>
             <Stack gap="sm">
               <Title order={4}>{t('Athlete Permissions') || 'Athlete Permissions'}</Title>
-              <Text size="sm" c="dimmed">{t('Control whether each athlete can delete activities, edit workouts, and delete workouts.') || 'Control whether each athlete can delete activities, edit workouts, and delete workouts.'}</Text>
+              <Text size="sm" c="dimmed">{t('Control whether each athlete can delete activities, edit plans, and delete plans.') || 'Control whether each athlete can delete activities, edit plans, and delete plans.'}</Text>
               {athletes.map((athlete) => {
                 const permissionRow = permissionsRows.find((row) => row.athlete_id === athlete.id);
                 const permissions = permissionRow?.permissions || {
-                  allow_delete_activities: false,
-                  allow_delete_workouts: false,
+                  allow_delete_activities: true,
+                  allow_delete_workouts: true,
                   allow_edit_workouts: true,
                 };
                 const athleteName = (athlete.profile?.first_name || athlete.profile?.last_name)
@@ -113,12 +113,12 @@ const DashboardSettingsTab = ({
                         onChange={(event) => updateFlag("allow_delete_activities", event.currentTarget.checked)}
                       />
                       <Switch
-                        label={t('Allow edit workouts') || 'Allow edit workouts'}
+                        label={t('Allow edit plans') || 'Allow edit plans'}
                         checked={permissions.allow_edit_workouts}
                         onChange={(event) => updateFlag("allow_edit_workouts", event.currentTarget.checked)}
                       />
                       <Switch
-                        label={t('Allow delete workouts') || 'Allow delete workouts'}
+                        label={t('Allow delete plans') || 'Allow delete plans'}
                         checked={permissions.allow_delete_workouts}
                         onChange={(event) => updateFlag("allow_delete_workouts", event.currentTarget.checked)}
                       />

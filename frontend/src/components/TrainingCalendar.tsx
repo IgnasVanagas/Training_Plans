@@ -258,7 +258,7 @@ export const TrainingCalendar = ({
     });
 
     const canEditWorkouts = me?.role === 'coach' || Boolean(selfPermissions?.permissions?.allow_edit_workouts);
-    const canDeleteWorkouts = me?.role === 'coach' || me?.role === 'athlete';
+    const canDeleteWorkouts = me?.role === 'coach' || Boolean(selfPermissions?.permissions?.allow_delete_workouts);
 
     const weekStartDay = me?.profile?.week_start_day === 'sunday' ? 0 : 1;
 

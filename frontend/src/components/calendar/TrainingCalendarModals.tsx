@@ -53,7 +53,7 @@ const RecurringWorkoutFields = ({
   return (
     <Paper withBorder p="sm" radius="md">
       <Stack gap="sm">
-        <Group justify="space-between" align="flex-end">
+        <Group justify="space-between" align="center">
           <Box>
             <Text fw={600}>{t('Repeat workout') || 'Repeat workout'}</Text>
             <Text size="xs" c="dimmed">
@@ -521,7 +521,7 @@ export const DayDetailsModal = ({
                     >
                       <Box
                         style={{
-                          padding: '10px 14px 8px',
+                          padding: '10px 14px',
                           borderBottom: `1px solid ${isDark ? 'rgba(0,195,245,0.12)' : 'rgba(0,145,181,0.10)'}`,
                           background: isDark ? 'rgba(0,195,245,0.06)' : 'rgba(0,145,181,0.045)',
                           display: 'flex',

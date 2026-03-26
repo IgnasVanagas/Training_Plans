@@ -196,7 +196,10 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Allow delete activities": "Leisti trinti veiklas",
     "Allow edit workouts": "Leisti redaguoti treniruotes",
     "Allow delete workouts": "Leisti trinti treniruotes",
+    "Allow edit plans": "Leisti redaguoti planus",
+    "Allow delete plans": "Leisti trinti planus",
     "Control whether each athlete can delete activities, edit workouts, and delete workouts.": "Valdykite, ar kiekvienas atletas gali trinti veiklas, redaguoti ir trinti treniruotes.",
+    "Control whether each athlete can delete activities, edit plans, and delete plans.": "Valdykite, ar kiekvienas atletas gali trinti veiklas, redaguoti ir trinti planus.",
     "Athlete Zone Settings": "Atletų zonų nustatymai",
     "Adjust athlete heart rate, power, and pace zones.": "Koreguokite atleto širdies ritmo, galios ir tempo zonas.",
     "Choose Athlete": "Pasirinkite atletą",
@@ -515,6 +518,15 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Request sent": "Užklausa išsiųsta"
     ,"Could not send request": "Nepavyko išsiųsti užklausos"
     ,"Message failed": "Žinutės išsiųsti nepavyko"
+    ,"Members": "Nariai"
+    ,"Leave organization": "Išeiti iš organizacijos"
+    ,"Are you sure you want to leave this organization?": "Ar tikrai norite išeiti iš šios organizacijos?"
+    ,"Left organization": "Išėjote iš organizacijos"
+    ,"Could not leave": "Nepavyko išeiti"
+    ,"Remove": "Pašalinti"
+    ,"Remove this member from the organization?": "Pašalinti šį narį iš organizacijos?"
+    ,"Member removed": "Narys pašalintas"
+    ,"Could not remove member": "Nepavyko pašalinti nario"
     ,"Coach Split-Screen Analysis": "Trenerio padalinto ekrano analizė"
     ,"Training Comparison": "Treniruočių palyginimas"
     ,"Compare two workouts, weeks, or months side by side with the same analysis model.": "Palyginkite dvi treniruotes, savaites ar mėnesius greta naudodami tą patį analizės modelį."

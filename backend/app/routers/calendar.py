@@ -655,7 +655,10 @@ async def delete_workout(
     else:
         if workout.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized")
-            
+        athlete_permissions = await get_athlete_permissions(db, current_user.id)
+        if not athlete_permissions.get("allow_delete_workouts", True):
+            raise HTTPException(status_code=403, detail="Coach has not allowed plan deletion")
+
     target_user_id = workout.user_id
     target_date = workout.date
     

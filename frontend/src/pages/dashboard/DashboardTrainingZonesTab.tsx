@@ -142,13 +142,30 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
       const lt2 = hrCfg.lt2 ?? null;
       // upper_bounds are stored as absolute bpm — convert back to %LTHR
       if (lt2 && lt2 > 0) {
+        // Detect corrupt data: if bounds look like raw percentage values (max bound
+        // well below threshold), they were saved without a threshold and should be
+        // treated as percentages directly instead of dividing by lt2 again.
+        const maxBound = Math.max(...bounds);
+        const looksLikePercentages = maxBound <= lt2 * 0.75 && maxBound <= 200;
+
         const zones: ZoneRow[] = [];
         const defaultLow = defaults.hr[0]?.[0] ?? 65;
         for (let i = 0; i < bounds.length; i++) {
-          const prevPct = i === 0 ? defaultLow : Math.round((bounds[i - 1] / lt2) * 100);
-          zones.push({ low: prevPct, high: Math.round((bounds[i] / lt2) * 100) });
+          const highPct = looksLikePercentages ? Math.round(bounds[i]) : Math.round((bounds[i] / lt2) * 100);
+          const prevPct = i === 0 ? defaultLow : (looksLikePercentages ? Math.round(bounds[i - 1]) : Math.round((bounds[i - 1] / lt2) * 100));
+          zones.push({ low: prevPct, high: highPct });
         }
-        return { editing: false, threshold: lt2, zones };
+        // Validate: all zones must have low < high; if not, fall back to defaults
+        const valid = zones.every(z => z.low < z.high);
+        if (valid) {
+          return { editing: false, threshold: lt2, zones };
+        }
+        // Stored bounds are inconsistent with threshold — use default zone percentages
+        return {
+          editing: false,
+          threshold: lt2,
+          zones: defaults.hr.map(([lo, hi]) => ({ low: lo, high: hi })),
+        };
       }
     }
     return defaultColumnState(defaults.hr);

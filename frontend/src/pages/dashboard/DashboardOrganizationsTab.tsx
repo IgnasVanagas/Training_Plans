@@ -19,17 +19,19 @@ import {
   Title,
   useComputedColorScheme,
 } from "@mantine/core";
-import { IconArrowLeft, IconMessages, IconSearch, IconSend, IconUsersGroup } from "@tabler/icons-react";
+import { IconArrowLeft, IconDoorExit, IconMessages, IconSearch, IconSend, IconUserMinus, IconUsersGroup } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@mantine/hooks";
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   discoverOrganizations,
+  leaveOrganization,
   listOrganizationCoachMessages,
   listOrganizationGroupMessages,
   postOrganizationCoachMessage,
   postOrganizationGroupMessage,
+  removeOrganizationMember,
   requestOrganizationJoin,
 } from "../../api/organizations";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -171,6 +173,30 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
     },
     onError: (error) => {
       notifications.show({ color: "red", title: t("Could not send request"), message: extractApiErrorMessage(error) });
+    },
+  });
+
+  const leaveMutation = useMutation({
+    mutationFn: (organizationId: number) => leaveOrganization(organizationId),
+    onSuccess: () => {
+      notifications.show({ color: "green", title: t("Left organization"), message: "" });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["organization-discover"] });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("Could not leave"), message: extractApiErrorMessage(error) });
+    },
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (vars: { organizationId: number; userId: number }) => removeOrganizationMember(vars.organizationId, vars.userId),
+    onSuccess: () => {
+      notifications.show({ color: "green", title: t("Member removed"), message: "" });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["organization-discover"] });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("Could not remove member"), message: extractApiErrorMessage(error) });
     },
   });
 
@@ -404,6 +430,59 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
             onChange={setSelectedActiveOrgId}
             allowDeselect={false}
           />
+
+          {selectedActiveOrganizationId && (
+            <Paper withBorder p="sm" radius="md" bg={isDark ? "dark.7" : "gray.0"}>
+              <Group justify="space-between" mb={me.role === "coach" ? "xs" : 0}>
+                <Text size="sm" fw={600}>{t("Members")}</Text>
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="red"
+                  leftSection={<IconDoorExit size={14} />}
+                  onClick={() => {
+                    if (window.confirm(t("Are you sure you want to leave this organization?"))) {
+                      leaveMutation.mutate(selectedActiveOrganizationId);
+                    }
+                  }}
+                  loading={leaveMutation.isPending}
+                >
+                  {t("Leave organization")}
+                </Button>
+              </Group>
+              {me.role === "coach" && (
+                <Stack gap={4}>
+                  {athletes.map((athlete) => {
+                      const name = (athlete.profile?.first_name || athlete.profile?.last_name)
+                        ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
+                        : athlete.email;
+                      return (
+                        <Group key={athlete.id} justify="space-between" py={2}>
+                          <Text size="sm">{name}</Text>
+                          <Button
+                            size="compact-xs"
+                            variant="subtle"
+                            color="red"
+                            leftSection={<IconUserMinus size={14} />}
+                            onClick={() => {
+                              if (window.confirm(t("Remove this member from the organization?"))) {
+                                removeMemberMutation.mutate({
+                                  organizationId: selectedActiveOrganizationId,
+                                  userId: athlete.id,
+                                });
+                              }
+                            }}
+                            loading={removeMemberMutation.isPending}
+                          >
+                            {t("Remove")}
+                          </Button>
+                        </Group>
+                      );
+                    })}
+                </Stack>
+              )}
+            </Paper>
+          )}
 
           <Paper withBorder p="xs" radius="md" bg={isDark ? "dark.6" : "gray.0"}>
             <Group justify="space-between">

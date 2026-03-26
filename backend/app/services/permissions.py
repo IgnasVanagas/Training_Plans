@@ -11,8 +11,7 @@ PERMISSION_KEYS = (
     "allow_edit_workouts",
 )
 
-DEFAULT_PERMISSIONS = {key: False for key in PERMISSION_KEYS}
-DEFAULT_PERMISSIONS["allow_edit_workouts"] = True
+DEFAULT_PERMISSIONS = {key: True for key in PERMISSION_KEYS}
 
 
 def normalize_permissions(raw: Optional[dict]) -> dict:

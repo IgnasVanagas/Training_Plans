@@ -228,7 +228,7 @@ export const ActivityDetailPage = () => {
     const [splitAnnotationsVisible, setSplitAnnotationsVisible] = useState(false);
     const [splitAnnotationsDirty, setSplitAnnotationsDirty] = useState(false);
     const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }>>({});
-    const [showAllBestEfforts, setShowAllBestEfforts] = useState(false);
+    const [showAllBestEfforts, setShowAllBestEfforts] = useState(true);
     const [mapFullscreen, setMapFullscreen] = useState(false);
     const [fsMapIndex, setFsMapIndex] = useState<number | null>(null);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -1065,7 +1065,7 @@ export const ActivityDetailPage = () => {
     }, [activity]);
 
     useEffect(() => {
-        setShowAllBestEfforts(false);
+        setShowAllBestEfforts(true);
     }, [activity?.id]);
     
     // Calculated Stats for activities where backend summary is missing (legacy compat)

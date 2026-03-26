@@ -58,3 +58,13 @@ export const postOrganizationCoachMessage = async (
   });
   return response.data;
 };
+
+export const leaveOrganization = async (organizationId: number): Promise<{ status: string; detail: string }> => {
+  const response = await client.delete<{ status: string; detail: string }>(`/users/organizations/${organizationId}/membership`);
+  return response.data;
+};
+
+export const removeOrganizationMember = async (organizationId: number, userId: number): Promise<{ status: string; detail: string }> => {
+  const response = await client.delete<{ status: string; detail: string }>(`/users/organizations/${organizationId}/members/${userId}`);
+  return response.data;
+};
