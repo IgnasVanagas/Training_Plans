@@ -179,7 +179,10 @@ async def _strava_backfill_activity_details(
         request_used += 3
 
         if enrich_delay_seconds > 0:
+            await db.commit()
+            await db.reset()  # Release DB connection during sleep
             await asyncio.sleep(enrich_delay_seconds)
+            state = await db.merge(state)  # Re-attach after pool release
 
     await db.commit()
 
@@ -1059,7 +1062,12 @@ async def _sync_provider_task(provider: str, user_id: int):
                                     )
 
                                 if strava_enrich_delay_seconds > 0:
+                                    await db.commit()
+                                    await db.reset()
                                     await asyncio.sleep(strava_enrich_delay_seconds)
+                                    # Re-attach ORM objects after pool release
+                                    state = await db.merge(state)
+                                    connection = await db.merge(connection)
 
                     activity, created = await ingest_provider_activity(
                         db,
