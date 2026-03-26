@@ -31,7 +31,7 @@ import type { Profile, User } from "./types";
 /* ─── Default zone definitions (% of threshold) ─── */
 
 const RUNNING_HR_ZONES: Array<[number, number]> = [
-  [50, 60], [61, 70], [71, 80], [81, 90], [91, 100],
+  [65, 84], [85, 89], [90, 94], [95, 99], [100, 106],
 ];
 // Pace zones based on %LT2 speed: higher speed% = lower pace (faster) = harder zone.
 // Zones are represented as % of LT2 pace time (inverse of speed %)
@@ -43,13 +43,13 @@ const RUNNING_PACE_ZONES: Array<[number, number]> = [
   [83, 95],   // Z5 VO2max    (100%+ LT2 speed; fastest/hardest)
 ];
 const CYCLING_HR_ZONES: Array<[number, number]> = [
-  [50, 60], [61, 70], [71, 80], [81, 90], [91, 100], [100, 110], [110, 120],
+  [65, 81], [82, 89], [90, 93], [94, 99], [100, 102], [103, 106], [107, 120],
 ];
 const CYCLING_POWER_ZONES: Array<[number, number]> = [
   [50, 55], [56, 75], [76, 90], [91, 105], [106, 120], [121, 150], [151, 200],
 ];
 const SWIMMING_HR_ZONES: Array<[number, number]> = [
-  [50, 60], [61, 70], [71, 80], [81, 90], [91, 100],
+  [65, 84], [85, 89], [90, 94], [95, 99], [100, 106],
 ];
 const SWIMMING_PACE_ZONES: Array<[number, number]> = [
   [150, 180], // Z1 Recovery  (slowest)
@@ -138,14 +138,18 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
     const sportCfg = storedZones?.[sport as "running" | "cycling"];
     const hrCfg = sportCfg?.hr;
     if (hrCfg?.upper_bounds?.length) {
-      const bounds = hrCfg.upper_bounds;
+      const bounds: number[] = hrCfg.upper_bounds;
       const lt2 = hrCfg.lt2 ?? null;
-      const zones: ZoneRow[] = [];
-      for (let i = 0; i < bounds.length; i++) {
-        const prev = i === 0 ? (lt2 ? Math.round(lt2 * 0.5) : 0) : bounds[i - 1];
-        zones.push({ low: prev, high: bounds[i] });
+      // upper_bounds are stored as absolute bpm — convert back to %LTHR
+      if (lt2 && lt2 > 0) {
+        const zones: ZoneRow[] = [];
+        const defaultLow = defaults.hr[0]?.[0] ?? 65;
+        for (let i = 0; i < bounds.length; i++) {
+          const prevPct = i === 0 ? defaultLow : Math.round((bounds[i - 1] / lt2) * 100);
+          zones.push({ low: prevPct, high: Math.round((bounds[i] / lt2) * 100) });
+        }
+        return { editing: false, threshold: lt2, zones };
       }
-      return { editing: false, threshold: lt2, zones };
     }
     return defaultColumnState(defaults.hr);
   }, [sport, storedZones, defaults.hr]);
@@ -155,14 +159,18 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
     const sportCfg = storedZones?.[sport as "running" | "cycling"];
     const cfg = (sportCfg as any)?.[metric];
     if (sport === "cycling" && cfg?.upper_bounds?.length) {
-      const bounds = cfg.upper_bounds;
+      const bounds: number[] = cfg.upper_bounds;
       const lt2 = cfg.lt2 ?? null;
-      const zones: ZoneRow[] = [];
-      for (let i = 0; i < bounds.length; i++) {
-        const prev = i === 0 ? (lt2 ? Math.round(lt2 * 0.5) : 0) : bounds[i - 1];
-        zones.push({ low: prev, high: bounds[i] });
+      // upper_bounds are stored as absolute watts — convert back to %FTP
+      if (lt2 && lt2 > 0) {
+        const zones: ZoneRow[] = [];
+        const defaultLow = CYCLING_POWER_ZONES[0]?.[0] ?? 50;
+        for (let i = 0; i < bounds.length; i++) {
+          const prevPct = i === 0 ? defaultLow : Math.round((bounds[i - 1] / lt2) * 100);
+          zones.push({ low: prevPct, high: Math.round((bounds[i] / lt2) * 100) });
+        }
+        return { editing: false, threshold: lt2, zones };
       }
-      return { editing: false, threshold: lt2, zones };
     }
 
     if (sport !== "cycling") {
@@ -223,7 +231,11 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
   /* ─── Saving logic ─── */
   const handleSaveHR = () => {
     const sportKey = sport as "running" | "cycling";
-    const upperBounds = hrCol.zones.map((z) => z.high);
+    const th = hrCol.threshold;
+    // Convert percentage zone bounds to absolute bpm for backend storage
+    const upperBounds = th && th > 0
+      ? hrCol.zones.map((z) => Math.round((z.high * th) / 100))
+      : hrCol.zones.map((z) => z.high);
     const existing = user.profile?.zone_settings || {};
     const sportCfg = { ...(existing[sportKey] || {}) };
     (sportCfg as any).hr = {
@@ -242,7 +254,11 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
     const existing = user.profile?.zone_settings || {};
     const sportCfg = { ...(existing[sportKey] || {}) };
     if (sport === "cycling") {
-      const upperBounds = paceCol.zones.map((z) => z.high);
+      const th = paceCol.threshold;
+      // Convert percentage zone bounds to absolute watts for backend storage
+      const upperBounds = th && th > 0
+        ? paceCol.zones.map((z) => Math.round((z.high * th) / 100))
+        : paceCol.zones.map((z) => z.high);
       (sportCfg as any)[metric] = {
         lt2: paceCol.threshold,
         upper_bounds: upperBounds,

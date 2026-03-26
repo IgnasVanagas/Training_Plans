@@ -363,17 +363,26 @@ export const TrainingCalendar = ({
     // Snap viewDate to the first of its month so the query key only changes
     // when the user crosses a month boundary — not on every weekly scroll tick.
     const viewMonthKey = format(viewDate, 'yyyy-MM');
-    const viewMonth = useMemo(() => startOfMonth(viewDate), [viewMonthKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Snap fetch centre to the **quarter** boundary of the current viewDate
+    // so the calendar query key only changes ~4× per year instead of every
+    // month-boundary scroll tick.  This prevents activities from flickering
+    // or disappearing when the user scrolls past month edges.
+    const fetchQuarter = useMemo(() => {
+        const q = Math.floor(viewDate.getMonth() / 3) * 3;
+        return new Date(viewDate.getFullYear(), q, 1);
+    }, [viewMonthKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const rangeBounds = useMemo(() => {
-        // Fetch a wide window (±3 months) so the continuous scroll grid has data.
-        const rangeStart = startOfWeek(startOfMonth(addMonths(viewMonth, -3)), { weekStartsOn: weekStartDay as any });
-        const rangeEnd = endOfWeek(endOfMonth(addMonths(viewMonth, 3)), { weekStartsOn: weekStartDay as any });
+        // Fetch a wide window (±4 months) from the quarterly anchor so the
+        // continuous scroll grid always has data for the visible range.
+        const rangeStart = startOfWeek(startOfMonth(addMonths(fetchQuarter, -4)), { weekStartsOn: weekStartDay as any });
+        const rangeEnd = endOfWeek(endOfMonth(addMonths(fetchQuarter, 4)), { weekStartsOn: weekStartDay as any });
         return {
             start: rangeStart,
             end: rangeEnd,
         };
-    }, [viewMonth, weekStartDay]);
+    }, [fetchQuarter, weekStartDay]);
 
     const toEventDate = (value: unknown, fallbackDate?: string): Date | null => {
         if (value instanceof Date && !Number.isNaN(value.getTime())) {

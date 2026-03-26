@@ -398,12 +398,20 @@ export default function TrainingCalendarZoneSummaryPanel({
     }, [weeksInMonth, completedEvents]);
 
     const boundaryWeeksWithActivities = useMemo(() => {
-        return weeksInMonth.filter((week) => {
+        const raw = weeksInMonth.filter((week) => {
             if (week.start >= monthStart && week.end <= monthEnd) {
                 return false;
             }
             return weeksWithActivities.includes(week.key);
         });
+        // Cap to the 16 boundary weeks nearest to the viewed month to
+        // avoid firing dozens of parallel /zone-summary requests.
+        if (raw.length <= 16) return raw;
+        const midTs = (monthStart.getTime() + monthEnd.getTime()) / 2;
+        return raw
+            .slice()
+            .sort((a, b) => Math.abs(a.start.getTime() - midTs) - Math.abs(b.start.getTime() - midTs))
+            .slice(0, 16);
     }, [monthEnd, monthStart, weeksInMonth, weeksWithActivities]);
 
     const supplementalSnapshotKey = useMemo(() => {

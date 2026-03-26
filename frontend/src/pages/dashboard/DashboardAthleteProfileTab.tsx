@@ -173,6 +173,14 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
                 min={0}
                 max={300}
               />
+              <NumberInput
+                label={t("Max HR")}
+                value={profile.max_hr ?? ""}
+                onChange={(val) => handleChange("max_hr", val)}
+                suffix=" bpm"
+                min={100}
+                max={230}
+              />
               <Select
                 label={t("Country")}
                 placeholder={t("Select country")}
