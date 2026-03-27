@@ -166,6 +166,14 @@ export type OrganizationDiscoverResponse = {
   items: OrganizationDiscoverItem[];
 };
 
+export type OrgMember = {
+  id: number;
+  email: string;
+  role: string;
+  first_name?: string | null;
+  last_name?: string | null;
+};
+
 export type OrganizationGroupMessage = {
   id: number;
   organization_id: number;
@@ -173,6 +181,8 @@ export type OrganizationGroupMessage = {
   sender_role: string;
   sender_name?: string | null;
   body: string;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
   created_at: string;
 };
 
@@ -185,5 +195,20 @@ export type OrganizationCoachMessage = {
   sender_role: string;
   sender_name?: string | null;
   body: string;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
+  created_at: string;
+};
+
+export type OrganizationDirectMessage = {
+  id: number;
+  organization_id: number;
+  sender_id: number;
+  recipient_id: number;
+  sender_role: string;
+  sender_name?: string | null;
+  body: string;
+  attachment_url?: string | null;
+  attachment_name?: string | null;
   created_at: string;
 };

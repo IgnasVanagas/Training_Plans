@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import os
+import pathlib
+import uuid
 from datetime import date as dt_date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
-from sqlalchemy import select
+from fastapi.responses import JSONResponse
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
@@ -14,6 +18,7 @@ from ..models import (
     CommunicationComment,
     CommunicationThread,
     OrganizationCoachMessage,
+    OrganizationDirectMessage,
     OrganizationGroupMessage,
     OrganizationMember,
     PlannedWorkout,
@@ -29,12 +34,18 @@ from ..schemas import (
     CommunicationThreadOut,
     NotificationItemOut,
     NotificationsFeedOut,
+    OrgMemberOut,
     OrganizationChatMessageCreate,
     OrganizationChatMessageOut,
     OrganizationCoachChatMessageOut,
+    OrganizationDirectMessageCreate,
+    OrganizationDirectMessageOut,
     SupportRequestCreate,
     SupportRequestResponse,
 )
+
+_UPLOADS_DIR = pathlib.Path(os.getenv("UPLOADS_DIR", "uploads/chat"))
+_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 from ..services.permissions import get_shared_org_ids
 from ..services.support import (
     SupportDeliveryError,
@@ -660,6 +671,8 @@ async def list_organization_group_messages(
             sender_role=(sender.role.value if hasattr(sender.role, "value") else str(sender.role)),
             sender_name=_sender_display_name(sender, sender_profile),
             body=message.body,
+            attachment_url=message.attachment_url,
+            attachment_name=message.attachment_name,
             created_at=message.created_at,
         )
         for message, sender, sender_profile in reversed(rows)
@@ -680,13 +693,15 @@ async def post_organization_group_message(
     )
 
     body = payload.body.strip()
-    if not body:
-        raise HTTPException(status_code=400, detail="Message body cannot be empty")
+    if not body and not payload.attachment_url:
+        raise HTTPException(status_code=400, detail="Message must have text or attachment")
 
     message = OrganizationGroupMessage(
         organization_id=organization_id,
         sender_id=current_user.id,
         body=body,
+        attachment_url=payload.attachment_url,
+        attachment_name=payload.attachment_name,
     )
     db.add(message)
     await db.commit()
@@ -700,6 +715,8 @@ async def post_organization_group_message(
         sender_role=(current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)),
         sender_name=_sender_display_name(current_user, sender_profile),
         body=message.body,
+        attachment_url=message.attachment_url,
+        attachment_name=message.attachment_name,
         created_at=message.created_at,
     )
 
@@ -775,6 +792,8 @@ async def list_organization_coach_chat_messages(
             sender_role=(sender.role.value if hasattr(sender.role, "value") else str(sender.role)),
             sender_name=_sender_display_name(sender, sender_profile),
             body=message.body,
+            attachment_url=message.attachment_url,
+            attachment_name=message.attachment_name,
             created_at=message.created_at,
         )
         for message, sender, sender_profile in reversed(rows)
@@ -791,8 +810,8 @@ async def post_organization_coach_chat_message(
     db: AsyncSession = Depends(get_db),
 ) -> OrganizationCoachChatMessageOut:
     body = payload.body.strip()
-    if not body:
-        raise HTTPException(status_code=400, detail="Message body cannot be empty")
+    if not body and not payload.attachment_url:
+        raise HTTPException(status_code=400, detail="Message must have text or attachment")
 
     if current_user.role == RoleEnum.athlete:
         await _require_active_org_membership(
@@ -837,6 +856,8 @@ async def post_organization_coach_chat_message(
         coach_id=target_coach_id,
         sender_id=current_user.id,
         body=body,
+        attachment_url=payload.attachment_url,
+        attachment_name=payload.attachment_name,
     )
     db.add(message)
     await db.commit()
@@ -852,5 +873,152 @@ async def post_organization_coach_chat_message(
         sender_role=(current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)),
         sender_name=_sender_display_name(current_user, sender_profile),
         body=message.body,
+        attachment_url=message.attachment_url,
+        attachment_name=message.attachment_name,
         created_at=message.created_at,
     )
+
+
+# ── Direct messages (any two org members) ─────────────────────────────────────
+
+@router.get("/organizations/{organization_id}/members", response_model=list[OrgMemberOut])
+async def list_organization_members(
+    organization_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[OrgMemberOut]:
+    await _require_active_org_membership(db, user_id=current_user.id, organization_id=organization_id)
+
+    rows = (
+        await db.execute(
+            select(User, Profile, OrganizationMember)
+            .join(OrganizationMember, OrganizationMember.user_id == User.id)
+            .outerjoin(Profile, Profile.user_id == User.id)
+            .where(
+                OrganizationMember.organization_id == organization_id,
+                OrganizationMember.status == "active",
+                User.id != current_user.id,
+            )
+            .order_by(User.id.asc())
+        )
+    ).all()
+
+    return [
+        OrgMemberOut(
+            id=user.id,
+            email=user.email,
+            role=(member.role),
+            first_name=profile.first_name if profile else None,
+            last_name=profile.last_name if profile else None,
+        )
+        for user, profile, member in rows
+    ]
+
+
+@router.get("/organizations/{organization_id}/direct/{user_id}", response_model=list[OrganizationDirectMessageOut])
+async def list_organization_direct_messages(
+    organization_id: int,
+    user_id: int,
+    limit: int = Query(default=120, ge=1, le=400),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[OrganizationDirectMessageOut]:
+    await _require_active_org_membership(db, user_id=current_user.id, organization_id=organization_id)
+    await _require_active_org_membership(db, user_id=user_id, organization_id=organization_id)
+
+    rows = (
+        await db.execute(
+            select(OrganizationDirectMessage, User, Profile)
+            .join(User, User.id == OrganizationDirectMessage.sender_id)
+            .outerjoin(Profile, Profile.user_id == User.id)
+            .where(
+                OrganizationDirectMessage.organization_id == organization_id,
+                or_(
+                    (OrganizationDirectMessage.sender_id == current_user.id) & (OrganizationDirectMessage.recipient_id == user_id),
+                    (OrganizationDirectMessage.sender_id == user_id) & (OrganizationDirectMessage.recipient_id == current_user.id),
+                ),
+            )
+            .order_by(OrganizationDirectMessage.created_at.desc())
+            .limit(limit)
+        )
+    ).all()
+
+    return [
+        OrganizationDirectMessageOut(
+            id=msg.id,
+            organization_id=msg.organization_id,
+            sender_id=msg.sender_id,
+            recipient_id=msg.recipient_id,
+            sender_name=_sender_display_name(sender, sender_profile),
+            sender_role=(sender.role.value if hasattr(sender.role, "value") else str(sender.role)),
+            body=msg.body,
+            attachment_url=msg.attachment_url,
+            attachment_name=msg.attachment_name,
+            created_at=msg.created_at,
+        )
+        for msg, sender, sender_profile in reversed(rows)
+    ]
+
+
+@router.post("/organizations/{organization_id}/direct/{user_id}", response_model=OrganizationDirectMessageOut)
+async def post_organization_direct_message(
+    organization_id: int,
+    user_id: int,
+    payload: OrganizationDirectMessageCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrganizationDirectMessageOut:
+    await _require_active_org_membership(db, user_id=current_user.id, organization_id=organization_id)
+    await _require_active_org_membership(db, user_id=user_id, organization_id=organization_id)
+
+    body = payload.body.strip()
+    if not body and not payload.attachment_url:
+        raise HTTPException(status_code=400, detail="Message must have text or attachment")
+
+    msg = OrganizationDirectMessage(
+        organization_id=organization_id,
+        sender_id=current_user.id,
+        recipient_id=user_id,
+        body=body,
+        attachment_url=payload.attachment_url,
+        attachment_name=payload.attachment_name,
+    )
+    db.add(msg)
+    await db.commit()
+    await db.refresh(msg)
+
+    sender_profile = await db.scalar(select(Profile).where(Profile.user_id == current_user.id))
+    return OrganizationDirectMessageOut(
+        id=msg.id,
+        organization_id=msg.organization_id,
+        sender_id=msg.sender_id,
+        recipient_id=msg.recipient_id,
+        sender_name=_sender_display_name(current_user, sender_profile),
+        sender_role=(current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)),
+        body=msg.body,
+        attachment_url=msg.attachment_url,
+        attachment_name=msg.attachment_name,
+        created_at=msg.created_at,
+    )
+
+
+@router.post("/organizations/{organization_id}/attachment")
+async def upload_chat_attachment(
+    organization_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    await _require_active_org_membership(db, user_id=current_user.id, organization_id=organization_id)
+
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 20 MB)")
+
+    original_name = file.filename or "attachment"
+    ext = pathlib.Path(original_name).suffix.lower()
+    stored_name = f"{uuid.uuid4().hex}{ext}"
+    dest = _UPLOADS_DIR / stored_name
+    dest.write_bytes(data)
+
+    return JSONResponse({"attachment_url": stored_name, "attachment_name": original_name})

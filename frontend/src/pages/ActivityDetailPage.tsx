@@ -1,5 +1,6 @@
 import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput, Tooltip as MantineTooltip } from "@mantine/core";
-import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink } from "@tabler/icons-react";
+import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink, IconShare } from "@tabler/icons-react";
+import ShareToChatModal from "../components/ShareToChatModal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Brush, Cell } from 'recharts';
@@ -233,6 +234,7 @@ export const ActivityDetailPage = () => {
     const [fsMapIndex, setFsMapIndex] = useState<number | null>(null);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [shareModalOpen, setShareModalOpen] = useState(false);
     const [showDangerZone, setShowDangerZone] = useState(false);
     const [zoneInfoOpen, setZoneInfoOpen] = useState(false);
     const [zoneInfoTitle, setZoneInfoTitle] = useState('');
@@ -1221,16 +1223,23 @@ export const ActivityDetailPage = () => {
                     borderBottom: `1px solid ${ui.border}`
                 }}
             >
-                <Group>
-                    <ActionIcon variant="subtle" onClick={handleBack} radius="md" color="gray"><IconArrowLeft size={18} /></ActionIcon>
-                    <Title order={4} c={ui.textMain}>{activity.filename}</Title>
-                    <Badge color={activity.sport === 'running' ? 'green' : 'blue'} variant="light">{activity.sport || 'activity'}</Badge>
-                    {activity.is_deleted && <Badge color="red" variant="light">Deleted</Badge>}
-                    {activity.strava_activity_url && (
-                        <Anchor href={activity.strava_activity_url} target="_blank" rel="noopener noreferrer" size="xs" fw={600} c="#FC5200" style={{ textDecoration: 'underline' }}>
-                            {t("View on Strava")} <IconExternalLink size={12} style={{ verticalAlign: 'middle' }} />
-                        </Anchor>
-                    )}
+                <Group justify="space-between" style={{ flex: 1 }}>
+                    <Group>
+                        <ActionIcon variant="subtle" onClick={handleBack} radius="md" color="gray"><IconArrowLeft size={18} /></ActionIcon>
+                        <Title order={4} c={ui.textMain}>{activity.filename}</Title>
+                        <Badge color={activity.sport === 'running' ? 'green' : 'blue'} variant="light">{activity.sport || 'activity'}</Badge>
+                        {activity.is_deleted && <Badge color="red" variant="light">Deleted</Badge>}
+                        {activity.strava_activity_url && (
+                            <Anchor href={activity.strava_activity_url} target="_blank" rel="noopener noreferrer" size="xs" fw={600} c="#FC5200" style={{ textDecoration: 'underline' }}>
+                                {t("View on Strava")} <IconExternalLink size={12} style={{ verticalAlign: 'middle' }} />
+                            </Anchor>
+                        )}
+                    </Group>
+                    <MantineTooltip label={t("Share to Chat")}>
+                        <ActionIcon variant="light" color="indigo" radius="md" onClick={() => setShareModalOpen(true)}>
+                            <IconShare size={16} />
+                        </ActionIcon>
+                    </MantineTooltip>
                 </Group>
             </AppShell.Header>
             <AppShell.Main bg={ui.pageBg}>
@@ -2311,6 +2320,15 @@ export const ActivityDetailPage = () => {
                         </Group>
                     </Container>
                 )}
+
+                <ShareToChatModal
+                    opened={shareModalOpen}
+                    onClose={() => setShareModalOpen(false)}
+                    shareText={[
+                        `${activity.filename} — ${activity.sport || 'activity'}`,
+                        `Distance: ${(activity.distance / 1000).toFixed(2)} km  |  Duration: ${formatDuration(activity.duration)}${activity.average_hr ? `  |  Avg HR: ${Math.round(activity.average_hr)} bpm` : ''}${activity.average_watts ? `  |  Avg Power: ${Math.round(activity.average_watts)} W` : ''}`,
+                    ].join('\n')}
+                />
 
                 <Modal opened={deleteConfirmOpen} onClose={() => setDeleteConfirmOpen(false)} title="Confirm delete" centered>
                     <Stack>

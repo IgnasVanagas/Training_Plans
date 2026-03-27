@@ -876,6 +876,8 @@ class OrganizationDiscoverOut(BaseModel):
 
 class OrganizationChatMessageCreate(BaseModel):
     body: str = Field(min_length=1, max_length=2000)
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
 
 
 class OrganizationChatMessageOut(BaseModel):
@@ -885,6 +887,8 @@ class OrganizationChatMessageOut(BaseModel):
     sender_role: str
     sender_name: Optional[str] = None
     body: str
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
     created_at: datetime
 
 
@@ -897,6 +901,35 @@ class OrganizationCoachChatMessageOut(BaseModel):
     sender_role: str
     sender_name: Optional[str] = None
     body: str
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+    created_at: datetime
+
+
+class OrgMemberOut(BaseModel):
+    id: int
+    email: str
+    role: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+class OrganizationDirectMessageCreate(BaseModel):
+    body: str = Field(min_length=0, max_length=2000)
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
+
+
+class OrganizationDirectMessageOut(BaseModel):
+    id: int
+    organization_id: int
+    sender_id: int
+    recipient_id: int
+    sender_name: Optional[str] = None
+    sender_role: str
+    body: str
+    attachment_url: Optional[str] = None
+    attachment_name: Optional[str] = None
     created_at: datetime
 
 

@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import asyncio
 import logging
 import os
+import pathlib
 from sqlalchemy import text
 
 from .database import Base, engine
@@ -13,6 +15,11 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Endurance Sports Management Platform")
+
+# Chat file uploads — served at /uploads/chat/<filename>
+_UPLOADS_DIR = pathlib.Path(os.getenv("UPLOADS_DIR", "uploads/chat"))
+_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads/chat", StaticFiles(directory=str(_UPLOADS_DIR)), name="chat_uploads")
 
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://training-plans-1.onrender.com,https://training-plans.onrender.com")
 allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
@@ -79,6 +86,10 @@ async def on_startup() -> None:
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS duplicate_of_id INTEGER REFERENCES activities(id)"))
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS rpe FLOAT"))
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS notes TEXT"))
+            await conn.execute(text("ALTER TABLE organization_group_messages ADD COLUMN IF NOT EXISTS attachment_url VARCHAR(500)"))
+            await conn.execute(text("ALTER TABLE organization_group_messages ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255)"))
+            await conn.execute(text("ALTER TABLE organization_coach_messages ADD COLUMN IF NOT EXISTS attachment_url VARCHAR(500)"))
+            await conn.execute(text("ALTER TABLE organization_coach_messages ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255)"))
         logger.info("Database schema ready")
 
     try:

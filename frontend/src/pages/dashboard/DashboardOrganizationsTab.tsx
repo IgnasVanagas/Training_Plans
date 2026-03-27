@@ -1,9 +1,12 @@
 import {
+  ActionIcon,
   Avatar,
   Badge,
+  Box,
   Button,
   Grid,
   Group,
+  Image,
   Modal,
   Paper,
   ScrollArea,
@@ -16,33 +19,70 @@ import {
   Textarea,
   ThemeIcon,
   Title,
+  Tooltip,
   useComputedColorScheme,
 } from "@mantine/core";
-import { IconArrowLeft, IconDoorExit, IconMessages, IconSearch, IconSend, IconUserMinus, IconUsersGroup, IconAlertTriangle } from "@tabler/icons-react";
+import {
+  IconAlertTriangle,
+  IconArrowLeft,
+  IconDoorExit,
+  IconDownload,
+  IconFile,
+  IconMessages,
+  IconPaperclip,
+  IconPhoto,
+  IconSearch,
+  IconSend,
+  IconUserMinus,
+  IconUsersGroup,
+  IconX,
+} from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@mantine/hooks";
-import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   discoverOrganizations,
   leaveOrganization,
+  listOrgDirectMessages,
+  listOrgMembers,
   listOrganizationCoachMessages,
   listOrganizationGroupMessages,
+  postOrgDirectMessage,
   postOrganizationCoachMessage,
   postOrganizationGroupMessage,
   removeOrganizationMember,
   requestOrganizationJoin,
+  uploadChatAttachment,
 } from "../../api/organizations";
 import { useI18n } from "../../i18n/I18nProvider";
-import { User } from "./types";
+import { OrgMember, OrganizationDirectMessage, OrganizationCoachMessage, OrganizationGroupMessage, User } from "./types";
 import { extractApiErrorMessage } from "./utils";
+
+type AnyMessage = (OrganizationGroupMessage | OrganizationCoachMessage | OrganizationDirectMessage) & {
+  attachment_url?: string | null;
+  attachment_name?: string | null;
+};
 
 type Props = {
   me: User;
   athletes: User[];
+  initialShareText?: string;
 };
 
-const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
+// Resolve backend attachment URL → full URL served by the backend
+const resolveAttachmentUrl = (url: string): string => {
+  const base = (import.meta as unknown as Record<string, unknown> & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL
+    ?? "http://localhost:8000";
+  return `${base.replace(/\/$/, "")}/uploads/chat/${url}`;
+};
+
+const isImageAttachment = (name?: string | null) => {
+  if (!name) return false;
+  return /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(name);
+};
+
+const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) => {
   const queryClient = useQueryClient();
   const { t } = useI18n();
   const isDark = useComputedColorScheme("light") === "dark";
@@ -51,7 +91,13 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
   const [threadSearch, setThreadSearch] = useState("");
   const [groupBody, setGroupBody] = useState("");
   const [coachBody, setCoachBody] = useState("");
+  const [directBody, setDirectBody] = useState("");
   const activeViewportRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Pending attachment for the active thread
+  const [pendingAttachment, setPendingAttachment] = useState<{ url: string; name: string } | null>(null);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState<{
     open: boolean;
@@ -63,6 +109,7 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
   const discoverQuery = useQuery({
     queryKey: ["organization-discover", search],
     queryFn: () => discoverOrganizations(search),
+    enabled: search.trim().length >= 1,
   });
 
   const activeMemberships = useMemo(
@@ -94,6 +141,14 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
   }, [activeMemberships, selectedActiveOrgId]);
 
   const selectedActiveOrganizationId = selectedActiveOrgId ? Number(selectedActiveOrgId) : null;
+
+  // All org members (for DMs)
+  const orgMembersQuery = useQuery({
+    queryKey: ["org-members", selectedActiveOrganizationId],
+    queryFn: () => listOrgMembers(selectedActiveOrganizationId as number),
+    enabled: Boolean(selectedActiveOrganizationId),
+  });
+  const orgMembers: OrgMember[] = orgMembersQuery.data || [];
 
   const coachOptions = useMemo(() => {
     if (me.role !== "athlete") return [];
@@ -130,8 +185,16 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
 
   const [selectedCoachId, setSelectedCoachId] = useState<string | null>(coachOptions[0]?.value || null);
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(athleteOptions[0]?.value || null);
+  const [selectedDirectMemberId, setSelectedDirectMemberId] = useState<string | null>(null);
   const [activeThreadKey, setActiveThreadKey] = useState<string>("group");
   const [mobilePane, setMobilePane] = useState<"threads" | "messages">("threads");
+
+  // Pre-fill from share
+  useEffect(() => {
+    if (!initialShareText) return;
+    setGroupBody(initialShareText);
+    setActiveThreadKey("group");
+  }, [initialShareText]);
 
   useEffect(() => {
     if (coachOptions.length === 0) {
@@ -158,15 +221,21 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
     const directIdFromKey = activeThreadKey.split(":")[1] || null;
     if (!directIdFromKey) return;
 
-    if (me.role === "coach") {
-      if (directIdFromKey !== selectedAthleteId) {
-        setSelectedAthleteId(directIdFromKey);
+    // Distinguish coach-chat DM (coach:X) vs member DM (member:X)
+    if (activeThreadKey.startsWith("direct:coach:") || activeThreadKey.startsWith("direct:athlete:")) {
+      const id = activeThreadKey.split(":").slice(2).join(":");
+      if (me.role === "coach") {
+        if (id !== selectedAthleteId) setSelectedAthleteId(id);
+      } else {
+        if (id !== selectedCoachId) setSelectedCoachId(id);
       }
       return;
     }
 
-    if (directIdFromKey !== selectedCoachId) {
-      setSelectedCoachId(directIdFromKey);
+    // member DM
+    if (activeThreadKey.startsWith("direct:member:")) {
+      const id = activeThreadKey.split(":").slice(2).join(":");
+      setSelectedDirectMemberId(id);
     }
   }, [activeThreadKey, me.role, selectedAthleteId, selectedCoachId]);
 
@@ -225,6 +294,13 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
     refetchInterval: 15000,
   });
 
+  const directMessagesQuery = useQuery({
+    queryKey: ["org-direct-chat", selectedActiveOrganizationId, selectedDirectMemberId],
+    queryFn: () => listOrgDirectMessages(selectedActiveOrganizationId as number, Number(selectedDirectMemberId)),
+    enabled: Boolean(selectedActiveOrganizationId && selectedDirectMemberId),
+    refetchInterval: 15000,
+  });
+
   const formatSenderName = (senderName?: string | null, senderId?: number) => {
     if (senderId === me.id) return "You";
     return senderName || (typeof senderId === "number" ? `User #${senderId}` : "User");
@@ -256,37 +332,77 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
     if (canSend) action();
   };
 
+  // Build threads: group + coach/athlete DMs + all-member DMs
   const threads = useMemo(() => {
     const groupLast = (groupMessagesQuery.data || []).slice(-1)[0];
-    const groupPreview = groupLast?.body || "Organization announcements and group discussion";
+    const groupPreview = groupLast?.body || t("Organization announcements and group discussion");
 
-    const directThreads = (me.role === "coach" ? athleteOptions : coachOptions).map((person) => {
-      const selectedDirectPreview = (me.role === "coach" ? selectedAthleteId : selectedCoachId) === person.value
-        ? (coachMessagesQuery.data || []).slice(-1)[0]?.body
-        : undefined;
+    // Coach ↔ athlete DMs (existing system)
+    const coachAthleteThreads = (me.role === "coach" ? athleteOptions : coachOptions).map((person) => {
+      const threadKey = me.role === "coach" ? `direct:athlete:${person.value}` : `direct:coach:${person.value}`;
+      const isSelected = activeThreadKey === threadKey;
+      const previewBody = isSelected ? (coachMessagesQuery.data || []).slice(-1)[0]?.body : undefined;
       return {
-        key: `direct:${person.value}`,
+        key: threadKey,
         type: "direct" as const,
+        subtype: "coach" as const,
         label: person.label,
-        subtitle: selectedDirectPreview || (me.role === "coach" ? "Direct athlete conversation" : "Direct coach conversation"),
+        subtitle: previewBody || (me.role === "coach" ? t("Direct athlete conversation") : t("Direct coach conversation")),
         directId: person.value,
-        lastMessageAt: selectedDirectPreview ? (coachMessagesQuery.data || []).slice(-1)[0]?.created_at : null,
-        unread: Boolean(selectedDirectPreview && (coachMessagesQuery.data || []).slice(-1)[0]?.sender_id !== me.id),
+        lastMessageAt: isSelected ? (coachMessagesQuery.data || []).slice(-1)[0]?.created_at : null,
+        unread: Boolean(isSelected && previewBody && (coachMessagesQuery.data || []).slice(-1)[0]?.sender_id !== me.id),
       };
     });
+
+    // Other member DMs (new system) — exclude people already in coachAthleteThreads
+    const coachAthleteIds = new Set(coachAthleteThreads.map((t) => t.directId));
+    const memberThreads = orgMembers
+      .filter((m) => !coachAthleteIds.has(String(m.id)))
+      .map((member) => {
+        const name = (member.first_name || member.last_name)
+          ? `${member.first_name || ""} ${member.last_name || ""}`.trim()
+          : member.email;
+        const threadKey = `direct:member:${member.id}`;
+        const isSelected = activeThreadKey === threadKey;
+        const previewBody = isSelected ? (directMessagesQuery.data || []).slice(-1)[0]?.body : undefined;
+        return {
+          key: threadKey,
+          type: "direct" as const,
+          subtype: "member" as const,
+          label: name,
+          subtitle: previewBody || t("Direct message"),
+          directId: String(member.id),
+          lastMessageAt: isSelected ? (directMessagesQuery.data || []).slice(-1)[0]?.created_at : null,
+          unread: Boolean(isSelected && previewBody && (directMessagesQuery.data || []).slice(-1)[0]?.sender_id !== me.id),
+        };
+      });
 
     return [
       {
         key: "group",
         type: "group" as const,
-        label: "Organization Group",
+        subtype: "group" as const,
+        label: t("Organization Group"),
         subtitle: groupPreview,
+        directId: null as string | null,
         lastMessageAt: groupLast?.created_at || null,
         unread: Boolean(groupLast && groupLast.sender_id !== me.id),
       },
-      ...directThreads,
+      ...coachAthleteThreads,
+      ...memberThreads,
     ];
-  }, [athleteOptions, coachMessagesQuery.data, coachOptions, groupMessagesQuery.data, me.id, me.role, selectedAthleteId, selectedCoachId]);
+  }, [
+    athleteOptions,
+    coachMessagesQuery.data,
+    coachOptions,
+    directMessagesQuery.data,
+    groupMessagesQuery.data,
+    me.id,
+    me.role,
+    orgMembers,
+    activeThreadKey,
+    t,
+  ]);
 
   const filteredThreads = useMemo(() => {
     const query = threadSearch.trim().toLowerCase();
@@ -300,24 +416,46 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
     return threads.find((thread) => thread.key === activeThreadKey) || threads[0] || null;
   }, [activeThreadKey, threads]);
 
-  const activeMessages = useMemo(() => {
+  const activeMessages = useMemo((): AnyMessage[] => {
     if (!activeThread) return [];
-    return activeThread.type === "group" ? (groupMessagesQuery.data || []) : (coachMessagesQuery.data || []);
-  }, [activeThread, coachMessagesQuery.data, groupMessagesQuery.data]);
+    if (activeThread.type === "group") return (groupMessagesQuery.data || []) as AnyMessage[];
+    if (activeThread.subtype === "member") return (directMessagesQuery.data || []) as AnyMessage[];
+    return (coachMessagesQuery.data || []) as AnyMessage[];
+  }, [activeThread, coachMessagesQuery.data, directMessagesQuery.data, groupMessagesQuery.data]);
 
-  const activeLoading = activeThread?.type === "group" ? groupMessagesQuery.isLoading : coachMessagesQuery.isLoading;
+  const activeLoading =
+    activeThread?.type === "group"
+      ? groupMessagesQuery.isLoading
+      : activeThread?.subtype === "member"
+        ? directMessagesQuery.isLoading
+        : coachMessagesQuery.isLoading;
 
   useEffect(() => {
     if (!activeViewportRef.current) return;
     activeViewportRef.current.scrollTo({ top: activeViewportRef.current.scrollHeight, behavior: "smooth" });
   }, [activeMessages, activeThreadKey]);
 
-  const activeBody = activeThread?.type === "group" ? groupBody : coachBody;
+  const getActiveBody = () => {
+    if (activeThread?.type === "group") return groupBody;
+    if (activeThread?.subtype === "member") return directBody;
+    return coachBody;
+  };
+  const setActiveBody = (v: string) => {
+    if (activeThread?.type === "group") setGroupBody(v);
+    else if (activeThread?.subtype === "member") setDirectBody(v);
+    else setCoachBody(v);
+  };
 
   const sendGroupMutation = useMutation({
-    mutationFn: () => postOrganizationGroupMessage(selectedActiveOrganizationId as number, groupBody.trim()),
+    mutationFn: () => postOrganizationGroupMessage(
+      selectedActiveOrganizationId as number,
+      groupBody.trim(),
+      pendingAttachment?.url,
+      pendingAttachment?.name,
+    ),
     onSuccess: () => {
       setGroupBody("");
+      setPendingAttachment(null);
       queryClient.invalidateQueries({ queryKey: ["org-group-chat", selectedActiveOrganizationId] });
     },
     onError: (error) => {
@@ -332,10 +470,31 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
         ? { athleteId: Number(selectedAthleteId) }
         : { coachId: Number(selectedCoachId) },
       coachBody.trim(),
+      pendingAttachment?.url,
+      pendingAttachment?.name,
     ),
     onSuccess: () => {
       setCoachBody("");
+      setPendingAttachment(null);
       queryClient.invalidateQueries({ queryKey: ["org-coach-chat", selectedActiveOrganizationId] });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("Message failed"), message: extractApiErrorMessage(error) });
+    },
+  });
+
+  const sendDirectMutation = useMutation({
+    mutationFn: () => postOrgDirectMessage(
+      selectedActiveOrganizationId as number,
+      Number(selectedDirectMemberId),
+      directBody.trim(),
+      pendingAttachment?.url,
+      pendingAttachment?.name,
+    ),
+    onSuccess: () => {
+      setDirectBody("");
+      setPendingAttachment(null);
+      queryClient.invalidateQueries({ queryKey: ["org-direct-chat", selectedActiveOrganizationId, selectedDirectMemberId] });
     },
     onError: (error) => {
       notifications.show({ color: "red", title: t("Message failed"), message: extractApiErrorMessage(error) });
@@ -345,33 +504,84 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
   const sendActiveThreadMessage = () => {
     if (!activeThread) return;
     if (activeThread.type === "group") {
-      if (!groupBody.trim() || !selectedActiveOrganizationId || sendGroupMutation.isPending) return;
+      if ((!groupBody.trim() && !pendingAttachment) || !selectedActiveOrganizationId || sendGroupMutation.isPending) return;
       sendGroupMutation.mutate();
       return;
     }
-    if (!coachBody.trim() || !selectedActiveOrganizationId || !(me.role === "coach" ? selectedAthleteId : selectedCoachId) || sendCoachMutation.isPending) return;
+    if (activeThread.subtype === "member") {
+      if ((!directBody.trim() && !pendingAttachment) || !selectedActiveOrganizationId || !selectedDirectMemberId || sendDirectMutation.isPending) return;
+      sendDirectMutation.mutate();
+      return;
+    }
+    if ((!coachBody.trim() && !pendingAttachment) || !selectedActiveOrganizationId || !(me.role === "coach" ? selectedAthleteId : selectedCoachId) || sendCoachMutation.isPending) return;
     sendCoachMutation.mutate();
   };
 
-  const activeSendPending = activeThread?.type === "group" ? sendGroupMutation.isPending : sendCoachMutation.isPending;
-  const canSendActive = activeThread?.type === "group"
-    ? Boolean(groupBody.trim() && selectedActiveOrganizationId)
-    : Boolean(coachBody.trim() && selectedActiveOrganizationId && (me.role === "coach" ? selectedAthleteId : selectedCoachId));
+  const activeSendPending = activeThread?.type === "group"
+    ? sendGroupMutation.isPending
+    : activeThread?.subtype === "member"
+      ? sendDirectMutation.isPending
+      : sendCoachMutation.isPending;
+
+  const canSendActive = Boolean(
+    (getActiveBody().trim() || pendingAttachment) &&
+    selectedActiveOrganizationId &&
+    (activeThread?.type === "group" || (activeThread?.subtype === "member" ? selectedDirectMemberId : (me.role === "coach" ? selectedAthleteId : selectedCoachId)))
+  );
 
   const openThread = (threadKey: string) => {
     setActiveThreadKey(threadKey);
-    if (threadKey.startsWith("direct:")) {
-      const directId = threadKey.split(":")[1] || null;
-      if (!directId) return;
-      if (me.role === "coach") {
-        setSelectedAthleteId(directId);
-      } else {
-        setSelectedCoachId(directId);
-      }
+    setPendingAttachment(null);
+    if (threadKey.startsWith("direct:member:")) {
+      const id = threadKey.split(":").slice(2).join(":");
+      setSelectedDirectMemberId(id);
+    } else if (threadKey.startsWith("direct:athlete:")) {
+      const id = threadKey.split(":").slice(2).join(":");
+      setSelectedAthleteId(id);
+    } else if (threadKey.startsWith("direct:coach:")) {
+      const id = threadKey.split(":").slice(2).join(":");
+      setSelectedCoachId(id);
     }
     if (isMobile) {
       setMobilePane("messages");
     }
+  };
+
+  const handleFileSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedActiveOrganizationId) return;
+    e.target.value = "";
+    setAttachmentUploading(true);
+    try {
+      const result = await uploadChatAttachment(selectedActiveOrganizationId, file);
+      setPendingAttachment({ url: result.attachment_url, name: result.attachment_name });
+    } catch {
+      notifications.show({ color: "red", title: t("Upload failed"), message: t("Could not upload the file.") });
+    } finally {
+      setAttachmentUploading(false);
+    }
+  };
+
+  const renderAttachment = (url?: string | null, name?: string | null) => {
+    if (!url) return null;
+    const fullUrl = resolveAttachmentUrl(url);
+    if (isImageAttachment(name)) {
+      return (
+        <Box mt={4}>
+          <Image src={fullUrl} alt={name || "image"} radius="md" maw={240} style={{ cursor: "pointer" }}
+            onClick={() => window.open(fullUrl, "_blank")} />
+        </Box>
+      );
+    }
+    return (
+      <Group mt={4} gap="xs" wrap="nowrap">
+        <IconFile size={16} style={{ flexShrink: 0 }} />
+        <Text size="xs" style={{ wordBreak: "break-all" }}>{name || url}</Text>
+        <ActionIcon size="xs" variant="subtle" component="a" href={fullUrl} download={name || undefined} target="_blank">
+          <IconDownload size={14} />
+        </ActionIcon>
+      </Group>
+    );
   };
 
   return (
@@ -414,7 +624,10 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
             />
-            {(discoverQuery.data?.items || []).length > 0 && (
+            {search.trim().length === 0 && (
+              <Text size="sm" c="dimmed">{t("Start typing to find clubs.")}</Text>
+            )}
+            {search.trim().length > 0 && (discoverQuery.data?.items || []).length > 0 && (
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
                 {(discoverQuery.data?.items || []).map((item) => (
                   <Paper
@@ -453,7 +666,7 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
                 ))}
               </SimpleGrid>
             )}
-            {(discoverQuery.data?.items || []).length === 0 && !discoverQuery.isLoading && (
+            {search.trim().length > 0 && (discoverQuery.data?.items || []).length === 0 && !discoverQuery.isLoading && (
               <Text size="sm" c="dimmed">{t("No organizations found.")}</Text>
             )}
           </Stack>
@@ -653,11 +866,9 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
                         {activeThread?.type === "group" ? <IconUsersGroup size={14} /> : (activeThread?.label || "?").slice(0, 1).toUpperCase()}
                       </Avatar>
                       <Stack gap={0}>
-                        <Text size="sm" fw={700}>{activeThread?.label || "Conversation"}</Text>
+                        <Text size="sm" fw={700}>{activeThread?.label || t("Conversation")}</Text>
                         <Text size="10px" c="dimmed">
-                          {activeThread?.type === "group"
-                            ? t("Group chat")
-                            : me.role === "coach" ? t("Direct message") : t("Direct message")}
+                          {activeThread?.type === "group" ? t("Group chat") : t("Direct message")}
                         </Text>
                       </Stack>
                     </Group>
@@ -692,9 +903,12 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
                                   {senderName}
                                 </Text>
                               )}
-                              <Text size="sm" c={isDark ? "gray.1" : "dark.8"} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                                {message.body}
-                              </Text>
+                              {message.body && (
+                                <Text size="sm" c={isDark ? "gray.1" : "dark.8"} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                  {message.body}
+                                </Text>
+                              )}
+                              {renderAttachment(message.attachment_url, message.attachment_name)}
                               <Text size="10px" ta="right" c="dimmed">
                                 {formatMessageTime(message.created_at)}
                               </Text>
@@ -712,6 +926,28 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
                     </Stack>
                   </ScrollArea>
 
+                  {/* Pending attachment preview */}
+                  {pendingAttachment && (
+                    <Group
+                      px="md"
+                      py="xs"
+                      gap="xs"
+                      style={{ borderTop: `1px solid ${isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)"}`, flexShrink: 0, flexWrap: "nowrap" }}
+                    >
+                      {isImageAttachment(pendingAttachment.name) ? (
+                        <IconPhoto size={16} style={{ flexShrink: 0 }} />
+                      ) : (
+                        <IconFile size={16} style={{ flexShrink: 0 }} />
+                      )}
+                      <Text size="xs" style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {pendingAttachment.name}
+                      </Text>
+                      <ActionIcon size="xs" variant="subtle" color="red" onClick={() => setPendingAttachment(null)}>
+                        <IconX size={12} />
+                      </ActionIcon>
+                    </Group>
+                  )}
+
                   {/* Input area */}
                   <Group
                     px="md"
@@ -720,14 +956,29 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
                     style={{ borderTop: `1px solid ${isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)"}`, flexShrink: 0 }}
                     wrap="nowrap"
                   >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      hidden
+                      aria-label={t("Attach file")}
+                      accept="image/*,.gpx,.fit,.tcx,.kml,.kmz,.pdf,.csv,.json,.xml,.zip"
+                      onChange={handleFileSelect}
+                    />
+                    <Tooltip label={t("Attach file")} position="top">
+                      <ActionIcon
+                        size="md"
+                        variant="subtle"
+                        color="gray"
+                        loading={attachmentUploading}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <IconPaperclip size={18} />
+                      </ActionIcon>
+                    </Tooltip>
                     <Textarea
                       placeholder={activeThread?.type === "group" ? t("Write a message...") : t("Write a direct message...")}
-                      value={activeBody}
-                      onChange={(e) => {
-                        const v = e.currentTarget.value;
-                        if (activeThread?.type === "group") setGroupBody(v);
-                        else setCoachBody(v);
-                      }}
+                      value={getActiveBody()}
+                      onChange={(e) => setActiveBody(e.currentTarget.value)}
                       minRows={1}
                       maxRows={4}
                       autosize

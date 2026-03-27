@@ -1,11 +1,12 @@
 import { format } from 'date-fns';
-import { Activity, Award, Bandage, CalendarOff, CheckCircle, HelpCircle, HeartPulse, Medal, Moon, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
-import { ActionIcon, Alert, Box, Button, Container, Divider, Group, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, SegmentedControl, Text, TextInput, Textarea, Tooltip } from '@mantine/core';
+import { Activity, AlertTriangle, Award, Bandage, CalendarOff, CheckCircle, ChevronDown, Download, HelpCircle, HeartPulse, Medal, Moon, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
+import { ActionIcon, Alert, Box, Button, Container, Divider, Group, Menu, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, SegmentedControl, Text, TextInput, Textarea, ThemeIcon, Tooltip } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { WorkoutEditor } from '../builder/WorkoutEditor';
+import api from '../../api/client';
 
 import { CalendarEvent, WorkoutRecurrenceRule } from './types';
 import { formatMinutesHm, parseDate } from './dateUtils';
@@ -1067,6 +1068,72 @@ export const WorkoutEditModal = ({
 }: any) => {
   const { t } = useI18n();
   const isMobileEdit = useMediaQuery('(max-width: 48em)');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleDownloadWorkout = () => {
+    if (!selectedEvent.title && !selectedEvent.structure?.length) return;
+    const steps = selectedEvent.structure || [];
+    const sportMap: Record<string, string> = { running: 'run', cycling: 'bike', swimming: 'swim' };
+    const sport = sportMap[(selectedEvent.sport_type || '').toLowerCase()] || 'other';
+
+    const renderStep = (step: any, indent: string): string => {
+      if (step.type === 'repeat') {
+        const inner = (step.steps || []).map((s: any) => renderStep(s, indent + '    ')).join('\n');
+        return `${indent}<Repeat>${step.repeats || 1}</Repeat>\n${inner}`;
+      }
+      const dur = step.duration;
+      let durTag = '';
+      if (dur?.type === 'time' && dur.value) durTag = `<Duration>${dur.value}</Duration>`;
+      else if (dur?.type === 'distance' && dur.value) durTag = `<Distance>${dur.value}</Distance>`;
+      else durTag = '<Duration>0</Duration>';
+
+      const target = step.target;
+      let targetTags = '';
+      if (target?.type === 'heart_rate_zone' && target.zone) {
+        const zones: Record<number, [number, number]> = { 1: [0.5, 0.6], 2: [0.6, 0.7], 3: [0.7, 0.8], 4: [0.8, 0.9], 5: [0.9, 1.0] };
+        const [lo, hi] = zones[target.zone] || [0, 1];
+        targetTags = `<FlatRide><PercentHR>${lo}</PercentHR></FlatRide>`;
+      } else if (target?.type === 'power' && target.min != null && target.max != null) {
+        const avg = ((target.min + target.max) / 2) / (athleteProfile?.ftp || 200);
+        targetTags = `<FlatRide><Power>${avg.toFixed(2)}</Power></FlatRide>`;
+      } else {
+        targetTags = '<FlatRide><Power>0.50</Power></FlatRide>';
+      }
+
+      const catMap: Record<string, string> = { warmup: 'Warmup', work: 'SteadyState', recovery: 'Cooldown', cooldown: 'Cooldown' };
+      const tag = catMap[step.category] || 'SteadyState';
+      return `${indent}<${tag}>${durTag}${targetTags}</${tag}>`;
+    };
+
+    const stepsXml = steps.map((s: any) => renderStep(s, '    ')).join('\n');
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<workout_file>\n  <name>${(selectedEvent.title || 'Workout').replace(/[<>&]/g, '')}</name>\n  <description>${(selectedEvent.description || '').replace(/[<>&]/g, '')}</description>\n  <sportType>${sport}</sportType>\n  <workout>\n${stepsXml}\n  </workout>\n</workout_file>`;
+
+    const blob = new Blob([xml], { type: 'application/xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(selectedEvent.title || 'workout').replace(/[^a-zA-Z0-9_-]/g, '_')}.zwo`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadFit = async () => {
+    if (!selectedEvent.id) return;
+    try {
+      const response = await api.get(`/calendar/${selectedEvent.id}/download-fit`, { responseType: 'blob' });
+      const disposition = response.headers['content-disposition'] || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match?.[1] || `${(selectedEvent.title || 'workout').replace(/[^a-zA-Z0-9_-]/g, '_')}.fit`;
+      const url = URL.createObjectURL(response.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      // silent fail — workout may not have structure
+    }
+  };
 
   return (
   <Modal
@@ -1161,13 +1228,31 @@ export const WorkoutEditModal = ({
             variant="light"
             mr="auto"
             loading={deleteMutation.isPending}
-            onClick={() => {
-              if (!selectedEvent.id) return;
-              deleteMutation.mutate(selectedEvent.id);
-            }}
+            onClick={() => setConfirmDelete(true)}
           >
             {t('Delete Workout') || 'Delete Workout'}
           </Button>
+        )}
+        {selectedEvent.id && selectedEvent.structure?.length > 0 && (
+          <Menu position="top-end" withinPortal>
+            <Menu.Target>
+              <Button
+                variant="light"
+                leftSection={<Download size={16} />}
+                rightSection={<ChevronDown size={14} />}
+              >
+                {t('Download') || 'Download'}
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item onClick={handleDownloadFit}>
+                {t('FIT file (Garmin, Wahoo)') || 'FIT file (Garmin, Wahoo)'}
+              </Menu.Item>
+              <Menu.Item onClick={handleDownloadWorkout}>
+                {t('ZWO file (Zwift, TrainerRoad)') || 'ZWO file (Zwift, TrainerRoad)'}
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         )}
         <Button variant="default" onClick={onClose}>{t('Cancel') || 'Cancel'}</Button>
         <Button
@@ -1184,6 +1269,41 @@ export const WorkoutEditModal = ({
         </Button>
       </Group>
     </Paper>
+
+    <Modal
+      opened={confirmDelete}
+      onClose={() => setConfirmDelete(false)}
+      title={
+        <Group gap="xs">
+          <ThemeIcon size="md" radius="xl" variant="light" color="red">
+            <AlertTriangle size={14} />
+          </ThemeIcon>
+          <Text fw={700} size="sm">{t('Delete Workout') || 'Delete Workout'}</Text>
+        </Group>
+      }
+      centered
+      radius="md"
+      size="sm"
+      overlayProps={{ backgroundOpacity: 0.4, blur: 2 }}
+    >
+      <Stack gap="md">
+        <Text size="sm" c="dimmed">
+          {t('Are you sure you want to delete this planned workout? This action cannot be undone.') || 'Are you sure you want to delete this planned workout? This action cannot be undone.'}
+        </Text>
+        <Group justify="flex-end" gap="sm">
+          <Button variant="default" size="sm" onClick={() => setConfirmDelete(false)}>
+            {t('Cancel') || 'Cancel'}
+          </Button>
+          <Button color="red" size="sm" loading={deleteMutation.isPending} onClick={() => {
+            if (!selectedEvent.id) return;
+            deleteMutation.mutate(selectedEvent.id);
+            setConfirmDelete(false);
+          }}>
+            {t('Confirm') || 'Confirm'}
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   </Modal>
   );
 };

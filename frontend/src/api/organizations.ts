@@ -1,6 +1,8 @@
 import client from "./client";
 import {
+  OrgMember,
   OrganizationCoachMessage,
+  OrganizationDirectMessage,
   OrganizationDiscoverResponse,
   OrganizationGroupMessage,
 } from "../pages/dashboard/types";
@@ -27,8 +29,14 @@ export const listOrganizationGroupMessages = async (organizationId: number): Pro
 export const postOrganizationGroupMessage = async (
   organizationId: number,
   body: string,
+  attachmentUrl?: string,
+  attachmentName?: string,
 ): Promise<OrganizationGroupMessage> => {
-  const response = await client.post<OrganizationGroupMessage>(`/communications/organizations/${organizationId}/group`, { body });
+  const response = await client.post<OrganizationGroupMessage>(`/communications/organizations/${organizationId}/group`, {
+    body,
+    attachment_url: attachmentUrl ?? null,
+    attachment_name: attachmentName ?? null,
+  });
   return response.data;
 };
 
@@ -49,13 +57,62 @@ export const postOrganizationCoachMessage = async (
   organizationId: number,
   params: { coachId?: number; athleteId?: number },
   body: string,
+  attachmentUrl?: string,
+  attachmentName?: string,
 ): Promise<OrganizationCoachMessage> => {
-  const response = await client.post<OrganizationCoachMessage>(`/communications/organizations/${organizationId}/coach-chat`, { body }, {
-    params: {
-      ...(typeof params.coachId === "number" ? { coach_id: params.coachId } : {}),
-      ...(typeof params.athleteId === "number" ? { athlete_id: params.athleteId } : {}),
+  const response = await client.post<OrganizationCoachMessage>(
+    `/communications/organizations/${organizationId}/coach-chat`,
+    { body, attachment_url: attachmentUrl ?? null, attachment_name: attachmentName ?? null },
+    {
+      params: {
+        ...(typeof params.coachId === "number" ? { coach_id: params.coachId } : {}),
+        ...(typeof params.athleteId === "number" ? { athlete_id: params.athleteId } : {}),
+      },
     },
-  });
+  );
+  return response.data;
+};
+
+export const listOrgMembers = async (organizationId: number): Promise<OrgMember[]> => {
+  const response = await client.get<OrgMember[]>(`/communications/organizations/${organizationId}/members`);
+  return response.data;
+};
+
+export const listOrgDirectMessages = async (
+  organizationId: number,
+  userId: number,
+): Promise<OrganizationDirectMessage[]> => {
+  const response = await client.get<OrganizationDirectMessage[]>(
+    `/communications/organizations/${organizationId}/direct/${userId}`,
+  );
+  return response.data;
+};
+
+export const postOrgDirectMessage = async (
+  organizationId: number,
+  userId: number,
+  body: string,
+  attachmentUrl?: string,
+  attachmentName?: string,
+): Promise<OrganizationDirectMessage> => {
+  const response = await client.post<OrganizationDirectMessage>(
+    `/communications/organizations/${organizationId}/direct/${userId}`,
+    { body, attachment_url: attachmentUrl ?? null, attachment_name: attachmentName ?? null },
+  );
+  return response.data;
+};
+
+export const uploadChatAttachment = async (
+  organizationId: number,
+  file: File,
+): Promise<{ attachment_url: string; attachment_name: string }> => {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await client.post<{ attachment_url: string; attachment_name: string }>(
+    `/communications/organizations/${organizationId}/attachment`,
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
   return response.data;
 };
 

@@ -718,6 +718,177 @@ async def copy_workout(
     return new_workout
 
 
+# ── FIT Workout Export ───────────────────────────────────────────────
+
+def _build_fit_workout(workout) -> bytes:
+    """Convert a PlannedWorkout into a Garmin-compatible FIT workout file."""
+    from fit_tool.fit_file_builder import FitFileBuilder
+    from fit_tool.profile.messages.file_id_message import FileIdMessage
+    from fit_tool.profile.messages.workout_message import WorkoutMessage
+    from fit_tool.profile.messages.workout_step_message import WorkoutStepMessage
+    from fit_tool.profile.profile_type import (
+        FileType, Manufacturer, Sport, Intensity,
+        WorkoutStepDuration, WorkoutStepTarget,
+    )
+
+    sport_map = {
+        "running": Sport.RUNNING, "run": Sport.RUNNING,
+        "cycling": Sport.CYCLING, "bike": Sport.CYCLING, "biking": Sport.CYCLING,
+        "swimming": Sport.SWIMMING, "swim": Sport.SWIMMING,
+        "hiking": Sport.HIKING, "walking": Sport.WALKING,
+        "rowing": Sport.ROWING,
+    }
+    sport_type = sport_map.get((workout.sport_type or "").lower(), Sport.GENERIC)
+
+    intensity_map = {
+        "warmup": Intensity.WARMUP,
+        "work": Intensity.ACTIVE,
+        "recovery": Intensity.RECOVERY,
+        "cooldown": Intensity.COOLDOWN,
+    }
+
+    flat_steps: list[dict] = []
+
+    def flatten(node: dict):
+        ntype = node.get("type", "")
+        if ntype == "repeat":
+            repeats = max(1, int(node.get("repeats", 1) or 1))
+            first_idx = len(flat_steps)
+            for child in node.get("steps") or []:
+                flatten(child)
+            # Add repeat step referencing back to first child
+            flat_steps.append({
+                "_repeat": True,
+                "back_to": first_idx,
+                "repeats": repeats,
+            })
+        else:
+            flat_steps.append(node)
+
+    structure = workout.structure if isinstance(workout.structure, list) else []
+    for node in structure:
+        if isinstance(node, dict):
+            flatten(node)
+
+    builder = FitFileBuilder(auto_define=True)
+
+    file_id = FileIdMessage()
+    file_id.type = FileType.WORKOUT
+    file_id.manufacturer = Manufacturer.DEVELOPMENT.value
+    file_id.product = 0
+    file_id.serial_number = 12345
+    builder.add(file_id)
+
+    wm = WorkoutMessage()
+    wm.workout_name = (workout.title or "Workout")[:40]
+    wm.sport = sport_type
+    wm.num_valid_steps = len(flat_steps)
+    builder.add(wm)
+
+    for idx, step in enumerate(flat_steps):
+        sm = WorkoutStepMessage()
+        sm.message_index = idx
+
+        if step.get("_repeat"):
+            sm.intensity = Intensity.REST
+            sm.duration_type = WorkoutStepDuration.REPEAT_UNTIL_STEPS_CMPLT
+            sm.duration_step = step["back_to"]
+            sm.target_repeat_steps = step["repeats"]
+            sm.target_type = WorkoutStepTarget.OPEN
+        else:
+            category = step.get("category", "work")
+            sm.intensity = intensity_map.get(category, Intensity.ACTIVE)
+            sm.workout_step_name = (step.get("description") or category.capitalize())[:16]
+
+            dur = step.get("duration") or {}
+            dur_type = dur.get("type", "")
+            dur_value = dur.get("value")
+
+            if dur_type == "time" and dur_value:
+                sm.duration_type = WorkoutStepDuration.TIME
+                sm.duration_time = float(dur_value) * 1000  # seconds → milliseconds
+            elif dur_type == "distance" and dur_value:
+                sm.duration_type = WorkoutStepDuration.DISTANCE
+                sm.duration_distance = float(dur_value) * 100  # meters → centimeters (FIT unit)
+            else:
+                sm.duration_type = WorkoutStepDuration.OPEN
+
+            target = step.get("target") or {}
+            tgt_type = target.get("type", "open")
+
+            if tgt_type == "heart_rate_zone" and target.get("zone"):
+                sm.target_type = WorkoutStepTarget.HEART_RATE
+                sm.target_hr_zone = int(target["zone"])
+            elif tgt_type == "power":
+                if target.get("zone"):
+                    sm.target_type = WorkoutStepTarget.POWER
+                    sm.target_power_zone = int(target["zone"])
+                elif target.get("min") is not None and target.get("max") is not None:
+                    sm.target_type = WorkoutStepTarget.POWER
+                    sm.custom_target_power_low = int(target["min"])
+                    sm.custom_target_power_high = int(target["max"])
+                else:
+                    sm.target_type = WorkoutStepTarget.OPEN
+            elif tgt_type == "pace":
+                if target.get("min") is not None and target.get("max") is not None:
+                    # Pace stored as min/km → convert to m/s for FIT speed target
+                    # FIT speed is in mm/s
+                    try:
+                        pace_min = float(target["min"])   # min/km
+                        pace_max = float(target["max"])
+                        speed_low = 1000 / (pace_max * 60) * 1000 if pace_max > 0 else 0   # mm/s
+                        speed_high = 1000 / (pace_min * 60) * 1000 if pace_min > 0 else 0
+                        sm.target_type = WorkoutStepTarget.SPEED
+                        sm.custom_target_speed_low = int(speed_low)
+                        sm.custom_target_speed_high = int(speed_high)
+                    except (ValueError, ZeroDivisionError):
+                        sm.target_type = WorkoutStepTarget.OPEN
+                else:
+                    sm.target_type = WorkoutStepTarget.OPEN
+            else:
+                sm.target_type = WorkoutStepTarget.OPEN
+
+        builder.add(sm)
+
+    fit_file = builder.build()
+    return fit_file.to_bytes()
+
+
+@router.get("/{workout_id}/download-fit")
+async def download_workout_fit(
+    workout_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Download a planned workout as a Garmin/Wahoo-compatible .fit file."""
+    stmt = select(PlannedWorkout).where(PlannedWorkout.id == workout_id)
+    result = await db.execute(stmt)
+    workout = result.scalars().first()
+
+    if not workout:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    if current_user.role == RoleEnum.coach:
+        if workout.user_id != current_user.id:
+            await check_coach_access(current_user.id, workout.user_id, db)
+    else:
+        if workout.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+
+    if not workout.structure:
+        raise HTTPException(status_code=400, detail="Workout has no structured steps to export")
+
+    fit_data = _build_fit_workout(workout)
+    safe_title = "".join(c if c.isalnum() or c in "-_ " else "" for c in (workout.title or "workout"))[:50].strip() or "workout"
+    filename = f"{safe_title}.fit"
+
+    return Response(
+        content=fit_data,
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
 @router.get("/{workout_id}/download")
 async def download_workout(
     workout_id: int,
