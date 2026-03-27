@@ -307,6 +307,17 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Rest only": "Tik poilsis",
     "Constraint notes": "Apribojimo pastabos",
     "Periodization settings": "Periodizacijos nustatymai",
+    "Periodization model": "Periodizacijos modelis",
+    "Phase timeline": "Fazių laiko juosta",
+    "Weekly training load": "Savaitinis treniruočių krūvis",
+    "Phases": "Fazės",
+    "Macro cycles": "Makro ciklai",
+    "Meso cycles": "Mezo ciklai",
+    "Zones": "Zonos",
+    "avg/week": "vid./sav.",
+    "days": "dienų",
+    "Showing first 30 of": "Rodomi pirmieji 30 iš",
+    "workouts": "treniruočių",
     "Weekly hours target": "Tikslinės savaitės valandos",
     "Longest session minutes": "Ilgiausia sesija minutėmis",
     "Training days per week": "Treniruočių dienos per savaitę",
@@ -329,7 +340,6 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "No races configured": "Varžybos nesukonfigūruotos",
     "Taper starts": "Taper prasideda",
     "Season blocks": "Sezono blokai",
-    "Meso cycles": "Mezo ciklai",
     "weeks": "savaitės",
     "Micro cycles": "Mikro ciklai",
     "Generated workouts sample": "Sugeneruotų treniruočių pavyzdys",
@@ -527,10 +537,13 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Members": "Nariai"
     ,"Leave organization": "Išeiti iš organizacijos"
     ,"Are you sure you want to leave this organization?": "Ar tikrai norite išeiti iš šios organizacijos?"
+    ,"Are you sure you want to leave this organization? You will lose access to group chats and shared resources.": "Ar tikrai norite išeiti iš šios organizacijos? Prarasite prieigą prie grupinių pokalbių ir bendrinamų išteklių."
     ,"Left organization": "Išėjote iš organizacijos"
     ,"Could not leave": "Nepavyko išeiti"
     ,"Remove": "Pašalinti"
+    ,"Remove member": "Pašalinti narį"
     ,"Remove this member from the organization?": "Pašalinti šį narį iš organizacijos?"
+    ,"Confirm": "Patvirtinti"
     ,"Member removed": "Narys pašalintas"
     ,"Could not remove member": "Nepavyko pašalinti nario"
     ,"Coach Split-Screen Analysis": "Trenerio padalinto ekrano analizė"
@@ -706,6 +719,9 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Metric system": "Metrinė sistema"
     ,"km, kg": "km, kg"
     ,"Select timezone": "Pasirinkite laiko juostą"
+    ,"Timezone": "Laiko juosta"
+    ,"Used for message timestamps and scheduling": "Naudojama pranešimų laikui ir planavimui"
+    ,"No timezone found": "Laiko juosta nerasta"
     ,"Training days": "Treniruočių dienos"
     ,"What sport(s) do you participate in?": "Kokiu sportu(-ais) užsiimate?"
     ,"What days are you generally available to train?": "Kuriomis dienomis galite treniruotis?"

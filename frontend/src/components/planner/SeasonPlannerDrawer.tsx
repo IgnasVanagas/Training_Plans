@@ -11,18 +11,23 @@ import {
   Group,
   NumberInput,
   Paper,
+  Progress,
   ScrollArea,
   Select,
   SimpleGrid,
   Stack,
   Table,
+  Tabs,
   Text,
   TextInput,
   Textarea,
+  ThemeIcon,
+  Tooltip,
+  useComputedColorScheme,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { IconPlus, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconBarbell, IconChartBar, IconCircle, IconFlag, IconInfoCircle, IconPlus, IconTarget, IconTrash, IconTrendingUp } from "@tabler/icons-react";
 import {
   applySeasonPlan,
   getLatestSeasonPlan,
@@ -37,6 +42,22 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { User } from "../../pages/dashboard/types";
 import { athleteLabel, defaultPlan, defaultPeriodization, emptyConstraint, emptyMetric, emptyRace, normalizePlan } from "./seasonPlanUtils";
 
+const PHASE_COLORS: Record<string, string> = {
+  base: "#3B82F6",
+  build: "#F59E0B",
+  peak: "#EF4444",
+  taper: "#A855F7",
+  race: "#EC4899",
+  recovery: "#22C55E",
+  transition: "#94A3B8",
+};
+
+const PERIODIZATION_MODEL_INFO: Record<string, { label: string; description: string }> = {
+  polarized:  { label: "Polarized (80/20)", description: "~80% low intensity, ~20% high intensity. Gold standard supported by Seiler (2010), Stöggl & Sperlich (2015)." },
+  pyramidal:  { label: "Pyramidal", description: "Decreasing volume from Z1→Z5. Effective in well-trained athletes (Esteve-Lanao et al., 2007)." },
+  threshold:  { label: "Threshold / Sweetspot", description: "Higher proportion of tempo/threshold work. Time-efficient for time-crunched athletes." },
+};
+
 type Props = {
   opened: boolean;
   onClose: () => void;
@@ -49,6 +70,7 @@ type Props = {
 export default function SeasonPlannerDrawer({ opened, onClose, me, athletes, selectedAthleteId, inline }: Props) {
   const queryClient = useQueryClient();
   const { t } = useI18n();
+  const isDark = useComputedColorScheme("light") === "dark";
 
   const athleteOptions = useMemo(
     () => athletes.map((athlete) => ({ value: athlete.id.toString(), label: athleteLabel(athlete) })),
@@ -354,6 +376,24 @@ export default function SeasonPlannerDrawer({ opened, onClose, me, athletes, sel
           <Paper withBorder radius="md" p="md">
             <Stack gap="sm">
               <Text fw={700}>{t("Periodization settings") || "Periodization settings"}</Text>
+
+              <Paper withBorder radius="md" p="sm" bg={isDark ? "dark.6" : "indigo.0"} style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "var(--mantine-color-indigo-2)" }}>
+                <Stack gap="xs">
+                  <Select
+                    label={t("Periodization model") || "Periodization model"}
+                    data={Object.entries(PERIODIZATION_MODEL_INFO).map(([value, info]) => ({ value, label: info.label }))}
+                    value={plan.periodization.periodization_model}
+                    onChange={(value) => value && setPlan((current) => ({ ...current, periodization: { ...current.periodization, periodization_model: value as PeriodizationConfig["periodization_model"] } }))}
+                  />
+                  <Group gap="xs" align="flex-start">
+                    <ThemeIcon size="sm" variant="light" color="indigo" radius="xl"><IconInfoCircle size={12} /></ThemeIcon>
+                    <Text size="xs" c="dimmed" style={{ flex: 1 }}>
+                      {PERIODIZATION_MODEL_INFO[plan.periodization.periodization_model]?.description || ""}
+                    </Text>
+                  </Group>
+                </Stack>
+              </Paper>
+
               <SimpleGrid cols={{ base: 1, sm: 2 }}>
                 <NumberInput label={t("Weekly hours target") || "Weekly hours target"} value={plan.periodization.weekly_hours_target} min={1} max={40} step={0.5} onChange={(value) => setPlan((current) => ({ ...current, periodization: { ...current.periodization, weekly_hours_target: Number(value) || 1 } }))} />
                 <NumberInput label={t("Longest session minutes") || "Longest session minutes"} value={plan.periodization.longest_session_minutes} min={30} max={600} step={10} onChange={(value) => setPlan((current) => ({ ...current, periodization: { ...current.periodization, longest_session_minutes: Number(value) || 30 } }))} />
@@ -387,104 +427,313 @@ export default function SeasonPlannerDrawer({ opened, onClose, me, athletes, sel
 
           {preview && (
             <Stack gap="md">
+              {/* ── Summary stat cards ── */}
               <SimpleGrid cols={{ base: 2, sm: 4 }}>
                 {summaryCards.map((card) => (
-                  <Card key={card.label} withBorder radius="md">
-                    <Text size="xs" c="dimmed" tt="uppercase" fw={700}>{card.label}</Text>
+                  <Paper key={card.label} withBorder radius="md" p="sm" shadow="xs">
+                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>{card.label}</Text>
                     <Text fw={800} size="xl">{card.value}</Text>
-                  </Card>
+                  </Paper>
                 ))}
               </SimpleGrid>
 
+              {/* ── Periodization model badge ── */}
+              {preview.summary?.periodization_model_label && (
+                <Paper withBorder radius="md" p="sm" bg={isDark ? "dark.6" : "indigo.0"} style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "var(--mantine-color-indigo-2)" }}>
+                  <Group gap="xs">
+                    <ThemeIcon size="sm" variant="light" color="indigo" radius="xl"><IconBarbell size={12} /></ThemeIcon>
+                    <Text size="sm" fw={600}>{preview.summary.periodization_model_label}</Text>
+                    <Text size="xs" c="dimmed" style={{ flex: 1 }}>{preview.summary.periodization_model_description}</Text>
+                  </Group>
+                </Paper>
+              )}
+
+              {/* ── Visual phase timeline ── */}
               <Paper withBorder radius="md" p="md">
                 <Stack gap="xs">
-                  <Text fw={700}>{t("Race countdowns") || "Race countdowns"}</Text>
-                  {preview.countdowns.length === 0 ? <Text size="sm" c="dimmed">{t("No races configured") || "No races configured"}</Text> : null}
-                  {preview.countdowns.map((countdown, index) => (
-                    <Group key={`countdown-${index}`} justify="space-between" wrap="nowrap">
-                      <Box>
-                        <Text fw={600}>{countdown.name}</Text>
-                        <Text size="sm" c="dimmed">{countdown.date} · {t("Taper starts") || "Taper starts"}: {countdown.taper_starts_on}</Text>
-                      </Box>
-                      <Badge size="lg" variant="light">{countdown.priority} · {countdown.days_until}d</Badge>
-                    </Group>
-                  ))}
+                  <Group gap="xs">
+                    <ThemeIcon size="sm" variant="light" color="blue" radius="xl"><IconTrendingUp size={12} /></ThemeIcon>
+                    <Text fw={700} size="sm">{t("Phase timeline") || "Phase timeline"}</Text>
+                  </Group>
+                  <Box style={{ display: "flex", borderRadius: 6, overflow: "hidden", height: 32 }}>
+                    {preview.micro_cycles.map((week: Record<string, any>, idx: number) => {
+                      const phase = String(week.phase || "transition");
+                      const color = PHASE_COLORS[phase] || PHASE_COLORS.transition;
+                      const totalWeeks = preview.micro_cycles.length;
+                      const widthPct = 100 / totalWeeks;
+                      return (
+                        <Tooltip key={idx} label={`W${week.week_index} · ${phase} · ${week.target_hours}h`} withArrow>
+                          <Box
+                            style={{
+                              width: `${widthPct}%`,
+                              minWidth: 4,
+                              background: color,
+                              transition: "opacity 150ms",
+                              cursor: "pointer",
+                              borderRight: idx < totalWeeks - 1 ? `1px solid ${isDark ? "var(--mantine-color-dark-7)" : "#fff"}` : undefined,
+                            }}
+                          />
+                        </Tooltip>
+                      );
+                    })}
+                  </Box>
+                  <Group gap="md" wrap="wrap">
+                    {Object.entries(PHASE_COLORS).filter(([phase]) => preview.micro_cycles.some((w: Record<string, any>) => w.phase === phase)).map(([phase, color]) => (
+                      <Group key={phase} gap={4}>
+                        <Box style={{ width: 10, height: 10, borderRadius: 2, background: color }} />
+                        <Text size="xs" tt="capitalize">{phase}</Text>
+                      </Group>
+                    ))}
+                  </Group>
                 </Stack>
               </Paper>
 
-              <Paper withBorder radius="md" p="md">
-                <Stack gap="xs">
-                  <Text fw={700}>{t("Season blocks") || "Season blocks"}</Text>
-                  {preview.season_blocks.map((block, index) => (
-                    <Group key={`block-${index}`} justify="space-between" align="flex-start">
-                      <Box>
-                        <Text fw={600}>{block.label}</Text>
-                        <Text size="sm" c="dimmed">{block.start_date} - {block.end_date}</Text>
-                      </Box>
-                      <Text size="sm" c="dimmed">{block.focus}</Text>
-                    </Group>
-                  ))}
-                </Stack>
-              </Paper>
-
-              <SimpleGrid cols={{ base: 1, lg: 2 }}>
+              {/* ── Weekly load progression chart ── */}
+              {(preview.load_progression || []).length > 0 && (
                 <Paper withBorder radius="md" p="md">
                   <Stack gap="xs">
-                    <Text fw={700}>{t("Meso cycles") || "Meso cycles"}</Text>
-                    {preview.meso_cycles.map((row, index) => (
-                      <Box key={`meso-${index}`}>
-                        <Text fw={600}>{row.label}</Text>
-                        <Text size="sm" c="dimmed">{row.start_date} - {row.end_date} · {row.weeks} {t("weeks") || "weeks"}</Text>
-                        <Text size="sm">{row.focus}</Text>
-                      </Box>
-                    ))}
+                    <Group justify="space-between">
+                      <Group gap="xs">
+                        <ThemeIcon size="sm" variant="light" color="orange" radius="xl"><IconChartBar size={12} /></ThemeIcon>
+                        <Text fw={700} size="sm">{t("Weekly training load") || "Weekly training load"}</Text>
+                      </Group>
+                      <Tooltip label={t("Acute:Chronic Workload Ratio — optimal range 0.8-1.3 (Hulin et al., 2014)") || "ACWR — optimal range 0.8-1.3"} withArrow>
+                        <Badge variant="light" size="sm" leftSection={<IconInfoCircle size={10} />}>ACWR</Badge>
+                      </Tooltip>
+                    </Group>
+                    {(() => {
+                      const loads = (preview.load_progression || []) as Array<Record<string, any>>;
+                      const maxLoad = Math.max(...loads.map((w) => Number(w.training_load || 0)), 1);
+                      return (
+                        <Box style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 120, padding: "0 4px" }}>
+                          {loads.map((week, idx) => {
+                            const load = Number(week.training_load || 0);
+                            const heightPct = (load / maxLoad) * 100;
+                            const phase = String(week.phase || "transition");
+                            const color = PHASE_COLORS[phase] || PHASE_COLORS.transition;
+                            const acwr = Number(week.acwr || 1);
+                            const acwrColor = week.acwr_zone === "danger" ? "red" : week.acwr_zone === "optimal" ? "green" : "yellow";
+                            return (
+                              <Tooltip key={idx} label={`W${week.week_index} · ${phase} · ${week.target_hours}h · Load: ${load} · ACWR: ${acwr}`} withArrow>
+                                <Box style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                                  <Box
+                                    style={{
+                                      width: "100%",
+                                      maxWidth: 24,
+                                      height: `${Math.max(heightPct, 4)}%`,
+                                      background: color,
+                                      borderRadius: "3px 3px 0 0",
+                                      position: "relative",
+                                    }}
+                                  />
+                                  <Box style={{ width: 6, height: 6, borderRadius: "50%", background: `var(--mantine-color-${acwrColor}-5)` }} />
+                                </Box>
+                              </Tooltip>
+                            );
+                          })}
+                        </Box>
+                      );
+                    })()}
+                    <Group justify="space-between">
+                      <Text size="10px" c="dimmed">{t("Week") || "Week"} 1</Text>
+                      <Group gap={8}>
+                        <Group gap={3}><Box style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--mantine-color-green-5)" }} /><Text size="10px" c="dimmed">ACWR 0.8-1.3</Text></Group>
+                        <Group gap={3}><Box style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--mantine-color-yellow-5)" }} /><Text size="10px" c="dimmed">&lt;0.8</Text></Group>
+                        <Group gap={3}><Box style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--mantine-color-red-5)" }} /><Text size="10px" c="dimmed">&gt;1.5</Text></Group>
+                      </Group>
+                      <Text size="10px" c="dimmed">{t("Week") || "Week"} {(preview.load_progression || []).length}</Text>
+                    </Group>
                   </Stack>
                 </Paper>
-                <Paper withBorder radius="md" p="md">
-                  <Stack gap="xs">
-                    <Text fw={700}>{t("Micro cycles") || "Micro cycles"}</Text>
-                    {preview.micro_cycles.slice(0, 10).map((row, index) => (
-                      <Box key={`micro-${index}`}>
-                        <Group justify="space-between">
-                          <Text fw={600}>{t("Week") || "Week"} {row.week_index} · {row.phase}</Text>
-                          <Badge variant="light">{row.target_hours}h</Badge>
+              )}
+
+              {/* ── Tabbed detail view ── */}
+              <Tabs defaultValue="races" variant="outline" radius="md">
+                <Tabs.List>
+                  <Tabs.Tab value="races" leftSection={<IconFlag size={14} />}>{t("Races") || "Races"}</Tabs.Tab>
+                  <Tabs.Tab value="phases" leftSection={<IconCircle size={14} />}>{t("Phases") || "Phases"}</Tabs.Tab>
+                  <Tabs.Tab value="weeks" leftSection={<IconTarget size={14} />}>{t("Weeks") || "Weeks"}</Tabs.Tab>
+                  <Tabs.Tab value="workouts" leftSection={<IconBarbell size={14} />}>{t("Workouts") || "Workouts"}</Tabs.Tab>
+                </Tabs.List>
+
+                {/* ── Races tab ── */}
+                <Tabs.Panel value="races" pt="sm">
+                  <Stack gap="sm">
+                    {preview.countdowns.length === 0 && <Text size="sm" c="dimmed">{t("No races configured") || "No races configured"}</Text>}
+                    {preview.countdowns.map((countdown: Record<string, any>, index: number) => (
+                      <Paper key={`cd-${index}`} withBorder radius="md" p="sm">
+                        <Group justify="space-between" wrap="nowrap">
+                          <Stack gap={2}>
+                            <Group gap="xs">
+                              <Badge size="sm" variant="filled" color={countdown.priority === "A" ? "red" : countdown.priority === "B" ? "orange" : "gray"}>{countdown.priority}</Badge>
+                              <Text fw={600} size="sm">{countdown.name}</Text>
+                            </Group>
+                            <Text size="xs" c="dimmed">{countdown.date} · {t("Taper starts") || "Taper starts"}: {countdown.taper_starts_on}</Text>
+                          </Stack>
+                          <Stack gap={0} align="flex-end">
+                            <Text fw={800} size="lg" c={Number(countdown.days_until) <= 14 ? "red" : undefined}>{countdown.days_until}</Text>
+                            <Text size="10px" c="dimmed">{t("days") || "days"}</Text>
+                          </Stack>
                         </Group>
-                        <Text size="sm" c="dimmed">{row.week_start} - {row.week_end}</Text>
-                        <Text size="sm">{row.focus}</Text>
-                        {!!row.constraints?.length && <Text size="xs" c="orange">{row.constraints.join(", ")}</Text>}
-                      </Box>
+                      </Paper>
+                    ))}
+
+                    {preview.season_blocks.length > 0 && (
+                      <>
+                        <Text fw={700} size="sm" mt="xs">{t("Season blocks") || "Season blocks"}</Text>
+                        {preview.season_blocks.map((block: Record<string, any>, index: number) => (
+                          <Group key={`blk-${index}`} justify="space-between" align="flex-start" py={4}>
+                            <Stack gap={0}>
+                              <Text fw={600} size="sm">{block.label}</Text>
+                              <Text size="xs" c="dimmed">{block.start_date} → {block.end_date}</Text>
+                            </Stack>
+                            <Text size="xs" c="dimmed" maw="50%">{block.focus}</Text>
+                          </Group>
+                        ))}
+                      </>
+                    )}
+                  </Stack>
+                </Tabs.Panel>
+
+                {/* ── Phases / Macro+Meso tab ── */}
+                <Tabs.Panel value="phases" pt="sm">
+                  <Stack gap="md">
+                    <Text fw={700} size="sm">{t("Macro cycles") || "Macro cycles"}</Text>
+                    {preview.macro_cycles.map((macro: Record<string, any>, idx: number) => {
+                      const phase = String(macro.dominant_phase || "base");
+                      const color = PHASE_COLORS[phase] || PHASE_COLORS.transition;
+                      return (
+                        <Paper key={`macro-${idx}`} withBorder radius="md" p="sm" style={{ borderLeft: `4px solid ${color}` }}>
+                          <Group justify="space-between" align="flex-start" wrap="nowrap">
+                            <Stack gap={2}>
+                              <Group gap="xs">
+                                <Badge size="xs" variant="light" style={{ background: `${color}22`, color }}>{phase}</Badge>
+                                <Text fw={600} size="sm">{macro.label}</Text>
+                              </Group>
+                              <Text size="xs" c="dimmed">{macro.start_date} → {macro.end_date} · {macro.weeks} {t("weeks") || "weeks"}</Text>
+                              <Text size="xs">{macro.focus}</Text>
+                            </Stack>
+                          </Group>
+                        </Paper>
+                      );
+                    })}
+
+                    <Text fw={700} size="sm">{t("Meso cycles") || "Meso cycles"}</Text>
+                    {preview.meso_cycles.map((meso: Record<string, any>, idx: number) => (
+                      <Paper key={`meso-${idx}`} withBorder radius="md" p="sm">
+                        <Group justify="space-between" wrap="nowrap">
+                          <Stack gap={2}>
+                            <Text fw={600} size="sm">{meso.label}</Text>
+                            <Text size="xs" c="dimmed">{meso.start_date} → {meso.end_date} · {meso.weeks} {t("weeks") || "weeks"}</Text>
+                            <Text size="xs">{meso.focus}</Text>
+                          </Stack>
+                          <Stack gap={0} align="flex-end">
+                            <Text size="sm" fw={700}>{meso.average_target_hours}h</Text>
+                            <Text size="10px" c="dimmed">{t("avg/week") || "avg/week"}</Text>
+                          </Stack>
+                        </Group>
+                        {(meso.phases || []).length > 0 && (
+                          <Group gap={4} mt={4}>
+                            {(meso.phases as string[]).map((ph: string, i: number) => (
+                              <Box key={i} style={{ width: 8, height: 8, borderRadius: 2, background: PHASE_COLORS[ph] || PHASE_COLORS.transition }} />
+                            ))}
+                          </Group>
+                        )}
+                      </Paper>
                     ))}
                   </Stack>
-                </Paper>
-              </SimpleGrid>
+                </Tabs.Panel>
 
-              <Paper withBorder radius="md" p="md">
-                <Stack gap="xs">
-                  <Text fw={700}>{t("Generated workouts sample") || "Generated workouts sample"}</Text>
-                  <Table striped highlightOnHover>
-                    <Table.Thead>
-                      <Table.Tr>
-                        <Table.Th>{t("Date") || "Date"}</Table.Th>
-                        <Table.Th>{t("Session") || "Session"}</Table.Th>
-                        <Table.Th>{t("Phase") || "Phase"}</Table.Th>
-                        <Table.Th>{t("Intensity") || "Intensity"}</Table.Th>
-                        <Table.Th>{t("Duration") || "Duration"}</Table.Th>
-                      </Table.Tr>
-                    </Table.Thead>
-                    <Table.Tbody>
-                      {preview.generated_workouts.slice(0, 16).map((row, index) => (
-                        <Table.Tr key={`workout-${index}`}>
-                          <Table.Td>{row.date}</Table.Td>
-                          <Table.Td>{row.title}</Table.Td>
-                          <Table.Td>{row.planning_context?.phase || "-"}</Table.Td>
-                          <Table.Td>{row.planned_intensity || "-"}</Table.Td>
-                          <Table.Td>{row.planned_duration} min</Table.Td>
-                        </Table.Tr>
-                      ))}
-                    </Table.Tbody>
-                  </Table>
-                </Stack>
-              </Paper>
+                {/* ── Weeks / Micro cycles tab ── */}
+                <Tabs.Panel value="weeks" pt="sm">
+                  <Stack gap="xs">
+                    {preview.micro_cycles.map((week: Record<string, any>, idx: number) => {
+                      const phase = String(week.phase || "transition");
+                      const color = PHASE_COLORS[phase] || PHASE_COLORS.transition;
+                      const dist = (week.intensity_distribution || {}) as Record<string, number>;
+                      return (
+                        <Paper key={`wk-${idx}`} withBorder radius="md" p="sm" style={{ borderLeft: `4px solid ${color}` }}>
+                          <Group justify="space-between" align="flex-start" wrap="nowrap">
+                            <Stack gap={2} style={{ flex: 1 }}>
+                              <Group gap="xs">
+                                <Badge size="xs" variant="light" style={{ background: `${color}22`, color }}>{phase}</Badge>
+                                <Text fw={600} size="sm">{t("Week") || "Week"} {week.week_index}</Text>
+                                <Badge size="xs" variant="light">{week.target_hours}h</Badge>
+                                {week.countdown_days != null && (
+                                  <Text size="10px" c="dimmed">{week.countdown_days}d to race</Text>
+                                )}
+                              </Group>
+                              <Text size="xs" c="dimmed">{week.week_start} → {week.week_end}</Text>
+                              {week.phase_goal && <Text size="xs" fw={500}>{week.phase_goal}</Text>}
+                              {week.phase_rationale && <Text size="10px" c="dimmed" fs="italic">{week.phase_rationale}</Text>}
+                              {!!week.constraints?.length && (
+                                <Group gap={4} mt={2}>
+                                  <IconAlertTriangle size={12} color="var(--mantine-color-orange-5)" />
+                                  <Text size="xs" c="orange">{(week.constraints as string[]).join(", ")}</Text>
+                                </Group>
+                              )}
+                            </Stack>
+                            {Object.keys(dist).length > 0 && (
+                              <Stack gap={2} miw={100} align="flex-end">
+                                <Text size="10px" c="dimmed" fw={600}>{t("Zones") || "Zones"}</Text>
+                                {Object.entries(dist).map(([zone, pct]) => (
+                                  <Group key={zone} gap={4} wrap="nowrap">
+                                    <Text size="10px" w={22} ta="right" c="dimmed">{zone}</Text>
+                                    <Progress value={Number(pct) * 100} size={6} style={{ flex: 1, minWidth: 40 }} color={zone === "Z1" ? "cyan" : zone === "Z2" ? "blue" : zone === "Z3" ? "yellow" : zone === "Z4" ? "orange" : "red"} />
+                                    <Text size="10px" w={28} ta="right">{Math.round(Number(pct) * 100)}%</Text>
+                                  </Group>
+                                ))}
+                              </Stack>
+                            )}
+                          </Group>
+                        </Paper>
+                      );
+                    })}
+                  </Stack>
+                </Tabs.Panel>
+
+                {/* ── Workouts tab ── */}
+                <Tabs.Panel value="workouts" pt="sm">
+                  <Paper withBorder radius="md" p="sm">
+                    <ScrollArea>
+                      <Table striped highlightOnHover>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>{t("Date") || "Date"}</Table.Th>
+                            <Table.Th>{t("Session") || "Session"}</Table.Th>
+                            <Table.Th>{t("Phase") || "Phase"}</Table.Th>
+                            <Table.Th>{t("Intensity") || "Intensity"}</Table.Th>
+                            <Table.Th>{t("Duration") || "Duration"}</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {preview.generated_workouts.slice(0, 30).map((row: Record<string, any>, index: number) => {
+                            const phase = String(row.planning_context?.phase || "-");
+                            return (
+                              <Table.Tr key={`workout-${index}`}>
+                                <Table.Td><Text size="xs">{row.date}</Text></Table.Td>
+                                <Table.Td><Text size="xs" fw={500}>{row.title}</Text></Table.Td>
+                                <Table.Td>
+                                  <Badge size="xs" variant="light" style={{ background: `${PHASE_COLORS[phase] || "#94A3B8"}22`, color: PHASE_COLORS[phase] || "#94A3B8" }}>
+                                    {phase}
+                                  </Badge>
+                                </Table.Td>
+                                <Table.Td><Text size="xs">{row.planned_intensity || "-"}</Text></Table.Td>
+                                <Table.Td><Text size="xs">{row.planned_duration} min</Text></Table.Td>
+                              </Table.Tr>
+                            );
+                          })}
+                        </Table.Tbody>
+                      </Table>
+                    </ScrollArea>
+                    {preview.generated_workouts.length > 30 && (
+                      <Text size="xs" c="dimmed" ta="center" mt="xs">
+                        {t("Showing first 30 of") || "Showing first 30 of"} {preview.generated_workouts.length} {t("workouts") || "workouts"}
+                      </Text>
+                    )}
+                  </Paper>
+                </Tabs.Panel>
+              </Tabs>
             </Stack>
           )}
         </Stack>

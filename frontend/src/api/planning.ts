@@ -34,6 +34,7 @@ export type PeriodizationConfig = {
   training_days_per_week: number;
   recovery_week_frequency: number;
   taper_profile: "short" | "standard" | "extended";
+  periodization_model: "polarized" | "pyramidal" | "threshold";
 };
 
 export type SeasonPlanPayload = {
@@ -56,6 +57,7 @@ export type SeasonPlanPreview = {
   meso_cycles: Array<Record<string, any>>;
   micro_cycles: Array<Record<string, any>>;
   generated_workouts: Array<Record<string, any>>;
+  load_progression: Array<Record<string, any>>;
   summary: Record<string, any>;
 };
 

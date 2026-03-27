@@ -15,6 +15,66 @@ MACRO_STAGE_BY_PHASE = {
     "transition": "Transition",
 }
 
+# ---------- Periodization models ----------
+# Based on Seiler (2010) polarized model, Esteve-Lanao et al. (2007),
+# Stöggl & Sperlich (2015) comparative study of intensity distributions.
+#
+# Zone mapping:
+#   Z1 = active recovery / very easy (<65% HRmax)
+#   Z2 = aerobic endurance (65-80% HRmax, below VT1)
+#   Z3 = tempo / threshold (80-88% HRmax, between VT1-VT2)
+#   Z4 = VO2max intervals (88-95% HRmax, above VT2)
+#   Z5 = anaerobic / neuromuscular (>95% HRmax)
+#
+# Each model defines the % of total training time in each zone per phase.
+
+PERIODIZATION_MODELS: dict[str, dict[str, Any]] = {
+    "polarized": {
+        "label": "Polarized (80/20)",
+        "description": "~80% low intensity, ~20% high intensity, minimal threshold work. "
+                       "Supported by Seiler (2010), Stöggl & Sperlich (2015).",
+        "intensity_by_phase": {
+            "base":       {"Z1": 0.30, "Z2": 0.55, "Z3": 0.08, "Z4": 0.05, "Z5": 0.02},
+            "build":      {"Z1": 0.20, "Z2": 0.55, "Z3": 0.10, "Z4": 0.10, "Z5": 0.05},
+            "peak":       {"Z1": 0.20, "Z2": 0.50, "Z3": 0.10, "Z4": 0.12, "Z5": 0.08},
+            "taper":      {"Z1": 0.35, "Z2": 0.45, "Z3": 0.08, "Z4": 0.08, "Z5": 0.04},
+            "race":       {"Z1": 0.30, "Z2": 0.30, "Z3": 0.10, "Z4": 0.15, "Z5": 0.15},
+            "recovery":   {"Z1": 0.50, "Z2": 0.45, "Z3": 0.05, "Z4": 0.00, "Z5": 0.00},
+            "transition": {"Z1": 0.60, "Z2": 0.35, "Z3": 0.05, "Z4": 0.00, "Z5": 0.00},
+        },
+    },
+    "pyramidal": {
+        "label": "Pyramidal",
+        "description": "Highest volume in Z1-Z2, decreasing through Z3-Z5. "
+                       "Effective in well-trained endurance athletes (Esteve-Lanao et al., 2007).",
+        "intensity_by_phase": {
+            "base":       {"Z1": 0.25, "Z2": 0.50, "Z3": 0.15, "Z4": 0.07, "Z5": 0.03},
+            "build":      {"Z1": 0.18, "Z2": 0.45, "Z3": 0.20, "Z4": 0.12, "Z5": 0.05},
+            "peak":       {"Z1": 0.18, "Z2": 0.40, "Z3": 0.20, "Z4": 0.14, "Z5": 0.08},
+            "taper":      {"Z1": 0.30, "Z2": 0.40, "Z3": 0.15, "Z4": 0.10, "Z5": 0.05},
+            "race":       {"Z1": 0.25, "Z2": 0.30, "Z3": 0.15, "Z4": 0.15, "Z5": 0.15},
+            "recovery":   {"Z1": 0.50, "Z2": 0.40, "Z3": 0.10, "Z4": 0.00, "Z5": 0.00},
+            "transition": {"Z1": 0.55, "Z2": 0.35, "Z3": 0.10, "Z4": 0.00, "Z5": 0.00},
+        },
+    },
+    "threshold": {
+        "label": "Threshold / Sweetspot",
+        "description": "Higher proportion of tempo/threshold work. "
+                       "Time-efficient for time-crunched athletes (Seiler, 2010).",
+        "intensity_by_phase": {
+            "base":       {"Z1": 0.20, "Z2": 0.45, "Z3": 0.25, "Z4": 0.07, "Z5": 0.03},
+            "build":      {"Z1": 0.15, "Z2": 0.35, "Z3": 0.30, "Z4": 0.13, "Z5": 0.07},
+            "peak":       {"Z1": 0.15, "Z2": 0.32, "Z3": 0.28, "Z4": 0.15, "Z5": 0.10},
+            "taper":      {"Z1": 0.25, "Z2": 0.40, "Z3": 0.20, "Z4": 0.10, "Z5": 0.05},
+            "race":       {"Z1": 0.20, "Z2": 0.30, "Z3": 0.15, "Z4": 0.18, "Z5": 0.17},
+            "recovery":   {"Z1": 0.50, "Z2": 0.40, "Z3": 0.10, "Z4": 0.00, "Z5": 0.00},
+            "transition": {"Z1": 0.55, "Z2": 0.35, "Z3": 0.10, "Z4": 0.00, "Z5": 0.00},
+        },
+    },
+}
+
+# Volume multipliers per phase — based on classical linear periodization
+# (Bompa & Haff, 2009; Issurin, 2010).
 PHASE_VOLUME_MULTIPLIER = {
     "base": 0.92,
     "build": 1.04,
@@ -46,6 +106,38 @@ TAPER_PROFILES = {
         "A": {"taper_days": 18, "peak_days": 14, "build_days": 49},
         "B": {"taper_days": 9, "peak_days": 7, "build_days": 28},
         "C": {"taper_days": 4, "peak_days": 3, "build_days": 12},
+    },
+}
+
+# Phase science descriptions shown in the UI.
+PHASE_SCIENCE: dict[str, dict[str, str]] = {
+    "base": {
+        "goal": "Build aerobic capacity and movement economy",
+        "rationale": "High-volume, low-intensity training maximizes mitochondrial density and capillarization (Seiler, 2010).",
+    },
+    "build": {
+        "goal": "Develop race-specific fitness and lactate threshold",
+        "rationale": "Progressive overload at threshold and VO2max intensities drives central and peripheral adaptations (Midgley et al., 2007).",
+    },
+    "peak": {
+        "goal": "Sharpen race fitness while managing fatigue",
+        "rationale": "Reduced volume with maintained intensity preserves fitness while dissipating fatigue (Mujika & Padilla, 2003).",
+    },
+    "taper": {
+        "goal": "Maximize supercompensation before the target event",
+        "rationale": "40-60% volume reduction over 2-3 weeks with preserved intensity yields 2-3% performance gains (Bosquet et al., 2007).",
+    },
+    "race": {
+        "goal": "Execute the target event with full readiness",
+        "rationale": "Minimal training stress; maintain neural activation with short openers (Mujika, 2010).",
+    },
+    "recovery": {
+        "goal": "Absorb accumulated training load and restore readiness",
+        "rationale": "Planned deloads prevent non-functional overreaching and allow structural adaptation (Meeusen et al., 2013).",
+    },
+    "transition": {
+        "goal": "Maintain health and motivation with minimal structure",
+        "rationale": "Active rest preserves baseline fitness while allowing psychological recovery (Mujika & Padilla, 2000).",
     },
 }
 
@@ -359,6 +451,17 @@ def _micro_cycle_rows(plan: dict[str, Any], profile: Any | None) -> tuple[list[d
         focus = _focus_for_phase(phase, str(plan.get("sport_type") or ""))
         next_race = anchor_race or next((race for race in races if race["date"] >= week_start), None)
 
+        # Intensity distribution based on periodization model
+        model_key = str(periodization.get("periodization_model") or "polarized")
+        model_data = PERIODIZATION_MODELS.get(model_key, PERIODIZATION_MODELS["polarized"])
+        intensity_dist = model_data["intensity_by_phase"].get(phase, model_data["intensity_by_phase"]["base"])
+
+        # Relative training load score (arbitrary units, ~100 = baseline week)
+        training_load = round(target_hours * (1.0 + 0.5 * (intensity_dist.get("Z4", 0) + intensity_dist.get("Z5", 0))) * 12.5, 1)
+
+        # Science context for the phase
+        phase_science = PHASE_SCIENCE.get(phase, {"goal": "", "rationale": ""})
+
         micro_cycles.append({
             "week_index": week_index + 1,
             "week_start": week_start.isoformat(),
@@ -367,6 +470,10 @@ def _micro_cycle_rows(plan: dict[str, Any], profile: Any | None) -> tuple[list[d
             "focus": focus,
             "target_hours": target_hours,
             "load_modifier": round(load_modifier, 2),
+            "training_load": training_load,
+            "intensity_distribution": {k: round(v, 2) for k, v in intensity_dist.items()},
+            "phase_goal": phase_science["goal"],
+            "phase_rationale": phase_science["rationale"],
             "key_sessions": _key_sessions_for_phase(phase, str(plan.get("sport_type") or "")),
             "constraints": [_describe_constraint(item) for item in overlapping_constraints],
             "countdown_days": (next_race["date"] - week_start).days if next_race is not None else None,
@@ -580,6 +687,30 @@ def build_generated_workouts(plan_payload: Any, profile: Any | None = None) -> d
 
     constrained_weeks = sum(1 for row in micro_cycles if row.get("constraints"))
     target_metrics = plan.get("target_metrics") or []
+
+    # Acute:Chronic Workload Ratio (ACWR) per week — Hulin et al. (2014)
+    # Acute = current week load, Chronic = rolling 4-week average
+    load_progression: list[dict[str, Any]] = []
+    for idx, micro in enumerate(micro_cycles):
+        acute_load = float(micro.get("training_load") or 0)
+        chronic_window = micro_cycles[max(0, idx - 3):idx + 1]
+        chronic_load = sum(float(w.get("training_load") or 0) for w in chronic_window) / max(1, len(chronic_window))
+        acwr = round(acute_load / chronic_load, 2) if chronic_load > 0 else 1.0
+        load_progression.append({
+            "week_index": micro["week_index"],
+            "week_start": micro["week_start"],
+            "phase": micro["phase"],
+            "target_hours": micro["target_hours"],
+            "training_load": micro.get("training_load", 0),
+            "acute_load": round(acute_load, 1),
+            "chronic_load": round(chronic_load, 1),
+            "acwr": acwr,
+            "acwr_zone": "optimal" if 0.8 <= acwr <= 1.3 else ("danger" if acwr > 1.5 else "low"),
+        })
+
+    model_key = str(periodization.get("periodization_model") or "polarized")
+    model_data = PERIODIZATION_MODELS.get(model_key, PERIODIZATION_MODELS["polarized"])
+
     summary = {
         "season_name": plan.get("name"),
         "sport_type": plan.get("sport_type"),
@@ -593,6 +724,11 @@ def build_generated_workouts(plan_payload: Any, profile: Any | None = None) -> d
         "available_days_per_week": training_days_per_week,
         "weekly_hours_target": float(periodization.get("weekly_hours_target") or 8.0),
         "target_metrics": target_metrics,
+        "periodization_model": model_key,
+        "periodization_model_label": model_data["label"],
+        "periodization_model_description": model_data["description"],
+        "peak_training_load": max((row["training_load"] for row in load_progression), default=0),
+        "avg_training_load": round(sum(row["training_load"] for row in load_progression) / max(1, len(load_progression)), 1),
     }
 
     return {
@@ -602,5 +738,6 @@ def build_generated_workouts(plan_payload: Any, profile: Any | None = None) -> d
         "meso_cycles": meso_cycles,
         "micro_cycles": micro_cycles,
         "generated_workouts": workouts,
+        "load_progression": load_progression,
         "summary": summary,
     }

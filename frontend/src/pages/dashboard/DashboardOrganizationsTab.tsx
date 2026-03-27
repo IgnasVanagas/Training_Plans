@@ -4,6 +4,7 @@ import {
   Button,
   Grid,
   Group,
+  Modal,
   Paper,
   ScrollArea,
   Select,
@@ -17,7 +18,7 @@ import {
   Title,
   useComputedColorScheme,
 } from "@mantine/core";
-import { IconArrowLeft, IconDoorExit, IconMessages, IconSearch, IconSend, IconUserMinus, IconUsersGroup } from "@tabler/icons-react";
+import { IconArrowLeft, IconDoorExit, IconMessages, IconSearch, IconSend, IconUserMinus, IconUsersGroup, IconAlertTriangle } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@mantine/hooks";
@@ -51,6 +52,13 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
   const [groupBody, setGroupBody] = useState("");
   const [coachBody, setCoachBody] = useState("");
   const activeViewportRef = useRef<HTMLDivElement | null>(null);
+
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ open: false, title: "", message: "", onConfirm: () => {} });
 
   const discoverQuery = useQuery({
     queryKey: ["organization-discover", search],
@@ -222,18 +230,20 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
     return senderName || (typeof senderId === "number" ? `User #${senderId}` : "User");
   };
 
+  const userTz = me.profile?.timezone || undefined;
+
   const formatMessageTime = (createdAt?: string) => {
     if (!createdAt) return "";
     const dt = new Date(createdAt);
     if (Number.isNaN(dt.getTime())) return "";
-    return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: userTz });
   };
 
   const formatThreadTime = (createdAt?: string) => {
     if (!createdAt) return "";
     const dt = new Date(createdAt);
     if (Number.isNaN(dt.getTime())) return "";
-    return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return dt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: userTz });
   };
 
   const handleMessageInputKeyDown = (
@@ -465,11 +475,12 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
               variant="subtle"
               color="red"
               leftSection={<IconDoorExit size={14} />}
-              onClick={() => {
-                if (window.confirm(t("Are you sure you want to leave this organization?"))) {
-                  leaveMutation.mutate(selectedActiveOrganizationId);
-                }
-              }}
+              onClick={() => setConfirmModal({
+                open: true,
+                title: t("Leave organization"),
+                message: t("Are you sure you want to leave this organization? You will lose access to group chats and shared resources."),
+                onConfirm: () => leaveMutation.mutate(selectedActiveOrganizationId),
+              })}
               loading={leaveMutation.isPending}
             >
               {t("Leave organization")}
@@ -494,11 +505,12 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
                       variant="subtle"
                       color="red"
                       leftSection={<IconUserMinus size={12} />}
-                      onClick={() => {
-                        if (window.confirm(t("Remove this member from the organization?"))) {
-                          removeMemberMutation.mutate({ organizationId: selectedActiveOrganizationId, userId: athlete.id });
-                        }
-                      }}
+                      onClick={() => setConfirmModal({
+                        open: true,
+                        title: t("Remove member"),
+                        message: `${t("Remove this member from the organization?")} (${name})`,
+                        onConfirm: () => removeMemberMutation.mutate({ organizationId: selectedActiveOrganizationId, userId: athlete.id }),
+                      })}
                       loading={removeMemberMutation.isPending}
                     >
                       {t("Remove")}
@@ -740,6 +752,46 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
           </Grid>
         </>
       )}
+
+      <Modal
+        opened={confirmModal.open}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, open: false }))}
+        title={
+          <Group gap="xs">
+            <ThemeIcon size="md" radius="xl" variant="light" color="red">
+              <IconAlertTriangle size={14} />
+            </ThemeIcon>
+            <Text fw={700} size="sm">{confirmModal.title}</Text>
+          </Group>
+        }
+        centered
+        radius="md"
+        size="sm"
+        overlayProps={{ backgroundOpacity: 0.4, blur: 2 }}
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">{confirmModal.message}</Text>
+          <Group justify="flex-end" gap="sm">
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setConfirmModal((prev) => ({ ...prev, open: false }))}
+            >
+              {t("Cancel")}
+            </Button>
+            <Button
+              color="red"
+              size="sm"
+              onClick={() => {
+                confirmModal.onConfirm();
+                setConfirmModal((prev) => ({ ...prev, open: false }));
+              }}
+            >
+              {t("Confirm")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 };

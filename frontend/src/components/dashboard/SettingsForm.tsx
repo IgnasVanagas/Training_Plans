@@ -8,6 +8,7 @@ import {
   Group,
   Paper,
   PasswordInput,
+  Select,
   Stack,
   Text,
   Title,
@@ -45,8 +46,24 @@ type SettingsFormProps = {
   initialSection?: string;
 };
 
+const FALLBACK_TZ = [
+  "UTC","Europe/London","Europe/Paris","Europe/Berlin","Europe/Vilnius","Europe/Helsinki",
+  "Europe/Moscow","America/New_York","America/Chicago","America/Denver","America/Los_Angeles",
+  "Asia/Tokyo","Asia/Shanghai","Australia/Sydney","Pacific/Auckland",
+];
+
+const TIMEZONE_OPTIONS = (() => {
+  try {
+    const all = (Intl as unknown as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.("timeZone");
+    if (all) return all.map((tz: string) => ({ value: tz, label: tz.replace(/_/g, " ") }));
+  } catch { /* fallback */ }
+  return FALLBACK_TZ.map((tz) => ({ value: tz, label: tz.replace(/_/g, " ") }));
+})();
+
 const SettingsForm = ({
   user,
+  onSubmit,
+  isSaving,
   requestingEmailConfirmation,
   changingPassword,
   onRequestEmailConfirmation,
@@ -59,6 +76,8 @@ const SettingsForm = ({
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const savedTz = (user.profile as Record<string, unknown> | null)?.timezone as string | null | undefined;
+  const [timezone, setTimezone] = useState<string | null>(savedTz || null);
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,6 +128,27 @@ const SettingsForm = ({
             >
               {t("Send verification email") || "Send verification email"}
             </Button>
+          </Stack>
+
+          <Divider />
+
+          {/* Timezone */}
+          <Stack gap="xs">
+            <Text fw={600}>{t("Timezone") || "Timezone"}</Text>
+            <Text size="sm" c="dimmed">{t("Used for message timestamps and scheduling") || "Used for message timestamps and scheduling"}</Text>
+            <Select
+              data={TIMEZONE_OPTIONS}
+              value={timezone}
+              onChange={(val) => {
+                setTimezone(val);
+                if (val) onSubmit({ timezone: val } as Record<string, unknown>);
+              }}
+              searchable
+              clearable
+              placeholder={t("Select timezone") || "Select timezone"}
+              nothingFoundMessage={t("No timezone found") || "No timezone found"}
+              disabled={isSaving}
+            />
           </Stack>
 
           <Divider />

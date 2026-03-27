@@ -46,6 +46,7 @@ export const defaultPeriodization = (): PeriodizationConfig => ({
   training_days_per_week: 5,
   recovery_week_frequency: 4,
   taper_profile: "standard",
+  periodization_model: "polarized",
 });
 
 export const athleteLabel = (athlete?: User | null) => {

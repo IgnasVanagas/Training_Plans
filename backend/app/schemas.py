@@ -664,6 +664,7 @@ class PeriodizationConfig(BaseModel):
     training_days_per_week: int = Field(default=5, ge=2, le=7)
     recovery_week_frequency: int = Field(default=4, ge=2, le=6)
     taper_profile: Literal['short', 'standard', 'extended'] = 'standard'
+    periodization_model: Literal['polarized', 'pyramidal', 'threshold'] = 'polarized'
 
 
 class SeasonPlanBase(BaseModel):
@@ -701,6 +702,7 @@ class SeasonPlanPreviewOut(BaseModel):
     meso_cycles: List[dict[str, Any]] = Field(default_factory=list)
     micro_cycles: List[dict[str, Any]] = Field(default_factory=list)
     generated_workouts: List[dict[str, Any]] = Field(default_factory=list)
+    load_progression: List[dict[str, Any]] = Field(default_factory=list)
     summary: dict[str, Any] = Field(default_factory=dict)
 
 
