@@ -119,6 +119,7 @@ const DashboardLayoutShell = ({
   type NavItem = { key: DashboardTab; icon: typeof IconLayoutDashboard; label: string; color?: string };
   const athleteNavItems: NavItem[] = [
     { key: "plan", icon: IconCalendar, label: t("Calendar"), color: "#E95A12" },
+    { key: "organizations", icon: IconUsersGroup, label: t("Organizations"), color: "#6366F1" },
     { key: "races", icon: IconTrophy, label: t("Races & records"), color: "#2E8B57" },
     { key: "insights", icon: IconChartBar, label: t("Training insights"), color: "#3B82F6" },
     { key: "comparison", icon: IconChartPie, label: t("Comparison"), color: "#8B5CF6" },
@@ -131,7 +132,7 @@ const DashboardLayoutShell = ({
     { key: "dashboard", icon: IconLayoutDashboard, label: t("Dashboard"), color: "#E95A12" },
     { key: "activities", icon: IconActivity, label: t("Activities") },
     { key: "plan", icon: IconCalendar, label: t("Calendar"), color: "#E95A12" },
-    { key: "organizations", icon: IconUsersGroup, label: t("Organizations") },
+    { key: "organizations", icon: IconUsersGroup, label: t("Organizations"), color: "#6366F1" },
     { key: "notifications", icon: IconBell, label: t("Notifications") },
     { key: "settings", icon: IconSettings, label: t("Settings") },
   ];

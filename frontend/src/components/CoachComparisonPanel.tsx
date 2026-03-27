@@ -200,11 +200,19 @@ const extractZonesForDetail = (detail: ActivityDetail, athlete?: AthleteLike) =>
 };
 
 const extractSplits = (detail: ActivityDetail): SplitRow[] => {
-  const source = Array.isArray(detail.splits_metric) && detail.splits_metric.length > 0
-    ? detail.splits_metric
-    : Array.isArray(detail.laps)
-      ? detail.laps
-      : [];
+  const sportName = (detail.sport || '').toLowerCase();
+  const isCycling = sportName.includes('cycl') || sportName.includes('bike') || sportName.includes('ride') || sportName.includes('virtualride');
+  const hasLaps = Array.isArray(detail.laps) && detail.laps.length > 0;
+  const hasMetric = Array.isArray(detail.splits_metric) && detail.splits_metric.length > 0;
+
+  // Prefer laps for cycling (or when no metric splits), matching ActivityDetailPage behavior
+  const source = (isCycling || !hasMetric) && hasLaps
+    ? detail.laps!
+    : hasMetric
+      ? detail.splits_metric!
+      : hasLaps
+        ? detail.laps!
+        : [];
 
   return source
     .map((row: any, index: number) => ({
@@ -997,7 +1005,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const leftSplits = useMemo(() => (leftWorkout ? extractSplits(leftWorkout) : []), [leftWorkout]);
   const rightSplits = useMemo(() => (rightWorkout ? extractSplits(rightWorkout) : []), [rightWorkout]);
   const splitRows = useMemo(() => {
-    const maxRows = Math.min(12, Math.max(leftSplits.length, rightSplits.length));
+    const maxRows = Math.max(leftSplits.length, rightSplits.length);
     return Array.from({ length: maxRows }, (_, index) => ({
       split: index + 1,
       left: leftSplits[index] || null,
@@ -1172,7 +1180,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   };
 
   return (
-    <Paper withBorder p="lg" radius="lg">
+    <Paper p="lg" radius="lg" bg="transparent">
       <Stack gap="md">
         <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
           <Box>

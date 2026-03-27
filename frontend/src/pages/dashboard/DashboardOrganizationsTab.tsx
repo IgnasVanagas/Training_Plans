@@ -2,8 +2,6 @@ import {
   Avatar,
   Badge,
   Button,
-  Card,
-  Divider,
   Grid,
   Group,
   Paper,
@@ -367,140 +365,169 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
   };
 
   return (
-    <Stack gap="lg">
-      <Title order={3}>{t("Organizations")}</Title>
-      {me.role === "athlete" && (
-        <>
-          <TextInput
-            placeholder={t("Search clubs")}
-            value={search}
-            onChange={(event) => setSearch(event.currentTarget.value)}
-          />
-
-          <SimpleGrid cols={{ base: 1, md: 2 }}>
-            {(discoverQuery.data?.items || []).map((item) => (
-              <Card key={item.id} withBorder>
-                <Stack gap="sm">
-                  <Group justify="space-between" align="flex-start">
-                    <div>
-                      <Text fw={600}>{item.name}</Text>
-                      {item.description ? <Text size="sm" c="dimmed">{item.description}</Text> : null}
-                    </div>
-                    {item.my_membership_status ? <Badge>{item.my_membership_status}</Badge> : null}
-                  </Group>
-                  <Text size="sm" c="dimmed">
-                    {t("Coaches")}: {item.coaches.length > 0 ? item.coaches.map((coach) => `${coach.first_name || ""} ${coach.last_name || ""}`.trim() || coach.email).join(", ") : t("None listed")}
-                  </Text>
-                  <Button
-                    onClick={() => joinMutation.mutate(item.id)}
-                    loading={joinMutation.isPending}
-                    disabled={item.my_membership_status === "active" || item.my_membership_status === "pending_approval"}
-                  >
-                    {item.my_membership_status === "active"
-                      ? t("Active")
-                      : item.my_membership_status === "pending_approval"
-                        ? t("Pending approval")
-                        : t("Request to Join")}
-                  </Button>
-                </Stack>
-              </Card>
-            ))}
-          </SimpleGrid>
-        </>
-      )}
-
-      <Divider label={t("Chats")} labelPosition="center" />
-
-      {activeMemberships.length === 0 ? (
-        <Text c="dimmed">{t("Join an organization to use group and coach chat.")}</Text>
-      ) : (
-        <Stack gap="md">
+    <Stack gap="md">
+      {/* ── Header ── */}
+      <Group justify="space-between" align="center">
+        <Group gap="xs">
+          <ThemeIcon size="lg" radius="xl" variant="light" color="indigo">
+            <IconUsersGroup size={18} />
+          </ThemeIcon>
+          <Title order={3}>{t("Organizations")}</Title>
+        </Group>
+        {activeMemberships.length > 1 && (
           <Select
-            label={t("Active organization")}
+            size="xs"
+            w={220}
+            placeholder={t("Switch organization")}
             data={activeMemberships
-              .filter((membership) => membership.organization)
-              .map((membership) => {
-                const org = membership.organization;
-                return {
-                  value: String(org?.id),
-                  label: org?.name || t("Organization"),
-                };
-              })}
+              .filter((m) => m.organization)
+              .map((m) => ({ value: String(m.organization?.id), label: m.organization?.name || t("Organization") }))}
             value={selectedActiveOrgId}
             onChange={setSelectedActiveOrgId}
             allowDeselect={false}
           />
+        )}
+      </Group>
 
-          {selectedActiveOrganizationId && (
-            <Paper withBorder p="sm" radius="md" bg={isDark ? "dark.7" : "gray.0"}>
-              <Group justify="space-between" mb={me.role === "coach" ? "xs" : 0}>
-                <Text size="sm" fw={600}>{t("Members")}</Text>
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  color="red"
-                  leftSection={<IconDoorExit size={14} />}
-                  onClick={() => {
-                    if (window.confirm(t("Are you sure you want to leave this organization?"))) {
-                      leaveMutation.mutate(selectedActiveOrganizationId);
-                    }
-                  }}
-                  loading={leaveMutation.isPending}
-                >
-                  {t("Leave organization")}
-                </Button>
-              </Group>
-              {me.role === "coach" && (
-                <Stack gap={4}>
-                  {athletes.map((athlete) => {
-                      const name = (athlete.profile?.first_name || athlete.profile?.last_name)
-                        ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
-                        : athlete.email;
-                      return (
-                        <Group key={athlete.id} justify="space-between" py={2}>
-                          <Text size="sm">{name}</Text>
-                          <Button
-                            size="compact-xs"
-                            variant="subtle"
-                            color="red"
-                            leftSection={<IconUserMinus size={14} />}
-                            onClick={() => {
-                              if (window.confirm(t("Remove this member from the organization?"))) {
-                                removeMemberMutation.mutate({
-                                  organizationId: selectedActiveOrganizationId,
-                                  userId: athlete.id,
-                                });
-                              }
-                            }}
-                            loading={removeMemberMutation.isPending}
-                          >
-                            {t("Remove")}
-                          </Button>
-                        </Group>
-                      );
-                    })}
-                </Stack>
-              )}
-            </Paper>
-          )}
-
-          <Paper withBorder p="xs" radius="md" bg={isDark ? "dark.6" : "gray.0"}>
-            <Group justify="space-between">
-              <Group gap="xs">
-                <ThemeIcon variant="light" radius="xl">
-                  <IconMessages size={14} />
-                </ThemeIcon>
-                <Text fw={600}>{t("Messages")}</Text>
-              </Group>
-              <Text size="xs" c="dimmed">{t("Enter to send · Shift+Enter for new line")}</Text>
+      {/* ── Discover section (athlete only) ── */}
+      {me.role === "athlete" && (
+        <Paper withBorder p="md" radius="md" style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)" }}>
+          <Stack gap="sm">
+            <Group gap="xs">
+              <IconSearch size={16} />
+              <Text fw={600} size="sm">{t("Discover clubs")}</Text>
             </Group>
-          </Paper>
+            <TextInput
+              size="sm"
+              placeholder={t("Search clubs")}
+              leftSection={<IconSearch size={14} />}
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+            />
+            {(discoverQuery.data?.items || []).length > 0 && (
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                {(discoverQuery.data?.items || []).map((item) => (
+                  <Paper
+                    key={item.id}
+                    withBorder
+                    p="sm"
+                    radius="md"
+                    style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)" }}
+                  >
+                    <Group justify="space-between" align="flex-start" wrap="nowrap">
+                      <Stack gap={2} style={{ flex: 1 }}>
+                        <Group gap="xs">
+                          <Text fw={600} size="sm">{item.name}</Text>
+                          {item.my_membership_status && (
+                            <Badge size="xs" variant="light" color={item.my_membership_status === "active" ? "green" : "yellow"}>
+                              {item.my_membership_status === "active" ? t("Active") : item.my_membership_status === "pending_approval" ? t("Pending") : item.my_membership_status}
+                            </Badge>
+                          )}
+                        </Group>
+                        {item.description && <Text size="xs" c="dimmed" lineClamp={2}>{item.description}</Text>}
+                        <Text size="xs" c="dimmed">
+                          {item.coaches.map((c) => `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.email).join(", ") || t("No coaches")}
+                        </Text>
+                      </Stack>
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        onClick={() => joinMutation.mutate(item.id)}
+                        loading={joinMutation.isPending}
+                        disabled={item.my_membership_status === "active" || item.my_membership_status === "pending_approval"}
+                      >
+                        {item.my_membership_status === "active" ? t("Joined") : item.my_membership_status === "pending_approval" ? t("Pending") : t("Join")}
+                      </Button>
+                    </Group>
+                  </Paper>
+                ))}
+              </SimpleGrid>
+            )}
+            {(discoverQuery.data?.items || []).length === 0 && !discoverQuery.isLoading && (
+              <Text size="sm" c="dimmed">{t("No organizations found.")}</Text>
+            )}
+          </Stack>
+        </Paper>
+      )}
 
+      {/* ── Active Org: Members + Leave ── */}
+      {selectedActiveOrganizationId && (
+        <Paper withBorder p="md" radius="md" style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)" }}>
+          <Group justify="space-between" mb={me.role === "coach" ? "xs" : 0}>
+            <Group gap="xs">
+              <ThemeIcon size="sm" radius="xl" variant="light" color="indigo">
+                <IconUsersGroup size={12} />
+              </ThemeIcon>
+              <Text fw={600} size="sm">{t("Members")}</Text>
+            </Group>
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              color="red"
+              leftSection={<IconDoorExit size={14} />}
+              onClick={() => {
+                if (window.confirm(t("Are you sure you want to leave this organization?"))) {
+                  leaveMutation.mutate(selectedActiveOrganizationId);
+                }
+              }}
+              loading={leaveMutation.isPending}
+            >
+              {t("Leave organization")}
+            </Button>
+          </Group>
+          {me.role === "coach" && athletes.length > 0 && (
+            <Stack gap={4} mt="xs">
+              {athletes.map((athlete) => {
+                const name = (athlete.profile?.first_name || athlete.profile?.last_name)
+                  ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
+                  : athlete.email;
+                return (
+                  <Group key={athlete.id} justify="space-between" py={2}>
+                    <Group gap="xs">
+                      <Avatar radius="xl" size="sm" color="blue">
+                        {name.slice(0, 1).toUpperCase()}
+                      </Avatar>
+                      <Text size="sm">{name}</Text>
+                    </Group>
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      color="red"
+                      leftSection={<IconUserMinus size={12} />}
+                      onClick={() => {
+                        if (window.confirm(t("Remove this member from the organization?"))) {
+                          removeMemberMutation.mutate({ organizationId: selectedActiveOrganizationId, userId: athlete.id });
+                        }
+                      }}
+                      loading={removeMemberMutation.isPending}
+                    >
+                      {t("Remove")}
+                    </Button>
+                  </Group>
+                );
+              })}
+            </Stack>
+          )}
+        </Paper>
+      )}
+
+      {/* ── Messaging ── */}
+      {activeMemberships.length === 0 ? (
+        <Paper withBorder p="xl" radius="md" style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)", textAlign: "center" }}>
+          <Stack align="center" gap="sm">
+            <ThemeIcon size="xl" radius="xl" variant="light" color="gray">
+              <IconMessages size={24} />
+            </ThemeIcon>
+            <Text c="dimmed">{t("Join an organization to use group and coach chat.")}</Text>
+          </Stack>
+        </Paper>
+      ) : (
+        <>
           {isMobile && (
             <SegmentedControl
               fullWidth
               value={mobilePane}
-              onChange={(value) => setMobilePane(value as "threads" | "messages")}
+              onChange={(v) => setMobilePane(v as "threads" | "messages")}
               data={[
                 { value: "threads", label: t("Chats") },
                 { value: "messages", label: t("Messages") },
@@ -509,174 +536,209 @@ const DashboardOrganizationsTab = ({ me, athletes }: Props) => {
           )}
 
           <Grid gutter="md">
+            {/* ─ Thread list ─ */}
             {(!isMobile || mobilePane === "threads") && (
               <Grid.Col span={{ base: 12, md: 4 }}>
-                <Card withBorder p="sm" radius="md">
-                  <Stack gap="sm">
-                    <TextInput
-                      leftSection={<IconSearch size={14} />}
-                      placeholder={t("Search conversations")}
-                      value={threadSearch}
-                      onChange={(event) => setThreadSearch(event.currentTarget.value)}
-                    />
-                    {me.role === "coach" && (
-                      <Select
-                        label={t("Athlete")}
-                        data={athleteOptions}
-                        value={selectedAthleteId}
-                        onChange={setSelectedAthleteId}
-                        allowDeselect={false}
+                <Paper
+                  withBorder
+                  radius="md"
+                  style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)", overflow: "hidden" }}
+                >
+                  <Stack gap={0}>
+                    <Group
+                      px="sm"
+                      py="xs"
+                      style={{ borderBottom: `1px solid ${isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)"}` }}
+                    >
+                      <TextInput
+                        size="xs"
+                        leftSection={<IconSearch size={14} />}
+                        placeholder={t("Search conversations")}
+                        value={threadSearch}
+                        onChange={(e) => setThreadSearch(e.currentTarget.value)}
+                        style={{ flex: 1 }}
+                        variant="unstyled"
                       />
-                    )}
-                    <ScrollArea h={isMobile ? 380 : 460} type="hover" offsetScrollbars>
-                      <Stack gap={6}>
+                    </Group>
+                    <ScrollArea h={isMobile ? 400 : 520} type="hover" offsetScrollbars>
+                      <Stack gap={0}>
                         {filteredThreads.map((thread) => {
                           const selected = thread.key === activeThread?.key;
                           return (
-                            <Paper
+                            <Group
                               key={thread.key}
-                              withBorder
-                              radius="md"
-                              p="xs"
-                              style={{ cursor: "pointer" }}
-                              bg={selected ? (isDark ? "dark.5" : "blue.0") : (isDark ? "dark.6" : undefined)}
+                              wrap="nowrap"
+                              align="flex-start"
+                              px="sm"
+                              py="xs"
+                              gap="sm"
+                              style={{
+                                cursor: "pointer",
+                                borderLeft: selected ? `3px solid var(--mantine-color-indigo-6)` : "3px solid transparent",
+                                background: selected ? (isDark ? "rgba(99,102,241,0.1)" : "rgba(99,102,241,0.06)") : "transparent",
+                                transition: "background 120ms ease",
+                              }}
                               onClick={() => openThread(thread.key)}
                             >
-                              <Group wrap="nowrap" align="flex-start">
-                                <Avatar radius="xl" size="sm" color={thread.type === "group" ? "indigo" : "blue"}>
-                                  {thread.type === "group" ? <IconUsersGroup size={12} /> : thread.label.slice(0, 1).toUpperCase()}
-                                </Avatar>
-                                <Stack gap={0} style={{ flex: 1 }}>
-                                  <Group justify="space-between" gap="xs" wrap="nowrap">
-                                    <Text size="sm" fw={600} c={isDark ? "gray.0" : undefined} lineClamp={1}>{thread.label}</Text>
-                                    <Group gap={6} wrap="nowrap">
-                                      {thread.unread && !selected ? (
-                                        <ThemeIcon size={12} radius="xl" color="blue" variant="filled" />
-                                      ) : null}
-                                      <Text size="10px" c={isDark ? "gray.4" : "dimmed"}>{formatThreadTime(thread.lastMessageAt || undefined)}</Text>
-                                    </Group>
-                                  </Group>
-                                  <Text size="xs" c={thread.unread && !selected ? "blue.3" : (isDark ? "gray.4" : "dimmed")} lineClamp={2}>{thread.subtitle}</Text>
-                                </Stack>
-                              </Group>
-                            </Paper>
+                              <Avatar radius="xl" size="md" color={thread.type === "group" ? "indigo" : "blue"}>
+                                {thread.type === "group" ? <IconUsersGroup size={14} /> : thread.label.slice(0, 1).toUpperCase()}
+                              </Avatar>
+                              <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+                                <Group justify="space-between" gap={4} wrap="nowrap">
+                                  <Text size="sm" fw={selected || thread.unread ? 700 : 500} lineClamp={1}>
+                                    {thread.label}
+                                  </Text>
+                                  <Text size="10px" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                                    {formatThreadTime(thread.lastMessageAt || undefined)}
+                                  </Text>
+                                </Group>
+                                <Text size="xs" c="dimmed" lineClamp={1}>{thread.subtitle}</Text>
+                              </Stack>
+                              {thread.unread && !selected && (
+                                <ThemeIcon size={8} radius="xl" color="blue" variant="filled" style={{ alignSelf: "center" }} />
+                              )}
+                            </Group>
                           );
                         })}
-                        {filteredThreads.length === 0 ? (
-                          <Text size="sm" c="dimmed">{t("No conversations found.")}</Text>
-                        ) : null}
+                        {filteredThreads.length === 0 && (
+                          <Text size="sm" c="dimmed" p="sm">{t("No conversations found.")}</Text>
+                        )}
                       </Stack>
                     </ScrollArea>
                   </Stack>
-                </Card>
+                </Paper>
               </Grid.Col>
             )}
 
+            {/* ─ Message pane ─ */}
             {(!isMobile || mobilePane === "messages") && (
               <Grid.Col span={{ base: 12, md: 8 }}>
-                <Card withBorder p="sm" radius="md">
-                  <Stack gap="sm">
-                    <Group justify="space-between">
-                      <Group wrap="nowrap">
-                        {isMobile && (
-                          <Button variant="subtle" size="compact-sm" leftSection={<IconArrowLeft size={14} />} onClick={() => setMobilePane("threads")}>
-                            {t("Chats")}
-                          </Button>
-                        )}
-                        <Avatar radius="xl" color={activeThread?.type === "group" ? "indigo" : "blue"}>
-                          {activeThread?.type === "group" ? <IconUsersGroup size={14} /> : (activeThread?.label || "C").slice(0, 1).toUpperCase()}
-                        </Avatar>
-                        <Stack gap={0}>
-                          <Text fw={700}>{activeThread?.label || "Conversation"}</Text>
-                          <Text size="xs" c="dimmed">
-                            {activeThread?.type === "group"
-                              ? t("Organization group conversation")
-                              : (me.role === "coach" ? t("Direct athlete conversation") : t("Direct coach conversation"))}
-                          </Text>
-                        </Stack>
-                      </Group>
-                      <Badge variant="light">{activeMessages.length}</Badge>
+                <Paper
+                  withBorder
+                  radius="md"
+                  style={{
+                    borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)",
+                    display: "flex",
+                    flexDirection: "column",
+                    height: isMobile ? "auto" : "calc(520px + 2 * var(--mantine-spacing-xs) + 60px)",
+                    overflow: "hidden",
+                  }}
+                >
+                  {/* Chat header */}
+                  <Group
+                    justify="space-between"
+                    px="md"
+                    py="sm"
+                    style={{ borderBottom: `1px solid ${isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)"}`, flexShrink: 0 }}
+                  >
+                    <Group gap="sm" wrap="nowrap">
+                      {isMobile && (
+                        <Button variant="subtle" size="compact-xs" onClick={() => setMobilePane("threads")}>
+                          <IconArrowLeft size={16} />
+                        </Button>
+                      )}
+                      <Avatar radius="xl" size="sm" color={activeThread?.type === "group" ? "indigo" : "blue"}>
+                        {activeThread?.type === "group" ? <IconUsersGroup size={14} /> : (activeThread?.label || "?").slice(0, 1).toUpperCase()}
+                      </Avatar>
+                      <Stack gap={0}>
+                        <Text size="sm" fw={700}>{activeThread?.label || "Conversation"}</Text>
+                        <Text size="10px" c="dimmed">
+                          {activeThread?.type === "group"
+                            ? t("Group chat")
+                            : me.role === "coach" ? t("Direct message") : t("Direct message")}
+                        </Text>
+                      </Stack>
                     </Group>
+                  </Group>
 
-                    <Paper withBorder radius="md" p="xs" bg={isDark ? "dark.6" : "gray.0"}>
-                      <ScrollArea h={isMobile ? 300 : 360} viewportRef={activeViewportRef} type="hover" offsetScrollbars>
-                        <Stack gap="xs" p={2}>
-                          {activeMessages.slice(-50).map((message) => {
-                            const mine = message.sender_id === me.id;
-                            const senderName = formatSenderName(message.sender_name, message.sender_id);
-                            return (
-                              <Group key={message.id} justify={mine ? "flex-end" : "flex-start"} align="flex-end" wrap="nowrap" gap="xs">
-                                {!mine && (
-                                  <Avatar radius="xl" size="sm">
-                                    {senderName.slice(0, 1).toUpperCase()}
-                                  </Avatar>
-                                )}
-                                <Paper
-                                  radius="lg"
-                                  px="sm"
-                                  py={6}
-                                  bg={mine ? (isDark ? "blue.7" : "blue.6") : (isDark ? "dark.4" : "gray.1")}
-                                  c={mine ? "white" : (isDark ? "gray.0" : "dark.8")}
-                                  maw="78%"
-                                  style={{ borderRadius: mine ? "18px 18px 4px 18px" : "18px 18px 18px 4px" }}
-                                >
-                                  <Text size="xs" fw={600} c={mine ? "blue.1" : (isDark ? "gray.4" : "dimmed")}>
-                                    {senderName}
-                                  </Text>
-                                  <Text size="sm" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                                    {message.body}
-                                  </Text>
-                                  <Text size="10px" ta="right" c={mine ? "blue.2" : (isDark ? "gray.5" : "dimmed")}>
-                                    {formatMessageTime(message.created_at)}
-                                  </Text>
-                                </Paper>
-                              </Group>
-                            );
-                          })}
-                          {activeLoading ? <Text size="sm" c="dimmed">{t("Loading messages…")}</Text> : null}
-                          {!activeLoading && activeMessages.length === 0 ? (
-                            <Text size="sm" c="dimmed">{t("No messages yet. Start this conversation.")}</Text>
-                          ) : null}
+                  {/* Messages area */}
+                  <ScrollArea style={{ flex: 1 }} viewportRef={activeViewportRef} type="hover" offsetScrollbars px="md" py="sm">
+                    <Stack gap="sm">
+                      {activeMessages.slice(-100).map((message) => {
+                        const mine = message.sender_id === me.id;
+                        const senderName = formatSenderName(message.sender_name, message.sender_id);
+                        return (
+                          <Group key={message.id} justify={mine ? "flex-end" : "flex-start"} align="flex-end" wrap="nowrap" gap="xs">
+                            {!mine && (
+                              <Avatar radius="xl" size="sm" color="blue" style={{ flexShrink: 0 }}>
+                                {senderName.slice(0, 1).toUpperCase()}
+                              </Avatar>
+                            )}
+                            <Stack
+                              gap={2}
+                              maw="72%"
+                              style={{
+                                padding: "8px 14px",
+                                borderRadius: mine ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                                background: mine
+                                  ? (isDark ? "rgba(99,102,241,0.25)" : "rgba(99,102,241,0.12)")
+                                  : (isDark ? "var(--mantine-color-dark-5)" : "var(--mantine-color-gray-1)"),
+                              }}
+                            >
+                              {!mine && (
+                                <Text size="11px" fw={600} c={isDark ? "indigo.3" : "indigo.7"}>
+                                  {senderName}
+                                </Text>
+                              )}
+                              <Text size="sm" c={isDark ? "gray.1" : "dark.8"} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                                {message.body}
+                              </Text>
+                              <Text size="10px" ta="right" c="dimmed">
+                                {formatMessageTime(message.created_at)}
+                              </Text>
+                            </Stack>
+                          </Group>
+                        );
+                      })}
+                      {activeLoading && <Text size="sm" c="dimmed">{t("Loading messages…")}</Text>}
+                      {!activeLoading && activeMessages.length === 0 && (
+                        <Stack align="center" py="xl" gap="xs">
+                          <IconMessages size={32} color="var(--mantine-color-dimmed)" />
+                          <Text size="sm" c="dimmed">{t("No messages yet. Start this conversation.")}</Text>
                         </Stack>
-                      </ScrollArea>
-                    </Paper>
+                      )}
+                    </Stack>
+                  </ScrollArea>
 
+                  {/* Input area */}
+                  <Group
+                    px="md"
+                    py="sm"
+                    gap="sm"
+                    style={{ borderTop: `1px solid ${isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)"}`, flexShrink: 0 }}
+                    wrap="nowrap"
+                  >
                     <Textarea
                       placeholder={activeThread?.type === "group" ? t("Write a message...") : t("Write a direct message...")}
                       value={activeBody}
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        if (activeThread?.type === "group") setGroupBody(value);
-                        else setCoachBody(value);
+                      onChange={(e) => {
+                        const v = e.currentTarget.value;
+                        if (activeThread?.type === "group") setGroupBody(v);
+                        else setCoachBody(v);
                       }}
-                      minRows={2}
-                      maxRows={5}
+                      minRows={1}
+                      maxRows={4}
                       autosize
-                      onKeyDown={(event) =>
-                        handleMessageInputKeyDown(
-                          event,
-                          sendActiveThreadMessage,
-                          Boolean(canSendActive && !activeSendPending),
-                        )
-                      }
+                      style={{ flex: 1 }}
+                      onKeyDown={(e) => handleMessageInputKeyDown(e, sendActiveThreadMessage, Boolean(canSendActive && !activeSendPending))}
                     />
-
-                    <Group justify="flex-end">
-                      <Button
-                        rightSection={<IconSend size={14} />}
-                        onClick={sendActiveThreadMessage}
-                        loading={activeSendPending}
-                        disabled={!canSendActive}
-                      >
-                        {t("Send")}
-                      </Button>
-                    </Group>
-                  </Stack>
-                </Card>
+                    <Button
+                      size="sm"
+                      radius="xl"
+                      px="md"
+                      onClick={sendActiveThreadMessage}
+                      loading={activeSendPending}
+                      disabled={!canSendActive}
+                      color="indigo"
+                    >
+                      <IconSend size={16} />
+                    </Button>
+                  </Group>
+                </Paper>
               </Grid.Col>
             )}
           </Grid>
-        </Stack>
+        </>
       )}
     </Stack>
   );
