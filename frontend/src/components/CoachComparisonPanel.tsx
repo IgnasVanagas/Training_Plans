@@ -12,6 +12,7 @@ import {
   SegmentedControl,
   Select,
   SimpleGrid,
+  Skeleton,
   Slider,
   Stack,
   Table,
@@ -494,12 +495,14 @@ const PeriodSummaryTable = ({
   details,
   aggregate,
   athlete,
+  sideColor,
   t,
 }: {
   title: string;
   details: ActivityDetail[];
   aggregate: Aggregate;
   athlete?: AthleteLike;
+  sideColor?: string;
   t: (value: string) => string;
 }) => {
   const runningLeader = dominantZone(aggregate.runningZones);
@@ -510,7 +513,7 @@ const PeriodSummaryTable = ({
   const sportMixTotal = Object.values(aggregate.sportMix).reduce((sum, value) => sum + value, 0);
 
   return (
-    <Paper withBorder p="sm" radius="md">
+    <Paper withBorder p="sm" radius="md" style={sideColor ? { borderLeft: `4px solid ${sideColor}` } : undefined}>
       <Stack gap="sm">
         <Group justify="space-between" align="flex-start">
           <Box>
@@ -862,7 +865,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const { data: activities = [] } = useQuery({
     queryKey: ['coach-comparison-activities-v2'],
     queryFn: async () => {
-      const res = await api.get<ActivityListItem[]>('/activities/');
+      const res = await api.get<ActivityListItem[]>('/activities/?limit=500');
       return res.data;
     },
     staleTime: 1000 * 60,
@@ -1152,12 +1155,16 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     setPeriodKey: (value: string | null) => void,
   ) => {
     const title = side === 'left' ? (t('Side A') || 'Side A') : (t('Side B') || 'Side B');
+    const sideColor = side === 'left' ? chartColors.sideA : chartColors.sideB;
     const options = athleteId ? (activePeriodOptions.get(athleteId) || []) : [];
     const periodLabel = mode === 'weeks' ? (t('Week') || 'Week') : (t('Month') || 'Month');
     return (
-      <Paper withBorder p="sm" radius="md">
+      <Paper withBorder p="sm" radius="md" style={{ borderLeft: `4px solid ${sideColor}` }}>
         <Stack gap="xs">
-          <Text size="sm" fw={600}>{title}</Text>
+          <Group gap="xs">
+            <Box style={{ width: 10, height: 10, borderRadius: '50%', background: sideColor, flexShrink: 0 }} />
+            <Text size="sm" fw={600}>{title}</Text>
+          </Group>
           {!isAthlete && (
             <Select
               label={t('Athlete') || 'Athlete'}
@@ -1239,20 +1246,23 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
         )}
 
         {detailsLoading ? (
-          <Text size="sm" c="dimmed">{t('Loading comparison data...') || 'Loading comparison data...'}</Text>
+          <Stack gap="sm">
+            <Skeleton height={60} radius="md" />
+            <Skeleton height={200} radius="md" />
+          </Stack>
         ) : selectionMissing ? (
           <Alert icon={<IconInfoCircle size={16} />} color="yellow" variant="light">
             {t('Select both sides to compare.') || 'Select both sides to compare.'}
           </Alert>
         ) : idsToLoad.length === 0 ? (
-          <Alert icon={<IconInfoCircle size={16} />} color="yellow" variant="light">
+          <Alert icon={<IconCalendarStats size={16} />} color="blue" variant="light">
             {t('No training data exists for the current selection.') || 'No training data exists for the current selection.'}
           </Alert>
         ) : (
           <Stack gap="md">
             <SimpleGrid cols={{ base: 1, md: 2, xl: 4 }} spacing="sm">
               {compareCards.map((item) => (
-                <Paper key={item.label} withBorder p="sm" radius="md" style={{ borderTop: `3px solid transparent`, background: isDark ? 'rgba(22,34,58,0.5)' : undefined }}>
+                <Paper key={item.label} withBorder p="sm" radius="md" style={{ borderTop: `3px solid var(--mantine-color-cyan-5)`, background: isDark ? 'rgba(22,34,58,0.62)' : 'rgba(255,255,255,0.92)' }}>
                   <Text size="10px" c="dimmed" tt="uppercase" fw={600} mb={4}>{item.label}</Text>
                   <Text fw={700} size="lg">{item.value}</Text>
                 </Paper>
@@ -1506,6 +1516,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                   details={leftDetails}
                   aggregate={leftAggregate}
                   athlete={leftAthleteId ? athleteMap.get(Number(leftAthleteId)) : undefined}
+                  sideColor={chartColors.sideA}
                   t={t}
                 />
                 <PeriodSummaryTable
@@ -1513,6 +1524,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                   details={rightDetails}
                   aggregate={rightAggregate}
                   athlete={rightAthleteId ? athleteMap.get(Number(rightAthleteId)) : undefined}
+                  sideColor={chartColors.sideB}
                   t={t}
                 />
               </SimpleGrid>

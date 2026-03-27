@@ -14,6 +14,7 @@ import {
   SegmentedControl,
   Select,
   SimpleGrid,
+  Skeleton,
   Stack,
   Table,
   Text,
@@ -459,7 +460,7 @@ export const ComparisonPage = () => {
 
   const { data: activities = [] } = useQuery({
     queryKey: ['comparison-activities'],
-    queryFn: async () => { const r = await api.get<ActivityListItem[]>('/activities/'); return r.data; },
+    queryFn: async () => { const r = await api.get<ActivityListItem[]>('/activities/?limit=500'); return r.data; },
     staleTime: 1000 * 60,
   });
 
@@ -598,6 +599,8 @@ export const ComparisonPage = () => {
     }));
   }, [mode, leftAgg, rightAgg]);
 
+  const chartColors = { sideA: '#E95A12', sideB: '#6E4BF3' };
+
   /* ── period selector widget ── */
   const sideSelector = (
     side: 'left' | 'right',
@@ -607,20 +610,22 @@ export const ComparisonPage = () => {
     setPeriodKey: (v: string | null) => void,
   ) => {
     const title = side === 'left' ? (t('Side A') || 'Side A') : (t('Side B') || 'Side B');
+    const sideColor = side === 'left' ? chartColors.sideA : chartColors.sideB;
     const opts = athleteId ? (activePeriodOptions.get(athleteId) || []) : [];
     const periodLabel = mode === 'weeks' ? (t('Week') || 'Week') : (t('Month') || 'Month');
     return (
-      <Paper withBorder p="md" radius="md">
+      <Paper withBorder p="md" radius="md" style={{ borderLeft: `4px solid ${sideColor}` }}>
         <Stack gap="xs">
-          <Text fw={600}>{title}</Text>
+          <Group gap="xs">
+            <Box style={{ width: 10, height: 10, borderRadius: '50%', background: sideColor, flexShrink: 0 }} />
+            <Text fw={600}>{title}</Text>
+          </Group>
           {!isAthlete && <Select label={t('Athlete') || 'Athlete'} data={athleteOptions} value={athleteId} onChange={setAthleteId} searchable />}
           <Select label={periodLabel} data={opts} value={periodKey} onChange={setPeriodKey} disabled={!athleteId || opts.length === 0} />
         </Stack>
       </Paper>
     );
   };
-
-  const chartColors = { sideA: '#E95A12', sideB: '#6E4BF3' };
 
   return (
     <Box style={{ background: ui.bg, minHeight: '100vh' }}>
@@ -676,14 +681,19 @@ export const ComparisonPage = () => {
           )}
 
           {/* ── status messages ── */}
-          {detailsLoading && <Text c="dimmed">{t('Loading comparison data...') || 'Loading comparison data...'}</Text>}
+          {detailsLoading && (
+            <Stack gap="sm">
+              <Skeleton height={60} radius="md" />
+              <Skeleton height={200} radius="md" />
+            </Stack>
+          )}
           {!detailsLoading && selectionMissing && (
             <Alert icon={<IconInfoCircle size={16} />} color="yellow" variant="light">
               {t('Select both sides to compare.') || 'Select both sides to compare.'}
             </Alert>
           )}
           {!detailsLoading && !selectionMissing && idsToLoad.length === 0 && (
-            <Alert icon={<IconInfoCircle size={16} />} color="yellow" variant="light">
+            <Alert icon={<IconCalendarStats size={16} />} color="blue" variant="light">
               {t('No training data exists for the current selection.') || 'No training data exists for the current selection.'}
             </Alert>
           )}
@@ -770,10 +780,10 @@ export const ComparisonPage = () => {
               {mode !== 'workouts' && (
                 <Grid gutter="md">
                   <Grid.Col span={{ base: 12, md: 6 }}>
-                    <PeriodDetailCard label={leftLabel} agg={leftAgg} details={leftDetails} athlete={leftAthleteId ? athleteMap.get(Number(leftAthleteId)) : undefined} t={t} />
+                    <PeriodDetailCard label={leftLabel} agg={leftAgg} details={leftDetails} athlete={leftAthleteId ? athleteMap.get(Number(leftAthleteId)) : undefined} sideColor={chartColors.sideA} t={t} />
                   </Grid.Col>
                   <Grid.Col span={{ base: 12, md: 6 }}>
-                    <PeriodDetailCard label={rightLabel} agg={rightAgg} details={rightDetails} athlete={rightAthleteId ? athleteMap.get(Number(rightAthleteId)) : undefined} t={t} />
+                    <PeriodDetailCard label={rightLabel} agg={rightAgg} details={rightDetails} athlete={rightAthleteId ? athleteMap.get(Number(rightAthleteId)) : undefined} sideColor={chartColors.sideB} t={t} />
                   </Grid.Col>
                 </Grid>
               )}
@@ -1028,16 +1038,16 @@ const WorkoutDetailCard = ({ detail, label, athleteMap, isDark, t, navigate }: {
   );
 };
 
-const PeriodDetailCard = ({ label, agg, details, athlete, t }: {
+const PeriodDetailCard = ({ label, agg, details, athlete, sideColor, t }: {
   label: string; agg: Aggregate; details: ActivityDetail[];
-  athlete?: AthleteLike; t: (v: string) => string;
+  athlete?: AthleteLike; sideColor?: string; t: (v: string) => string;
 }) => {
   const runLead = dominantZone(agg.runningZones);
   const cycLead = dominantZone(agg.cyclingZones);
   const weekMax = Math.max(...Object.values(agg.weekdayMinutes), 0);
 
   return (
-    <Paper withBorder p="md" radius="md">
+    <Paper withBorder p="md" radius="md" style={sideColor ? { borderLeft: `4px solid ${sideColor}` } : undefined}>
       <Stack gap="sm">
         <Group justify="space-between" align="flex-start">
           <Box>
