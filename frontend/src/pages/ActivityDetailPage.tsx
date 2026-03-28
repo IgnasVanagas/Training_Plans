@@ -1227,6 +1227,18 @@ export const ActivityDetailPage = () => {
                     <Group>
                         <ActionIcon variant="subtle" onClick={handleBack} radius="md" color="gray"><IconArrowLeft size={18} /></ActionIcon>
                         <Title order={4} c={ui.textMain}>{activity.filename}</Title>
+                        <Text size="sm" c={ui.textDim} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <IconClock size={14} />
+                            {(() => {
+                                const raw = streamPoints[0]?.timestamp || activity.created_at;
+                                if (!raw) return '';
+                                const dt = new Date(raw);
+                                if (Number.isNaN(dt.getTime())) return '';
+                                const tz = me?.profile?.timezone || undefined;
+                                return dt.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: tz })
+                                    + ' ' + dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: tz });
+                            })()}
+                        </Text>
                         <Badge color={activity.sport === 'running' ? 'green' : 'blue'} variant="light">{activity.sport || 'activity'}</Badge>
                         {activity.is_deleted && <Badge color="red" variant="light">Deleted</Badge>}
                         {activity.strava_activity_url && (

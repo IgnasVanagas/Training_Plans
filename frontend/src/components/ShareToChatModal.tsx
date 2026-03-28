@@ -1,7 +1,8 @@
 import { Button, Group, Modal, Select, Stack, Text, Textarea } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   listOrgMembers,
   postOrgDirectMessage,
@@ -16,6 +17,11 @@ type OrgMembership = {
   status: string;
 };
 
+type MeData = {
+  role?: string;
+  organization_memberships?: OrgMembership[];
+};
+
 type Props = {
   opened: boolean;
   onClose: () => void;
@@ -24,27 +30,29 @@ type Props = {
 
 const ShareToChatModal = ({ opened, onClose, shareText }: Props) => {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [message, setMessage] = useState(shareText);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [selectedThread, setSelectedThread] = useState<string | null>("group");
+  const [selectedThread, setSelectedThread] = useState<string>("group");
 
-  // Reset when opened
-  useMemo(() => {
+  // Sync message when modal opens or shareText changes
+  useEffect(() => {
     if (opened) setMessage(shareText);
   }, [opened, shareText]);
 
-  const { data: me } = useQuery({
+  const { data: me } = useQuery<MeData>({
     queryKey: ["me"],
-    queryFn: () => api.get<{ organization_memberships?: OrgMembership[] }>("/users/me").then((r) => r.data),
+    queryFn: () => api.get<MeData>("/users/me").then((r) => r.data),
   });
 
+  // Filter the same way DashboardOrganizationsTab does: active + matching role
   const activeMemberships = useMemo(
     () =>
       (me?.organization_memberships || []).filter(
-        (m) => m.status === "active" && m.organization,
+        (m) => m.status === "active" && m.organization && (!me?.role || m.role === me.role),
       ),
-    [me?.organization_memberships],
+    [me],
   );
 
   const orgOptions = activeMemberships.map((m) => ({
@@ -73,26 +81,30 @@ const ShareToChatModal = ({ opened, onClose, shareText }: Props) => {
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      if (!resolvedOrgId || !message.trim()) return;
+      if (!resolvedOrgId) throw new Error("No organization selected");
+      if (!message.trim()) throw new Error("Message cannot be empty");
       const orgId = Number(resolvedOrgId);
-      const thread = selectedThread ?? "group";
-      if (thread === "group") {
+      if (selectedThread === "group") {
         await postOrganizationGroupMessage(orgId, message.trim());
       } else {
-        const userId = Number(thread.split(":")[1]);
+        const userId = Number(selectedThread.split(":")[1]);
         await postOrgDirectMessage(orgId, userId, message.trim());
       }
     },
     onSuccess: () => {
-      notifications.show({ color: "green", title: t("Shared"), message: t("Message sent to chat.") });
       queryClient.invalidateQueries({ queryKey: ["org-group-chat"] });
       queryClient.invalidateQueries({ queryKey: ["org-direct-chat"] });
       onClose();
+      notifications.show({ color: "green", title: t("Shared"), message: t("Message sent to chat.") });
+      // Navigate to the organizations tab so the user can see the message
+      navigate("/dashboard", { state: { activeTab: "organizations" } });
     },
     onError: () => {
       notifications.show({ color: "red", title: t("Failed"), message: t("Could not send message.") });
     },
   });
+
+  if (!opened) return null;
 
   return (
     <Modal
@@ -114,11 +126,14 @@ const ShareToChatModal = ({ opened, onClose, shareText }: Props) => {
             size="sm"
           />
         )}
+        {orgOptions.length === 0 && (
+          <Text size="sm" c="dimmed">{t("You are not a member of any organization.")}</Text>
+        )}
         <Select
           label={t("Send to")}
           data={threadOptions}
-          value={selectedThread ?? "group"}
-          onChange={setSelectedThread}
+          value={selectedThread}
+          onChange={(v) => setSelectedThread(v ?? "group")}
           size="sm"
         />
         <Textarea
@@ -136,7 +151,7 @@ const ShareToChatModal = ({ opened, onClose, shareText }: Props) => {
             size="sm"
             color="indigo"
             loading={sendMutation.isPending}
-            disabled={!message.trim() || !resolvedOrgId}
+            disabled={!message.trim() || !resolvedOrgId || orgOptions.length === 0}
             onClick={() => sendMutation.mutate()}
           >
             {t("Send")}
