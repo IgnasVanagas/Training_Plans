@@ -1,9 +1,9 @@
-import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput, Tooltip as MantineTooltip } from "@mantine/core";
+import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, RangeSlider, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput, Tooltip as MantineTooltip } from "@mantine/core";
 import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink, IconShare } from "@tabler/icons-react";
 import ShareToChatModal from "../components/ShareToChatModal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Brush, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell } from 'recharts';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
@@ -415,10 +415,32 @@ export const ActivityDetailPage = () => {
         });
     }, [activity, streamPoints, me?.profile?.preferred_units]);
 
+    // --- Range slider for chart zoom (replaces laggy Brush) ---
+    const [chartRange, setChartRange] = useState<[number, number]>([0, 100]);
+    const visibleChartData = useMemo(() => {
+        if (chartData.length === 0) return [];
+        const startIdx = Math.round((chartRange[0] / 100) * (chartData.length - 1));
+        const endIdx = Math.round((chartRange[1] / 100) * (chartData.length - 1));
+        return chartData.slice(startIdx, endIdx + 1);
+    }, [chartData, chartRange]);
+    // Reset range when activity changes
+    useEffect(() => { setChartRange([0, 100]); }, [activity?.id]);
+    const rangeLabel = useMemo(() => {
+        if (chartData.length === 0) return ['0', '0'];
+        const startIdx = Math.round((chartRange[0] / 100) * (chartData.length - 1));
+        const endIdx = Math.round((chartRange[1] / 100) * (chartData.length - 1));
+        const unitLabel = me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km';
+        const fmt = (idx: number) => {
+            const d = chartData[idx]?.distance_km;
+            return d != null ? `${Number(d).toFixed(1)} ${unitLabel}` : '';
+        };
+        return [fmt(startIdx), fmt(endIdx)];
+    }, [chartData, chartRange, me?.profile?.preferred_units]);
+
     const hoveredPoint = useMemo(() => {
         if (hoveredPointIndex === null) return null;
-        return chartData[hoveredPointIndex] || null;
-    }, [chartData, hoveredPointIndex]);
+        return visibleChartData[hoveredPointIndex] || null;
+    }, [visibleChartData, hoveredPointIndex]);
 
     /* Fullscreen map: only points with GPS coords, for elevation graph + marker */
     const gpsChartData = useMemo(() => {
@@ -742,6 +764,7 @@ export const ActivityDetailPage = () => {
         });
     }, [activity, streamPoints, me?.profile?.max_hr, me?.profile]);
 
+    const POWER_CURVE_KEY_LABELS = new Set(['1s','5s','10s','30s','1min','5min','10min','20min','60min']);
     const powerCurveData = useMemo(() => {
         if (!activity?.power_curve) return [];
         return Object.entries(activity.power_curve).map(([label, watts]) => ({
@@ -1601,7 +1624,7 @@ export const ActivityDetailPage = () => {
                                         {focusSeries.heart_rate && (
                                             <Box h={160}>
                                                 <ResponsiveContainer>
-                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                         <defs>
                                                             <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
                                                                 <stop offset="5%" stopColor="#fa5252" stopOpacity={0.3} />
@@ -1620,7 +1643,7 @@ export const ActivityDetailPage = () => {
                                         {focusSeries.pace && (
                                             <Box h={160}>
                                                 <ResponsiveContainer>
-                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                         <defs>
                                                             <linearGradient id="paceGrad" x1="0" y1="0" x2="0" y2="1">
                                                                 <stop offset="5%" stopColor="#228be6" stopOpacity={0.3} />
@@ -1639,7 +1662,7 @@ export const ActivityDetailPage = () => {
                                         {focusSeries.power && (
                                             <Box h={160}>
                                                 <ResponsiveContainer>
-                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                         <defs>
                                                             <linearGradient id="powerGrad" x1="0" y1="0" x2="0" y2="1">
                                                                 <stop offset="5%" stopColor="#fd7e14" stopOpacity={0.3} />
@@ -1658,7 +1681,7 @@ export const ActivityDetailPage = () => {
                                         {focusSeries.cadence && (
                                             <Box h={120}>
                                                 <ResponsiveContainer>
-                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                         <defs>
                                                             <linearGradient id="cadenceGrad" x1="0" y1="0" x2="0" y2="1">
                                                                 <stop offset="5%" stopColor="#40c057" stopOpacity={0.3} />
@@ -1677,7 +1700,7 @@ export const ActivityDetailPage = () => {
                                         {focusSeries.altitude && (
                                             <Box h={120}>
                                                 <ResponsiveContainer>
-                                                    <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
+                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                         <defs>
                                                             <linearGradient id="altGrad" x1="0" y1="0" x2="0" y2="1">
                                                                 <stop offset="5%" stopColor="#868e96" stopOpacity={0.3} />
@@ -1693,15 +1716,23 @@ export const ActivityDetailPage = () => {
                                                 </ResponsiveContainer>
                                             </Box>
                                         )}
-                                        <Box h={60}>
-                                            <ResponsiveContainer>
-                                                <AreaChart data={chartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                    <XAxis dataKey="distance_km" tick={{ fontSize: 10 }} tickFormatter={(v) => `${Number(v).toFixed(1)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`} />
-                                                    <YAxis hide />
-                                                    <Brush dataKey="distance_km" height={40} stroke={ui.border} />
-                                                    <Area type="monotone" dataKey="heart_rate" stroke="transparent" fill="transparent" isAnimationActive={false} />
-                                                </AreaChart>
-                                            </ResponsiveContainer>
+                                        <Box px="xs">
+                                            <Group justify="space-between" mb={4}>
+                                                <Text size="xs" c={ui.textDim}>{rangeLabel[0]}</Text>
+                                                <Text size="xs" c={ui.textDim}>{rangeLabel[1]}</Text>
+                                            </Group>
+                                            <RangeSlider
+                                                min={0}
+                                                max={100}
+                                                step={0.5}
+                                                value={chartRange}
+                                                onChange={setChartRange}
+                                                size="sm"
+                                                thumbSize={16}
+                                                minRange={1}
+                                                label={null}
+                                                styles={{ thumb: { borderWidth: 2 }, track: { height: 6 } }}
+                                            />
                                         </Box>
                                     </Stack>
                                 ) : (
@@ -1757,10 +1788,10 @@ export const ActivityDetailPage = () => {
                                             <ResponsiveContainer>
                                                 <LineChart data={powerCurveData}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                                    <XAxis dataKey="label" />
+                                                    <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} tickFormatter={(v: string) => POWER_CURVE_KEY_LABELS.has(v) ? v : ''} />
                                                     <YAxis />
                                                     <Tooltip {...sharedTooltipProps} />
-                                                    <Line type="monotone" dataKey="watts" stroke="#fd7e14" strokeWidth={3} dot={true} name="Max Power" />
+                                                    <Line type="monotone" dataKey="watts" stroke="#fd7e14" strokeWidth={2} dot={false} name="Max Power" />
                                                 </LineChart>
                                             </ResponsiveContainer>
                                         </Box>

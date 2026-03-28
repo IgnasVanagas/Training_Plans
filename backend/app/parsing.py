@@ -60,14 +60,12 @@ def calculate_curve(df, column):
     
     curve = {}
     windows = {
-        '1s': 1,
-        '5s': 5,
-        '30s': 30,
-        '1min': 60,
-        '5min': 300,
-        '10min': 600,
-        '20min': 1200,
-        '60min': 3600
+        '1s': 1, '2s': 2, '3s': 3, '4s': 4, '5s': 5,
+        '6s': 6, '7s': 7, '8s': 8, '9s': 9, '10s': 10,
+        '15s': 15, '20s': 20, '30s': 30, '45s': 45,
+        '1min': 60, '2min': 120, '3min': 180, '4min': 240, '5min': 300,
+        '6min': 360, '7min': 420, '8min': 480, '9min': 540, '10min': 600,
+        '15min': 900, '20min': 1200, '30min': 1800, '45min': 2700, '60min': 3600,
     }
     
     for label, seconds in windows.items():

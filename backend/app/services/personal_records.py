@@ -24,7 +24,7 @@ def _safe_float(value, default: float = 0.0) -> float:
 # Cycling: power-based time windows (1s to 60min matching Strava's set)
 # ---------------------------------------------------------------------------
 CYCLING_EFFORT_WINDOWS = {
-    "1s": 1, "5s": 5, "15s": 15, "30s": 30,
+    "1s": 1, "5s": 5, "10s": 10, "15s": 15, "30s": 30,
     "1min": 60, "2min": 120, "3min": 180, "5min": 300,
     "8min": 480, "10min": 600, "15min": 900, "20min": 1200,
     "30min": 1800, "45min": 2700, "60min": 3600, "120min": 7200,
