@@ -429,6 +429,7 @@ class ActivityDetail(ActivityOut):
     avg_cadence: Optional[float] = None
     total_elevation_gain: Optional[float] = None
     total_calories: Optional[float] = None
+    moving_time: Optional[float] = None
     planned_comparison: Optional[Any] = None
     ftp_at_time: Optional[float] = None
     weight_at_time: Optional[float] = None

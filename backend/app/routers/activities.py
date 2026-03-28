@@ -1833,7 +1833,8 @@ async def reparse_activity(
             "max_cadence": summary.get("max_cadence"),
             "avg_cadence": summary.get("avg_cadence"),
             "total_elevation_gain": summary.get("total_elevation_gain"),
-            "total_calories": summary.get("total_calories")
+            "total_calories": summary.get("total_calories"),
+            "total_timer_time": summary.get("total_timer_time"),
         }
     }
     activity.streams = composite_streams_data
@@ -2101,7 +2102,8 @@ async def upload_activity(
             "max_cadence": summary.get("max_cadence"),
             "avg_cadence": summary.get("avg_cadence"),
             "total_elevation_gain": summary.get("total_elevation_gain"),
-            "total_calories": summary.get("total_calories")
+            "total_calories": summary.get("total_calories"),
+            "total_timer_time": summary.get("total_timer_time"),
         }
     }
     
@@ -2952,6 +2954,23 @@ async def get_activity(
         if _meta.get("source_provider") == "strava" and _meta.get("source_activity_id"):
             strava_activity_url = f"https://www.strava.com/activities/{_meta['source_activity_id']}"
 
+    # Compute moving time (time athlete was actually moving, excluding pauses)
+    moving_time: float | None = None
+    # 1. FIT total_timer_time or Strava moving_time stored in stats
+    if isinstance(stats, dict) and stats.get("total_timer_time"):
+        moving_time = float(stats["total_timer_time"])
+    # 2. Compute from stream data (speed > 0.5 m/s threshold) as fallback
+    if moving_time is None and streams_list and activity.duration and activity.duration > 0:
+        total_pts = len(streams_list)
+        if total_pts > 0:
+            moving_pts = sum(
+                1 for p in streams_list
+                if isinstance(p, dict) and float(p.get("speed") or 0) > 0.5
+            )
+            if moving_pts > 0:
+                secs_per_sample = activity.duration / total_pts
+                moving_time = round(moving_pts * secs_per_sample)
+
     activity_response = ActivityDetail(
         id=activity.id,
         athlete_id=activity.athlete_id,
@@ -2979,6 +2998,7 @@ async def get_activity(
         avg_cadence=stats.get("avg_cadence"),
         total_elevation_gain=stats.get("total_elevation_gain"),
         total_calories=stats.get("total_calories"),
+        moving_time=moving_time,
         planned_comparison=planned_comparison,
         is_deleted=_is_activity_deleted(activity),
         aerobic_load=aerobic_load,

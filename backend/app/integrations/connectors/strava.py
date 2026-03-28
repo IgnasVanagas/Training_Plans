@@ -539,6 +539,7 @@ class StravaConnector(ProviderConnector):
             "avg_cadence": detail.get("average_cadence"),
             "total_elevation_gain": detail.get("total_elevation_gain"),
             "total_calories": detail.get("calories"),
+            "total_timer_time": detail.get("moving_time"),
         }
 
         laps = self._normalize_laps(laps_payload)

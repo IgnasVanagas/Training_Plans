@@ -490,6 +490,7 @@ def parse_fit_decode(file_path):
                    session_stats['avg_speed'] = frame.get_value('avg_speed', fallback=0)
                    session_stats['total_distance'] = frame.get_value('total_distance', fallback=0)
                    session_stats['total_elapsed_time'] = frame.get_value('total_elapsed_time', fallback=0)
+                   session_stats['total_timer_time'] = frame.get_value('total_timer_time', fallback=0)
                    session_stats['avg_power'] = frame.get_value('avg_power', fallback=0)
                    session_stats['avg_heart_rate'] = frame.get_value('avg_heart_rate', fallback=0)
                            
@@ -587,13 +588,14 @@ def parse_fit_decode(file_path):
         "avg_cadence": avg_cadence,
         "max_cadence": max_cadence,
         "total_elevation_gain": total_ascent,
-        "total_calories": safe_float(session_stats.get('total_calories', 0))
+        "total_calories": safe_float(session_stats.get('total_calories', 0)),
+        "total_timer_time": safe_float(session_stats.get('total_timer_time')) or None,
     }
-    
+
     power_curve = calculate_power_curve(df)
     if sport == 'running' and 'power' in df.columns:
          p_mean = df['power'].fillna(0).mean()
-         if p_mean < 10: 
+         if p_mean < 10:
              power_curve = None
              
     hr_zones = calculate_hr_zones(df)
@@ -714,6 +716,7 @@ def parse_gpx(file_path):
         "max_cadence": safe_float(df['cadence'].max()) if 'cadence' in df.columns else 0,
         "total_elevation_gain": safe_float(total_ascent),
         "total_calories": 0,
+        "total_timer_time": None,  # GPX has no timer; moving_time computed in endpoint from streams
     }
 
     power_curve = calculate_power_curve(df)

@@ -35,6 +35,7 @@ type ActivityDetail = {
   sport: string;
   distance: number;
   duration: number;
+  moving_time?: number | null;
   avg_speed: number;
   average_hr: number;
   average_watts: number;
@@ -310,7 +311,9 @@ export const ActivityDetailPage = () => {
             await api.post(`/activities/${id}/reparse`);
         },
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['activity', id] });
+            try { window.localStorage.removeItem(`activity:${id}`); } catch {}
+            queryClient.removeQueries({ queryKey: ['activity', id] });
+            queryClient.refetchQueries({ queryKey: ['activity', id] });
             queryClient.invalidateQueries({ queryKey: ['activities'] });
         }
     });
@@ -337,14 +340,6 @@ export const ActivityDetailPage = () => {
         if (Array.isArray(activity.streams?.data)) return activity.streams.data;
         return [];
     }, [activity]);
-
-    const movingTimeSec = useMemo(() => {
-        if (!streamPoints.length || !activity?.duration) return null;
-        const movingPoints = streamPoints.filter((p: any) => (p?.speed || 0) > 0.5);
-        if (!movingPoints.length) return null;
-        const secsPerSample = activity.duration / streamPoints.length;
-        return Math.round(movingPoints.length * secsPerSample);
-    }, [streamPoints, activity?.duration]);
 
     const { data: prData } = useQuery({
         queryKey: ['personal-records-cycling', activity?.athlete_id],
@@ -1350,7 +1345,7 @@ export const ActivityDetailPage = () => {
                                 <IconClock size={20} />
                             </ThemeIcon>
                             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Moving Time</Text>
-                            <Text size="xl" fw={800} c={ui.textMain}>{formatDuration(movingTimeSec ?? activity.duration)}</Text>
+                            <Text size="xl" fw={800} c={ui.textMain}>{formatDuration(activity.moving_time ?? activity.duration)}</Text>
                         </Card>
                          <Card
                             withBorder
