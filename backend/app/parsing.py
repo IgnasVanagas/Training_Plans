@@ -59,14 +59,9 @@ def calculate_curve(df, column):
     series = df[column].fillna(0)
     
     curve = {}
-    windows = {
-        '1s': 1, '2s': 2, '3s': 3, '4s': 4, '5s': 5,
-        '6s': 6, '7s': 7, '8s': 8, '9s': 9, '10s': 10,
-        '15s': 15, '20s': 20, '30s': 30, '45s': 45,
-        '1min': 60, '2min': 120, '3min': 180, '4min': 240, '5min': 300,
-        '6min': 360, '7min': 420, '8min': 480, '9min': 540, '10min': 600,
-        '15min': 900, '20min': 1200, '30min': 1800, '45min': 2700, '60min': 3600,
-    }
+    # Every second from 1 to 59, then every minute from 1 to 120
+    windows = {f'{s}s': s for s in range(1, 60)}
+    windows.update({f'{m}min': m * 60 for m in range(1, 121)})
     
     for label, seconds in windows.items():
         if len(series) >= seconds:

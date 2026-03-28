@@ -3,7 +3,7 @@ import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, I
 import ShareToChatModal from "../components/ShareToChatModal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
@@ -16,6 +16,7 @@ import { useI18n } from "../i18n/I18nProvider";
 import { readSnapshot, writeSnapshot } from "../utils/localSnapshot";
 import { CommentsPanel } from "../components/activityDetail/CommentsPanel";
 import { SessionFeedbackPanel } from "../components/activityDetail/SessionFeedbackPanel";
+import { getPersonalRecords } from "../api/activities";
 
 // Fix Leaflet icon issue
 // @ts-ignore
@@ -336,6 +337,21 @@ export const ActivityDetailPage = () => {
         if (Array.isArray(activity.streams?.data)) return activity.streams.data;
         return [];
     }, [activity]);
+
+    const movingTimeSec = useMemo(() => {
+        if (!streamPoints.length || !activity?.duration) return null;
+        const movingPoints = streamPoints.filter((p: any) => (p?.speed || 0) > 0.5);
+        if (!movingPoints.length) return null;
+        const secsPerSample = activity.duration / streamPoints.length;
+        return Math.round(movingPoints.length * secsPerSample);
+    }, [streamPoints, activity?.duration]);
+
+    const { data: prData } = useQuery({
+        queryKey: ['personal-records-cycling', activity?.athlete_id],
+        queryFn: () => getPersonalRecords('cycling', me?.id !== activity?.athlete_id ? activity?.athlete_id : null),
+        enabled: !!activity?.power_curve && ['cycl', 'bike', 'ride'].some(w => (activity?.sport || '').toLowerCase().includes(w)),
+        staleTime: 5 * 60 * 1000,
+    });
 
     const rankedBestEfforts = useMemo(() => {
         const allEfforts = activity?.best_efforts;
@@ -764,14 +780,31 @@ export const ActivityDetailPage = () => {
         });
     }, [activity, streamPoints, me?.profile?.max_hr, me?.profile]);
 
-    const POWER_CURVE_KEY_LABELS = new Set(['1s','5s','10s','30s','1min','5min','10min','20min','60min']);
+    const POWER_CURVE_KEY_LABELS = new Set(['1s','5s','10s','30s','1min','5min','10min','20min','30min','60min','90min','120min']);
+    const _pcLabelToSec = (label: string): number => {
+        const m = label.match(/^(\d+)(s|min)$/);
+        if (!m) return 0;
+        return Number(m[1]) * (m[2] === 'min' ? 60 : 1);
+    };
+    const prPowerMap = useMemo(() => {
+        if (!prData?.power) return {} as Record<string, number>;
+        const out: Record<string, number> = {};
+        for (const [w, entries] of Object.entries(prData.power as Record<string, Array<{value: number}>>)) {
+            const best = entries[0]?.value;
+            if (best) out[w] = best;
+        }
+        return out;
+    }, [prData]);
     const powerCurveData = useMemo(() => {
         if (!activity?.power_curve) return [];
-        return Object.entries(activity.power_curve).map(([label, watts]) => ({
-            label,
-            watts
-        }));
-    }, [activity]);
+        return Object.entries(activity.power_curve)
+            .map(([label, watts]) => ({
+                label,
+                watts,
+                prWatts: prPowerMap[label] ?? null,
+            }))
+            .sort((a, b) => _pcLabelToSec(a.label) - _pcLabelToSec(b.label));
+    }, [activity, prPowerMap]);
 
     const runningPaceZoneData = useMemo(() => {
         const sportName = (activity?.sport || '').toLowerCase();
@@ -1316,8 +1349,8 @@ export const ActivityDetailPage = () => {
                             <ThemeIcon size="lg" radius="md" variant="light" color="yellow" mb="xs">
                                 <IconClock size={20} />
                             </ThemeIcon>
-                            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Duration</Text>
-                            <Text size="xl" fw={800} c={ui.textMain}>{formatDuration(activity.duration)}</Text>
+                            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Moving Time</Text>
+                            <Text size="xl" fw={800} c={ui.textMain}>{formatDuration(movingTimeSec ?? activity.duration)}</Text>
                         </Card>
                          <Card
                             withBorder
@@ -1370,6 +1403,10 @@ export const ActivityDetailPage = () => {
                                         <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
                                             <Title order={5} mb="md" c={ui.textMain}>Detailed Stats</Title>
                                             <Stack gap="xs">
+                                                 <Group justify="space-between">
+                                                    <Text size="sm" c={ui.textDim}>Total Time</Text>
+                                                    <Text size="sm" fw={700} c={ui.textMain}>{formatDuration(activity.duration)}</Text>
+                                                 </Group>
                                                  <Group justify="space-between">
                                                     <Text size="sm" c={ui.textDim}>{activity.sport === 'running' ? 'Avg Pace' : 'Avg Speed'}</Text>
                                                     <Text size="sm" fw={700} c={ui.textMain}>
@@ -1790,8 +1827,16 @@ export const ActivityDetailPage = () => {
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                     <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} tickFormatter={(v: string) => POWER_CURVE_KEY_LABELS.has(v) ? v : ''} />
                                                     <YAxis />
-                                                    <Tooltip {...sharedTooltipProps} />
-                                                    <Line type="monotone" dataKey="watts" stroke="#fd7e14" strokeWidth={2} dot={false} name="Max Power" />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: any, name: string) => [val != null ? `${val} W` : '-', name]} />
+                                                    <Line type="monotone" dataKey="watts" stroke="#fd7e14" strokeWidth={2} dot={false} name="This Activity" />
+                                                    {Object.keys(prPowerMap).length > 0 && (
+                                                        <Line type="monotone" dataKey="prWatts" stroke="#228be6" strokeWidth={1.5} dot={false} name="All-time Best" strokeDasharray="4 2" connectNulls />
+                                                    )}
+                                                    {Object.entries(activity.personal_records ?? {}).map(([key, rank]) =>
+                                                        rank === 1 && POWER_CURVE_KEY_LABELS.has(key) ? (
+                                                            <ReferenceLine key={key} x={key} stroke="#f0a500" strokeOpacity={0.7} strokeDasharray="3 3" label={{ value: 'PR', fill: '#f0a500', fontSize: 9, position: 'insideTopRight' }} />
+                                                        ) : null
+                                                    )}
                                                 </LineChart>
                                             </ResponsiveContainer>
                                         </Box>
