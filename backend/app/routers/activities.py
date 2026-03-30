@@ -2937,6 +2937,31 @@ async def get_activity(
     except Exception:
         logger.warning("Failed to compute splits for activity %s", activity.id, exc_info=True)
 
+    # Lazy-expand sparse power curves (e.g. Strava activities stored with only 8 windows)
+    try:
+        if power_curve is not None and len(power_curve) < 50 and streams_list:
+            pv = [float(p["power"]) for p in streams_list if isinstance(p.get("power"), (int, float))]
+            if pv:
+                _pc_windows: dict[str, int] = {f'{s}s': s for s in range(1, 60)}
+                _pc_windows.update({f'{m}min': m * 60 for m in range(1, 121)})
+                _prefix = [0.0]
+                for _v in pv:
+                    _prefix.append(_prefix[-1] + _v)
+                _n = len(pv)
+                _pc: dict[str, int] = {}
+                for _lbl, _w in _pc_windows.items():
+                    if _n < _w:
+                        _pc[_lbl] = 0
+                    else:
+                        _best = max((_prefix[i + _w] - _prefix[i]) / _w for i in range(_n - _w + 1))
+                        _pc[_lbl] = int(_best)
+                power_curve = _pc
+                if isinstance(stored_data, dict):
+                    stored_data["power_curve"] = power_curve
+                    needs_persist = True
+    except Exception:
+        logger.warning("Failed to expand power curve for activity %s", activity.id, exc_info=True)
+
     if needs_persist and isinstance(stored_data, dict):
         try:
             activity.streams = stored_data
@@ -2965,7 +2990,14 @@ async def get_activity(
     # 1. FIT total_timer_time or Strava moving_time stored in stats
     if isinstance(stats, dict) and stats.get("total_timer_time"):
         moving_time = float(stats["total_timer_time"])
-    # 2. Compute from stream data (speed > 0.5 m/s threshold) as fallback
+    # 2. Raw Strava moving_time from provider_payload (when stats.total_timer_time is missing)
+    if moving_time is None and isinstance(stored_data, dict):
+        pp = stored_data.get("provider_payload")
+        if isinstance(pp, dict):
+            raw_mt = (pp.get("detail") or {}).get("moving_time") or (pp.get("summary") or {}).get("moving_time")
+            if raw_mt:
+                moving_time = float(raw_mt)
+    # 3. Compute from stream data (speed > 0.5 m/s threshold) as last resort
     if moving_time is None and streams_list and activity.duration and activity.duration > 0:
         total_pts = len(streams_list)
         if total_pts > 0:

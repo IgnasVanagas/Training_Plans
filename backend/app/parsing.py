@@ -85,12 +85,14 @@ def calculate_pace_curve(df):
     # Frontend handles conversion to Pace (min/km)
     return calculate_curve(df, 'speed')
 
-def calculate_hr_zones(df, max_hr=190): # Default max_hr if not in profile, ideally pass user profile
+def calculate_hr_zones(df, max_hr=None):
     if 'heart_rate' not in df.columns or df['heart_rate'].isnull().all():
         return None
-        
+
     hr = df['heart_rate'].dropna()
-    
+    if not max_hr or max_hr <= 0:
+        max_hr = float(hr.max()) if len(hr) > 0 else 190.0
+
     # Simple 5 zone model based on Max HR
     # Z1: <60%, Z2: 60-70%, Z3: 70-80%, Z4: 80-90%, Z5: >90%
     zones = {

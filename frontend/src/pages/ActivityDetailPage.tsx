@@ -769,9 +769,13 @@ export const ActivityDetailPage = () => {
             zoneSeconds[`Z${zone}`] += Math.round(activity.duration);
         }
 
+        const ZONE_THRESHOLDS = [0, 0.6, 0.7, 0.8, 0.9];
         return Array.from({ length: 5 }, (_, idx) => {
             const zone = `Z${idx + 1}`;
-            return { zone, seconds: zoneSeconds[zone] || 0 };
+            const low = Math.round(maxHr * ZONE_THRESHOLDS[idx]);
+            const high = idx === 4 ? Math.round(maxHr) : Math.round(maxHr * ZONE_THRESHOLDS[idx + 1]);
+            const range = idx === 0 ? `< ${high} bpm` : idx === 4 ? `≥ ${low} bpm` : `${low}–${high} bpm`;
+            return { zone, seconds: zoneSeconds[zone] || 0, range };
         });
     }, [activity, streamPoints, me?.profile?.max_hr, me?.profile]);
 
@@ -1806,7 +1810,7 @@ export const ActivityDetailPage = () => {
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                                     <XAxis dataKey="zone" />
                                                     <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
-                                                    <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: number, _: string, item: any) => [`${formatZoneDuration(Number(val) || 0)}  ·  ${item?.payload?.range || ''}`, 'Time in Zone']} />
                                                     <Bar dataKey="seconds" name="Time in Zone" onClick={(entry: any) => entry?.zone && openZoneExplanation('hr', entry.zone)}>
                                                         {hrZoneData.map((_entry, index) => (
                                                             <Cell key={`hr-cell-${index}`} fill={HR_ZONE_COLORS[index] || '#fa5252'} />
@@ -1816,7 +1820,7 @@ export const ActivityDetailPage = () => {
                                             </ResponsiveContainer>
                                             <Group mt="sm" gap="xs" wrap="wrap">
                                                 {hrZoneData.map((z, index) => (
-                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('hr', z.zone)} readOnly variant="light" size="xs" styles={{ label: { borderColor: HR_ZONE_COLORS[index] } }}>{z.zone}</Chip>
+                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('hr', z.zone)} readOnly variant="light" size="xs" styles={{ label: { borderColor: HR_ZONE_COLORS[index] } }}>{z.zone}: {z.range}</Chip>
                                                 ))}
                                             </Group>
                                         </Box>

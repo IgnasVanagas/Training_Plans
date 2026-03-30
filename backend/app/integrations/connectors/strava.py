@@ -502,19 +502,9 @@ class StravaConnector(ProviderConnector):
         hr_values = [float(p.get("heart_rate")) for p in points if p.get("heart_rate") is not None]
         power_values = [float(p.get("power")) for p in points if p.get("power") is not None]
 
-        power_curve_raw = self._rolling_curve(
-            power_values,
-            {
-                "1s": 1,
-                "5s": 5,
-                "30s": 30,
-                "1min": 60,
-                "5min": 300,
-                "10min": 600,
-                "20min": 1200,
-                "60min": 3600,
-            },
-        )
+        pc_windows = {f'{s}s': s for s in range(1, 60)}
+        pc_windows.update({f'{m}min': m * 60 for m in range(1, 121)})
+        power_curve_raw = self._rolling_curve(power_values, pc_windows)
         power_curve = {k: int(v) for k, v in power_curve_raw.items()} if power_values else None
 
         pace_curve = self._rolling_curve(
@@ -531,8 +521,9 @@ class StravaConnector(ProviderConnector):
             },
         )
 
+        max_hr_val = float(detail.get("max_heartrate") or (max(hr_values) if hr_values else 190.0))
         stats = {
-            "max_hr": detail.get("max_heartrate") or (max(hr_values) if hr_values else None),
+            "max_hr": max_hr_val,
             "max_speed": detail.get("max_speed"),
             "max_watts": detail.get("max_watts") or (max(power_values) if power_values else None),
             "max_cadence": detail.get("max_cadence"),
@@ -551,7 +542,7 @@ class StravaConnector(ProviderConnector):
         return {
             "data": points,
             "power_curve": power_curve,
-            "hr_zones": self._hr_zones(hr_values) if hr_values else None,
+            "hr_zones": self._hr_zones(hr_values, max_hr=max_hr_val) if hr_values else None,
             "pace_curve": pace_curve if points else None,
             "laps": laps,
             "splits_metric": splits_metric,
