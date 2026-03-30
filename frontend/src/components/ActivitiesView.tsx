@@ -32,6 +32,7 @@ export type Activity = {
     duplicate_of_id?: number | null;
     source_provider?: string | null;
     file_type?: string | null;
+    moving_time?: number | null;
 };
 
 import { useNavigate } from 'react-router-dom';
@@ -306,7 +307,7 @@ export function ActivitiesView({
                         </Group>
                         <Group justify="apart">
                              <Text size="sm" c={ui.textDim}>Duration</Text>
-                                <Text size="sm" fw={700} c={ui.textMain}>{formatDurationHm(act.duration)}</Text>
+                                <Text size="sm" fw={700} c={ui.textMain}>{formatDurationHm(act.moving_time ?? act.duration)}</Text>
                         </Group>
                         {act.average_hr && (
                         <Group justify="apart">

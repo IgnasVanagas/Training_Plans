@@ -2647,6 +2647,11 @@ async def get_activities(
                 except (TypeError, ValueError):
                     pass
 
+        stats = meta.get("stats") if isinstance(meta, dict) else {}
+        moving_time_val: float | None = None
+        if isinstance(stats, dict) and stats.get("total_timer_time"):
+            moving_time_val = float(stats["total_timer_time"])
+
         out.append(
             ActivityOut(
                 id=activity.id,
@@ -2669,6 +2674,7 @@ async def get_activities(
                 notes=notes,
                 duplicate_recordings_count=dup_count_map.get(activity.id, 0) or None,
                 source_provider=meta.get("source_provider"),
+                moving_time=moving_time_val,
             )
         )
     return out

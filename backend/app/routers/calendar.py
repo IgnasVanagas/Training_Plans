@@ -307,6 +307,7 @@ async def get_calendar_events(
     dup_count_map: dict[int, int] = {}
     training_load_map: dict[int, float] = {}
     local_date_map: dict[int, date] = {}
+    moving_time_map: dict[int, float] = {}
     if primary_ids:
         dup_counts_res = await db.execute(
             select(Activity.duplicate_of_id, func.count(Activity.id).label("cnt"))
@@ -332,6 +333,9 @@ async def get_calendar_events(
             total = round(aerobic + anaerobic, 1)
             if total > 0:
                 training_load_map[row.id] = total
+            stats = m.get('stats') if isinstance(m, dict) else {}
+            if isinstance(stats, dict) and stats.get('total_timer_time'):
+                moving_time_map[row.id] = float(stats['total_timer_time'])
             # Resolve local date from provider_payload JSONB paths
             for candidate in (row.summary_local, row.detail_local):
                 if candidate and isinstance(candidate, str):
@@ -430,7 +434,7 @@ async def get_calendar_events(
             date=display_date, 
             title=a.filename or "Activity",
             sport_type=a.sport,
-            duration=((a.duration / 60) if a.duration else 0), 
+            duration=((moving_time_map.get(a.id) or a.duration or 0) / 60),
             distance=(a.distance / 1000) if a.distance else 0, 
             is_planned=False,
             compliance_status=matched_workout.compliance_status if matched_workout else None,

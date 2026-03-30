@@ -1402,6 +1402,12 @@ export const ActivityDetailPage = () => {
                                                     <Text size="sm" c={ui.textDim}>Total Time</Text>
                                                     <Text size="sm" fw={700} c={ui.textMain}>{formatDuration(activity.duration)}</Text>
                                                  </Group>
+                                                 {activity.moving_time && activity.moving_time !== activity.duration && (
+                                                 <Group justify="space-between">
+                                                    <Text size="sm" c={ui.textDim}>Moving Time</Text>
+                                                    <Text size="sm" fw={700} c={ui.textMain}>{formatDuration(activity.moving_time)}</Text>
+                                                 </Group>
+                                                 )}
                                                  <Group justify="space-between">
                                                     <Text size="sm" c={ui.textDim}>{activity.sport === 'running' ? 'Avg Pace' : 'Avg Speed'}</Text>
                                                     <Text size="sm" fw={700} c={ui.textMain}>

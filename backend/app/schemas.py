@@ -397,6 +397,7 @@ class ActivityOut(ActivityBase):
     duplicate_of_id: Optional[int] = None
     duplicate_recordings_count: Optional[int] = None
     source_provider: Optional[str] = None
+    moving_time: Optional[float] = None
 
     class Config:
         from_attributes = True
@@ -429,7 +430,6 @@ class ActivityDetail(ActivityOut):
     avg_cadence: Optional[float] = None
     total_elevation_gain: Optional[float] = None
     total_calories: Optional[float] = None
-    moving_time: Optional[float] = None
     planned_comparison: Optional[Any] = None
     ftp_at_time: Optional[float] = None
     weight_at_time: Optional[float] = None
