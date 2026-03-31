@@ -2563,6 +2563,8 @@ async def get_activities(
 
     # Hide secondary recordings from the list (they are accessible via the primary)
     query = query.where(Activity.duplicate_of_id.is_(None))
+    # Hide deleted activities
+    query = query.where(Activity.is_deleted == False)  # noqa: E712
 
     order_expr = Activity.created_at.desc() if sort_by == "created_at" else Activity.id.desc()
     result = await db.execute(query.order_by(order_expr).limit(limit).offset(offset))
@@ -3204,6 +3206,7 @@ async def delete_activity(
     })
     payload["_meta"] = meta
     activity.streams = payload
+    activity.is_deleted = True
     db.add(activity)
     await db.commit()
 

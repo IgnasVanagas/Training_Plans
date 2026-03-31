@@ -47,8 +47,11 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
     { value: 'cycling', label: t('Cycling') || 'Cycling' },
     { value: 'swimming', label: t('Swimming') || 'Swimming' },
     { value: 'triathlon', label: t('Triathlon') || 'Triathlon' },
+    { value: 'strength_training', label: t('Strength Training') || 'Strength Training' },
     { value: 'other', label: t('Other') || 'Other' },
   ];
+
+  const isStrength = sport === 'strength_training';
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -243,21 +246,25 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
               onChange={(e) => setDurationStr(e.currentTarget.value)}
               required
             />
-            <NumberInput
-              label={`${t('Distance') || 'Distance'} (km)`}
-              value={distance}
-              onChange={setDistance}
-              min={0}
-              decimalScale={2}
-              step={0.1}
-            />
-            <NumberInput
-              label={`${t('Average heart rate') || 'Average heart rate'} (bpm)`}
-              value={avgHr}
-              onChange={setAvgHr}
-              min={20}
-              max={250}
-            />
+            {!isStrength && (
+              <NumberInput
+                label={`${t('Distance') || 'Distance'} (km)`}
+                value={distance}
+                onChange={setDistance}
+                min={0}
+                decimalScale={2}
+                step={0.1}
+              />
+            )}
+            {!isStrength && (
+              <NumberInput
+                label={`${t('Average heart rate') || 'Average heart rate'} (bpm)`}
+                value={avgHr}
+                onChange={setAvgHr}
+                min={20}
+                max={250}
+              />
+            )}
             <NumberInput
               label="RPE"
               value={rpe}

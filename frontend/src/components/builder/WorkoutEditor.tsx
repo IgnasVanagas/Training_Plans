@@ -661,7 +661,7 @@ export const WorkoutEditor = ({
 					<Stack gap="md">
 						<Group align="flex-start" grow wrap="wrap">
 							<Stack gap="sm" style={{ flex: 1, minWidth: 280 }}>
-								<Select label="Training Type" value={sportType?.toLowerCase().includes('run') ? 'Running' : 'Cycling'} data={[{ value: 'Running', label: '🏃 Run' }, { value: 'Cycling', label: '🚴 Ride' }]} onChange={(value) => value && onSportTypeChange?.(value)} />
+								<Select label="Training Type" value={sportType?.toLowerCase().includes('run') ? 'Running' : 'Cycling'} data={[{ value: 'Running', label: '🏃 Run' }, { value: 'Cycling', label: '🚴 Ride' }, { value: 'Strength Training', label: '🏋️ Strength' }]} onChange={(value) => value && onSportTypeChange?.(value)} />
 								<TextInput label="Workout Name" placeholder="Please enter a name" value={workoutName || ''} onChange={(event) => onWorkoutNameChange?.(event.currentTarget.value)} />
 								<Select label="Workout Type" value={intensityType || 'Custom'} data={intensityTypeOptions} onChange={(value) => value && onIntensityTypeChange?.(value)} />
 							</Stack>

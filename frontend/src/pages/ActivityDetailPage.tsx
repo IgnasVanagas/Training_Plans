@@ -290,7 +290,8 @@ export const ActivityDetailPage = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['activities'] });
             queryClient.invalidateQueries({ queryKey: ['calendar'] });
-            queryClient.invalidateQueries({ queryKey: ['activity', id] });
+            queryClient.removeQueries({ queryKey: ['activity', id] });
+            navigate(-1);
         }
     });
 

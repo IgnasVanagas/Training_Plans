@@ -561,7 +561,7 @@ export const DayDetailsModal = ({
                             <Stack gap="sm">
                               <Select
                                 label={t('Sport') || 'Sport'}
-                                data={['Cycling', 'Running']}
+                                data={['Cycling', 'Running', 'Strength Training']}
                                 value={quickWorkout.sport_type}
                                 onChange={(value) => {
                                   if (!value) return;
@@ -651,7 +651,7 @@ export const DayDetailsModal = ({
                             <SimpleGrid cols={2}>
                               <Select
                                 label={t('Sport') || 'Sport'}
-                                data={['Cycling', 'Running']}
+                                data={['Cycling', 'Running', 'Strength Training']}
                                 value={quickWorkout.sport_type}
                                 onChange={(value) => {
                                   if (!value) return;
@@ -660,33 +660,33 @@ export const DayDetailsModal = ({
                                   setQuickWorkout({ ...quickWorkout, sport_type: value, zone: nextZone });
                                 }}
                               />
-                              <NumberInput
-                                label={t('Zone') || 'Zone'}
-                                min={1}
-                                max={quickWorkout.sport_type === 'Running' ? 5 : 7}
-                                value={quickWorkout.zone}
-                                onChange={(value) => {
-                                  const numericValue = typeof value === 'number' ? value : Number(value || 1);
-                                  const zoneMax = quickWorkout.sport_type === 'Running' ? 5 : 7;
-                                  setQuickWorkout({ ...quickWorkout, zone: Math.max(1, Math.min(zoneMax, numericValue)) });
-                                }}
-                              />
+                              {quickWorkout.sport_type !== 'Strength Training' && (
+                                <NumberInput
+                                  label={t('Zone') || 'Zone'}
+                                  min={1}
+                                  max={quickWorkout.sport_type === 'Running' ? 5 : 7}
+                                  value={quickWorkout.zone}
+                                  onChange={(value) => {
+                                    const numericValue = typeof value === 'number' ? value : Number(value || 1);
+                                    const zoneMax = quickWorkout.sport_type === 'Running' ? 5 : 7;
+                                    setQuickWorkout({ ...quickWorkout, zone: Math.max(1, Math.min(zoneMax, numericValue)) });
+                                  }}
+                                />
+                              )}
                             </SimpleGrid>
 
-                            <SimpleGrid cols={2}>
-                              <Select
-                                label={t('Quick Workout Type') || 'Quick Workout Type'}
-                                data={[
-                                  { value: 'time', label: t('Time in Zone') || 'Time in Zone' },
-                                  { value: 'distance', label: t('Distance in Zone (km)') || 'Distance in Zone (km)' },
-                                ]}
-                                value={quickWorkout.mode}
-                                onChange={(value) => {
-                                  if (!value) return;
-                                  setQuickWorkout({ ...quickWorkout, mode: value as 'time' | 'distance' });
-                                }}
-                              />
-                              {quickWorkout.mode === 'time' ? (
+                            {quickWorkout.sport_type === 'Strength Training' ? (
+                              <SimpleGrid cols={2}>
+                                <NumberInput
+                                  label="RPE"
+                                  min={1}
+                                  max={10}
+                                  value={quickWorkout.zone}
+                                  onChange={(value) => {
+                                    const numericValue = typeof value === 'number' ? value : Number(value || 5);
+                                    setQuickWorkout({ ...quickWorkout, zone: Math.max(1, Math.min(10, numericValue)) });
+                                  }}
+                                />
                                 <Group grow align="end">
                                   <NumberInput
                                     label={t('Hours') || 'Hours'}
@@ -695,9 +695,8 @@ export const DayDetailsModal = ({
                                     value={Math.floor((quickWorkout.minutes || 0) / 60)}
                                     onChange={(value) => {
                                       const hours = Math.max(0, typeof value === 'number' ? value : Number(value || 0));
-                                      const currentMinutesRemainder = Math.max(0, (quickWorkout.minutes || 0) % 60);
-                                      const totalMinutes = Math.max(5, Math.round(hours * 60 + currentMinutesRemainder));
-                                      setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                                      const rem = Math.max(0, (quickWorkout.minutes || 0) % 60);
+                                      setQuickWorkout({ ...quickWorkout, minutes: Math.max(5, Math.round(hours * 60 + rem)) });
                                     }}
                                   />
                                   <NumberInput
@@ -709,25 +708,69 @@ export const DayDetailsModal = ({
                                     description={formatMinutesHm(quickWorkout.minutes)}
                                     onChange={(value) => {
                                       const mins = Math.max(0, Math.min(59, typeof value === 'number' ? value : Number(value || 0)));
-                                      const currentHours = Math.floor((quickWorkout.minutes || 0) / 60);
-                                      const totalMinutes = Math.max(5, Math.round(currentHours * 60 + mins));
-                                      setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                                      const hours = Math.floor((quickWorkout.minutes || 0) / 60);
+                                      setQuickWorkout({ ...quickWorkout, minutes: Math.max(5, Math.round(hours * 60 + mins)) });
                                     }}
                                   />
                                 </Group>
-                              ) : (
-                                <NumberInput
-                                  label={t('Distance (km)') || 'Distance (km)'}
-                                  min={1}
-                                  step={0.5}
-                                  value={quickWorkout.distanceKm}
+                              </SimpleGrid>
+                            ) : (
+                              <SimpleGrid cols={2}>
+                                <Select
+                                  label={t('Quick Workout Type') || 'Quick Workout Type'}
+                                  data={[
+                                    { value: 'time', label: t('Time in Zone') || 'Time in Zone' },
+                                    { value: 'distance', label: t('Distance in Zone (km)') || 'Distance in Zone (km)' },
+                                  ]}
+                                  value={quickWorkout.mode}
                                   onChange={(value) => {
-                                    const numericValue = typeof value === 'number' ? value : Number(value || 0);
-                                    setQuickWorkout({ ...quickWorkout, distanceKm: Math.max(1, numericValue) });
+                                    if (!value) return;
+                                    setQuickWorkout({ ...quickWorkout, mode: value as 'time' | 'distance' });
                                   }}
                                 />
-                              )}
-                            </SimpleGrid>
+                                {quickWorkout.mode === 'time' ? (
+                                  <Group grow align="end">
+                                    <NumberInput
+                                      label={t('Hours') || 'Hours'}
+                                      min={0}
+                                      step={1}
+                                      value={Math.floor((quickWorkout.minutes || 0) / 60)}
+                                      onChange={(value) => {
+                                        const hours = Math.max(0, typeof value === 'number' ? value : Number(value || 0));
+                                        const currentMinutesRemainder = Math.max(0, (quickWorkout.minutes || 0) % 60);
+                                        const totalMinutes = Math.max(5, Math.round(hours * 60 + currentMinutesRemainder));
+                                        setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                                      }}
+                                    />
+                                    <NumberInput
+                                      label={t('Minutes') || 'Minutes'}
+                                      min={0}
+                                      max={59}
+                                      step={5}
+                                      value={Math.max(0, (quickWorkout.minutes || 0) % 60)}
+                                      description={formatMinutesHm(quickWorkout.minutes)}
+                                      onChange={(value) => {
+                                        const mins = Math.max(0, Math.min(59, typeof value === 'number' ? value : Number(value || 0)));
+                                        const currentHours = Math.floor((quickWorkout.minutes || 0) / 60);
+                                        const totalMinutes = Math.max(5, Math.round(currentHours * 60 + mins));
+                                        setQuickWorkout({ ...quickWorkout, minutes: totalMinutes });
+                                      }}
+                                    />
+                                  </Group>
+                                ) : (
+                                  <NumberInput
+                                    label={t('Distance (km)') || 'Distance (km)'}
+                                    min={1}
+                                    step={0.5}
+                                    value={quickWorkout.distanceKm}
+                                    onChange={(value) => {
+                                      const numericValue = typeof value === 'number' ? value : Number(value || 0);
+                                      setQuickWorkout({ ...quickWorkout, distanceKm: Math.max(1, numericValue) });
+                                    }}
+                                  />
+                                )}
+                              </SimpleGrid>
+                            )}
 
                             <Group grow>
                               <Button
