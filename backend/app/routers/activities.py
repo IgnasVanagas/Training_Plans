@@ -1813,10 +1813,12 @@ async def reparse_activity(
     activity.average_watts = summary.get("average_watts")
     activity.sport = parsed_data.get("sport") or activity.sport
 
-    # Preserve existing _meta (rpe, notes, split_annotations, etc.)
+    # Preserve existing _meta (rpe, notes, split_annotations, etc.) and old stats fallbacks
     old_meta = {}
+    old_stats: dict = {}
     if isinstance(activity.streams, dict):
         old_meta = activity.streams.get("_meta", {})
+        old_stats = activity.streams.get("stats") or {}
 
     composite_streams_data = {
         "data": streams,
@@ -1825,6 +1827,7 @@ async def reparse_activity(
         "pace_curve": parsed_data.get("pace_curve"),
         "laps": parsed_data.get("laps"),
         "splits_metric": parsed_data.get("splits_metric"),
+        "best_efforts": parsed_data.get("best_efforts"),
         "_meta": {**old_meta, "reparsed_at": datetime.utcnow().isoformat()},
         "stats": {
             "max_hr": summary.get("max_hr"),
@@ -1834,7 +1837,9 @@ async def reparse_activity(
             "avg_cadence": summary.get("avg_cadence"),
             "total_elevation_gain": summary.get("total_elevation_gain"),
             "total_calories": summary.get("total_calories"),
-            "total_timer_time": summary.get("total_timer_time"),
+            # Preserve previously stored moving time if the parser can't compute it
+            # (fallback FIT parser and GPX files don't produce total_timer_time)
+            "total_timer_time": summary.get("total_timer_time") or old_stats.get("total_timer_time"),
         }
     }
     activity.streams = composite_streams_data

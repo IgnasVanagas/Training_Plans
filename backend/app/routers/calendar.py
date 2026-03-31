@@ -321,8 +321,10 @@ async def get_calendar_events(
             select(
                 Activity.id,
                 Activity.streams['_meta'].label('meta'),
+                Activity.streams['stats'].label('stats_data'),
                 Activity.streams['provider_payload']['summary']['start_date_local'].label('summary_local'),
                 Activity.streams['provider_payload']['detail']['start_date_local'].label('detail_local'),
+                Activity.streams['provider_payload']['summary']['moving_time'].label('summary_moving_time'),
             )
             .where(Activity.id.in_(primary_ids))
         )
@@ -333,9 +335,13 @@ async def get_calendar_events(
             total = round(aerobic + anaerobic, 1)
             if total > 0:
                 training_load_map[row.id] = total
-            stats = m.get('stats') if isinstance(m, dict) else {}
-            if isinstance(stats, dict) and stats.get('total_timer_time'):
-                moving_time_map[row.id] = float(stats['total_timer_time'])
+            stats = row.stats_data if isinstance(row.stats_data, dict) else {}
+            mt = (
+                (stats.get('total_timer_time') if isinstance(stats, dict) else None)
+                or (float(row.summary_moving_time) if row.summary_moving_time else None)
+            )
+            if mt:
+                moving_time_map[row.id] = float(mt)
             # Resolve local date from provider_payload JSONB paths
             for candidate in (row.summary_local, row.detail_local):
                 if candidate and isinstance(candidate, str):
