@@ -25,8 +25,7 @@ import {
 } from '@mantine/core';
 import { DatePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconChartLine, IconExternalLink, IconInfoCircle, IconAdjustmentsHorizontal } from '@tabler/icons-react';
+import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconChartLine, IconInfoCircle, IconAdjustmentsHorizontal } from '@tabler/icons-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartTooltip, Legend, ResponsiveContainer,
@@ -380,6 +379,35 @@ const dominantZone = (zones: Record<string, number>) => {
   });
   const total = Object.values(zones).reduce((sum, value) => sum + value, 0);
   return { zone: winner, sharePct: total > 0 ? (seconds / total) * 100 : 0 };
+};
+
+const MetricComparison = ({ label, leftVal, rightVal, suffix, lowerBetter, decimals }: {
+  label: string; leftVal: number | null; rightVal: number | null; suffix?: string; lowerBetter?: boolean; decimals?: number;
+}) => {
+  const d = decimals ?? 1;
+  const fmt = (v: number) => v.toFixed(d);
+  const delta = leftVal != null && rightVal != null ? rightVal - leftVal : null;
+  const noChange = delta != null && Math.abs(delta) < Math.pow(10, -d) / 2;
+  const improved = delta != null && !noChange ? (lowerBetter ? delta < 0 : delta > 0) : null;
+  const deltaColor = improved == null || noChange ? 'dimmed' : improved ? 'teal' : 'red';
+  return (
+    <Paper withBorder p="xs" radius="sm">
+      <Text size="10px" c="dimmed" tt="uppercase" mb={4}>{label}</Text>
+      <Group gap={4} wrap="nowrap" align="center" justify="space-between">
+        <Stack gap={0} align="center" style={{ flex: 1 }}>
+          <Text fw={700} size="sm" style={{ color: '#E95A12' }}>{leftVal != null ? `${fmt(leftVal)}${suffix || ''}` : '-'}</Text>
+          <Text size="9px" c="dimmed">A</Text>
+        </Stack>
+        <Text size="xs" fw={700} c={deltaColor} style={{ minWidth: 36, textAlign: 'center' }}>
+          {delta != null && !noChange ? `${delta > 0 ? '+' : ''}${fmt(delta)}` : '—'}
+        </Text>
+        <Stack gap={0} align="center" style={{ flex: 1 }}>
+          <Text fw={700} size="sm" style={{ color: '#6E4BF3' }}>{rightVal != null ? `${fmt(rightVal)}${suffix || ''}` : '-'}</Text>
+          <Text size="9px" c="dimmed">B</Text>
+        </Stack>
+      </Group>
+    </Paper>
+  );
 };
 
 const WorkoutSummaryTable = ({ detail, title, t, sideColor }: { detail: ActivityDetail; title: string; t: (value: string) => string; sideColor?: string }) => {
@@ -842,7 +870,6 @@ const ActivityCalendarPicker = ({
 export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: AthleteLike[]; me: AthleteLike; isAthlete?: boolean }) => {
   const { t } = useI18n();
   const isDark = useComputedColorScheme('light') === 'dark';
-  const navigate = useNavigate();
   const [mode, setMode] = useState<AnalysisMode>('workouts');
   const [leftWorkoutId, setLeftWorkoutId] = useState<string | null>(null);
   const [rightWorkoutId, setRightWorkoutId] = useState<string | null>(null);
@@ -1016,23 +1043,46 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     }));
   }, [leftSplits, rightSplits]);
 
+  const splitChartData = useMemo(() => {
+    if (mode !== 'workouts') return [];
+    const maxLen = Math.max(leftSplits.length, rightSplits.length);
+    if (maxLen === 0) return [];
+    const usesPower = leftSplits.some((s) => s.avgPower != null) || rightSplits.some((s) => s.avgPower != null);
+    return Array.from({ length: maxLen }, (_, i) => {
+      const l = leftSplits[i];
+      const r = rightSplits[i];
+      return {
+        split: i + 1,
+        valA: usesPower ? (l?.avgPower ?? null) : (l?.avgSpeed ? +(1000 / (l.avgSpeed * 60)).toFixed(2) : null),
+        valB: usesPower ? (r?.avgPower ?? null) : (r?.avgSpeed ? +(1000 / (r.avgSpeed * 60)).toFixed(2) : null),
+        hrA: l?.avgHr ?? null,
+        hrB: r?.avgHr ?? null,
+        splitUsesPower: usesPower,
+      };
+    });
+  }, [mode, leftSplits, rightSplits]);
+
   const chartColors = { sideA: '#E95A12', sideB: '#6E4BF3' };
 
   const streamChartData = useMemo(() => {
     if (mode !== 'workouts') return [];
     const ls = leftWorkout?.streams;
     const rs = rightWorkout?.streams;
-    if (!Array.isArray(ls) || !ls.length || !Array.isArray(rs) || !rs.length) return [];
+    const hasLeft = Array.isArray(ls) && ls.length > 0;
+    const hasRight = Array.isArray(rs) && rs.length > 0;
+    if (!hasLeft && !hasRight) return [];
     const aStart = streamOffset < 0 ? Math.abs(streamOffset) : 0;
     const bStart = streamOffset > 0 ? streamOffset : 0;
-    const len = Math.max(ls.length - aStart, rs.length - bStart);
+    const lLen = hasLeft ? Math.max(0, ls!.length - aStart) : 0;
+    const rLen = hasRight ? Math.max(0, rs!.length - bStart) : 0;
+    const len = Math.max(lLen, rLen);
     const step = Math.max(1, Math.floor(len / 400));
     const result: { t: number; hrA: number | null; hrB: number | null; pwA: number | null; pwB: number | null }[] = [];
     for (let i = 0; i < len; i += step) {
       const lIdx = i + aStart;
       const rIdx = i + bStart;
-      const lr = lIdx < ls.length ? (ls[lIdx] as any) : null;
-      const rr = rIdx < rs.length ? (rs[rIdx] as any) : null;
+      const lr = hasLeft && lIdx < ls!.length ? (ls![lIdx] as any) : null;
+      const rr = hasRight && rIdx < rs!.length ? (rs![rIdx] as any) : null;
       result.push({
         t: +(i / 60).toFixed(1),
         hrA: lr?.hr != null ? Math.round(lr.hr) : null,
@@ -1260,26 +1310,26 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           </Alert>
         ) : (
           <Stack gap="md">
-            <SimpleGrid cols={{ base: 1, md: 2, xl: 4 }} spacing="sm">
-              {compareCards.map((item) => (
-                <Paper key={item.label} withBorder p="sm" radius="md" style={{ borderTop: `3px solid var(--mantine-color-cyan-5)`, background: isDark ? 'rgba(22,34,58,0.62)' : 'rgba(255,255,255,0.92)' }}>
-                  <Text size="10px" c="dimmed" tt="uppercase" fw={600} mb={4}>{item.label}</Text>
-                  <Text fw={700} size="lg">{item.value}</Text>
-                </Paper>
-              ))}
-            </SimpleGrid>
-
-            <Paper withBorder p="sm" radius="md">
-              <Group gap="xs" mb="xs">
-                {mode === 'workouts' ? <IconArrowsDiff size={16} /> : <IconCalendarStats size={16} />}
-                <Text fw={600}>{t('Contrast Summary') || 'Contrast Summary'}</Text>
-              </Group>
-              <Stack gap={6}>
-                {(mode === 'workouts' ? workoutInsights : periodInsights).map((item) => (
-                  <Text key={item} size="sm">{item}</Text>
-                ))}
-              </Stack>
-            </Paper>
+            {mode === 'workouts' && leftWorkout && rightWorkout && (
+              <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="xs">
+                <MetricComparison label={t('Duration') || 'Duration'} leftVal={safeNum(leftWorkout.duration) / 60} rightVal={safeNum(rightWorkout.duration) / 60} suffix=" min" lowerBetter decimals={0} />
+                <MetricComparison label={t('Distance') || 'Distance'} leftVal={safeNum(leftWorkout.distance) / 1000} rightVal={safeNum(rightWorkout.distance) / 1000} suffix=" km" />
+                <MetricComparison label={t('Avg HR') || 'Avg HR'} leftVal={leftWorkout.average_hr ?? null} rightVal={rightWorkout.average_hr ?? null} suffix=" bpm" lowerBetter decimals={0} />
+                <MetricComparison label={t('Avg Power') || 'Avg Power'} leftVal={leftWorkout.average_watts ?? null} rightVal={rightWorkout.average_watts ?? null} suffix=" W" decimals={0} />
+                <MetricComparison label={t('Training Load') || 'Training Load'} leftVal={safeNum(leftWorkout.total_load_impact)} rightVal={safeNum(rightWorkout.total_load_impact)} />
+                <MetricComparison label={t('RPE') || 'RPE'} leftVal={leftWorkout.rpe ?? null} rightVal={rightWorkout.rpe ?? null} lowerBetter />
+              </SimpleGrid>
+            )}
+            {mode !== 'workouts' && (
+              <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="xs">
+                <MetricComparison label={t('Sessions') || 'Sessions'} leftVal={leftAggregate.activitiesCount} rightVal={rightAggregate.activitiesCount} decimals={0} />
+                <MetricComparison label={t('Total time') || 'Total time'} leftVal={leftAggregate.totalMinutes} rightVal={rightAggregate.totalMinutes} suffix=" min" decimals={0} />
+                <MetricComparison label={t('Distance') || 'Distance'} leftVal={leftAggregate.totalDistanceKm} rightVal={rightAggregate.totalDistanceKm} suffix=" km" />
+                <MetricComparison label={t('Training Load') || 'Training Load'} leftVal={leftAggregate.totalLoadImpact} rightVal={rightAggregate.totalLoadImpact} />
+                <MetricComparison label={t('Avg HR') || 'Avg HR'} leftVal={leftAggregate.avgHr} rightVal={rightAggregate.avgHr} suffix=" bpm" lowerBetter decimals={0} />
+                <MetricComparison label={t('Feedback %') || 'Feedback %'} leftVal={leftAggregate.feedbackCoveragePct} rightVal={rightAggregate.feedbackCoveragePct} suffix="%" decimals={0} />
+              </SimpleGrid>
+            )}
 
             {/* ── Charts Section ── */}
             {(streamChartData.length > 0 || powerCurveChartData.length > 0 || zoneChartData.length > 0) && (
@@ -1299,6 +1349,11 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                     {zoneChartData.length > 0 && (
                       <Tabs.Tab value="zones" leftSection={<IconAdjustmentsHorizontal size={13} />}>
                         Zone Distribution
+                      </Tabs.Tab>
+                    )}
+                    {splitChartData.length > 0 && (
+                      <Tabs.Tab value="splitchart" leftSection={<IconArrowsDiff size={13} />}>
+                        Split Pace/Power
                       </Tabs.Tab>
                     )}
                   </Tabs.List>
@@ -1432,6 +1487,36 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                       </Stack>
                     </Tabs.Panel>
                   )}
+
+                  {splitChartData.length > 0 && (
+                    <Tabs.Panel value="splitchart">
+                      <Stack gap="xs">
+                        <Group gap={6} wrap="nowrap">
+                          <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideA }} />
+                          <Text size="xs" c="dimmed">Side A</Text>
+                          <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideB, marginLeft: 6 }} />
+                          <Text size="xs" c="dimmed">Side B</Text>
+                          <Text size="xs" c="dimmed" style={{ marginLeft: 8 }}>
+                            {splitChartData[0]?.splitUsesPower ? '(watts per split)' : '(min/km per split — lower = faster)'}
+                          </Text>
+                        </Group>
+                        <ResponsiveContainer width="100%" height={220}>
+                          <ComposedChart data={splitChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.07)'} />
+                            <XAxis dataKey="split" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} label={{ value: 'Split #', position: 'insideBottomRight', offset: -4, fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} />
+                            <YAxis tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={40} />
+                            <RechartTooltip
+                              contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, fontSize: 11 }}
+                              labelFormatter={(l) => `Split ${l}`}
+                            />
+                            <Legend wrapperStyle={{ fontSize: 11 }} />
+                            <Line dataKey="valA" name={splitChartData[0]?.splitUsesPower ? 'Power A (W)' : 'Pace A (min/km)'} stroke={chartColors.sideA} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                            <Line dataKey="valB" name={splitChartData[0]?.splitUsesPower ? 'Power B (W)' : 'Pace B (min/km)'} stroke={chartColors.sideB} strokeWidth={2} strokeDasharray="4 2" dot={{ r: 3 }} connectNulls />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </Stack>
+                    </Tabs.Panel>
+                  )}
                 </Tabs>
               </Paper>
             )}
@@ -1531,21 +1616,11 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
             )}
 
             <Divider />
-            <Group justify="space-between">
-              <Text size="xs" c="dimmed">
-                {isAthlete
-                  ? (t('Compare your own workouts or training periods to see how your fitness is evolving.') || 'Compare your own workouts or training periods to see how your fitness is evolving.')
-                  : (t('Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.') || 'Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.')}
-              </Text>
-              <Button
-                variant="light"
-                size="xs"
-                rightSection={<IconExternalLink size={14} />}
-                onClick={() => navigate('/dashboard/compare', { state: { mode, leftId: leftWorkoutId, rightId: rightWorkoutId } })}
-              >
-                {t('Open detailed view') || 'Open detailed view'}
-              </Button>
-            </Group>
+            <Text size="xs" c="dimmed">
+              {isAthlete
+                ? (t('Compare your own workouts or training periods to see how your fitness is evolving.') || 'Compare your own workouts or training periods to see how your fitness is evolving.')
+                : (t('Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.') || 'Coaches can compare the same athlete across two periods or compare two athletes side by side with the same analysis model.')}
+            </Text>
           </Stack>
         )}
       </Stack>

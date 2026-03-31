@@ -7,6 +7,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
+import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
@@ -287,12 +288,30 @@ export const ActivityDetailPage = () => {
         mutationFn: async () => {
             await api.delete(`/activities/${id}`);
         },
+        onMutate: async () => {
+            await queryClient.cancelQueries({ queryKey: ['activity', id] });
+            await queryClient.cancelQueries({ queryKey: ['activities'] });
+            const previousActivity = queryClient.getQueryData(['activity', id]);
+            const previousActivitiesQueries: [unknown[], unknown][] = [];
+            queryClient.getQueriesData<unknown[]>({ queryKey: ['activities'] }).forEach(([qk, qd]) => {
+                previousActivitiesQueries.push([qk as unknown[], qd]);
+                queryClient.setQueryData(qk as unknown[], (old: any[]) =>
+                    old ? old.filter((a) => a.id !== Number(id)) : old
+                );
+            });
+            queryClient.removeQueries({ queryKey: ['activity', id] });
+            navigate(-1);
+            return { previousActivity, previousActivitiesQueries };
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['activities'] });
             queryClient.invalidateQueries({ queryKey: ['calendar'] });
-            queryClient.removeQueries({ queryKey: ['activity', id] });
-            navigate(-1);
-        }
+        },
+        onError: (_err, _vars, context) => {
+            if (context?.previousActivity) queryClient.setQueryData(['activity', id], context.previousActivity);
+            context?.previousActivitiesQueries?.forEach(([qk, qd]) => queryClient.setQueryData(qk as unknown[], qd as any));
+            notifications.show({ color: 'red', title: 'Delete failed', message: 'Could not delete activity. Please try again.', position: 'bottom-right' });
+        },
     });
 
     const updateActivityMutation = useMutation({
@@ -300,11 +319,20 @@ export const ActivityDetailPage = () => {
             const res = await api.patch<ActivityDetail>(`/activities/${id}`, payload);
             return res.data;
         },
+        onMutate: async (payload) => {
+            await queryClient.cancelQueries({ queryKey: ['activity', id] });
+            const previous = queryClient.getQueryData<ActivityDetail>(['activity', id]);
+            if (previous) queryClient.setQueryData(['activity', id], { ...previous, ...payload });
+            return { previous };
+        },
         onSuccess: (updated) => {
             queryClient.setQueryData(['activity', id], updated);
             queryClient.invalidateQueries({ queryKey: ['activities'] });
             queryClient.invalidateQueries({ queryKey: ['calendar'] });
-        }
+        },
+        onError: (_err, _vars, context) => {
+            if (context?.previous) queryClient.setQueryData(['activity', id], context.previous);
+        },
     });
 
     const reparseMutation = useMutation({

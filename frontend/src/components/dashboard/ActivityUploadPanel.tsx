@@ -62,7 +62,22 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
       });
       return res.data;
     },
-    onSuccess: () => {
+    onMutate: async (file: File) => {
+      await queryClient.cancelQueries({ queryKey: ['activities'] });
+      const tempActivity = {
+        id: -Date.now(), sport: null, created_at: new Date().toISOString(),
+        duration: null, distance: null, average_hr: null, average_watts: null,
+        avg_speed: null, athlete_id: 0, filename: file.name,
+        source_provider: 'upload', _isOptimistic: true,
+      };
+      const snapshots: Array<[readonly unknown[], any]> = queryClient.getQueriesData<any[]>({ queryKey: ['activities'] });
+      snapshots.forEach(([qk, qd]) => {
+        if (Array.isArray(qd)) queryClient.setQueryData(qk, [tempActivity, ...qd]);
+      });
+      return { snapshots };
+    },
+    onSuccess: (_data, _vars, context) => {
+      context?.snapshots?.forEach(([qk, qd]) => queryClient.setQueryData(qk, qd));
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
       setUploadError(null);
@@ -70,21 +85,22 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
       notifications.show({
         color: 'teal',
         title: 'Workout captured',
-        message: 'Session saved. Add a quick reflection so your coach can adapt tomorrow’s plan.',
+        message: "Session saved. Add a quick reflection so your coach can adapt tomorrow's plan.",
         position: 'bottom-right'
       });
       window.setTimeout(() => setShowCompletionPulse(false), 1200);
       onUploaded?.();
     },
-    onError: (err: any) => {
+    onError: (err: any, _vars, context) => {
+      context?.snapshots?.forEach(([qk, qd]) => queryClient.setQueryData(qk, qd));
       const detail = err.response?.data?.detail || 'Upload failed';
       const lowered = String(detail).toLowerCase();
       if (lowered.includes('garmin')) {
-        setUploadError('Garmin is taking longer than usual. Your workout is safe and we’ll keep retrying in the background.');
+        setUploadError("Garmin is taking longer than usual. Your workout is safe and we'll keep retrying in the background.");
         return;
       }
       if (lowered.includes('format') || lowered.includes('parse')) {
-        setUploadError('We could not read this file format yet. Try a fresh FIT/GPX export and we’ll keep your progress intact.');
+        setUploadError("We could not read this file format yet. Try a fresh FIT/GPX export and we'll keep your progress intact.");
         return;
       }
       setUploadError('We hit a sync issue, but your momentum is not lost. Try again in a moment.');
@@ -97,7 +113,23 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
 
   const manualMutation = useMutation({
     mutationFn: createManualActivity,
-    onSuccess: () => {
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey: ['activities'] });
+      const tempActivity = {
+        id: -Date.now(), sport: payload.sport, created_at: new Date().toISOString(),
+        duration: payload.duration, distance: payload.distance ?? null,
+        average_hr: payload.average_hr ?? null, average_watts: null,
+        avg_speed: null, athlete_id: 0, filename: 'manual',
+        source_provider: 'manual', _isOptimistic: true,
+      };
+      const snapshots = queryClient.getQueriesData<any[]>({ queryKey: ['activities'] }) as Array<[readonly unknown[], any]>;
+      snapshots.forEach(([qk, qd]) => {
+        if (Array.isArray(qd)) queryClient.setQueryData(qk, [tempActivity, ...qd]);
+      });
+      return { snapshots };
+    },
+    onSuccess: (_data, _vars, context) => {
+      context?.snapshots?.forEach(([qk, qd]: [readonly unknown[], any]) => queryClient.setQueryData(qk, qd));
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
       setManualError(null);
@@ -116,7 +148,8 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
       setManualNotes('');
       onUploaded?.();
     },
-    onError: (err: any) => {
+    onError: (err: any, _vars, context) => {
+      context?.snapshots?.forEach(([qk, qd]) => queryClient.setQueryData(qk as unknown[], qd));
       const detail = err.response?.data?.detail || 'Failed to save activity';
       setManualError(String(detail));
     }

@@ -576,12 +576,18 @@ export const ComparisonPage = () => {
 
   /* ── zone comparison chart data ── */
   const zoneChartData = useMemo(() => {
-    const lz = mode === 'workouts' && leftW ? extractZonesForDetail(leftW, leftW ? athleteMap.get(leftW.athlete_id) : undefined) : null;
-    const rz = mode === 'workouts' && rightW ? extractZonesForDetail(rightW, rightW ? athleteMap.get(rightW.athlete_id) : undefined) : null;
-    const lZones = mode === 'workouts' ? (lz?.cycling || lz?.running || {}) : (leftAgg.cyclingZones || leftAgg.runningZones);
-    const rZones = mode === 'workouts' ? (rz?.cycling || rz?.running || {}) : (rightAgg.cyclingZones || rightAgg.runningZones);
-    const useCycling = Object.values(mode === 'workouts' ? (lz?.cycling || {}) : leftAgg.cyclingZones).some((v) => v > 0);
-    const count = useCycling ? 7 : 5;
+    const lz = mode === 'workouts' && leftW ? extractZonesForDetail(leftW, athleteMap.get(leftW.athlete_id)) : null;
+    const rz = mode === 'workouts' && rightW ? extractZonesForDetail(rightW, athleteMap.get(rightW.athlete_id)) : null;
+    const isCycling = mode === 'workouts'
+      ? (lz?.sport === 'cycling' || rz?.sport === 'cycling')
+      : Object.values(leftAgg.cyclingZones).some((v) => v > 0) || Object.values(rightAgg.cyclingZones).some((v) => v > 0);
+    const lZones = mode === 'workouts'
+      ? (isCycling ? (lz?.cycling || {}) : (lz?.running || {}))
+      : (isCycling ? leftAgg.cyclingZones : leftAgg.runningZones);
+    const rZones = mode === 'workouts'
+      ? (isCycling ? (rz?.cycling || {}) : (rz?.running || {}))
+      : (isCycling ? rightAgg.cyclingZones : rightAgg.runningZones);
+    const count = isCycling ? 7 : 5;
     return Array.from({ length: count }, (_, i) => ({
       zone: `Z${i + 1}`,
       sideA: Math.round(safeNum(lZones[`Z${i + 1}`]) / 60),

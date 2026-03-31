@@ -215,6 +215,7 @@ export function ActivitiesView({
                 const pillLabel = resolveActivityPillLabel(act.sport || undefined, act.filename);
 
                 const hasDuplicates = (act.duplicate_recordings_count ?? 0) > 0;
+                const isOptimistic = Boolean((act as any)._isOptimistic);
 
                 return (
                 <Card
@@ -225,10 +226,12 @@ export function ActivitiesView({
                     radius="lg"
                     bg={ui.cardBg}
                     style={{
-                        cursor: 'pointer',
+                        cursor: isOptimistic ? 'default' : 'pointer',
                         transition: 'transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
                         ...cardStyle,
                         borderLeft: `4px solid ${accentColor}`,
+                        opacity: isOptimistic ? 0.55 : 1,
+                        pointerEvents: isOptimistic ? 'none' : undefined,
                     }}
                     onClick={() => {
                         if (hasDuplicates) {
@@ -281,6 +284,7 @@ export function ActivitiesView({
                                         {pillLabel}
                                     </Badge>
                                 )}
+                                {isOptimistic && <Badge size="sm" color="gray" variant="dot">Processing…</Badge>}
                                 {act.is_deleted && <Badge size="sm" color="red" variant="light">Deleted</Badge>}
                                 {hasDuplicates && (
                                     <Badge size="sm" color="orange" variant="light" leftSection={<IconCopy size={10} />}>
@@ -423,13 +427,18 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
         mutationFn: async (id: number) => {
             await api.delete(`/activities/${id}`);
         },
-        onSuccess: (_, id) => {
+        onMutate: async (id: number) => {
+            const previous = [...allRecordings];
             const remaining = allRecordings.filter(r => r.id !== id);
             setAllRecordings(remaining);
+            if (remaining.length <= 1) onClose();
+            return { previous };
+        },
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['activities'] });
-            if (remaining.length <= 1) {
-                onClose();
-            }
+        },
+        onError: (_err, _id, context) => {
+            if (context?.previous) setAllRecordings(context.previous);
         },
     });
 
@@ -437,9 +446,16 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
         mutationFn: async (id: number) => {
             await api.post(`/activities/${id}/make-primary`);
         },
-        onSuccess: (_, id) => {
+        onMutate: async (id: number) => {
+            const previous = primaryId;
             setPrimaryId(id);
+            return { previous };
+        },
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['activities'] });
+        },
+        onError: (_err, _id, context) => {
+            if (context?.previous !== undefined) setPrimaryId(context.previous);
         },
     });
 

@@ -27,13 +27,23 @@ export const SessionFeedbackPanel = ({ activityId, initialActivity, canEdit }: S
     
     const updateActivityMutation = useMutation({
         mutationFn: async (payload: { rpe?: number | null; lactate_mmol_l?: number | null; notes?: string | null }) => {
-            await api.patch(`/activities/${activityId}`, payload);
+            const res = await api.patch(`/activities/${activityId}`, payload);
+            return res.data;
         },
-        onSuccess: () => {
-             queryClient.invalidateQueries({ queryKey: ['activity', activityId.toString()] });
-             queryClient.invalidateQueries({ queryKey: ['activities'] });
-             queryClient.invalidateQueries({ queryKey: ['calendar'] });
-        }
+        onMutate: async (payload) => {
+            await queryClient.cancelQueries({ queryKey: ['activity', activityId] });
+            const previous = queryClient.getQueryData(['activity', activityId]);
+            if (previous) queryClient.setQueryData(['activity', activityId], { ...(previous as object), ...payload });
+            return { previous };
+        },
+        onSuccess: (updated) => {
+            if (updated) queryClient.setQueryData(['activity', activityId], updated);
+            queryClient.invalidateQueries({ queryKey: ['activities'] });
+            queryClient.invalidateQueries({ queryKey: ['calendar'] });
+        },
+        onError: (_err, _vars, context) => {
+            if (context?.previous) queryClient.setQueryData(['activity', activityId], context.previous);
+        },
     });
 
     const handleSave = () => {
