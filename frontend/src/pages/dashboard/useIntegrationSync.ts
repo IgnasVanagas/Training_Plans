@@ -17,12 +17,14 @@ type UseIntegrationSyncArgs = {
   queryClient: QueryClient;
   me?: User;
   integrations?: ProviderStatus[];
+  activeTab?: string;
+  isDocumentVisible: boolean;
 };
 
 const STRAVA_LOGIN_RECENT_SYNC_FLAG = "tp:strava-login-recent-sync";
 const STRAVA_LOGIN_SYNC_COOLDOWN_MS = 10 * 60 * 1000;
 
-export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegrationSyncArgs) => {
+export const useIntegrationSync = ({ queryClient, me, integrations, activeTab, isDocumentVisible }: UseIntegrationSyncArgs) => {
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
   const [disconnectingProvider, setDisconnectingProvider] = useState<string | null>(null);
   const [cancelingProvider, setCancelingProvider] = useState<string | null>(null);
@@ -31,8 +33,10 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
   const autoSyncRequestedRef = useRef<Set<string>>(new Set());
   const lastLiveRefreshAtRef = useRef<number>(0);
   const lastKnownSyncAtRef = useRef<string | null | undefined>(undefined);
+  const shouldPollIntegrationStatus = isDocumentVisible && ["dashboard", "activities", "plan", "insights", "trackers", "settings"].includes(activeTab || "dashboard");
 
   useEffect(() => {
+    if (!shouldPollIntegrationStatus) return;
     if (!syncingProvider) return;
 
     const provider = syncingProvider;
@@ -129,10 +133,11 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
       isActive = false;
       window.clearInterval(timer);
     };
-  }, [queryClient, syncingProvider]);
+  }, [queryClient, shouldPollIntegrationStatus, syncingProvider]);
 
   // Background poll: detect webhook-triggered syncs and auto-refresh data
   useEffect(() => {
+    if (!shouldPollIntegrationStatus) return;
     if (syncingProvider) return; // Manual sync polling already active
     if (!me || !integrations) return;
 
@@ -185,7 +190,7 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
       isActive = false;
       window.clearInterval(timer);
     };
-  }, [me, integrations, syncingProvider]);
+  }, [integrations, me, shouldPollIntegrationStatus, syncingProvider]);
 
   useEffect(() => {
     if (!me || !integrations) return;

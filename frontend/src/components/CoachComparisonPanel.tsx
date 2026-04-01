@@ -96,6 +96,8 @@ type ActivityDetail = ActivityListItem & {
   } | null;
 };
 
+const COMPARISON_ACTIVITY_FETCH_LIMIT = 180;
+
 type AnalysisMode = 'workouts' | 'weeks' | 'months';
 
 type Aggregate = {
@@ -917,7 +919,9 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const { data: activities = [] } = useQuery({
     queryKey: ['coach-comparison-activities-v2'],
     queryFn: async () => {
-      const res = await api.get<ActivityListItem[]>('/activities/?limit=500');
+      const res = await api.get<ActivityListItem[]>('/activities/', {
+        params: { limit: COMPARISON_ACTIVITY_FETCH_LIMIT, include_load_metrics: false },
+      });
       return res.data;
     },
     staleTime: 1000 * 60,

@@ -98,6 +98,9 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
   // Pending attachment for the active thread
   const [pendingAttachment, setPendingAttachment] = useState<{ url: string; name: string } | null>(null);
   const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const [isDocumentVisible, setIsDocumentVisible] = useState(() =>
+    typeof document === "undefined" ? true : document.visibilityState === "visible",
+  );
 
   const [confirmModal, setConfirmModal] = useState<{
     open: boolean;
@@ -157,12 +160,21 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     setPendingAttachment(null);
   }, [selectedActiveOrganizationId]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const handleVisibilityChange = () => setIsDocumentVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   const inboxQuery = useQuery({
     queryKey: ["org-chat-inbox", selectedActiveOrganizationId],
     queryFn: () => listOrganizationInbox(selectedActiveOrganizationId as number),
     enabled: Boolean(selectedActiveOrganizationId),
-    refetchInterval: 5000,
+    refetchInterval: isDocumentVisible ? 15000 : false,
     staleTime: 2000,
+    refetchIntervalInBackground: false,
   });
 
   const threads = useMemo(() => {
@@ -257,8 +269,9 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     queryKey: ["org-group-chat", selectedActiveOrganizationId],
     queryFn: () => listOrganizationGroupMessages(selectedActiveOrganizationId as number),
     enabled: Boolean(selectedActiveOrganizationId && activeThread?.type === "group"),
-    refetchInterval: 5000,
+    refetchInterval: isDocumentVisible ? 12000 : false,
     staleTime: 2000,
+    refetchIntervalInBackground: false,
   });
 
   const coachMessagesQuery = useQuery({
@@ -270,16 +283,18 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
         : { coachId: activeParticipantId as number },
     ),
     enabled: Boolean(selectedActiveOrganizationId && activeThread?.subtype === "coach" && activeParticipantId),
-    refetchInterval: 5000,
+    refetchInterval: isDocumentVisible ? 12000 : false,
     staleTime: 2000,
+    refetchIntervalInBackground: false,
   });
 
   const directMessagesQuery = useQuery({
     queryKey: ["org-direct-chat", selectedActiveOrganizationId, activeParticipantId],
     queryFn: () => listOrgDirectMessages(selectedActiveOrganizationId as number, activeParticipantId as number),
     enabled: Boolean(selectedActiveOrganizationId && activeThread?.subtype === "member" && activeParticipantId),
-    refetchInterval: 5000,
+    refetchInterval: isDocumentVisible ? 12000 : false,
     staleTime: 2000,
+    refetchIntervalInBackground: false,
   });
 
   const formatSenderName = (senderName?: string | null, senderId?: number) => {

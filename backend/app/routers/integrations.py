@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from datetime import date as dt_date
 from urllib.parse import urlencode
+
+try:
+    import resource
+except ImportError:
+    resource = None
 
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks, Body
 from fastapi.responses import RedirectResponse
@@ -53,6 +59,45 @@ from ..services.compliance import match_and_score
 import os
 
 router = APIRouter(prefix="/integrations", tags=["integrations"])
+logger = logging.getLogger(__name__)
+
+
+def _read_process_memory_mb() -> tuple[float | None, float | None]:
+    current_rss_mb: float | None = None
+    peak_rss_mb: float | None = None
+
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as status_file:
+            for line in status_file:
+                if line.startswith("VmRSS:"):
+                    current_rss_mb = int(line.split()[1]) / 1024.0
+                elif line.startswith("VmHWM:"):
+                    peak_rss_mb = int(line.split()[1]) / 1024.0
+    except OSError:
+        pass
+
+    try:
+        if resource is None:
+            raise RuntimeError("resource module unavailable")
+        resource_peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+        if peak_rss_mb is None:
+            peak_rss_mb = resource_peak_mb
+    except Exception:
+        pass
+
+    return current_rss_mb, peak_rss_mb
+
+
+def _log_sync_memory(stage: str, *, provider: str, user_id: int, **extra: object) -> None:
+    current_rss_mb, peak_rss_mb = _read_process_memory_mb()
+    fields = [f"stage={stage}", f"provider={provider}", f"user_id={user_id}"]
+    if current_rss_mb is not None:
+        fields.append(f"rss_mb={current_rss_mb:.1f}")
+    if peak_rss_mb is not None:
+        fields.append(f"peak_rss_mb={peak_rss_mb:.1f}")
+    for key, value in extra.items():
+        fields.append(f"{key}={value}")
+    logger.info("Integration memory %s", " ".join(fields))
 
 
 def _as_stream_payload(payload: object) -> dict:
@@ -86,6 +131,7 @@ async def _strava_backfill_activity_details(
     user_id: int,
     import_all_time: bool,
 ) -> tuple[int, str | None]:
+    _log_sync_memory("strava_detail_backfill_start", provider="strava", user_id=user_id)
     daily_limit = max(1, int(os.getenv("STRAVA_DAILY_REQUEST_LIMIT", "500")))
     detail_batch = max(20, min(50, int(os.getenv("STRAVA_DETAIL_BACKFILL_BATCH_ACTIVITIES", "50"))))
     detail_window_days = max(30, int(os.getenv("STRAVA_DETAIL_BACKFILL_WINDOW_DAYS", "365")))
@@ -145,6 +191,13 @@ async def _strava_backfill_activity_details(
     # Release all ORM-tracked Activity instances from session memory.
     await db.reset()
     state = await db.merge(state)
+    _log_sync_memory(
+        "strava_detail_backfill_candidates",
+        provider="strava",
+        user_id=user_id,
+        candidates=len(candidate_ids),
+        daily_limit=daily_limit,
+    )
 
     enriched = 0
     for act_id, source_activity_id, act_created_at in candidate_ids:
@@ -214,7 +267,9 @@ async def _strava_backfill_activity_details(
     state.cursor = cursor
 
     if enriched == 0:
+        _log_sync_memory("strava_detail_backfill_complete", provider="strava", user_id=user_id, enriched=0)
         return 0, None
+    _log_sync_memory("strava_detail_backfill_complete", provider="strava", user_id=user_id, enriched=enriched)
     return enriched, f"Background detail backfill enriched {enriched} activities."
 
 
@@ -849,6 +904,7 @@ async def _sync_provider_task(provider: str, user_id: int):
     # Create a new session for the background task since the original one is closed
     async with AsyncSessionLocal() as db:
         try:
+            _log_sync_memory("sync_task_start", provider=provider, user_id=user_id)
             state = await get_or_create_sync_state(db, user_id=user_id, provider=provider)
             state.sync_status = "syncing"
             state.sync_message = "Starting sync..."
@@ -969,6 +1025,13 @@ async def _sync_provider_task(provider: str, user_id: int):
                         progress_callback=progress_callback,
                     )
 
+                _log_sync_memory(
+                    "post_fetch_activities",
+                    provider=provider,
+                    user_id=user_id,
+                    fetched=len(sync_result.activities),
+                )
+
                 if await _is_cancel_requested():
                     await _finalize_cancelled("Sync cancelled by user.")
                     return
@@ -982,6 +1045,15 @@ async def _sync_provider_task(provider: str, user_id: int):
                 total_items = len(sync_result.activities)
                 state.sync_total = total_items
                 await db.commit()
+
+                _log_sync_memory(
+                    "post_ingest_activities",
+                    provider=provider,
+                    user_id=user_id,
+                    imported=imported,
+                    duplicates=duplicates,
+                    total_items=total_items,
+                )
 
                 strava_enrich_on_import = os.getenv("STRAVA_ENRICH_ON_IMPORT", "true").lower() in {"1", "true", "yes", "on"}
                 strava_enrich_initial_only = os.getenv("STRAVA_ENRICH_INITIAL_ONLY", "true").lower() in {"1", "true", "yes", "on"}
@@ -1166,6 +1238,7 @@ async def _sync_provider_task(provider: str, user_id: int):
                     print(f"Wellness sync failed: {e}")
 
                 await _upsert_wellness(db, user_id=user_id, provider=provider, wellness_payload=wellness_payload)
+                _log_sync_memory("post_wellness_upsert", provider=provider, user_id=user_id)
 
                 enriched_count = 0
                 # Skip the heavy backfill phase on webhook-triggered recent-only
@@ -1232,6 +1305,14 @@ async def _sync_provider_task(provider: str, user_id: int):
                 state.sync_message = f"Completed. Imported {imported} new, {duplicates} duplicates."
 
                 await db.commit()
+                _log_sync_memory(
+                    "sync_task_complete",
+                    provider=provider,
+                    user_id=user_id,
+                    imported=imported,
+                    duplicates=duplicates,
+                    enriched=enriched_count,
+                )
                 break
 
         except Exception as e:
@@ -1243,11 +1324,12 @@ async def _sync_provider_task(provider: str, user_id: int):
             await db.rollback()
             # New config session to save error state
             async with AsyncSessionLocal() as error_db:
-                 state = await get_or_create_sync_state(error_db, user_id=user_id, provider=provider)
-                 state.sync_status = "failed"
-                 state.sync_message = str(e)
-                 state.last_error = str(e)
-                 await error_db.commit()
+                state = await get_or_create_sync_state(error_db, user_id=user_id, provider=provider)
+                state.sync_status = "failed"
+                state.sync_message = str(e)
+                state.last_error = str(e)
+                await error_db.commit()
+            _log_sync_memory("sync_task_failed", provider=provider, user_id=user_id, error=str(e))
             print(f"Sync task failed: {e}")
 
 

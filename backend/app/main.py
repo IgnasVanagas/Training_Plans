@@ -1,11 +1,17 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import asyncio
 import logging
 import os
 import pathlib
+import time
 from sqlalchemy import text
+
+try:
+    import resource
+except ImportError:
+    resource = None
 
 from .database import Base, engine
 from .routers import auth, users, activities, calendar, workouts, integrations, communications, planning, admin
@@ -15,6 +21,69 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(title="Endurance Sports Management Platform")
+
+
+def _read_process_memory_mb() -> tuple[float | None, float | None]:
+    current_rss_mb: float | None = None
+    peak_rss_mb: float | None = None
+
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as status_file:
+            for line in status_file:
+                if line.startswith("VmRSS:"):
+                    current_rss_mb = int(line.split()[1]) / 1024.0
+                elif line.startswith("VmHWM:"):
+                    peak_rss_mb = int(line.split()[1]) / 1024.0
+    except OSError:
+        pass
+
+    try:
+        if resource is None:
+            raise RuntimeError("resource module unavailable")
+        resource_peak_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+        if peak_rss_mb is None:
+            peak_rss_mb = resource_peak_mb
+    except Exception:
+        pass
+
+    return current_rss_mb, peak_rss_mb
+
+
+def _should_log_hot_path_memory(path: str) -> bool:
+    hot_prefixes = (
+        "/activities/",
+        "/calendar/",
+        "/communications/notifications",
+        "/communications/organizations/",
+        "/integrations/wellness/summary",
+    )
+    return any(path.startswith(prefix) for prefix in hot_prefixes)
+
+
+@app.middleware("http")
+async def log_hot_path_memory(request: Request, call_next):
+    path = request.url.path
+    if not _should_log_hot_path_memory(path):
+        return await call_next(request)
+
+    start = time.perf_counter()
+    before_rss_mb, before_peak_rss_mb = _read_process_memory_mb()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000.0
+    after_rss_mb, after_peak_rss_mb = _read_process_memory_mb()
+
+    logger.info(
+        "Hot path memory method=%s path=%s status=%s duration_ms=%.1f rss_before_mb=%s rss_after_mb=%s peak_before_mb=%s peak_after_mb=%s",
+        request.method,
+        path,
+        response.status_code,
+        duration_ms,
+        f"{before_rss_mb:.1f}" if before_rss_mb is not None else "n/a",
+        f"{after_rss_mb:.1f}" if after_rss_mb is not None else "n/a",
+        f"{before_peak_rss_mb:.1f}" if before_peak_rss_mb is not None else "n/a",
+        f"{after_peak_rss_mb:.1f}" if after_peak_rss_mb is not None else "n/a",
+    )
+    return response
 
 # Chat file uploads — served at /uploads/chat/<filename>
 _UPLOADS_DIR = pathlib.Path(os.getenv("UPLOADS_DIR", "uploads/chat"))

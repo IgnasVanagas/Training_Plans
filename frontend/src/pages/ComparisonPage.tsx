@@ -68,6 +68,8 @@ type AthleteLike = {
   } | null;
 };
 
+const COMPARISON_ACTIVITY_FETCH_LIMIT = 180;
+
 type ActivityListItem = {
   id: number;
   athlete_id: number;
@@ -472,7 +474,12 @@ export const ComparisonPage = () => {
 
   const { data: activities = [] } = useQuery({
     queryKey: ['comparison-activities'],
-    queryFn: async () => { const r = await api.get<ActivityListItem[]>('/activities/?limit=500'); return r.data; },
+    queryFn: async () => {
+      const r = await api.get<ActivityListItem[]>('/activities/', {
+        params: { limit: COMPARISON_ACTIVITY_FETCH_LIMIT, include_load_metrics: false },
+      });
+      return r.data;
+    },
     staleTime: 1000 * 60,
   });
 

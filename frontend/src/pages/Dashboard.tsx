@@ -116,6 +116,9 @@ const Dashboard = () => {
   const [manualMetricDate, setManualMetricDate] = useState<Date | null>(new Date());
   const [manualMetricValue, setManualMetricValue] = useState<number | "">("");
   const isMobile = useMediaQuery("(max-width: 48em)");
+  const [isDocumentVisible, setIsDocumentVisible] = useState(() =>
+    typeof document === "undefined" ? true : document.visibilityState === "visible",
+  );
 
 
   // Default athletes to Calendar (plan) tab when no explicit tab is in the URL
@@ -188,6 +191,26 @@ const Dashboard = () => {
   });
 
   useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const handleVisibilityChange = () => setIsDocumentVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  const shouldLoadHomeData = isDocumentVisible && activeTab === "dashboard";
+  const shouldLoadInsightsData = isDocumentVisible && activeTab === "insights";
+  const shouldLoadNotificationsData = isDocumentVisible && activeTab === "notifications";
+  const shouldLoadTrainingStatus = meQuery.data?.role === "athlete" && (shouldLoadHomeData || shouldLoadInsightsData);
+  const shouldLoadTrainingStatusHistory =
+    meQuery.data?.role === "athlete"
+    && isDocumentVisible
+    && (selectedMetric === "aerobic_load" || selectedMetric === "anaerobic_load" || selectedMetric === "training_status");
+  const shouldLoadWellnessSummary = meQuery.data?.role === "athlete" && (shouldLoadHomeData || shouldLoadInsightsData);
+  const shouldLoadDashboardCalendar = Boolean(meQuery.data?.id) && shouldLoadHomeData;
+  const shouldLoadCoachFeedback = meQuery.data?.role === "coach" && shouldLoadHomeData;
+
+  useEffect(() => {
     if (!meQuery.data) return;
 
     const athleteIdNum = selectedAthleteId ? Number(selectedAthleteId) : null;
@@ -224,6 +247,8 @@ const Dashboard = () => {
     queryClient,
     me: meQuery.data,
     integrations: integrationsQuery.data,
+    activeTab,
+    isDocumentVisible,
   });
 
   const inviteMutation = useMutation({
@@ -395,7 +420,7 @@ const Dashboard = () => {
 
   const trainingStatusQuery = useQuery({
     queryKey: ["training-status", meQuery.data?.id],
-    enabled: meQuery.data?.role === "athlete",
+    enabled: Boolean(shouldLoadTrainingStatus),
     queryFn: async () => {
       const response = await api.get<TrainingStatus>("/activities/training-status");
       return response.data;
@@ -404,38 +429,25 @@ const Dashboard = () => {
 
   const trainingStatusHistoryQuery = useQuery({
     queryKey: ["training-status-history", meQuery.data?.id],
-    enabled:
-      meQuery.data?.role === "athlete" &&
-      (selectedMetric === "aerobic_load" || selectedMetric === "anaerobic_load" || selectedMetric === "training_status"),
+    enabled: Boolean(shouldLoadTrainingStatusHistory),
     staleTime: 1000 * 60 * 10,
     queryFn: async () => {
-      const today = new Date();
-      const days = Array.from({ length: 14 }, (_, index) => {
-        const date = new Date(today);
-        date.setDate(today.getDate() - (13 - index));
-        return toLocalDateKey(date);
+      const response = await api.get<TrainingStatus[]>("/activities/training-status-history", {
+        params: { days: 14 },
       });
-
-      const rows = await Promise.all(
-        days.map(async (date) => {
-          const response = await api.get<TrainingStatus>(`/activities/training-status?reference_date=${date}`);
-          return response.data;
-        }),
-      );
-
-      return rows;
+      return response.data;
     },
   });
 
   const wellnessSummaryQuery = useQuery({
     queryKey: ["wellness-summary", meQuery.data?.id],
-    enabled: meQuery.data?.role === "athlete",
+    enabled: Boolean(shouldLoadWellnessSummary),
     queryFn: getWellnessSummary,
   });
 
   const dashboardCalendarQuery = useQuery({
     queryKey: ["dashboard-calendar", meQuery.data?.id, selectedAthleteId, meQuery.data?.role],
-    enabled: Boolean(meQuery.data?.id),
+    enabled: shouldLoadDashboardCalendar,
     queryFn: async () => {
       const today = new Date();
       const start = new Date(today);
@@ -463,7 +475,7 @@ const Dashboard = () => {
 
   const coachRecentActivityQuery = useQuery({
     queryKey: ["coach-feedback-feed", selectedAthleteId],
-    enabled: meQuery.data?.role === "coach",
+    enabled: Boolean(shouldLoadCoachFeedback),
     staleTime: 1000 * 60 * 3,
     queryFn: async () => {
       const params: Record<string, string | number | boolean> = { limit: 40, include_load_metrics: false };
@@ -475,7 +487,7 @@ const Dashboard = () => {
 
   const notificationsFeedQuery = useQuery({
     queryKey: ["notifications-feed", meQuery.data?.id],
-    enabled: Boolean(meQuery.data?.id),
+    enabled: Boolean(meQuery.data?.id) && shouldLoadNotificationsData,
     queryFn: async () => {
       const response = await api.get<NotificationsFeed>("/communications/notifications");
       return response.data;

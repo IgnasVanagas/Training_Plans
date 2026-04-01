@@ -21,7 +21,7 @@ from ..services.activity_dedupe import (
 from ..services.personal_records import compute_activity_best_efforts, get_activity_prs, get_personal_records
 from ..parsing import compute_metric_splits_from_points
 from datetime import datetime, timezone, date, timedelta
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any
 import math
 import os
@@ -2161,14 +2161,12 @@ async def upload_activity(
     )
 
 
-@router.get("/training-status")
-async def get_training_status(
-    athlete_id: int | None = None,
-    reference_date: date | None = None,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    ref_date = reference_date or date.today()
+async def _resolve_training_status_target_athlete(
+    db: AsyncSession,
+    *,
+    current_user: User,
+    athlete_id: int | None,
+) -> int:
     target_athlete_id = current_user.id
 
     if athlete_id is not None and athlete_id != current_user.id:
@@ -2192,35 +2190,83 @@ async def get_training_status(
     elif athlete_id is not None:
         target_athlete_id = athlete_id
 
-    profile = await db.scalar(select(Profile).where(Profile.user_id == target_athlete_id))
-    _profile_ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
+    return target_athlete_id
+
+
+def _serialize_training_status_row(
+    *,
+    athlete_id: int,
+    reference_date: date,
+    acute_aerobic: float,
+    acute_anaerobic: float,
+    chronic_aerobic: float,
+    chronic_anaerobic: float,
+    atl: float,
+    ctl: float,
+) -> dict[str, Any]:
+    tsb = ctl - atl
+    acute_load = (acute_aerobic + acute_anaerobic) / 7.0
+    chronic_load = (chronic_aerobic + chronic_anaerobic) / 42.0
+
+    return {
+        "athlete_id": athlete_id,
+        "reference_date": reference_date,
+        "acute": {
+            "aerobic": round(acute_aerobic, 1),
+            "anaerobic": round(acute_anaerobic, 1),
+            "daily_load": round(acute_load, 1),
+        },
+        "chronic": {
+            "aerobic": round(chronic_aerobic, 1),
+            "anaerobic": round(chronic_anaerobic, 1),
+            "daily_load": round(chronic_load, 1),
+        },
+        "atl": round(atl, 1),
+        "ctl": round(ctl, 1),
+        "tsb": round(tsb, 1),
+        "training_status": _resolve_training_status(tsb, ctl),
+    }
+
+
+async def _build_training_status_history(
+    db: AsyncSession,
+    *,
+    athlete_id: int,
+    reference_dates: list[date],
+) -> list[dict[str, Any]]:
+    sorted_dates = sorted(set(reference_dates))
+    if not sorted_dates:
+        return []
+
+    earliest_ref = sorted_dates[0]
+    latest_ref = sorted_dates[-1]
+
+    profile = await db.scalar(select(Profile).where(Profile.user_id == athlete_id))
+    profile_ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
     max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
 
-    # Fetch 90 days so CTL (42-day EWA) has enough warmup data
-    _PMC_WINDOW = 89
-    start_date = ref_date - timedelta(days=_PMC_WINDOW)
+    pmc_window = 89
+    start_date = earliest_ref - timedelta(days=pmc_window)
     start_dt = datetime.combine(start_date, datetime.min.time())
-    end_dt = datetime.combine(ref_date, datetime.max.time())
+    end_dt = datetime.combine(latest_ref, datetime.max.time())
 
-    # Pre-fetch FTP history for this user so each activity uses the FTP in effect at its date
-    _ts_ftp_hist_res = await db.execute(
+    ftp_history_res = await db.execute(
         select(ProfileMetricHistory)
         .where(
-            ProfileMetricHistory.user_id == target_athlete_id,
+            ProfileMetricHistory.user_id == athlete_id,
             ProfileMetricHistory.metric == "ftp",
         )
         .order_by(ProfileMetricHistory.recorded_at)
     )
-    _ts_ftp_hist: list[tuple[datetime, float]] = [
-        (row.recorded_at, row.value) for row in _ts_ftp_hist_res.scalars().all()
+    ftp_history: list[tuple[datetime, float]] = [
+        (row.recorded_at, row.value) for row in ftp_history_res.scalars().all()
     ]
 
-    # Pass 1: load activities WITHOUT full streams – only extract _meta for cached loads
     activities_stmt = select(
         Activity,
         Activity.streams['_meta'].label('streams_meta'),
     ).options(defer(Activity.streams)).where(
-        Activity.athlete_id == target_athlete_id,
+        Activity.athlete_id == athlete_id,
         Activity.created_at >= start_dt,
         Activity.created_at <= end_dt,
         Activity.duplicate_of_id.is_(None)
@@ -2237,7 +2283,7 @@ async def get_training_status(
         if meta.get("deleted"):
             continue
         sport = _normalize_sport_name(activity.sport)
-        ftp = _hist_lookup(_ts_ftp_hist, activity.created_at, _profile_ftp)
+        ftp = _hist_lookup(ftp_history, activity.created_at, profile_ftp)
         cached = _load_from_meta_dict(meta)
         if cached is not None:
             aerobic, anaerobic = cached
@@ -2254,71 +2300,118 @@ async def get_training_status(
         daily_aerobic[activity_day] += aerobic
         daily_anaerobic[activity_day] += anaerobic
 
-    # Pass 2: for the rare activities that need full streams (no cached load + no summary fields)
     if needs_full_streams:
         full_stmt = select(Activity).where(Activity.id.in_(needs_full_streams))
         full_res = await db.execute(full_stmt)
         for activity in full_res.scalars().all():
-            ftp = _hist_lookup(_ts_ftp_hist, activity.created_at, _profile_ftp)
+            ftp = _hist_lookup(ftp_history, activity.created_at, profile_ftp)
             aerobic, anaerobic = _activity_training_load(activity, ftp, max_hr, profile)
             activity_day = activity.created_at.date()
             daily_aerobic[activity_day] += aerobic
             daily_anaerobic[activity_day] += anaerobic
 
-    acute_start = ref_date - timedelta(days=6)
-    chronic_start = ref_date - timedelta(days=41)
-
-    acute_aerobic = 0.0
-    acute_anaerobic = 0.0
-    chronic_aerobic = 0.0
-    chronic_anaerobic = 0.0
-
-    # PMC exponential weighted averages (EWA) for CTL and ATL
-    _DECAY_CTL = 1.0 - math.exp(-1.0 / 42)
-    _DECAY_ATL = 1.0 - math.exp(-1.0 / 7)
+    decay_ctl = 1.0 - math.exp(-1.0 / 42)
+    decay_atl = 1.0 - math.exp(-1.0 / 7)
     ctl = 0.0
     atl = 0.0
 
+    acute_aerobic_window: deque[float] = deque()
+    acute_anaerobic_window: deque[float] = deque()
+    chronic_aerobic_window: deque[float] = deque()
+    chronic_anaerobic_window: deque[float] = deque()
+    acute_aerobic_sum = 0.0
+    acute_anaerobic_sum = 0.0
+    chronic_aerobic_sum = 0.0
+    chronic_anaerobic_sum = 0.0
+
+    target_dates = set(sorted_dates)
+    history_by_date: dict[date, dict[str, Any]] = {}
     day_cursor = start_date
-    while day_cursor <= ref_date:
+
+    while day_cursor <= latest_ref:
         day_aerobic = daily_aerobic.get(day_cursor, 0.0)
         day_anaerobic = daily_anaerobic.get(day_cursor, 0.0)
         day_tss = day_aerobic + day_anaerobic
 
-        # PMC EWA update
-        ctl += (day_tss - ctl) * _DECAY_CTL
-        atl += (day_tss - atl) * _DECAY_ATL
+        ctl += (day_tss - ctl) * decay_ctl
+        atl += (day_tss - atl) * decay_atl
 
-        if day_cursor >= chronic_start:
-            chronic_aerobic += day_aerobic
-            chronic_anaerobic += day_anaerobic
-        if day_cursor >= acute_start:
-            acute_aerobic += day_aerobic
-            acute_anaerobic += day_anaerobic
+        acute_aerobic_window.append(day_aerobic)
+        acute_anaerobic_window.append(day_anaerobic)
+        chronic_aerobic_window.append(day_aerobic)
+        chronic_anaerobic_window.append(day_anaerobic)
+        acute_aerobic_sum += day_aerobic
+        acute_anaerobic_sum += day_anaerobic
+        chronic_aerobic_sum += day_aerobic
+        chronic_anaerobic_sum += day_anaerobic
+
+        if len(acute_aerobic_window) > 7:
+            acute_aerobic_sum -= acute_aerobic_window.popleft()
+            acute_anaerobic_sum -= acute_anaerobic_window.popleft()
+        if len(chronic_aerobic_window) > 42:
+            chronic_aerobic_sum -= chronic_aerobic_window.popleft()
+            chronic_anaerobic_sum -= chronic_anaerobic_window.popleft()
+
+        if day_cursor in target_dates:
+            history_by_date[day_cursor] = _serialize_training_status_row(
+                athlete_id=athlete_id,
+                reference_date=day_cursor,
+                acute_aerobic=acute_aerobic_sum,
+                acute_anaerobic=acute_anaerobic_sum,
+                chronic_aerobic=chronic_aerobic_sum,
+                chronic_anaerobic=chronic_anaerobic_sum,
+                atl=atl,
+                ctl=ctl,
+            )
+
         day_cursor += timedelta(days=1)
 
-    tsb = ctl - atl
-    acute_load = (acute_aerobic + acute_anaerobic) / 7.0
-    chronic_load = (chronic_aerobic + chronic_anaerobic) / 42.0
+    return [history_by_date[ref_date] for ref_date in sorted_dates if ref_date in history_by_date]
 
-    return {
-        "athlete_id": target_athlete_id,
-        "reference_date": ref_date,
-        "acute": {
-            "aerobic": round(acute_aerobic, 1),
-            "anaerobic": round(acute_anaerobic, 1),
-            "daily_load": round(acute_load, 1)
-        },
-        "chronic": {
-            "aerobic": round(chronic_aerobic, 1),
-            "anaerobic": round(chronic_anaerobic, 1),
-            "daily_load": round(chronic_load, 1)
-        },
-        "atl": round(atl, 1),
-        "ctl": round(ctl, 1),
-        "tsb": round(tsb, 1),
-        "training_status": _resolve_training_status(tsb, ctl)
-    }
+
+@router.get("/training-status")
+async def get_training_status(
+    athlete_id: int | None = None,
+    reference_date: date | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    ref_date = reference_date or date.today()
+    target_athlete_id = await _resolve_training_status_target_athlete(
+        db,
+        current_user=current_user,
+        athlete_id=athlete_id,
+    )
+    rows = await _build_training_status_history(
+        db,
+        athlete_id=target_athlete_id,
+        reference_dates=[ref_date],
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="Training status unavailable")
+    return rows[0]
+
+
+@router.get("/training-status-history")
+async def get_training_status_history(
+    athlete_id: int | None = None,
+    days: int = Query(default=14, ge=1, le=60),
+    end_date: date | None = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target_athlete_id = await _resolve_training_status_target_athlete(
+        db,
+        current_user=current_user,
+        athlete_id=athlete_id,
+    )
+    history_end_date = end_date or date.today()
+    reference_dates = [history_end_date - timedelta(days=offset) for offset in range(days - 1, -1, -1)]
+    return await _build_training_status_history(
+        db,
+        athlete_id=target_athlete_id,
+        reference_dates=reference_dates,
+    )
 
 @router.get("/performance-trend", response_model=PerformanceTrendResponse)
 async def get_performance_trend(
