@@ -445,8 +445,8 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     try {
       const result = await uploadChatAttachment(selectedActiveOrganizationId, file);
       setPendingAttachment({ url: result.attachment_url, name: result.attachment_name });
-    } catch {
-      notifications.show({ color: "red", title: t("Upload failed"), message: t("Could not upload the file.") });
+    } catch (error) {
+      notifications.show({ color: "red", title: t("Upload failed"), message: extractApiErrorMessage(error) });
     } finally {
       setAttachmentUploading(false);
     }

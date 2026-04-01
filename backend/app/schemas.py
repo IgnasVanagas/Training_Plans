@@ -876,7 +876,7 @@ class OrganizationDiscoverOut(BaseModel):
 
 
 class OrganizationChatMessageCreate(BaseModel):
-    body: str = Field(min_length=1, max_length=2000)
+    body: str = Field(min_length=0, max_length=2000)
     attachment_url: Optional[str] = None
     attachment_name: Optional[str] = None
 

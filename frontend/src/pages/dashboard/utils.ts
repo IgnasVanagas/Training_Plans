@@ -1,13 +1,38 @@
 import { MetricKey } from "./types";
 
+const flattenApiDetail = (detail: unknown): string | null => {
+  if (typeof detail === "string") return detail;
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => flattenApiDetail(item))
+      .filter((value): value is string => Boolean(value?.trim()));
+    return messages.length > 0 ? messages.join(" ") : null;
+  }
+
+  if (detail && typeof detail === "object") {
+    const detailRecord = detail as { msg?: unknown; detail?: unknown; message?: unknown };
+
+    if (typeof detailRecord.msg === "string") return detailRecord.msg;
+    if (typeof detailRecord.message === "string") return detailRecord.message;
+    return flattenApiDetail(detailRecord.detail);
+  }
+
+  return null;
+};
+
 export const extractApiErrorMessage = (error: unknown): string => {
   const maybeError = error as {
     code?: string;
-    response?: { data?: { detail?: string } };
+    response?: { data?: { detail?: unknown; message?: unknown } };
     message?: string;
   };
   if (maybeError?.code === "ECONNABORTED") return "Request timed out. Please try again.";
-  if (maybeError?.response?.data?.detail) return maybeError.response.data.detail;
+
+  const detailMessage = flattenApiDetail(maybeError?.response?.data?.detail)
+    ?? flattenApiDetail(maybeError?.response?.data?.message);
+  if (detailMessage) return detailMessage;
+
   if (maybeError?.message === "Network Error") return "Network error. Check your connection and try again.";
   return maybeError?.message || "Unexpected error";
 };
