@@ -745,16 +745,24 @@ const ActivityCalendarPicker = ({
 
   const [focusDate, setFocusDate] = useState<string | null>(selectedDate);
 
-  const activitiesForFocusDate = useMemo(
-    () => (focusDate ? activitiesByDate.get(focusDate) || [] : []),
-    [focusDate, activitiesByDate],
-  );
+  useEffect(() => {
+    setFocusDate(selectedDate);
+  }, [selectedDate]);
+
+  const activitiesForFocusDate = useMemo(() => {
+    if (!focusDate) return [];
+    return (activitiesByDate.get(focusDate) || [])
+      .slice()
+      .sort((left, right) => (left.created_at < right.created_at ? 1 : -1));
+  }, [focusDate, activitiesByDate]);
 
   const handleDateClick = useCallback((date: Date) => {
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     setFocusDate(key);
-    const dayActivities = activitiesByDate.get(key) || [];
-    if (dayActivities.length === 1) {
+    const dayActivities = (activitiesByDate.get(key) || [])
+      .slice()
+      .sort((left, right) => (left.created_at < right.created_at ? 1 : -1));
+    if (dayActivities.length > 0) {
       onSelect(String(dayActivities[0].id));
     }
   }, [activitiesByDate, onSelect]);

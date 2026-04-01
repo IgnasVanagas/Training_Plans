@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Box, Group, Skeleton, SegmentedControl, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { endOfWeek, format, startOfWeek } from 'date-fns';
+import { addDays, endOfWeek, format, startOfWeek } from 'date-fns';
 import api from '../../api/client';
 import { resolveWeekAccentColor } from './activityStyling';
 import { parseDate } from './dateUtils';
@@ -397,32 +397,38 @@ export default function TrainingCalendarZoneSummaryPanel({
             .map((week) => week.key);
     }, [weeksInMonth, completedEvents]);
 
-    const boundaryWeeksWithActivities = useMemo(() => {
-        const raw = weeksInMonth.filter((week) => {
-            if (week.start >= monthStart && week.end <= monthEnd) {
-                return false;
-            }
-            return weeksWithActivities.includes(week.key);
+    // Compute unique months (outside the currently-viewed month) that have
+    // visible weeks with activities. One /zone-summary request per month
+    // covers ALL activities in that month, replacing the old per-week approach
+    // which was capped at 16 weeks and left 36+ visible weeks without data.
+    const supplementalMonths = useMemo(() => {
+        const viewMonthKey = format(monthStart, 'yyyy-MM');
+        const monthSet = new Set<string>();
+        weeksInMonth.forEach((week) => {
+            if (!weeksWithActivities.includes(week.key)) return;
+            const weekEnd = addDays(week.start, 6);
+            const mStart = format(week.start, 'yyyy-MM');
+            const mEnd = format(weekEnd, 'yyyy-MM');
+            if (mStart !== viewMonthKey) monthSet.add(mStart);
+            if (mEnd !== viewMonthKey) monthSet.add(mEnd);
         });
-        // Cap to the 16 boundary weeks nearest to the viewed month to
-        // avoid firing dozens of parallel /zone-summary requests.
-        if (raw.length <= 16) return raw;
-        const midTs = (monthStart.getTime() + monthEnd.getTime()) / 2;
-        return raw
-            .slice()
-            .sort((a, b) => Math.abs(a.start.getTime() - midTs) - Math.abs(b.start.getTime() - midTs))
-            .slice(0, 16);
-    }, [monthEnd, monthStart, weeksInMonth, weeksWithActivities]);
+        return Array.from(monthSet).sort().map((monthKey) => {
+            const [y, m] = monthKey.split('-').map(Number);
+            return { key: monthKey, ref: new Date(y, m - 1, 15) };
+        });
+    }, [weeksInMonth, weeksWithActivities, monthStart]);
 
     const supplementalSnapshotKey = useMemo(() => {
         const scope = athleteId ? `athlete:${athleteId}` : (allAthletes ? 'all' : 'self');
-        return `zone-week-range-activities-supplemental:${scope}:${weekStartDay}:${monthStart.toISOString().slice(0, 10)}:${monthEnd.toISOString().slice(0, 10)}`;
-    }, [allAthletes, athleteId, monthEnd, monthStart, weekStartDay]);
+        const monthKeys = supplementalMonths.map((m) => m.key).join(',');
+        return `zone-month-range-activities-supplemental:${scope}:${weekStartDay}:${monthKeys}`;
+    }, [allAthletes, athleteId, weekStartDay, supplementalMonths]);
 
     const { data: supplementalWeekZoneActivities = [] } = useQuery({
-        queryKey: ['zone-week-range-activities-supplemental', athleteId, allAthletes, weekStartDay, ...boundaryWeeksWithActivities.map((week) => week.key)],
-        enabled: boundaryWeeksWithActivities.length > 0,
+        queryKey: ['zone-month-range-activities-supplemental', athleteId, allAthletes, weekStartDay, ...supplementalMonths.map((m) => m.key)],
+        enabled: supplementalMonths.length > 0,
         staleTime: 1000 * 60 * 5,
+        gcTime: 1000 * 60 * 60,
         placeholderData: (prev) => prev,
         initialData: () => {
             const snap = readSnapshot<ActivityZoneSummary[]>(supplementalSnapshotKey);
@@ -432,11 +438,12 @@ export default function TrainingCalendarZoneSummaryPanel({
             const byId = new Map<number, ActivityZoneSummary>();
 
             await Promise.all(
-                boundaryWeeksWithActivities.map(async (week) => {
-                    const params = buildZoneSummaryParams(week.start);
+                supplementalMonths.map(async ({ ref }) => {
+                    const params = buildZoneSummaryParams(ref);
                     const res = await api.get<ZoneSummaryResponse>(`/activities/zone-summary?${params.toString()}`);
                     (res.data.athletes || []).forEach((summary) => {
-                        (summary.weekly_activity_zones || []).forEach((activity) => {
+                        // Use monthly_activity_zones — one request covers the full month
+                        (summary.monthly_activity_zones || []).forEach((activity) => {
                             byId.set(activity.activity_id, activity);
                         });
                     });
