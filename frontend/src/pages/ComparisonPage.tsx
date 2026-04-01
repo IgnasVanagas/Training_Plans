@@ -27,7 +27,7 @@ import { DatePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
   ResponsiveContainer, Legend, RadarChart, Radar, PolarGrid,
   PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
@@ -300,13 +300,21 @@ const ActivityCalendarPicker = ({
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
   const activitiesByDate = useMemo(() => {
     const map = new Map<string, ActivityListItem[]>();
-    activities.forEach((a) => { const k = a.created_at.slice(0, 10); const l = map.get(k) || []; l.push(a); map.set(k, l); });
+    activities.forEach((a) => {
+      const d = new Date(a.created_at.endsWith('Z') ? a.created_at : a.created_at + 'Z');
+      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const l = map.get(k) || [];
+      l.push(a);
+      map.set(k, l);
+    });
     return map;
   }, [activities]);
   const selectedDate = useMemo(() => {
     if (!selectedId) return null;
     const act = activities.find((a) => String(a.id) === selectedId);
-    return act ? act.created_at.slice(0, 10) : null;
+    if (!act) return null;
+    const d = new Date(act.created_at.endsWith('Z') ? act.created_at : act.created_at + 'Z');
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }, [selectedId, activities]);
   const [focusDate, setFocusDate] = useState<string | null>(selectedDate);
   const activitiesForFocusDate = useMemo(() => (focusDate ? activitiesByDate.get(focusDate) || [] : []), [focusDate, activitiesByDate]);
@@ -802,15 +810,15 @@ export const ComparisonPage = () => {
                     <Text fw={600} size="lg">{t('Power Curve Comparison') || 'Power Curve Comparison'}</Text>
                   </Group>
                   <ResponsiveContainer width="100%" height={280}>
-                    <BarChart data={powerCurveData} barCategoryGap="20%">
+                    <LineChart data={powerCurveData}>
                       <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#2a3552' : '#e0e0e0'} />
                       <XAxis dataKey="window" tick={{ fontSize: 11 }} />
                       <YAxis tick={{ fontSize: 11 }} unit=" W" />
-                      <RTooltip contentStyle={{ background: isDark ? '#1a2744' : '#fff', border: `1px solid ${isDark ? '#2a3552' : '#ddd'}` }} />
+                      <RTooltip contentStyle={{ background: isDark ? '#1a2744' : '#fff', border: `1px solid ${isDark ? '#2a3552' : '#ddd'}` }} formatter={(v: number, name: string) => [`${v} W`, name]} />
                       <Legend />
-                      <Bar dataKey="sideA" name={t('Side A') || 'Side A'} fill={chartColors.sideA} radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="sideB" name={t('Side B') || 'Side B'} fill={chartColors.sideB} radius={[4, 4, 0, 0]} />
-                    </BarChart>
+                      <Line dataKey="sideA" name={t('Side A') || 'Side A'} stroke={chartColors.sideA} strokeWidth={2} dot={{ r: 4, fill: chartColors.sideA }} connectNulls />
+                      <Line dataKey="sideB" name={t('Side B') || 'Side B'} stroke={chartColors.sideB} strokeWidth={2} strokeDasharray="4 2" dot={{ r: 4, fill: chartColors.sideB }} connectNulls />
+                    </LineChart>
                   </ResponsiveContainer>
                 </Paper>
               )}

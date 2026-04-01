@@ -726,7 +726,8 @@ const ActivityCalendarPicker = ({
   const activitiesByDate = useMemo(() => {
     const map = new Map<string, ActivityListItem[]>();
     activities.forEach((a) => {
-      const key = a.created_at.slice(0, 10);
+      const d = new Date(a.created_at.endsWith('Z') ? a.created_at : a.created_at + 'Z');
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const list = map.get(key) || [];
       list.push(a);
       map.set(key, list);
@@ -737,7 +738,9 @@ const ActivityCalendarPicker = ({
   const selectedDate = useMemo(() => {
     if (!selectedId) return null;
     const act = activities.find((a) => String(a.id) === selectedId);
-    return act ? act.created_at.slice(0, 10) : null;
+    if (!act) return null;
+    const d = new Date(act.created_at.endsWith('Z') ? act.created_at : act.created_at + 'Z');
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }, [selectedId, activities]);
 
   const [focusDate, setFocusDate] = useState<string | null>(selectedDate);
@@ -1453,8 +1456,8 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                               formatter={(v: number, name: string) => [`${v} W`, name]}
                             />
                             <Legend wrapperStyle={{ fontSize: 11 }} />
-                            <Bar dataKey="sideA" name="Side A" fill={chartColors.sideA} opacity={0.85} radius={[3, 3, 0, 0]} barSize={14} />
-                            <Bar dataKey="sideB" name="Side B" fill={chartColors.sideB} opacity={0.85} radius={[3, 3, 0, 0]} barSize={14} />
+                            <Line dataKey="sideA" name="Side A" stroke={chartColors.sideA} strokeWidth={2} dot={{ r: 4, fill: chartColors.sideA }} connectNulls />
+                            <Line dataKey="sideB" name="Side B" stroke={chartColors.sideB} strokeWidth={2} strokeDasharray="4 2" dot={{ r: 4, fill: chartColors.sideB }} connectNulls />
                           </ComposedChart>
                         </ResponsiveContainer>
                       </Stack>
