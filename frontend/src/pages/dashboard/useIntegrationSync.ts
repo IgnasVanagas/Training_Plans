@@ -38,10 +38,12 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
     const provider = syncingProvider;
     const notificationId = `integration-sync-${provider}`;
     let isActive = true;
+    let consecutiveErrors = 0;
 
     const pollStatus = async () => {
       try {
         const status = await getIntegrationSyncStatus(provider);
+        consecutiveErrors = 0;
         if (!isActive) return;
 
         if (status.status === "completed") {
@@ -102,6 +104,8 @@ export const useIntegrationSync = ({ queryClient, me, integrations }: UseIntegra
         setSyncingProvider(null);
       } catch (error) {
         if (!isActive) return;
+        consecutiveErrors++;
+        if (consecutiveErrors < 3) return; // tolerate transient network blips
         notifications.update({
           id: notificationId,
           title: `${provider} sync status error`,
