@@ -897,6 +897,28 @@ export const TrainingCalendar = ({
             return;
         }
 
+        if (event.resource._is_note) {
+            const dateValue = parseDate(event.resource.date);
+            const dateStr = format(dateValue, 'yyyy-MM-dd');
+            const dayEvts = events.filter((e: any) => e.resource.date === dateStr);
+
+            setDayEvents(dayEvts.map((e: any) => e.resource));
+            setSelectedDayTitle(format(dateValue, 'MMMM do, yyyy'));
+            setSelectedDateRange({ startDate: dateStr, endDate: dateStr });
+            setSelectedEvent({
+                date: dateStr,
+                sport_type: 'Cycling',
+                planned_duration: 60,
+                title: 'New Workout',
+                user_id: athleteId || undefined,
+                structure: [],
+                recurrence: undefined,
+            });
+            setDayCreateError(null);
+            openDayModal();
+            return;
+        }
+
         if (!event.resource.is_planned) {
             if (event.resource.id) {
                 if ((event.resource.duplicate_recordings_count ?? 0) > 0) {

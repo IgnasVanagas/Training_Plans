@@ -18,6 +18,7 @@ import {
   Slider,
   Stack,
   Table,
+  Tabs,
   Text,
   Title,
   Tooltip,
@@ -958,18 +959,13 @@ export const ComparisonPage = () => {
                   <Stack gap="sm">
                     <Group gap="sm" wrap="wrap" justify="space-between">
                       <Group gap="sm">
-                        {([hasHrStreams, hasPowerStreams, hasCadenceStreams].filter(Boolean).length > 1) && (
-                          <SegmentedControl
-                            size="xs"
-                            value={streamMetric}
-                            onChange={(v) => setStreamMetric(v as 'hr' | 'power' | 'cadence')}
-                            data={[
-                              ...(hasHrStreams ? [{ value: 'hr', label: t('Heart Rate') || 'Heart Rate' }] : []),
-                              ...(hasPowerStreams ? [{ value: 'power', label: t('Power') || 'Power' }] : []),
-                              ...(hasCadenceStreams ? [{ value: 'cadence', label: t('Cadence') || 'Cadence' }] : []),
-                            ]}
-                          />
-                        )}
+                        <Tabs value={streamMetric} onChange={(v: string | null) => setStreamMetric((v as 'hr' | 'power' | 'cadence') || 'hr')}>
+                          <Tabs.List>
+                            <Tabs.Tab value="hr">{t('Heart Rate Stream Comparison') || 'Heart Rate Stream Comparison'}</Tabs.Tab>
+                            <Tabs.Tab value="power">{t('Power Stream Comparison') || 'Power Stream Comparison'}</Tabs.Tab>
+                            <Tabs.Tab value="cadence">{t('Cadence Stream Comparison') || 'Cadence Stream Comparison'}</Tabs.Tab>
+                          </Tabs.List>
+                        </Tabs>
                         <Group gap={6}>
                           <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideA }} />
                           <Text size="xs" c="dimmed">{t('Side A') || 'Side A'}</Text>
@@ -988,6 +984,15 @@ export const ComparisonPage = () => {
                         )}
                       </Group>
                     </Group>
+                    {streamMetric === 'hr' && !hasHrStreams && (
+                      <Text size="xs" c="dimmed">{t('No heart rate stream data available for one or both sides.') || 'No heart rate stream data available for one or both sides.'}</Text>
+                    )}
+                    {streamMetric === 'power' && !hasPowerStreams && (
+                      <Text size="xs" c="dimmed">{t('No power stream data available for one or both sides.') || 'No power stream data available for one or both sides.'}</Text>
+                    )}
+                    {streamMetric === 'cadence' && !hasCadenceStreams && (
+                      <Text size="xs" c="dimmed">{t('No cadence stream data available for one or both sides.') || 'No cadence stream data available for one or both sides.'}</Text>
+                    )}
                     <Box px={4}>
                       <Slider
                         size="xs"
@@ -1028,13 +1033,6 @@ export const ComparisonPage = () => {
                           <>
                             <Line dataKey="cdA" name={`${t('Cadence') || 'Cadence'} — A`} stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
                             <Line dataKey="cdB" name={`${t('Cadence') || 'Cadence'} — B`} stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
-                          </>
-                        )}
-                        {/* Fallback when only one metric type has data */}
-                        {!hasPowerStreams && !hasCadenceStreams && hasHrStreams && streamMetric !== 'hr' && (
-                          <>
-                            <Line dataKey="hrA" name={`${t('HR') || 'HR'} — A`} stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
-                            <Line dataKey="hrB" name={`${t('HR') || 'HR'} — B`} stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
                           </>
                         )}
                       </ComposedChart>

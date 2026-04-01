@@ -48,13 +48,19 @@ const RecurringWorkoutFields = ({
   disabled?: boolean;
 }) => {
   const { t } = useI18n();
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const recurrence = selectedEvent.recurrence || null;
   const mode = recurrence ? 'weekly' : 'once';
 
   return (
     <Paper withBorder p="sm" radius="md">
       <Stack gap="sm">
-        <Group justify="space-between" align="center">
+        <Group
+          justify="space-between"
+          align={isMobile ? 'stretch' : 'center'}
+          wrap={isMobile ? 'wrap' : 'nowrap'}
+          style={isMobile ? { flexDirection: 'column', gap: 8 } : undefined}
+        >
           <Box>
             <Text fw={600}>{t('Repeat workout') || 'Repeat workout'}</Text>
             <Text size="xs" c="dimmed">
@@ -78,6 +84,7 @@ const RecurringWorkoutFields = ({
               { label: t('Weekly') || 'Weekly', value: 'weekly' },
             ]}
             disabled={disabled}
+            fullWidth={isMobile}
           />
         </Group>
 
@@ -364,9 +371,15 @@ export const DayDetailsModal = ({
                         <Text fw={600} size="sm">{isRace ? (t('Edit race') || 'Edit race') : (t('Edit constraint') || 'Edit constraint')}</Text>
                       </Group>
                       <Group gap={4}>
-                        <ActionIcon size="sm" variant="light" color="green" onClick={saveEdit} loading={seasonPlanUpdatePending}>
-                          <CheckCircle size={14} />
-                        </ActionIcon>
+                        <Button
+                          size="xs"
+                          color="green"
+                          leftSection={<CheckCircle size={14} />}
+                          onClick={saveEdit}
+                          loading={seasonPlanUpdatePending}
+                        >
+                          {t('Save Changes') || 'Save Changes'}
+                        </Button>
                         <ActionIcon size="sm" variant="subtle" onClick={cancelEditing}>
                           <X size={14} />
                         </ActionIcon>
@@ -376,7 +389,13 @@ export const DayDetailsModal = ({
                       <>
                         <SimpleGrid cols={2}>
                           <TextInput label={t('Race name') || 'Race name'} value={editDraft.name || ''} onChange={(e) => setEditDraft({ ...editDraft, name: e.currentTarget.value })} />
-                          <TextInput label={t('Race date') || 'Race date'} type="date" value={editDraft.date || ''} onChange={(e) => setEditDraft({ ...editDraft, date: e.currentTarget.value })} />
+                          <DatePickerInput
+                            label={t('Race date') || 'Race date'}
+                            value={editDraft.date ? parseDate(editDraft.date) : null}
+                            onChange={(value) => setEditDraft({ ...editDraft, date: value ? format(value, 'yyyy-MM-dd') : '' })}
+                            valueFormat="DD/MM/YYYY"
+                            clearable={false}
+                          />
                         </SimpleGrid>
                         <SimpleGrid cols={3}>
                           <Select label={t('Priority') || 'Priority'} data={['A', 'B', 'C']} value={editDraft.priority || 'C'} onChange={(v) => v && setEditDraft({ ...editDraft, priority: v })} />
@@ -401,8 +420,20 @@ export const DayDetailsModal = ({
                           ]} value={editDraft.kind || 'travel'} onChange={(v) => v && setEditDraft({ ...editDraft, kind: v })} />
                         </SimpleGrid>
                         <SimpleGrid cols={2}>
-                          <TextInput label={t('Start') || 'Start'} type="date" value={editDraft.start_date || ''} onChange={(e) => setEditDraft({ ...editDraft, start_date: e.currentTarget.value })} />
-                          <TextInput label={t('End') || 'End'} type="date" value={editDraft.end_date || ''} onChange={(e) => setEditDraft({ ...editDraft, end_date: e.currentTarget.value })} />
+                          <DatePickerInput
+                            label={t('Start') || 'Start'}
+                            value={editDraft.start_date ? parseDate(editDraft.start_date) : null}
+                            onChange={(value) => setEditDraft({ ...editDraft, start_date: value ? format(value, 'yyyy-MM-dd') : '' })}
+                            valueFormat="DD/MM/YYYY"
+                            clearable={false}
+                          />
+                          <DatePickerInput
+                            label={t('End') || 'End'}
+                            value={editDraft.end_date ? parseDate(editDraft.end_date) : null}
+                            onChange={(value) => setEditDraft({ ...editDraft, end_date: value ? format(value, 'yyyy-MM-dd') : '' })}
+                            valueFormat="DD/MM/YYYY"
+                            clearable={false}
+                          />
                         </SimpleGrid>
                         <SimpleGrid cols={2}>
                           <Select label={t('Severity') || 'Severity'} data={[
@@ -526,10 +557,11 @@ export const DayDetailsModal = ({
                           borderBottom: `1px solid ${isDark ? 'rgba(0,195,245,0.12)' : 'rgba(0,145,181,0.10)'}`,
                           background: isDark ? 'rgba(0,195,245,0.06)' : 'rgba(0,145,181,0.045)',
                           display: 'flex',
-                          alignItems: 'center',
+                          alignItems: isMobile ? 'stretch' : 'center',
                           justifyContent: 'space-between',
                           gap: 8,
                           flexWrap: 'wrap',
+                          flexDirection: isMobile ? 'column' : 'row',
                         }}
                       >
                         <Text
@@ -548,7 +580,8 @@ export const DayDetailsModal = ({
                             { label: t('Quick') || 'Quick', value: 'quick' },
                           ]}
                           size="xs"
-                          styles={{ root: { background: 'transparent' } }}
+                          fullWidth={isMobile}
+                          styles={{ root: { background: 'transparent' }, label: { whiteSpace: 'nowrap' } }}
                         />
                       </Box>
 
