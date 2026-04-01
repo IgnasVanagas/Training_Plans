@@ -721,27 +721,39 @@ const ActivityCalendarPicker = ({
   isDark: boolean;
   t: (v: string) => string;
 }) => {
+  const toDateKey = useCallback((value: string | Date) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+      }
+      return null;
+    }
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }, []);
+
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
 
   const activitiesByDate = useMemo(() => {
     const map = new Map<string, ActivityListItem[]>();
     activities.forEach((a) => {
-      const d = new Date(a.created_at.endsWith('Z') ? a.created_at : a.created_at + 'Z');
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const key = toDateKey(a.created_at);
+      if (!key) return;
       const list = map.get(key) || [];
       list.push(a);
       map.set(key, list);
     });
     return map;
-  }, [activities]);
+  }, [activities, toDateKey]);
 
   const selectedDate = useMemo(() => {
     if (!selectedId) return null;
     const act = activities.find((a) => String(a.id) === selectedId);
     if (!act) return null;
-    const d = new Date(act.created_at.endsWith('Z') ? act.created_at : act.created_at + 'Z');
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }, [selectedId, activities]);
+    return toDateKey(act.created_at);
+  }, [selectedId, activities, toDateKey]);
 
   const [focusDate, setFocusDate] = useState<string | null>(selectedDate);
 
@@ -757,7 +769,8 @@ const ActivityCalendarPicker = ({
   }, [focusDate, activitiesByDate]);
 
   const handleDateClick = useCallback((date: Date) => {
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    const key = toDateKey(date);
+    if (!key) return;
     setFocusDate(key);
     const dayActivities = (activitiesByDate.get(key) || [])
       .slice()
@@ -765,7 +778,7 @@ const ActivityCalendarPicker = ({
     if (dayActivities.length > 0) {
       onSelect(String(dayActivities[0].id));
     }
-  }, [activitiesByDate, onSelect]);
+  }, [activitiesByDate, onSelect, toDateKey]);
 
   const selectedActivity = useMemo(
     () => activities.find((a) => String(a.id) === selectedId),
@@ -787,7 +800,8 @@ const ActivityCalendarPicker = ({
           onDateChange={setPickerDate}
           size="sm"
           getDayProps={(date) => {
-            const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            const key = toDateKey(date);
+            if (!key) return {};
             const hasActivities = activitiesByDate.has(key);
             const isSelected = selectedDate === key;
             return {
