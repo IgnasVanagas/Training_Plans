@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { Box, Group, Stack, Text } from '@mantine/core';
 import { format, addDays, startOfWeek, addWeeks, getMonth, getYear, getDate } from 'date-fns';
 import { MessageSquareText } from 'lucide-react';
-import { CalendarEventCard } from './TrainingCalendarEventRenderers';
+import { CalendarEventCard, NoteChip } from './TrainingCalendarEventRenderers';
 import { CalendarEvent } from './types';
 
 /** How many weeks to render before/after the anchor week */
@@ -532,9 +532,11 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                     const markers = planningMarkersByDate.get(dateKey) || [];
                                     const dayNotes = notesByDate?.get(dateKey);
 
-                                    // Limit to 2 events, show +N more
-                                    const shownEvents = dayEvents.slice(0, 2);
-                                    const hiddenCount = dayEvents.length - 2;
+                                    // Limit to 2 items total (activities + notes), show +N more
+                                    const MAX_SHOWN = 2;
+                                    const shownEvents = dayEvents.slice(0, MAX_SHOWN);
+                                    const shownNotes = (dayNotes || []).slice(0, Math.max(0, MAX_SHOWN - shownEvents.length));
+                                    const hiddenCount = (dayEvents.length - shownEvents.length) + ((dayNotes?.length || 0) - shownNotes.length);
 
                                     return (
                                         <Box
@@ -578,7 +580,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                                     >
                                                         {getDate(day) === 1 ? format(day, 'MMM d') : format(day, 'd')}
                                                     </Text>
-                                                    {dayNotes && dayNotes.length > 0 && (
+                                                    {dayNotes && dayNotes.length > 0 && shownNotes.length === 0 && (
                                                         <MessageSquareText size={12} style={{ color: isDark ? '#60A5FA' : '#3B82F6', flexShrink: 0, opacity: 0.8 }} />
                                                     )}
                                                 </Group>
@@ -648,6 +650,18 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                                         </Box>
                                                     );
                                                 })}
+                                                {shownNotes.map((note: any, idx: number) => (
+                                                    <Box
+                                                        key={`note-${note.id || idx}`}
+                                                        data-calendar-event
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onSelectEvent({ resource: { id: -2, date: dateKey, title: note.content, is_planned: false, _is_note: true } });
+                                                        }}
+                                                    >
+                                                        <NoteChip note={note} isDark={isDark} palette={palette} />
+                                                    </Box>
+                                                ))}
                                                 {hiddenCount > 0 && (
                                                     <Box
                                                         data-calendar-event

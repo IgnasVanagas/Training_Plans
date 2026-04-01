@@ -45,7 +45,7 @@ import {
   discoverOrganizations,
   leaveOrganization,
   listOrgDirectMessages,
-  listOrgMembers,
+  listOrganizationInbox,
   listOrganizationCoachMessages,
   listOrganizationGroupMessages,
   postOrgDirectMessage,
@@ -56,7 +56,7 @@ import {
   uploadChatAttachment,
 } from "../../api/organizations";
 import { useI18n } from "../../i18n/I18nProvider";
-import { OrgMember, OrganizationDirectMessage, OrganizationCoachMessage, OrganizationGroupMessage, User } from "./types";
+import { OrganizationDirectMessage, OrganizationCoachMessage, OrganizationGroupMessage, User } from "./types";
 import { extractApiErrorMessage } from "./utils";
 
 type AnyMessage = (OrganizationGroupMessage | OrganizationCoachMessage | OrganizationDirectMessage) & {
@@ -142,50 +142,6 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
 
   const selectedActiveOrganizationId = selectedActiveOrgId ? Number(selectedActiveOrgId) : null;
 
-  // All org members (for DMs)
-  const orgMembersQuery = useQuery({
-    queryKey: ["org-members", selectedActiveOrganizationId],
-    queryFn: () => listOrgMembers(selectedActiveOrganizationId as number),
-    enabled: Boolean(selectedActiveOrganizationId),
-  });
-  const orgMembers: OrgMember[] = orgMembersQuery.data || [];
-
-  const coachOptions = useMemo(() => {
-    if (me.role !== "athlete") return [];
-    if (!selectedActiveOrganizationId) return [];
-
-    const fromMyCoaches = (me.coaches || [])
-      .filter((coach) => (coach.organization_ids || []).includes(selectedActiveOrganizationId))
-      .map((coach) => ({
-        value: coach.id.toString(),
-        label: `${coach.first_name || ""} ${coach.last_name || ""}`.trim() || coach.email,
-      }));
-
-    if (fromMyCoaches.length > 0) return fromMyCoaches;
-
-    const org = (discoverQuery.data?.items || []).find((item) => item.id === selectedActiveOrganizationId);
-    return (org?.coaches || []).map((coach) => ({
-      value: coach.id.toString(),
-      label: `${coach.first_name || ""} ${coach.last_name || ""}`.trim() || coach.email,
-    }));
-  }, [discoverQuery.data?.items, me.coaches, me.role, selectedActiveOrganizationId]);
-
-  const athleteOptions = useMemo(() => {
-    if (me.role !== "coach") return [];
-    return (athletes || []).map((athlete) => {
-      const label = (athlete.profile?.first_name || athlete.profile?.last_name)
-        ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
-        : athlete.email;
-      return {
-        value: String(athlete.id),
-        label,
-      };
-    });
-  }, [athletes, me.role]);
-
-  const [selectedCoachId, setSelectedCoachId] = useState<string | null>(coachOptions[0]?.value || null);
-  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(athleteOptions[0]?.value || null);
-  const [selectedDirectMemberId, setSelectedDirectMemberId] = useState<string | null>(null);
   const [activeThreadKey, setActiveThreadKey] = useState<string>("group");
   const [mobilePane, setMobilePane] = useState<"threads" | "messages">("threads");
 
@@ -197,47 +153,69 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
   }, [initialShareText]);
 
   useEffect(() => {
-    if (coachOptions.length === 0) {
-      setSelectedCoachId(null);
-      return;
-    }
-    if (!selectedCoachId || !coachOptions.some((option) => option.value === selectedCoachId)) {
-      setSelectedCoachId(coachOptions[0].value);
-    }
-  }, [coachOptions, selectedCoachId]);
+    setActiveThreadKey("group");
+    setPendingAttachment(null);
+  }, [selectedActiveOrganizationId]);
+
+  const inboxQuery = useQuery({
+    queryKey: ["org-chat-inbox", selectedActiveOrganizationId],
+    queryFn: () => listOrganizationInbox(selectedActiveOrganizationId as number),
+    enabled: Boolean(selectedActiveOrganizationId),
+    refetchInterval: 5000,
+    staleTime: 2000,
+  });
+
+  const threads = useMemo(() => {
+    const items = inboxQuery.data?.items || [];
+    const sourceItems = items.length > 0
+      ? items
+      : [{ key: "group", thread_type: "group" as const, body_preview: null, created_at: null, sender_id: null }];
+
+    return sourceItems.map((item) => {
+      const isGroupThread = item.thread_type === "group";
+      const label = isGroupThread
+        ? t("Organization Group")
+        : item.participant_name || (item.participant_id ? `User #${item.participant_id}` : t("Conversation"));
+      const subtitle = item.body_preview
+        || (isGroupThread
+          ? t("Organization announcements and group discussion")
+          : item.thread_type === "coach"
+            ? (me.role === "coach" ? t("Direct athlete conversation") : t("Direct coach conversation"))
+            : t("Direct message"));
+
+      return {
+        key: item.key,
+        type: isGroupThread ? "group" as const : "direct" as const,
+        subtype: isGroupThread ? "group" as const : item.thread_type,
+        label,
+        subtitle,
+        participantId: item.participant_id ?? null,
+        lastMessageAt: item.created_at || null,
+        unread: Boolean(item.sender_id && item.sender_id !== me.id),
+      };
+    });
+  }, [inboxQuery.data?.items, me.id, me.role, t]);
 
   useEffect(() => {
-    if (athleteOptions.length === 0) {
-      setSelectedAthleteId(null);
-      return;
+    if (threads.length === 0) return;
+    if (!threads.some((thread) => thread.key === activeThreadKey)) {
+      setActiveThreadKey(threads[0].key);
     }
-    if (!selectedAthleteId || !athleteOptions.some((option) => option.value === selectedAthleteId)) {
-      setSelectedAthleteId(athleteOptions[0].value);
-    }
-  }, [athleteOptions, selectedAthleteId]);
+  }, [activeThreadKey, threads]);
 
-  useEffect(() => {
-    if (!activeThreadKey.startsWith("direct:")) return;
-    const directIdFromKey = activeThreadKey.split(":")[1] || null;
-    if (!directIdFromKey) return;
+  const filteredThreads = useMemo(() => {
+    const query = threadSearch.trim().toLowerCase();
+    if (!query) return threads;
+    return threads.filter((thread) =>
+      thread.label.toLowerCase().includes(query) || thread.subtitle.toLowerCase().includes(query),
+    );
+  }, [threadSearch, threads]);
 
-    // Distinguish coach-chat DM (coach:X) vs member DM (member:X)
-    if (activeThreadKey.startsWith("direct:coach:") || activeThreadKey.startsWith("direct:athlete:")) {
-      const id = activeThreadKey.split(":").slice(2).join(":");
-      if (me.role === "coach") {
-        if (id !== selectedAthleteId) setSelectedAthleteId(id);
-      } else {
-        if (id !== selectedCoachId) setSelectedCoachId(id);
-      }
-      return;
-    }
+  const activeThread = useMemo(() => {
+    return threads.find((thread) => thread.key === activeThreadKey) || threads[0] || null;
+  }, [activeThreadKey, threads]);
 
-    // member DM
-    if (activeThreadKey.startsWith("direct:member:")) {
-      const id = activeThreadKey.split(":").slice(2).join(":");
-      setSelectedDirectMemberId(id);
-    }
-  }, [activeThreadKey, me.role, selectedAthleteId, selectedCoachId]);
+  const activeParticipantId = activeThread?.participantId ?? null;
 
   const joinMutation = useMutation({
     mutationFn: (organizationId: number) => requestOrganizationJoin(organizationId),
@@ -278,27 +256,30 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
   const groupMessagesQuery = useQuery({
     queryKey: ["org-group-chat", selectedActiveOrganizationId],
     queryFn: () => listOrganizationGroupMessages(selectedActiveOrganizationId as number),
-    enabled: Boolean(selectedActiveOrganizationId),
-    refetchInterval: 15000,
+    enabled: Boolean(selectedActiveOrganizationId && activeThread?.type === "group"),
+    refetchInterval: 5000,
+    staleTime: 2000,
   });
 
   const coachMessagesQuery = useQuery({
-    queryKey: ["org-coach-chat", selectedActiveOrganizationId, me.role, selectedCoachId, selectedAthleteId],
+    queryKey: ["org-coach-chat", selectedActiveOrganizationId, activeParticipantId],
     queryFn: () => listOrganizationCoachMessages(
       selectedActiveOrganizationId as number,
       me.role === "coach"
-        ? { athleteId: Number(selectedAthleteId) }
-        : { coachId: Number(selectedCoachId) },
+        ? { athleteId: activeParticipantId as number }
+        : { coachId: activeParticipantId as number },
     ),
-    enabled: Boolean(selectedActiveOrganizationId && (me.role === "coach" ? selectedAthleteId : selectedCoachId)),
-    refetchInterval: 15000,
+    enabled: Boolean(selectedActiveOrganizationId && activeThread?.subtype === "coach" && activeParticipantId),
+    refetchInterval: 5000,
+    staleTime: 2000,
   });
 
   const directMessagesQuery = useQuery({
-    queryKey: ["org-direct-chat", selectedActiveOrganizationId, selectedDirectMemberId],
-    queryFn: () => listOrgDirectMessages(selectedActiveOrganizationId as number, Number(selectedDirectMemberId)),
-    enabled: Boolean(selectedActiveOrganizationId && selectedDirectMemberId),
-    refetchInterval: 15000,
+    queryKey: ["org-direct-chat", selectedActiveOrganizationId, activeParticipantId],
+    queryFn: () => listOrgDirectMessages(selectedActiveOrganizationId as number, activeParticipantId as number),
+    enabled: Boolean(selectedActiveOrganizationId && activeThread?.subtype === "member" && activeParticipantId),
+    refetchInterval: 5000,
+    staleTime: 2000,
   });
 
   const formatSenderName = (senderName?: string | null, senderId?: number) => {
@@ -331,90 +312,6 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     event.preventDefault();
     if (canSend) action();
   };
-
-  // Build threads: group + coach/athlete DMs + all-member DMs
-  const threads = useMemo(() => {
-    const groupLast = (groupMessagesQuery.data || []).slice(-1)[0];
-    const groupPreview = groupLast?.body || t("Organization announcements and group discussion");
-
-    // Coach ↔ athlete DMs (existing system)
-    const coachAthleteThreads = (me.role === "coach" ? athleteOptions : coachOptions).map((person) => {
-      const threadKey = me.role === "coach" ? `direct:athlete:${person.value}` : `direct:coach:${person.value}`;
-      const isSelected = activeThreadKey === threadKey;
-      const previewBody = isSelected ? (coachMessagesQuery.data || []).slice(-1)[0]?.body : undefined;
-      return {
-        key: threadKey,
-        type: "direct" as const,
-        subtype: "coach" as const,
-        label: person.label,
-        subtitle: previewBody || (me.role === "coach" ? t("Direct athlete conversation") : t("Direct coach conversation")),
-        directId: person.value,
-        lastMessageAt: isSelected ? (coachMessagesQuery.data || []).slice(-1)[0]?.created_at : null,
-        unread: Boolean(isSelected && previewBody && (coachMessagesQuery.data || []).slice(-1)[0]?.sender_id !== me.id),
-      };
-    });
-
-    // Other member DMs (new system) — exclude people already in coachAthleteThreads
-    const coachAthleteIds = new Set(coachAthleteThreads.map((t) => t.directId));
-    const memberThreads = orgMembers
-      .filter((m) => !coachAthleteIds.has(String(m.id)))
-      .map((member) => {
-        const name = (member.first_name || member.last_name)
-          ? `${member.first_name || ""} ${member.last_name || ""}`.trim()
-          : member.email;
-        const threadKey = `direct:member:${member.id}`;
-        const isSelected = activeThreadKey === threadKey;
-        const previewBody = isSelected ? (directMessagesQuery.data || []).slice(-1)[0]?.body : undefined;
-        return {
-          key: threadKey,
-          type: "direct" as const,
-          subtype: "member" as const,
-          label: name,
-          subtitle: previewBody || t("Direct message"),
-          directId: String(member.id),
-          lastMessageAt: isSelected ? (directMessagesQuery.data || []).slice(-1)[0]?.created_at : null,
-          unread: Boolean(isSelected && previewBody && (directMessagesQuery.data || []).slice(-1)[0]?.sender_id !== me.id),
-        };
-      });
-
-    return [
-      {
-        key: "group",
-        type: "group" as const,
-        subtype: "group" as const,
-        label: t("Organization Group"),
-        subtitle: groupPreview,
-        directId: null as string | null,
-        lastMessageAt: groupLast?.created_at || null,
-        unread: Boolean(groupLast && groupLast.sender_id !== me.id),
-      },
-      ...coachAthleteThreads,
-      ...memberThreads,
-    ];
-  }, [
-    athleteOptions,
-    coachMessagesQuery.data,
-    coachOptions,
-    directMessagesQuery.data,
-    groupMessagesQuery.data,
-    me.id,
-    me.role,
-    orgMembers,
-    activeThreadKey,
-    t,
-  ]);
-
-  const filteredThreads = useMemo(() => {
-    const query = threadSearch.trim().toLowerCase();
-    if (!query) return threads;
-    return threads.filter((thread) =>
-      thread.label.toLowerCase().includes(query) || thread.subtitle.toLowerCase().includes(query),
-    );
-  }, [threadSearch, threads]);
-
-  const activeThread = useMemo(() => {
-    return threads.find((thread) => thread.key === activeThreadKey) || threads[0] || null;
-  }, [activeThreadKey, threads]);
 
   const activeMessages = useMemo((): AnyMessage[] => {
     if (!activeThread) return [];
@@ -457,6 +354,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
       setGroupBody("");
       setPendingAttachment(null);
       queryClient.invalidateQueries({ queryKey: ["org-group-chat", selectedActiveOrganizationId] });
+      queryClient.invalidateQueries({ queryKey: ["org-chat-inbox", selectedActiveOrganizationId] });
     },
     onError: (error) => {
       notifications.show({ color: "red", title: t("Message failed"), message: extractApiErrorMessage(error) });
@@ -467,8 +365,8 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     mutationFn: () => postOrganizationCoachMessage(
       selectedActiveOrganizationId as number,
       me.role === "coach"
-        ? { athleteId: Number(selectedAthleteId) }
-        : { coachId: Number(selectedCoachId) },
+        ? { athleteId: activeParticipantId as number }
+        : { coachId: activeParticipantId as number },
       coachBody.trim(),
       pendingAttachment?.url,
       pendingAttachment?.name,
@@ -476,7 +374,8 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     onSuccess: () => {
       setCoachBody("");
       setPendingAttachment(null);
-      queryClient.invalidateQueries({ queryKey: ["org-coach-chat", selectedActiveOrganizationId] });
+      queryClient.invalidateQueries({ queryKey: ["org-coach-chat", selectedActiveOrganizationId, activeParticipantId] });
+      queryClient.invalidateQueries({ queryKey: ["org-chat-inbox", selectedActiveOrganizationId] });
     },
     onError: (error) => {
       notifications.show({ color: "red", title: t("Message failed"), message: extractApiErrorMessage(error) });
@@ -486,7 +385,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
   const sendDirectMutation = useMutation({
     mutationFn: () => postOrgDirectMessage(
       selectedActiveOrganizationId as number,
-      Number(selectedDirectMemberId),
+      activeParticipantId as number,
       directBody.trim(),
       pendingAttachment?.url,
       pendingAttachment?.name,
@@ -494,7 +393,8 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     onSuccess: () => {
       setDirectBody("");
       setPendingAttachment(null);
-      queryClient.invalidateQueries({ queryKey: ["org-direct-chat", selectedActiveOrganizationId, selectedDirectMemberId] });
+      queryClient.invalidateQueries({ queryKey: ["org-direct-chat", selectedActiveOrganizationId, activeParticipantId] });
+      queryClient.invalidateQueries({ queryKey: ["org-chat-inbox", selectedActiveOrganizationId] });
     },
     onError: (error) => {
       notifications.show({ color: "red", title: t("Message failed"), message: extractApiErrorMessage(error) });
@@ -509,11 +409,11 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
       return;
     }
     if (activeThread.subtype === "member") {
-      if ((!directBody.trim() && !pendingAttachment) || !selectedActiveOrganizationId || !selectedDirectMemberId || sendDirectMutation.isPending) return;
+      if ((!directBody.trim() && !pendingAttachment) || !selectedActiveOrganizationId || !activeParticipantId || sendDirectMutation.isPending) return;
       sendDirectMutation.mutate();
       return;
     }
-    if ((!coachBody.trim() && !pendingAttachment) || !selectedActiveOrganizationId || !(me.role === "coach" ? selectedAthleteId : selectedCoachId) || sendCoachMutation.isPending) return;
+    if ((!coachBody.trim() && !pendingAttachment) || !selectedActiveOrganizationId || !activeParticipantId || sendCoachMutation.isPending) return;
     sendCoachMutation.mutate();
   };
 
@@ -526,22 +426,12 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
   const canSendActive = Boolean(
     (getActiveBody().trim() || pendingAttachment) &&
     selectedActiveOrganizationId &&
-    (activeThread?.type === "group" || (activeThread?.subtype === "member" ? selectedDirectMemberId : (me.role === "coach" ? selectedAthleteId : selectedCoachId)))
+    (activeThread?.type === "group" || activeParticipantId)
   );
 
   const openThread = (threadKey: string) => {
     setActiveThreadKey(threadKey);
     setPendingAttachment(null);
-    if (threadKey.startsWith("direct:member:")) {
-      const id = threadKey.split(":").slice(2).join(":");
-      setSelectedDirectMemberId(id);
-    } else if (threadKey.startsWith("direct:athlete:")) {
-      const id = threadKey.split(":").slice(2).join(":");
-      setSelectedAthleteId(id);
-    } else if (threadKey.startsWith("direct:coach:")) {
-      const id = threadKey.split(":").slice(2).join(":");
-      setSelectedCoachId(id);
-    }
     if (isMobile) {
       setMobilePane("messages");
     }

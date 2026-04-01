@@ -174,6 +174,22 @@ export type OrgMember = {
   last_name?: string | null;
 };
 
+export type OrganizationInboxThread = {
+  key: string;
+  thread_type: "group" | "coach" | "member";
+  participant_id?: number | null;
+  participant_role?: string | null;
+  participant_name?: string | null;
+  body_preview?: string | null;
+  attachment_name?: string | null;
+  sender_id?: number | null;
+  created_at?: string | null;
+};
+
+export type OrganizationInboxResponse = {
+  items: OrganizationInboxThread[];
+};
+
 export type OrganizationGroupMessage = {
   id: number;
   organization_id: number;

@@ -5,6 +5,7 @@ import {
   OrganizationDirectMessage,
   OrganizationDiscoverResponse,
   OrganizationGroupMessage,
+  OrganizationInboxResponse,
 } from "../pages/dashboard/types";
 
 export const discoverOrganizations = async (query?: string): Promise<OrganizationDiscoverResponse> => {
@@ -23,6 +24,16 @@ export const requestOrganizationJoin = async (organizationId: number): Promise<{
 
 export const listOrganizationGroupMessages = async (organizationId: number): Promise<OrganizationGroupMessage[]> => {
   const response = await client.get<OrganizationGroupMessage[]>(`/communications/organizations/${organizationId}/group`);
+  return response.data;
+};
+
+export const listOrganizationInbox = async (organizationId: number): Promise<OrganizationInboxResponse> => {
+  const response = await client.get<OrganizationInboxResponse>(`/communications/organizations/${organizationId}/inbox`);
+  return response.data;
+};
+
+export const listOrgMembers = async (organizationId: number): Promise<OrgMember[]> => {
+  const response = await client.get<OrgMember[]>(`/communications/organizations/${organizationId}/members`);
   return response.data;
 };
 
@@ -70,11 +81,6 @@ export const postOrganizationCoachMessage = async (
       },
     },
   );
-  return response.data;
-};
-
-export const listOrgMembers = async (organizationId: number): Promise<OrgMember[]> => {
-  const response = await client.get<OrgMember[]>(`/communications/organizations/${organizationId}/members`);
   return response.data;
 };
 

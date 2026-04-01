@@ -1,5 +1,5 @@
 import { Badge, Box, Button, Group, Paper, Text } from '@mantine/core';
-import { Download } from 'lucide-react';
+import { Download, MessageSquareText } from 'lucide-react';
 import { format } from 'date-fns';
 import { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -141,6 +141,60 @@ export const CalendarEventCard = ({
           {r.title}
         </Text>
       )}
+    </Box>
+  );
+};
+
+export const NoteChip = ({
+  note,
+  isDark,
+  palette,
+}: {
+  note: { content: string; author_name?: string | null; author_role?: string | null };
+  isDark: boolean;
+  palette: Palette;
+}) => {
+  const accentColor = isDark ? '#60A5FA' : '#3B82F6';
+  const cardShadow = isDark
+    ? `0 10px 22px -20px ${accentColor}CC`
+    : '0 12px 26px -22px rgba(30, 64, 175, 0.34)';
+
+  return (
+    <Box
+      p="4px 6px"
+      style={{
+        backgroundColor: isDark ? 'rgba(30, 41, 59, 0.42)' : 'rgba(248, 250, 252, 0.88)',
+        backdropFilter: 'blur(10px)',
+        WebkitBackdropFilter: 'blur(10px)',
+        border: `1px solid ${accentColor}55`,
+        borderLeft: `3px solid ${accentColor}`,
+        borderRadius: '8px',
+        overflow: 'hidden',
+        transition: 'all 0.2s ease',
+        cursor: 'pointer',
+        fontFamily: '"Inter", sans-serif',
+        boxShadow: cardShadow,
+        minHeight: 28,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.transform = 'translateY(-1px)';
+        e.currentTarget.style.boxShadow = isDark
+          ? `0 16px 34px -20px ${accentColor}EE`
+          : '0 22px 52px -20px rgba(15, 23, 42, 0.40)';
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = cardShadow;
+      }}
+    >
+      <Group gap={5} wrap="nowrap" align="center" pl={1}>
+        <Box style={{ color: accentColor, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <MessageSquareText size={12} />
+        </Box>
+        <Text size="xs" fw={700} c={palette.textMain} style={{ lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+          {note.content}
+        </Text>
+      </Group>
     </Box>
   );
 };

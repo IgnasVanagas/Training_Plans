@@ -903,7 +903,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const [leftPeriodKey, setLeftPeriodKey] = useState<string | null>(null);
   const [rightPeriodKey, setRightPeriodKey] = useState<string | null>(null);
   const [streamOffset, setStreamOffset] = useState(0);
-  const [streamMetric, setStreamMetric] = useState<'hr' | 'power'>('hr');
+  const [streamMetric, setStreamMetric] = useState<'hr' | 'power' | 'cadence'>('hr');
 
   const allAthletes = useMemo(() => {
     const existing = new Map<number, AthleteLike>();
@@ -1102,7 +1102,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     const rLen = hasRight ? Math.max(0, rs!.length - bStart) : 0;
     const len = Math.max(lLen, rLen);
     const step = Math.max(1, Math.floor(len / 400));
-    const result: { t: number; hrA: number | null; hrB: number | null; pwA: number | null; pwB: number | null }[] = [];
+    const result: { t: number; hrA: number | null; hrB: number | null; pwA: number | null; pwB: number | null; cdA: number | null; cdB: number | null }[] = [];
     for (let i = 0; i < len; i += step) {
       const lIdx = i + aStart;
       const rIdx = i + bStart;
@@ -1114,6 +1114,8 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
         hrB: rr?.hr != null ? Math.round(rr.hr) : null,
         pwA: lr?.power != null ? Math.round(lr.power) : null,
         pwB: rr?.power != null ? Math.round(rr.power) : null,
+        cdA: lr?.cadence != null ? Math.round(lr.cadence) : null,
+        cdB: rr?.cadence != null ? Math.round(rr.cadence) : null,
       });
     }
     return result;
@@ -1121,6 +1123,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
 
   const hasHrStreams = streamChartData.some((d) => d.hrA != null || d.hrB != null);
   const hasPowerStreams = streamChartData.some((d) => d.pwA != null || d.pwB != null);
+  const hasCadenceStreams = streamChartData.some((d) => d.cdA != null || d.cdB != null);
 
   const POWER_CURVE_WINDOWS = ['5s', '15s', '30s', '1min', '2min', '5min', '10min', '20min', '60min', '120min'];
 
@@ -1388,14 +1391,15 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                       <Stack gap="sm">
                         <Group gap="sm" wrap="wrap" justify="space-between">
                           <Group gap="sm">
-                            {(hasHrStreams && hasPowerStreams) && (
+                            {([hasHrStreams, hasPowerStreams, hasCadenceStreams].filter(Boolean).length > 1) && (
                               <SegmentedControl
                                 size="xs"
                                 value={streamMetric}
-                                onChange={(v) => setStreamMetric(v as 'hr' | 'power')}
+                                onChange={(v) => setStreamMetric(v as 'hr' | 'power' | 'cadence')}
                                 data={[
-                                  { value: 'hr', label: 'Heart Rate' },
-                                  { value: 'power', label: 'Power' },
+                                  ...(hasHrStreams ? [{ value: 'hr', label: 'Heart Rate' }] : []),
+                                  ...(hasPowerStreams ? [{ value: 'power', label: 'Power' }] : []),
+                                  ...(hasCadenceStreams ? [{ value: 'cadence', label: 'Cadence' }] : []),
                                 ]}
                               />
                             )}
@@ -1441,16 +1445,29 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                               labelFormatter={(l) => `${l} min`}
                             />
                             <Legend wrapperStyle={{ fontSize: 11 }} />
-                            {(streamMetric === 'hr' || !hasPowerStreams) && hasHrStreams && (
+                            {streamMetric === 'hr' && hasHrStreams && (
                               <>
                                 <Line dataKey="hrA" name="HR — A" stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
                                 <Line dataKey="hrB" name="HR — B" stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
                               </>
                             )}
-                            {(streamMetric === 'power' || !hasHrStreams) && hasPowerStreams && (
+                            {streamMetric === 'power' && hasPowerStreams && (
                               <>
                                 <Line dataKey="pwA" name="Power — A" stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
                                 <Line dataKey="pwB" name="Power — B" stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
+                              </>
+                            )}
+                            {streamMetric === 'cadence' && hasCadenceStreams && (
+                              <>
+                                <Line dataKey="cdA" name="Cadence — A" stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
+                                <Line dataKey="cdB" name="Cadence — B" stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
+                              </>
+                            )}
+                            {/* Fallback: if only one metric type exists, show it regardless of selector */}
+                            {!hasPowerStreams && !hasCadenceStreams && hasHrStreams && streamMetric !== 'hr' && (
+                              <>
+                                <Line dataKey="hrA" name="HR — A" stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
+                                <Line dataKey="hrB" name="HR — B" stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
                               </>
                             )}
                           </ComposedChart>

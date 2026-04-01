@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   ActionIcon,
   Alert,
   Badge,
   Box,
+  Button,
   Container,
   Divider,
   Grid,
@@ -14,7 +15,7 @@ import {
   SegmentedControl,
   Select,
   SimpleGrid,
-  Skeleton,
+  Slider,
   Stack,
   Table,
   Text,
@@ -27,7 +28,7 @@ import { DatePicker } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
+  BarChart, Bar, LineChart, Line, ComposedChart, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
   ResponsiveContainer, Legend, RadarChart, Radar, PolarGrid,
   PolarAngleAxis, PolarRadiusAxis,
 } from 'recharts';
@@ -52,6 +53,7 @@ import {
   toWeekKey,
 } from '../components/coachComparison/utils';
 import { useI18n } from '../i18n/I18nProvider';
+import { ComparisonLoadingSkeleton } from '../components/common/SkeletonScreens';
 
 /* ───────────────── types ───────────────── */
 type AthleteLike = {
@@ -434,6 +436,8 @@ export const ComparisonPage = () => {
   const [rightAthleteId, setRightAthleteId] = useState<string | null>(null);
   const [leftPeriodKey, setLeftPeriodKey] = useState<string | null>(null);
   const [rightPeriodKey, setRightPeriodKey] = useState<string | null>(null);
+  const [streamOffset, setStreamOffset] = useState(0);
+  const [streamMetric, setStreamMetric] = useState<'hr' | 'power' | 'cadence'>('hr');
 
   const ui = useMemo(() => {
     const bg = isDark ? '#0B1526' : '#F8F9FA';
@@ -573,8 +577,79 @@ export const ComparisonPage = () => {
   const selectionMissing = mode === 'workouts' ? !leftWorkoutId || !rightWorkoutId : !leftAthleteId || !rightAthleteId || !leftPeriodKey || !rightPeriodKey;
   const showResults = !selectionMissing && !detailsLoading && idsToLoad.length > 0;
 
+  /* ── optimistic loading progress bar ── */
+  const [loadProgress, setLoadProgress] = useState(0);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wasLoadingRef = useRef(false);
+
+  useEffect(() => {
+    if (detailsLoading && idsToLoad.length > 0) {
+      wasLoadingRef.current = true;
+      setLoadProgress(8);
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+      progressTimerRef.current = setInterval(() => {
+        setLoadProgress((p) => {
+          const gap = 88 - p;
+          if (gap < 0.4) return p;
+          return p + Math.max(0.4, gap * 0.1);
+        });
+      }, 120);
+    } else {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+        progressTimerRef.current = null;
+      }
+      if (wasLoadingRef.current) {
+        wasLoadingRef.current = false;
+        setLoadProgress(100);
+        const tid = setTimeout(() => setLoadProgress(0), 500);
+        return () => clearTimeout(tid);
+      }
+    }
+    return () => {
+      if (progressTimerRef.current) clearInterval(progressTimerRef.current);
+    };
+  }, [detailsLoading, idsToLoad.length]);
+
   const leftLabel = mode === 'workouts' ? (t('Side A') || 'Side A') : `${t('Side A') || 'Side A'} · ${leftPeriodKey ? (mode === 'weeks' ? parseWeekLabel(leftPeriodKey) : parseMonthLabel(leftPeriodKey)) : '-'}`;
   const rightLabel = mode === 'workouts' ? (t('Side B') || 'Side B') : `${t('Side B') || 'Side B'} · ${rightPeriodKey ? (mode === 'weeks' ? parseWeekLabel(rightPeriodKey) : parseMonthLabel(rightPeriodKey)) : '-'}`;
+
+  /* ── stream overlay chart data ── */
+  const streamChartData = useMemo(() => {
+    if (mode !== 'workouts') return [];
+    const ls = leftW?.streams;
+    const rs = rightW?.streams;
+    const hasLeft = Array.isArray(ls) && ls.length > 0;
+    const hasRight = Array.isArray(rs) && rs.length > 0;
+    if (!hasLeft && !hasRight) return [];
+    const aStart = streamOffset < 0 ? Math.abs(streamOffset) : 0;
+    const bStart = streamOffset > 0 ? streamOffset : 0;
+    const lLen = hasLeft ? Math.max(0, ls!.length - aStart) : 0;
+    const rLen = hasRight ? Math.max(0, rs!.length - bStart) : 0;
+    const len = Math.max(lLen, rLen);
+    const step = Math.max(1, Math.floor(len / 400));
+    const result: { t: number; hrA: number | null; hrB: number | null; pwA: number | null; pwB: number | null; cdA: number | null; cdB: number | null }[] = [];
+    for (let i = 0; i < len; i += step) {
+      const lIdx = i + aStart;
+      const rIdx = i + bStart;
+      const lr = hasLeft && lIdx < ls!.length ? (ls![lIdx] as any) : null;
+      const rr = hasRight && rIdx < rs!.length ? (rs![rIdx] as any) : null;
+      result.push({
+        t: +(i / 60).toFixed(1),
+        hrA: lr?.hr != null ? Math.round(lr.hr) : null,
+        hrB: rr?.hr != null ? Math.round(rr.hr) : null,
+        pwA: lr?.power != null ? Math.round(lr.power) : null,
+        pwB: rr?.power != null ? Math.round(rr.power) : null,
+        cdA: lr?.cadence != null ? Math.round(lr.cadence) : null,
+        cdB: rr?.cadence != null ? Math.round(rr.cadence) : null,
+      });
+    }
+    return result;
+  }, [mode, leftW, rightW, streamOffset]);
+
+  const hasHrStreams = streamChartData.some((d) => d.hrA != null || d.hrB != null);
+  const hasPowerStreams = streamChartData.some((d) => d.pwA != null || d.pwB != null);
+  const hasCadenceStreams = streamChartData.some((d) => d.cdA != null || d.cdB != null);
 
   /* ── power curve chart data ── */
   const powerCurveData = useMemo(() => {
@@ -694,12 +769,20 @@ export const ComparisonPage = () => {
             </Grid>
           )}
 
-          {/* ── status messages ── */}
+          {/* ── optimistic progress bar ── */}
+          {loadProgress > 0 && (
+            <Progress
+              value={loadProgress}
+              size={3}
+              color="orange"
+              animated={detailsLoading}
+              style={{ borderRadius: 999, transition: 'value 0.15s ease' }}
+            />
+          )}
+
+          {/* ── loading skeleton ── */}
           {detailsLoading && (
-            <Stack gap="sm">
-              <Skeleton height={60} radius="md" />
-              <Skeleton height={200} radius="md" />
-            </Stack>
+            <ComparisonLoadingSkeleton mode={mode} />
           )}
           {!detailsLoading && selectionMissing && (
             <Alert icon={<IconInfoCircle size={16} />} color="yellow" variant="light">
@@ -855,6 +938,101 @@ export const ComparisonPage = () => {
                       <Legend />
                     </RadarChart>
                   </ResponsiveContainer>
+                </Paper>
+              )}
+
+              {/* ── stream overlay (workout mode) ── */}
+              {mode === 'workouts' && streamChartData.length > 0 && (
+                <Paper withBorder p="md" radius="md">
+                  <Group gap="xs" mb="sm">
+                    <IconChartBar size={18} color={ui.accent} />
+                    <Text fw={600} size="lg">{t('Stream Overlay') || 'Stream Overlay'}</Text>
+                  </Group>
+                  <Stack gap="sm">
+                    <Group gap="sm" wrap="wrap" justify="space-between">
+                      <Group gap="sm">
+                        {([hasHrStreams, hasPowerStreams, hasCadenceStreams].filter(Boolean).length > 1) && (
+                          <SegmentedControl
+                            size="xs"
+                            value={streamMetric}
+                            onChange={(v) => setStreamMetric(v as 'hr' | 'power' | 'cadence')}
+                            data={[
+                              ...(hasHrStreams ? [{ value: 'hr', label: t('Heart Rate') || 'Heart Rate' }] : []),
+                              ...(hasPowerStreams ? [{ value: 'power', label: t('Power') || 'Power' }] : []),
+                              ...(hasCadenceStreams ? [{ value: 'cadence', label: t('Cadence') || 'Cadence' }] : []),
+                            ]}
+                          />
+                        )}
+                        <Group gap={6}>
+                          <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideA }} />
+                          <Text size="xs" c="dimmed">{t('Side A') || 'Side A'}</Text>
+                          <Box style={{ width: 10, height: 10, borderRadius: 2, background: chartColors.sideB, marginLeft: 6 }} />
+                          <Text size="xs" c="dimmed">{t('Side B') || 'Side B'}</Text>
+                        </Group>
+                      </Group>
+                      <Group gap="xs" align="center">
+                        <Tooltip label={t('Drag the slider to shift Side B in time — align effort zones, intervals, or peaks from different parts of two activities') || 'Drag the slider to shift Side B in time — align effort zones, intervals, or peaks from different parts of two activities'} multiline w={240} withArrow>
+                          <Text size="xs" c="dimmed" style={{ cursor: 'help' }}>
+                            B offset: {streamOffset > 0 ? `+${streamOffset}s` : streamOffset < 0 ? `${streamOffset}s` : '0s (aligned)'}
+                          </Text>
+                        </Tooltip>
+                        {streamOffset !== 0 && (
+                          <Button size="xs" variant="subtle" color="gray" onClick={() => setStreamOffset(0)}>{t('Reset') || 'Reset'}</Button>
+                        )}
+                      </Group>
+                    </Group>
+                    <Box px={4}>
+                      <Slider
+                        size="xs"
+                        min={-300}
+                        max={300}
+                        step={5}
+                        value={streamOffset}
+                        onChange={setStreamOffset}
+                        label={(v) => v === 0 ? 'aligned' : `${v > 0 ? '+' : ''}${v}s`}
+                        marks={[{ value: -300, label: '-5min' }, { value: 0, label: '0' }, { value: 300, label: '+5min' }]}
+                        styles={{ markLabel: { fontSize: 10 } }}
+                      />
+                    </Box>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <ComposedChart data={streamChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#2a3552' : '#e0e0e0'} />
+                        <XAxis dataKey="t" tick={{ fontSize: 10 }} tickLine={false} label={{ value: 'min', position: 'insideBottomRight', offset: -4, fontSize: 10 }} />
+                        <YAxis tick={{ fontSize: 10 }} tickLine={false} axisLine={false} width={36} />
+                        <RTooltip
+                          contentStyle={{ background: isDark ? '#1a2744' : '#fff', border: `1px solid ${isDark ? '#2a3552' : '#ddd'}`, borderRadius: 6, fontSize: 11 }}
+                          formatter={(v: number, name: string) => [v, name]}
+                          labelFormatter={(l) => `${l} min`}
+                        />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        {streamMetric === 'hr' && hasHrStreams && (
+                          <>
+                            <Line dataKey="hrA" name={`${t('HR') || 'HR'} — A`} stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
+                            <Line dataKey="hrB" name={`${t('HR') || 'HR'} — B`} stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
+                          </>
+                        )}
+                        {streamMetric === 'power' && hasPowerStreams && (
+                          <>
+                            <Line dataKey="pwA" name={`${t('Power') || 'Power'} — A`} stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
+                            <Line dataKey="pwB" name={`${t('Power') || 'Power'} — B`} stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
+                          </>
+                        )}
+                        {streamMetric === 'cadence' && hasCadenceStreams && (
+                          <>
+                            <Line dataKey="cdA" name={`${t('Cadence') || 'Cadence'} — A`} stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
+                            <Line dataKey="cdB" name={`${t('Cadence') || 'Cadence'} — B`} stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
+                          </>
+                        )}
+                        {/* Fallback when only one metric type has data */}
+                        {!hasPowerStreams && !hasCadenceStreams && hasHrStreams && streamMetric !== 'hr' && (
+                          <>
+                            <Line dataKey="hrA" name={`${t('HR') || 'HR'} — A`} stroke={chartColors.sideA} strokeWidth={1.5} dot={false} connectNulls />
+                            <Line dataKey="hrB" name={`${t('HR') || 'HR'} — B`} stroke={chartColors.sideB} strokeWidth={1.5} dot={false} connectNulls strokeDasharray="4 2" />
+                          </>
+                        )}
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </Stack>
                 </Paper>
               )}
 

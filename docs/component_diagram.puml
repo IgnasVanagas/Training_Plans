@@ -1,0 +1,186 @@
+@startuml Training_Plans_Component_Diagram
+
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam wrapWidth 180
+skinparam maxMessageSize 180
+
+scale max 4096 width
+scale max 4096 height
+
+actor Athlete
+actor Coach
+actor Admin
+
+package "Client Applications" {
+  [Web Frontend\nReact + TypeScript + Mantine] as FE
+  [Mobile App\nExpo / React Native] as MOBILE
+}
+
+package "Backend API\nFastAPI" {
+
+  package "Routers" {
+    [Auth Router] as R_AUTH
+    [Users Router] as R_USERS
+    [Activities Router] as R_ACT
+    [Calendar Router] as R_CAL
+    [Workouts Router] as R_WO
+    [Planning Router] as R_PLAN
+    [Communications Router] as R_COMMS
+    [Organizations / Admin Router] as R_ORG
+    [Integrations Router] as R_INT
+  }
+
+  package "Services" {
+    [Auth Service] as S_AUTH
+    [Permissions Service] as S_PERM
+    [Compliance Service] as S_COMP
+    [Season Planner Service] as S_SEASON
+    [Personal Records Service] as S_PR
+    [Activity Dedupe Service] as S_DEDUPE
+    [Support Service\n(email via SMTP)] as S_SUPPORT
+    [Integration Service] as S_INT
+  }
+
+  package "Modules" {
+    [Parsing Module\n(.fit / .gpx / .tcx)] as M_PARSE
+    [Workout Templates Module] as M_WORKOUT
+  }
+
+  package "Integrations Sub-package" {
+    [Connector Registry] as INT_REGISTRY
+    [Ingest Module] as INT_INGEST
+    [Crypto Module\n(token encryption)] as INT_CRYPTO
+
+    package "Provider Connectors" {
+      [Strava Connector] as C_STRAVA
+      [Garmin Connector] as C_GARMIN
+      [WHOOP Connector] as C_WHOOP
+      [Polar Connector] as C_POLAR
+      [Suunto Connector] as C_SUUNTO
+      [Coros Connector] as C_COROS
+      [Apple Health Connector] as C_APPLE
+      [Google Fit Connector] as C_GOOGLEFIT
+    }
+
+    package "Integrations Sub-routers" {
+      [Sync Tasks Handler] as IR_SYNC
+      [Webhook Handler] as IR_WEBHOOK
+      [Wellness Handler] as IR_WELLNESS
+      [Helpers] as IR_HELPERS
+    }
+  }
+}
+
+package "Persistence" {
+  database "PostgreSQL\n(SQLAlchemy models)" as DB
+  folder "File Storage\nuploads/activities, uploads/chat" as FILES
+}
+
+package "External Systems" {
+  [Strava API] as EXT_STRAVA
+  [Garmin Connect API] as EXT_GARMIN
+  [WHOOP API] as EXT_WHOOP
+  [Polar API] as EXT_POLAR
+  [Suunto API] as EXT_SUUNTO
+  [Coros API] as EXT_COROS
+  [Apple Health / Healthkit] as EXT_APPLE
+  [Google Fit API] as EXT_GOOGLEFIT
+  [Webhook Sources] as EXT_WEBHOOKS
+  [SMTP / Email Service] as EXT_SMTP
+}
+
+Athlete --> FE
+Coach --> FE
+Admin --> FE
+Athlete --> MOBILE
+Coach --> MOBILE
+
+' Frontend to Routers
+FE --> R_AUTH
+FE --> R_USERS
+FE --> R_ACT
+FE --> R_CAL
+FE --> R_WO
+FE --> R_PLAN
+FE --> R_COMMS
+FE --> R_ORG
+FE --> R_INT
+
+MOBILE --> R_AUTH
+MOBILE --> R_USERS
+MOBILE --> R_ACT
+MOBILE --> R_CAL
+MOBILE --> R_WO
+MOBILE --> R_PLAN
+MOBILE --> R_COMMS
+MOBILE --> R_INT
+
+' Routers to Services / Modules
+R_AUTH --> S_AUTH
+R_USERS --> S_PERM
+R_ACT --> S_PR
+R_ACT --> S_DEDUPE
+R_ACT --> M_PARSE
+R_CAL --> S_COMP
+R_PLAN --> S_SEASON
+R_WO --> M_WORKOUT
+R_COMMS --> S_PERM
+R_COMMS --> S_SUPPORT
+R_ORG --> S_PERM
+R_INT --> S_INT
+R_INT --> IR_SYNC
+R_INT --> IR_WEBHOOK
+R_INT --> IR_WELLNESS
+R_INT --> IR_HELPERS
+
+' Integration sub-package internals
+S_INT --> INT_REGISTRY
+S_INT --> INT_INGEST
+S_INT --> INT_CRYPTO
+INT_REGISTRY --> C_STRAVA
+INT_REGISTRY --> C_GARMIN
+INT_REGISTRY --> C_WHOOP
+INT_REGISTRY --> C_POLAR
+INT_REGISTRY --> C_SUUNTO
+INT_REGISTRY --> C_COROS
+INT_REGISTRY --> C_APPLE
+INT_REGISTRY --> C_GOOGLEFIT
+INT_INGEST --> M_PARSE
+
+' Services to DB
+S_AUTH --> DB
+S_PERM --> DB
+S_COMP --> DB
+S_SEASON --> DB
+S_PR --> DB
+S_DEDUPE --> DB
+S_INT --> DB
+INT_INGEST --> DB
+INT_CRYPTO --> DB
+M_PARSE --> DB
+M_WORKOUT --> DB
+IR_SYNC --> DB
+IR_WEBHOOK --> DB
+IR_WELLNESS --> DB
+
+' File storage
+R_ACT --> FILES
+R_COMMS --> FILES
+M_PARSE --> FILES
+
+' Connectors to external APIs
+C_STRAVA --> EXT_STRAVA : OAuth + REST API
+C_GARMIN --> EXT_GARMIN : OAuth + REST API
+C_WHOOP --> EXT_WHOOP : OAuth + REST API
+C_POLAR --> EXT_POLAR : OAuth + REST API
+C_SUUNTO --> EXT_SUUNTO : OAuth + REST API
+C_COROS --> EXT_COROS : OAuth + REST API
+C_APPLE --> EXT_APPLE : File import
+C_GOOGLEFIT --> EXT_GOOGLEFIT : OAuth + REST API
+EXT_WEBHOOKS --> IR_WEBHOOK : webhook events
+S_SUPPORT --> EXT_SMTP : send email
+
+@enduml

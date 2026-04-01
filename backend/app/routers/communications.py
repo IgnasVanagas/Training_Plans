@@ -7,7 +7,7 @@ from datetime import date as dt_date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user
@@ -40,6 +40,8 @@ from ..schemas import (
     OrganizationCoachChatMessageOut,
     OrganizationDirectMessageCreate,
     OrganizationDirectMessageOut,
+    OrganizationInboxOut,
+    OrganizationInboxThreadOut,
     SupportRequestCreate,
     SupportRequestResponse,
 )
@@ -157,6 +159,14 @@ def _normalize_entity_type(value: str) -> str:
     return normalized
 
 
+def _build_message_preview(body: str | None, attachment_name: str | None) -> str | None:
+    normalized_body = (body or "").strip()
+    if normalized_body:
+        return normalized_body
+    normalized_attachment = (attachment_name or "").strip()
+    return normalized_attachment or None
+
+
 async def _resolve_entity_owner_id(db: AsyncSession, *, entity_type: str, entity_id: int) -> int | None:
     if entity_type == "activity":
         activity = await db.scalar(select(Activity).where(Activity.id == entity_id))
@@ -217,6 +227,226 @@ async def _list_thread_comments(db: AsyncSession, thread_id: int) -> list[Commun
             )
         )
     return out
+
+
+@router.get("/organizations/{organization_id}/inbox", response_model=OrganizationInboxOut)
+async def get_organization_inbox(
+    organization_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrganizationInboxOut:
+    await _require_active_org_membership(db, user_id=current_user.id, organization_id=organization_id)
+
+    member_rows = (
+        await db.execute(
+            select(User, Profile, OrganizationMember)
+            .join(OrganizationMember, OrganizationMember.user_id == User.id)
+            .outerjoin(Profile, Profile.user_id == User.id)
+            .where(
+                OrganizationMember.organization_id == organization_id,
+                OrganizationMember.status == "active",
+                User.id != current_user.id,
+            )
+            .order_by(User.id.asc())
+        )
+    ).all()
+
+    participants: dict[int, dict[str, str | int | None]] = {}
+    for user, profile, membership in member_rows:
+        participants[user.id] = {
+            "id": user.id,
+            "name": _sender_display_name(user, profile),
+            "role": membership.role,
+            "email": user.email,
+        }
+
+    items: list[OrganizationInboxThreadOut] = []
+
+    group_row = (
+        await db.execute(
+            select(OrganizationGroupMessage)
+            .where(OrganizationGroupMessage.organization_id == organization_id)
+            .order_by(OrganizationGroupMessage.created_at.desc(), OrganizationGroupMessage.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    items.append(
+        OrganizationInboxThreadOut(
+            key="group",
+            thread_type="group",
+            body_preview=_build_message_preview(
+                group_row.body if group_row else None,
+                group_row.attachment_name if group_row else None,
+            ),
+            attachment_name=group_row.attachment_name if group_row else None,
+            sender_id=group_row.sender_id if group_row else None,
+            created_at=group_row.created_at if group_row else None,
+        )
+    )
+
+    if current_user.role == RoleEnum.athlete:
+        coach_members = [
+            participant
+            for participant in participants.values()
+            if participant["role"] == RoleEnum.coach.value
+        ]
+        latest_coach_subquery = (
+            select(
+                OrganizationCoachMessage.coach_id.label("participant_id"),
+                OrganizationCoachMessage.sender_id.label("sender_id"),
+                OrganizationCoachMessage.body.label("body"),
+                OrganizationCoachMessage.attachment_name.label("attachment_name"),
+                OrganizationCoachMessage.created_at.label("created_at"),
+                func.row_number()
+                .over(
+                    partition_by=OrganizationCoachMessage.coach_id,
+                    order_by=(OrganizationCoachMessage.created_at.desc(), OrganizationCoachMessage.id.desc()),
+                )
+                .label("rn"),
+            )
+            .where(
+                OrganizationCoachMessage.organization_id == organization_id,
+                OrganizationCoachMessage.athlete_id == current_user.id,
+            )
+            .subquery()
+        )
+        latest_coach_rows = (
+            await db.execute(select(latest_coach_subquery).where(latest_coach_subquery.c.rn == 1))
+        ).all()
+        latest_coach_by_id = {int(row.participant_id): row for row in latest_coach_rows}
+        coach_thread_ids: set[int] = set()
+
+        for participant in coach_members:
+            participant_id = int(participant["id"])
+            latest_row = latest_coach_by_id.get(participant_id)
+            coach_thread_ids.add(participant_id)
+            items.append(
+                OrganizationInboxThreadOut(
+                    key=f"direct:coach:{participant_id}",
+                    thread_type="coach",
+                    participant_id=participant_id,
+                    participant_role=str(participant["role"]),
+                    participant_name=(participant["name"] or participant["email"]),
+                    body_preview=_build_message_preview(
+                        latest_row.body if latest_row else None,
+                        latest_row.attachment_name if latest_row else None,
+                    ),
+                    attachment_name=latest_row.attachment_name if latest_row else None,
+                    sender_id=int(latest_row.sender_id) if latest_row and latest_row.sender_id is not None else None,
+                    created_at=latest_row.created_at if latest_row else None,
+                )
+            )
+    elif current_user.role == RoleEnum.coach:
+        athlete_members = [
+            participant
+            for participant in participants.values()
+            if participant["role"] == RoleEnum.athlete.value
+        ]
+        latest_coach_subquery = (
+            select(
+                OrganizationCoachMessage.athlete_id.label("participant_id"),
+                OrganizationCoachMessage.sender_id.label("sender_id"),
+                OrganizationCoachMessage.body.label("body"),
+                OrganizationCoachMessage.attachment_name.label("attachment_name"),
+                OrganizationCoachMessage.created_at.label("created_at"),
+                func.row_number()
+                .over(
+                    partition_by=OrganizationCoachMessage.athlete_id,
+                    order_by=(OrganizationCoachMessage.created_at.desc(), OrganizationCoachMessage.id.desc()),
+                )
+                .label("rn"),
+            )
+            .where(
+                OrganizationCoachMessage.organization_id == organization_id,
+                OrganizationCoachMessage.coach_id == current_user.id,
+            )
+            .subquery()
+        )
+        latest_coach_rows = (
+            await db.execute(select(latest_coach_subquery).where(latest_coach_subquery.c.rn == 1))
+        ).all()
+        latest_coach_by_id = {int(row.participant_id): row for row in latest_coach_rows}
+        coach_thread_ids = set()
+
+        for participant in athlete_members:
+            participant_id = int(participant["id"])
+            latest_row = latest_coach_by_id.get(participant_id)
+            coach_thread_ids.add(participant_id)
+            items.append(
+                OrganizationInboxThreadOut(
+                    key=f"direct:athlete:{participant_id}",
+                    thread_type="coach",
+                    participant_id=participant_id,
+                    participant_role=str(participant["role"]),
+                    participant_name=(participant["name"] or participant["email"]),
+                    body_preview=_build_message_preview(
+                        latest_row.body if latest_row else None,
+                        latest_row.attachment_name if latest_row else None,
+                    ),
+                    attachment_name=latest_row.attachment_name if latest_row else None,
+                    sender_id=int(latest_row.sender_id) if latest_row and latest_row.sender_id is not None else None,
+                    created_at=latest_row.created_at if latest_row else None,
+                )
+            )
+    else:
+        coach_thread_ids = set()
+
+    counterpart_id = case(
+        (OrganizationDirectMessage.sender_id == current_user.id, OrganizationDirectMessage.recipient_id),
+        else_=OrganizationDirectMessage.sender_id,
+    )
+    latest_direct_subquery = (
+        select(
+            counterpart_id.label("participant_id"),
+            OrganizationDirectMessage.sender_id.label("sender_id"),
+            OrganizationDirectMessage.body.label("body"),
+            OrganizationDirectMessage.attachment_name.label("attachment_name"),
+            OrganizationDirectMessage.created_at.label("created_at"),
+            func.row_number()
+            .over(
+                partition_by=counterpart_id,
+                order_by=(OrganizationDirectMessage.created_at.desc(), OrganizationDirectMessage.id.desc()),
+            )
+            .label("rn"),
+        )
+        .where(
+            OrganizationDirectMessage.organization_id == organization_id,
+            or_(
+                OrganizationDirectMessage.sender_id == current_user.id,
+                OrganizationDirectMessage.recipient_id == current_user.id,
+            ),
+        )
+        .subquery()
+    )
+    latest_direct_rows = (
+        await db.execute(select(latest_direct_subquery).where(latest_direct_subquery.c.rn == 1))
+    ).all()
+    latest_direct_by_id = {int(row.participant_id): row for row in latest_direct_rows}
+
+    for participant_id in sorted(participants.keys()):
+        if participant_id in coach_thread_ids:
+            continue
+        participant = participants[participant_id]
+        latest_row = latest_direct_by_id.get(participant_id)
+        items.append(
+            OrganizationInboxThreadOut(
+                key=f"direct:member:{participant_id}",
+                thread_type="member",
+                participant_id=participant_id,
+                participant_role=str(participant["role"]),
+                participant_name=(participant["name"] or participant["email"]),
+                body_preview=_build_message_preview(
+                    latest_row.body if latest_row else None,
+                    latest_row.attachment_name if latest_row else None,
+                ),
+                attachment_name=latest_row.attachment_name if latest_row else None,
+                sender_id=int(latest_row.sender_id) if latest_row and latest_row.sender_id is not None else None,
+                created_at=latest_row.created_at if latest_row else None,
+            )
+        )
+
+    return OrganizationInboxOut(items=items)
 
 
 @router.get("/threads/{entity_type}/{entity_id}", response_model=CommunicationThreadOut)
@@ -926,6 +1156,9 @@ async def list_organization_direct_messages(
     await _require_active_org_membership(db, user_id=current_user.id, organization_id=organization_id)
     await _require_active_org_membership(db, user_id=user_id, organization_id=organization_id)
 
+    pair_low = min(current_user.id, user_id)
+    pair_high = max(current_user.id, user_id)
+
     rows = (
         await db.execute(
             select(OrganizationDirectMessage, User, Profile)
@@ -933,12 +1166,10 @@ async def list_organization_direct_messages(
             .outerjoin(Profile, Profile.user_id == User.id)
             .where(
                 OrganizationDirectMessage.organization_id == organization_id,
-                or_(
-                    (OrganizationDirectMessage.sender_id == current_user.id) & (OrganizationDirectMessage.recipient_id == user_id),
-                    (OrganizationDirectMessage.sender_id == user_id) & (OrganizationDirectMessage.recipient_id == current_user.id),
-                ),
+                func.least(OrganizationDirectMessage.sender_id, OrganizationDirectMessage.recipient_id) == pair_low,
+                func.greatest(OrganizationDirectMessage.sender_id, OrganizationDirectMessage.recipient_id) == pair_high,
             )
-            .order_by(OrganizationDirectMessage.created_at.desc())
+            .order_by(OrganizationDirectMessage.created_at.desc(), OrganizationDirectMessage.id.desc())
             .limit(limit)
         )
     ).all()

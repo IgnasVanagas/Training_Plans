@@ -1,0 +1,391 @@
+@startuml Training_Plans_DB_Schema
+
+hide circle
+skinparam linetype ortho
+skinparam shadowing false
+skinparam defaultFontSize 10
+skinparam wrapWidth 200
+skinparam maxMessageSize 200
+
+scale max 4096 width
+scale max 4096 height
+
+package "Core" {
+  entity users {
+    * id : int <<PK>>
+    --
+    email : string
+    password_hash : string
+    role : enum(coach|athlete|admin)
+    email_verified : bool
+  }
+
+  entity profiles {
+    * user_id : int <<PK, FK>>
+    --
+    first_name : string
+    last_name : string
+    gender : string
+    birth_date : date
+    weight : float
+    hrv_ms : float
+    ftp : float
+    lt2 : float
+    max_hr : float
+    resting_hr : float
+    main_sport : string
+    sports : jsonb
+    training_days : jsonb
+    country : string
+    contact_email : string
+    contact_number : string
+    timezone : string
+    preferred_units : string
+    week_start_day : string
+    menstruation_available_to_coach : bool
+  }
+
+  entity profile_metric_history {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    metric : string
+    value : float
+    recorded_at : datetime
+  }
+
+  entity coach_athlete_links {
+    * id : int <<PK>>
+    --
+    coach_id : int <<FK>>
+    athlete_id : int <<FK>>
+    is_active : bool
+    invite_token : string
+  }
+}
+
+package "Organizations and Messaging" {
+  entity organizations {
+    * id : int <<PK>>
+    --
+    name : string
+    code : string
+    description : text
+    picture : string
+    settings_json : jsonb
+  }
+
+  entity organization_members {
+    * user_id : int <<PK, FK>>
+    * organization_id : int <<PK, FK>>
+    --
+    role : string
+    status : string
+  }
+
+  entity organization_group_messages {
+    * id : int <<PK>>
+    --
+    organization_id : int <<FK>>
+    sender_id : int <<FK>>
+    body : text
+    created_at : datetime
+  }
+
+  entity organization_coach_messages {
+    * id : int <<PK>>
+    --
+    organization_id : int <<FK>>
+    athlete_id : int <<FK>>
+    coach_id : int <<FK>>
+    sender_id : int <<FK>>
+    body : text
+    created_at : datetime
+  }
+
+  entity organization_direct_messages {
+    * id : int <<PK>>
+    --
+    organization_id : int <<FK>>
+    sender_id : int <<FK>>
+    recipient_id : int <<FK>>
+    body : text
+    created_at : datetime
+  }
+
+  entity communication_threads {
+    * id : int <<PK>>
+    --
+    entity_type : string
+    entity_id : int
+    athlete_id : int <<FK>>
+    coach_id : int <<FK>>
+    created_at : datetime
+    updated_at : datetime
+  }
+
+  entity communication_comments {
+    * id : int <<PK>>
+    --
+    thread_id : int <<FK>>
+    author_id : int <<FK>>
+    body : text
+    created_at : datetime
+  }
+
+  entity communication_acknowledgements {
+    * id : int <<PK>>
+    --
+    entity_type : string
+    entity_id : int
+    athlete_id : int <<FK>>
+    actor_id : int <<FK>>
+    action : string
+    note : text
+    created_at : datetime
+  }
+
+  entity day_notes {
+    * id : int <<PK>>
+    --
+    athlete_id : int <<FK>>
+    author_id : int <<FK>>
+    date : date
+    content : text
+    created_at : datetime
+    updated_at : datetime
+  }
+}
+
+package "Training" {
+  entity activities {
+    * id : int <<PK>>
+    --
+    athlete_id : int <<FK>>
+    duplicate_of_id : int <<FK>>
+    filename : string
+    file_path : string
+    file_type : string
+    sport : string
+    distance : float
+    duration : float
+    avg_speed : float
+    average_hr : float
+    average_watts : float
+    rpe : float
+    notes : text
+    streams : jsonb
+    is_deleted : bool
+    created_at : datetime
+  }
+
+  entity structured_workouts {
+    * id : int <<PK>>
+    --
+    coach_id : int <<FK>>
+    title : string
+    description : text
+    sport_type : string
+    structure : jsonb
+    tags : jsonb
+    is_favorite : bool
+    created_at : datetime
+    updated_at : datetime
+  }
+
+  entity season_plans {
+    * id : int <<PK>>
+    --
+    athlete_id : int <<FK>>
+    coach_id : int <<FK>>
+    name : string
+    sport_type : string
+    season_start : date
+    season_end : date
+    notes : text
+    target_metrics : jsonb
+    goal_races : jsonb
+    constraints : jsonb
+    periodization : jsonb
+    generated_summary : jsonb
+    created_at : datetime
+    updated_at : datetime
+  }
+
+  entity planned_workouts {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    created_by_user_id : int <<FK>>
+    season_plan_id : int <<FK>>
+    matched_activity_id : int <<FK>>
+    date : date
+    title : string
+    description : text
+    sport_type : string
+    planned_duration : int
+    planned_distance : float
+    planned_intensity : string
+    structure : jsonb
+    planning_context : jsonb
+    rpe : float
+    notes : text
+    compliance_status : enum
+  }
+}
+
+package "Integrations and Wellness" {
+  entity provider_connections {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    provider : string
+    external_athlete_id : string
+    encrypted_access_token : text
+    encrypted_refresh_token : text
+    token_expires_at : datetime
+    scopes : jsonb
+    status : string
+    last_sync_at : datetime
+    last_error : text
+    created_at : datetime
+    updated_at : datetime
+  }
+
+  entity provider_sync_state {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    provider : string
+    cursor : jsonb
+    sync_status : string
+    sync_progress : int
+    sync_total : int
+    sync_message : text
+    last_success : datetime
+    last_error : text
+    updated_at : datetime
+  }
+
+  entity provider_webhook_events {
+    * id : int <<PK>>
+    --
+    provider : string
+    event_key : string
+    payload : jsonb
+    status : string
+    received_at : datetime
+    processed_at : datetime
+    last_error : text
+  }
+
+  entity integration_audit_logs {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    provider : string
+    action : string
+    status : string
+    message : text
+    created_at : datetime
+  }
+
+  entity hrv_daily {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    source_provider : string
+    external_record_id : string
+    record_date : date
+    hrv_ms : float
+    created_at : datetime
+  }
+
+  entity rhr_daily {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    source_provider : string
+    external_record_id : string
+    record_date : date
+    resting_hr : float
+    created_at : datetime
+  }
+
+  entity sleep_sessions {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    source_provider : string
+    external_record_id : string
+    start_time : datetime
+    end_time : datetime
+    duration_seconds : int
+    quality_score : float
+    created_at : datetime
+  }
+
+  entity stress_daily {
+    * id : int <<PK>>
+    --
+    user_id : int <<FK>>
+    source_provider : string
+    external_record_id : string
+    record_date : date
+    stress_score : float
+    created_at : datetime
+  }
+}
+
+users ||--|| profiles
+users ||--o{ profile_metric_history
+users ||--o{ coach_athlete_links : coach_id
+users ||--o{ coach_athlete_links : athlete_id
+
+users ||--o{ organization_members
+organizations ||--o{ organization_members
+
+users ||--o{ activities : athlete_id
+activities ||--o{ activities : duplicate_of_id
+users ||--o{ structured_workouts
+users ||--o{ season_plans : athlete_id
+users ||--o{ season_plans : coach_id
+season_plans ||--o{ planned_workouts
+users ||--o{ planned_workouts : user_id
+users ||--o{ planned_workouts : created_by_user_id
+activities ||--o| planned_workouts : matched_activity_id
+
+users ||--o{ provider_connections
+users ||--o{ provider_sync_state
+users ||--o{ integration_audit_logs
+users ||--o{ hrv_daily
+users ||--o{ rhr_daily
+users ||--o{ sleep_sessions
+users ||--o{ stress_daily
+
+users ||--o{ communication_threads : athlete_id
+users ||--o{ communication_threads : coach_id
+communication_threads ||--o{ communication_comments
+users ||--o{ communication_comments : author_id
+users ||--o{ communication_acknowledgements : athlete_id
+users ||--o{ communication_acknowledgements : actor_id
+
+organizations ||--o{ organization_group_messages
+organizations ||--o{ organization_coach_messages
+organizations ||--o{ organization_direct_messages
+users ||--o{ organization_group_messages : sender_id
+users ||--o{ organization_coach_messages : athlete_id
+users ||--o{ organization_coach_messages : coach_id
+users ||--o{ organization_coach_messages : sender_id
+users ||--o{ organization_direct_messages : sender_id
+users ||--o{ organization_direct_messages : recipient_id
+
+users ||--o{ day_notes : athlete_id
+users ||--o{ day_notes : author_id
+
+note bottom of provider_webhook_events
+No direct FK in current model.
+Unique(provider, event_key).
+end note
+
+@enduml

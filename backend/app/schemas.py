@@ -915,6 +915,22 @@ class OrgMemberOut(BaseModel):
     last_name: Optional[str] = None
 
 
+class OrganizationInboxThreadOut(BaseModel):
+    key: str
+    thread_type: Literal["group", "coach", "member"]
+    participant_id: Optional[int] = None
+    participant_role: Optional[str] = None
+    participant_name: Optional[str] = None
+    body_preview: Optional[str] = None
+    attachment_name: Optional[str] = None
+    sender_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+
+class OrganizationInboxOut(BaseModel):
+    items: list[OrganizationInboxThreadOut]
+
+
 class OrganizationDirectMessageCreate(BaseModel):
     body: str = Field(min_length=0, max_length=2000)
     attachment_url: Optional[str] = None
