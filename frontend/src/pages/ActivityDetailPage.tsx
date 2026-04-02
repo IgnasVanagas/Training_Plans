@@ -1022,56 +1022,69 @@ export const ActivityDetailPage = () => {
                 for (let i = 0; i < upperBounds.length; i++) {
                     if (hr <= upperBounds[i]) return i + 1;
                 }
-                return upperBounds.length;
+                return 5; // Above all thresholds → Z5
             }
             const ratio = hr / maxHr;
             return ratio < 0.6 ? 1 : ratio < 0.7 ? 2 : ratio < 0.8 ? 3 : ratio < 0.9 ? 4 : 5;
         };
 
-        const hrSamples = streamPoints
-            .map((sample: any, index: number) => ({
-                index,
-                hr: Number(sample?.heart_rate || 0),
-                ts: sample?.timestamp ? new Date(sample.timestamp).getTime() : NaN,
-            }))
-            .filter((sample: { hr: number }) => Number.isFinite(sample.hr) && sample.hr > 0);
-
-        if (hrSamples.length > 0 && (upperBounds?.length || maxHr > 0)) {
-            const fallbackSeconds = activity?.duration && activity.duration > 0
-                ? Math.max(0.25, activity.duration / Math.max(streamPoints.length, 1))
-                : 1;
-
-            for (let i = 0; i < hrSamples.length; i += 1) {
-                const current = hrSamples[i];
-                const next = hrSamples[i + 1];
-
-                let sampleSeconds = fallbackSeconds;
-                if (Number.isFinite(current.ts) && Number.isFinite(next?.ts)) {
-                    const delta = (Number(next.ts) - Number(current.ts)) / 1000;
-                    if (Number.isFinite(delta) && delta > 0) {
-                        // Clamp to avoid giant gaps or ultra-high frequency spikes skewing totals.
-                        sampleSeconds = Math.min(5, Math.max(0.25, delta));
-                    }
-                }
-
-                const zone = classifyHr(current.hr);
-                zoneSeconds[`Z${zone}`] += sampleSeconds;
-            }
-        } else if (activity?.hr_zones && typeof activity.hr_zones === 'object' && Object.keys(activity.hr_zones).length > 0) {
+        // Check for pre-calculated backend zones first (most reliable)
+        if (activity?.hr_zones && typeof activity.hr_zones === 'object' && Object.keys(activity.hr_zones).length > 0) {
             for (let zone = 1; zone <= 5; zone += 1) {
-                zoneSeconds[`Z${zone}`] += Number((activity.hr_zones as any)[`Z${zone}`] || 0);
+                zoneSeconds[`Z${zone}`] = Number((activity.hr_zones as any)[`Z${zone}`] || 0);
             }
-        } else if (activity?.average_hr && activity?.duration) {
-            const zone = classifyHr(Number(activity.average_hr));
-            zoneSeconds[`Z${zone}`] += Math.round(activity.duration);
+        } else {
+            const hrSamples = streamPoints
+                .map((sample: any, index: number) => ({
+                    index,
+                    hr: Number(sample?.heart_rate || 0),
+                    ts: sample?.timestamp ? new Date(sample.timestamp).getTime() : NaN,
+                }))
+                .filter((sample: { hr: number }) => Number.isFinite(sample.hr) && sample.hr > 0);
+
+            if (hrSamples.length > 0 && (upperBounds?.length || maxHr > 0)) {
+                const fallbackSeconds = activity?.duration && activity.duration > 0
+                    ? Math.max(0.25, activity.duration / Math.max(streamPoints.length, 1))
+                    : 1;
+
+                for (let i = 0; i < hrSamples.length; i += 1) {
+                    const current = hrSamples[i];
+                    const next = hrSamples[i + 1];
+
+                    let sampleSeconds = fallbackSeconds;
+                    if (Number.isFinite(current.ts) && Number.isFinite(next?.ts)) {
+                        const delta = (Number(next.ts) - Number(current.ts)) / 1000;
+                        if (Number.isFinite(delta) && delta > 0) {
+                            // Clamp to avoid giant gaps or ultra-high frequency spikes skewing totals.
+                            sampleSeconds = Math.min(5, Math.max(0.25, delta));
+                        }
+                    }
+
+                    const zone = classifyHr(current.hr);
+                    zoneSeconds[`Z${zone}`] += sampleSeconds;
+                }
+            } else if (activity?.average_hr && activity?.duration) {
+                const zone = classifyHr(Number(activity.average_hr));
+                zoneSeconds[`Z${zone}`] += Math.round(activity.duration);
+            }
         }
 
         const ZONE_THRESHOLDS = [0, 0.6, 0.7, 0.8, 0.9];
         return Array.from({ length: 5 }, (_, idx) => {
             const zone = `Z${idx + 1}`;
-            const low = Math.round(maxHr * ZONE_THRESHOLDS[idx]);
-            const high = idx === 4 ? Math.round(maxHr) : Math.round(maxHr * ZONE_THRESHOLDS[idx + 1]);
-            const range = idx === 0 ? `< ${high} bpm` : idx === 4 ? `≥ ${low} bpm` : `${low}–${high} bpm`;
+            let range: string;
+            
+            // Use upperBounds for display if available, otherwise use threshold ratios
+            if (upperBounds?.length) {
+                const low = idx === 0 ? 0 : upperBounds[idx - 1];
+                const high = idx === 4 ? maxHr : upperBounds[idx];
+                range = idx === 0 ? `< ${high} bpm` : idx === 4 ? `≥ ${low} bpm` : `${low}–${high} bpm`;
+            } else {
+                const low = Math.round(maxHr * ZONE_THRESHOLDS[idx]);
+                const high = idx === 4 ? Math.round(maxHr) : Math.round(maxHr * ZONE_THRESHOLDS[idx + 1]);
+                range = idx === 0 ? `< ${high} bpm` : idx === 4 ? `≥ ${low} bpm` : `${low}–${high} bpm`;
+            }
+            
             return { zone, seconds: zoneSeconds[zone] || 0, range };
         });
     }, [activity, streamPoints, me?.profile?.max_hr, me?.profile]);
