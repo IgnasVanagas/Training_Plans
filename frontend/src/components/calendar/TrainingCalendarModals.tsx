@@ -48,19 +48,13 @@ const RecurringWorkoutFields = ({
   disabled?: boolean;
 }) => {
   const { t } = useI18n();
-  const isMobile = useMediaQuery('(max-width: 48em)');
   const recurrence = selectedEvent.recurrence || null;
   const mode = recurrence ? 'weekly' : 'once';
 
   return (
     <Paper withBorder p="sm" radius="md">
       <Stack gap="sm">
-        <Group
-          justify="space-between"
-          align={isMobile ? 'stretch' : 'center'}
-          wrap={isMobile ? 'wrap' : 'nowrap'}
-          style={isMobile ? { flexDirection: 'column', gap: 8 } : undefined}
-        >
+        <Stack gap={8}>
           <Box>
             <Text fw={600}>{t('Repeat workout') || 'Repeat workout'}</Text>
             <Text size="xs" c="dimmed">
@@ -84,9 +78,9 @@ const RecurringWorkoutFields = ({
               { label: t('Weekly') || 'Weekly', value: 'weekly' },
             ]}
             disabled={disabled}
-            fullWidth={isMobile}
+            fullWidth
           />
-        </Group>
+        </Stack>
 
         {recurrence && (
           <>
@@ -557,11 +551,9 @@ export const DayDetailsModal = ({
                           borderBottom: `1px solid ${isDark ? 'rgba(0,195,245,0.12)' : 'rgba(0,145,181,0.10)'}`,
                           background: isDark ? 'rgba(0,195,245,0.06)' : 'rgba(0,145,181,0.045)',
                           display: 'flex',
-                          alignItems: isMobile ? 'stretch' : 'center',
-                          justifyContent: 'space-between',
+                          alignItems: 'stretch',
+                          flexDirection: 'column',
                           gap: 8,
-                          flexWrap: 'wrap',
-                          flexDirection: isMobile ? 'column' : 'row',
                         }}
                       >
                         <Text
@@ -580,7 +572,7 @@ export const DayDetailsModal = ({
                             { label: t('Quick') || 'Quick', value: 'quick' },
                           ]}
                           size="xs"
-                          fullWidth={isMobile}
+                          fullWidth
                           styles={{ root: { background: 'transparent' }, label: { whiteSpace: 'nowrap' } }}
                         />
                       </Box>
