@@ -68,6 +68,7 @@ type ActivityListItem = {
   created_at: string;
   distance?: number | null;
   duration?: number | null;
+  moving_time?: number | null;
   average_hr?: number | null;
   average_watts?: number | null;
   avg_speed?: number | null;
@@ -104,28 +105,31 @@ type Aggregate = {
   activitiesCount: number;
   totalMinutes: number;
   totalDistanceKm: number;
-  avgSessionMinutes: number;
   avgHr: number | null;
   avgPower: number | null;
-  avgPaceMinPerKm: number | null;
-  avgRpe: number | null;
-  avgLactate: number | null;
-  activeDays: number;
-  densestDayMinutes: number;
+  weightedAvgPower: number | null;
   totalLoadImpact: number;
-  aerobicLoad: number;
-  anaerobicLoad: number;
-  feedbackCoveragePct: number;
-  noteCoveragePct: number;
-  lactateCoveragePct: number;
-  estimatedFtp: number | null;
-  estimatedLt2MinPerKm: number | null;
   runningZones: Record<string, number>;
   cyclingZones: Record<string, number>;
-  weekdayMinutes: Record<string, number>;
-  sportMix: Record<string, number>;
-  longestSession: ActivityDetail | null;
+  best20mPower: number | null;
+  best20mPace: number | null;
   keySessions: ActivityDetail[];
+  // Unused fields (for backwards compatibility with UI)
+  activeDays?: number;
+  avgSessionMinutes?: number;
+  densestDayMinutes?: number;
+  avgRpe?: number | null;
+  avgLactate?: number | null;
+  feedbackCoveragePct?: number;
+  noteCoveragePct?: number;
+  lactateCoveragePct?: number;
+  estimatedFtp?: number | null;
+  estimatedLt2MinPerKm?: number | null;
+  aerobicLoad?: number;
+  anaerobicLoad?: number;
+  weekdayMinutes?: Record<string, number>;
+  sportMix?: Record<string, number>;
+  longestSession?: ActivityDetail | null;
 };
 
 type SplitRow = {
@@ -165,7 +169,8 @@ const extractBestCurveValue = (curve: Record<string, number> | null | undefined,
 
 const extractZonesForDetail = (detail: ActivityDetail, athlete?: AthleteLike) => {
   const sport = normalizeSport(detail.sport);
-  const durationSeconds = safeNum(detail.duration);
+  // Use moving_time if available, fallback to duration
+  const durationSeconds = safeNum(detail.moving_time || detail.duration);
   const running = emptyRunningZones();
   const cycling = emptyCyclingZones();
 
@@ -236,27 +241,14 @@ const buildAggregate = (details: ActivityDetail[], athleteMap: Map<number, Athle
     activitiesCount: 0,
     totalMinutes: 0,
     totalDistanceKm: 0,
-    avgSessionMinutes: 0,
     avgHr: null,
     avgPower: null,
-    avgPaceMinPerKm: null,
-    avgRpe: null,
-    avgLactate: null,
-    activeDays: 0,
-    densestDayMinutes: 0,
+    weightedAvgPower: null,
     totalLoadImpact: 0,
-    aerobicLoad: 0,
-    anaerobicLoad: 0,
-    feedbackCoveragePct: 0,
-    noteCoveragePct: 0,
-    lactateCoveragePct: 0,
-    estimatedFtp: null,
-    estimatedLt2MinPerKm: null,
     runningZones: emptyRunningZones(),
     cyclingZones: emptyCyclingZones(),
-    weekdayMinutes: emptyWeekdayMinutes(),
-    sportMix: {},
-    longestSession: null,
+    best20mPower: null,
+    best20mPace: null,
     keySessions: [],
   };
 
@@ -264,18 +256,8 @@ const buildAggregate = (details: ActivityDetail[], athleteMap: Map<number, Athle
   let hrMinutes = 0;
   let powerWeighted = 0;
   let powerMinutes = 0;
-  let runningMinutes = 0;
-  let runningKm = 0;
-  let rpeSum = 0;
-  let rpeCount = 0;
-  let lactateSum = 0;
-  let lactateCount = 0;
-  let feedbackCount = 0;
-  let noteCount = 0;
   let best20mPower = 0;
   let best20mSpeed = 0;
-  const dayTotals = new Map<string, number>();
-  const activeDays = new Set<string>();
 
   const rankedSessions = details
     .slice()
@@ -283,27 +265,14 @@ const buildAggregate = (details: ActivityDetail[], athleteMap: Map<number, Athle
 
   details.forEach((detail) => {
     const athlete = athleteMap.get(detail.athlete_id);
-    const durationMinutes = safeNum(detail.duration) / 60;
+    // Use moving_time if available, fallback to duration
+    const durationMinutes = safeNum(detail.moving_time || detail.duration) / 60;
     const distanceKm = safeNum(detail.distance) / 1000;
-    const dayKey = detail.created_at.slice(0, 10);
-    const sport = normalizeSport(detail.sport);
-    const weekdayIndex = (new Date(detail.created_at).getDay() + 6) % 7;
-    const weekdayKey = weekdayKeys[weekdayIndex];
 
     aggregate.activitiesCount += 1;
     aggregate.totalMinutes += durationMinutes;
     aggregate.totalDistanceKm += distanceKm;
     aggregate.totalLoadImpact += safeNum(detail.total_load_impact);
-    aggregate.aerobicLoad += safeNum(detail.aerobic_load);
-    aggregate.anaerobicLoad += safeNum(detail.anaerobic_load);
-    aggregate.weekdayMinutes[weekdayKey] += durationMinutes;
-    aggregate.sportMix[sport] = (aggregate.sportMix[sport] || 0) + durationMinutes;
-    activeDays.add(dayKey);
-    dayTotals.set(dayKey, (dayTotals.get(dayKey) || 0) + durationMinutes);
-
-    if (!aggregate.longestSession || safeNum(detail.duration) > safeNum(aggregate.longestSession.duration)) {
-      aggregate.longestSession = detail;
-    }
 
     if (detail.average_hr && durationMinutes > 0) {
       hrWeighted += detail.average_hr * durationMinutes;
@@ -313,28 +282,6 @@ const buildAggregate = (details: ActivityDetail[], athleteMap: Map<number, Athle
     if (detail.average_watts && durationMinutes > 0) {
       powerWeighted += detail.average_watts * durationMinutes;
       powerMinutes += durationMinutes;
-    }
-
-    if (sport === 'running' && distanceKm > 0) {
-      runningMinutes += durationMinutes;
-      runningKm += distanceKm;
-    }
-
-    if (detail.rpe != null) {
-      rpeSum += safeNum(detail.rpe);
-      rpeCount += 1;
-      feedbackCount += 1;
-    } else if (detail.notes || detail.lactate_mmol_l != null) {
-      feedbackCount += 1;
-    }
-
-    if (detail.notes && detail.notes.trim()) {
-      noteCount += 1;
-    }
-
-    if (detail.lactate_mmol_l != null) {
-      lactateSum += safeNum(detail.lactate_mmol_l);
-      lactateCount += 1;
     }
 
     const power20 = safeNum(extractBestCurveValue(detail.power_curve, ['20min', '1200s', '1800s']));
@@ -352,20 +299,12 @@ const buildAggregate = (details: ActivityDetail[], athleteMap: Map<number, Athle
     }
   });
 
-  aggregate.avgSessionMinutes = aggregate.activitiesCount > 0 ? aggregate.totalMinutes / aggregate.activitiesCount : 0;
   aggregate.avgHr = hrMinutes > 0 ? hrWeighted / hrMinutes : null;
   aggregate.avgPower = powerMinutes > 0 ? powerWeighted / powerMinutes : null;
-  aggregate.avgPaceMinPerKm = runningKm > 0 ? runningMinutes / runningKm : null;
-  aggregate.avgRpe = rpeCount > 0 ? rpeSum / rpeCount : null;
-  aggregate.avgLactate = lactateCount > 0 ? lactateSum / lactateCount : null;
-  aggregate.activeDays = activeDays.size;
-  aggregate.densestDayMinutes = Array.from(dayTotals.values()).sort((left, right) => right - left)[0] || 0;
-  aggregate.feedbackCoveragePct = aggregate.activitiesCount > 0 ? (feedbackCount / aggregate.activitiesCount) * 100 : 0;
-  aggregate.noteCoveragePct = aggregate.activitiesCount > 0 ? (noteCount / aggregate.activitiesCount) * 100 : 0;
-  aggregate.lactateCoveragePct = aggregate.activitiesCount > 0 ? (lactateCount / aggregate.activitiesCount) * 100 : 0;
-  aggregate.estimatedFtp = best20mPower > 0 ? best20mPower * 0.95 : null;
-  aggregate.estimatedLt2MinPerKm = best20mSpeed > 0 ? (1000 / (best20mSpeed * 60)) : null;
-  aggregate.keySessions = rankedSessions.slice(0, 3);
+  aggregate.weightedAvgPower = powerMinutes > 0 ? powerWeighted / powerMinutes : null;
+  aggregate.best20mPower = best20mPower > 0 ? best20mPower : null;
+  aggregate.best20mPace = best20mSpeed > 0 ? (1000 / (best20mSpeed * 60)) : null;
+  aggregate.keySessions = rankedSessions.slice(0, 1);
 
   return aggregate;
 };
@@ -537,10 +476,6 @@ const PeriodSummaryTable = ({
 }) => {
   const runningLeader = dominantZone(aggregate.runningZones);
   const cyclingLeader = dominantZone(aggregate.cyclingZones);
-  const longestSessionName = aggregate.longestSession ? aggregate.longestSession.filename : '-';
-  const longestSessionMinutes = aggregate.longestSession ? safeNum(aggregate.longestSession.duration) / 60 : 0;
-  const weekdayMax = Math.max(...Object.values(aggregate.weekdayMinutes), 0);
-  const sportMixTotal = Object.values(aggregate.sportMix).reduce((sum, value) => sum + value, 0);
 
   return (
     <Paper withBorder p="sm" radius="md" style={sideColor ? { borderLeft: `4px solid ${sideColor}` } : undefined}>
@@ -560,74 +495,34 @@ const PeriodSummaryTable = ({
             <Text fw={700}>{formatMinutes(aggregate.totalMinutes)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Active days') || 'Active days'}</Text>
-            <Text fw={700}>{aggregate.activeDays}</Text>
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Total distance') || 'Total distance'}</Text>
+            <Text fw={700}>{formatDistanceKm(aggregate.totalDistanceKm)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Average session') || 'Average session'}</Text>
-            <Text fw={700}>{formatMinutes(aggregate.avgSessionMinutes)}</Text>
-          </Paper>
-          <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Densest day') || 'Densest day'}</Text>
-            <Text fw={700}>{formatMinutes(aggregate.densestDayMinutes)}</Text>
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Training load') || 'Training load'}</Text>
+            <Text fw={700}>{aggregate.totalLoadImpact.toFixed(1)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
             <Text size="10px" c="dimmed" tt="uppercase">{t('Average HR') || 'Average HR'}</Text>
             <Text fw={700}>{aggregate.avgHr ? `${Math.round(aggregate.avgHr)} bpm` : '-'}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Average power / pace') || 'Average power / pace'}</Text>
-            <Text fw={700}>{aggregate.avgPower ? `${Math.round(aggregate.avgPower)} W` : aggregate.avgPaceMinPerKm ? formatPace(aggregate.avgPaceMinPerKm) : '-'}</Text>
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Average power') || 'Average power'}</Text>
+            <Text fw={700}>{aggregate.avgPower ? `${Math.round(aggregate.avgPower)} W` : '-'}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Average RPE') || 'Average RPE'}</Text>
-            <Text fw={700}>{aggregate.avgRpe ? aggregate.avgRpe.toFixed(1) : '-'}</Text>
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Weighted avg power') || 'Weighted avg power'}</Text>
+            <Text fw={700}>{aggregate.weightedAvgPower ? `${Math.round(aggregate.weightedAvgPower)} W` : '-'}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Average lactate') || 'Average lactate'}</Text>
-            <Text fw={700}>{aggregate.avgLactate ? `${aggregate.avgLactate.toFixed(1)} mmol/L` : '-'}</Text>
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Best 20m power') || 'Best 20m power'}</Text>
+            <Text fw={700}>{aggregate.best20mPower ? `${Math.round(aggregate.best20mPower)} W` : '-'}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Estimated FTP') || 'Estimated FTP'}</Text>
-            <Text fw={700}>{aggregate.estimatedFtp ? `${Math.round(aggregate.estimatedFtp)} W` : '-'}</Text>
-          </Paper>
-          <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Estimated LT2 Pace') || 'Estimated LT2 Pace'}</Text>
-            <Text fw={700}>{aggregate.estimatedLt2MinPerKm ? formatPace(aggregate.estimatedLt2MinPerKm) : '-'}</Text>
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Best 20m pace') || 'Best 20m pace'}</Text>
+            <Text fw={700}>{aggregate.best20mPace ? formatPace(aggregate.best20mPace) : '-'}</Text>
           </Paper>
         </SimpleGrid>
-
-        <SimpleGrid cols={3} spacing="xs">
-          <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Feedback coverage') || 'Feedback coverage'}</Text>
-            <Text fw={700}>{aggregate.feedbackCoveragePct.toFixed(0)}%</Text>
-          </Paper>
-          <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Notes coverage') || 'Notes coverage'}</Text>
-            <Text fw={700}>{aggregate.noteCoveragePct.toFixed(0)}%</Text>
-          </Paper>
-          <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Lactate coverage') || 'Lactate coverage'}</Text>
-            <Text fw={700}>{aggregate.lactateCoveragePct.toFixed(0)}%</Text>
-          </Paper>
-        </SimpleGrid>
-
-        <Paper withBorder p="xs" radius="sm">
-          <Text size="10px" c="dimmed" tt="uppercase">{t('Sport mix') || 'Sport mix'}</Text>
-          <Stack gap={6} mt={4}>
-            {Object.entries(aggregate.sportMix).length === 0 && <Text size="sm" c="dimmed">{t('No sport mix data') || 'No sport mix data'}</Text>}
-            {Object.entries(aggregate.sportMix).map(([sport, minutes]) => {
-              const pct = sportMixTotal > 0 ? (minutes / sportMixTotal) * 100 : 0;
-              return (
-                <Group key={`${title}-${sport}`} gap="xs" wrap="nowrap">
-                  <Text size="xs" w={72}>{sport}</Text>
-                  <Progress value={pct} size="sm" radius="xl" flex={1} />
-                  <Text size="xs" c="dimmed" w={56} ta="right">{pct.toFixed(0)}%</Text>
-                </Group>
-              );
-            })}
-          </Stack>
-        </Paper>
 
         {(Object.values(aggregate.runningZones).some((value) => value > 0) || Object.values(aggregate.cyclingZones).some((value) => value > 0)) && (
           <SimpleGrid cols={2} spacing="xs">
@@ -647,29 +542,6 @@ const PeriodSummaryTable = ({
             </Paper>
           </SimpleGrid>
         )}
-
-        <Paper withBorder p="xs" radius="sm">
-          <Text size="10px" c="dimmed" tt="uppercase">{t('Weekday distribution') || 'Weekday distribution'}</Text>
-          <Stack gap={6} mt={4}>
-            {weekdayKeys.map((key) => {
-              const minutes = aggregate.weekdayMinutes[key];
-              const pct = weekdayMax > 0 ? (minutes / weekdayMax) * 100 : 0;
-              return (
-                <Group key={`${title}-${key}`} gap="xs" wrap="nowrap">
-                  <Text size="xs" w={28}>{key}</Text>
-                  <Progress value={pct} size="sm" radius="xl" flex={1} />
-                  <Text size="xs" c="dimmed" w={56} ta="right">{formatMinutes(minutes)}</Text>
-                </Group>
-              );
-            })}
-          </Stack>
-        </Paper>
-
-        <Paper withBorder p="xs" radius="sm">
-          <Text size="10px" c="dimmed" tt="uppercase">{t('Longest session') || 'Longest session'}</Text>
-          <Text fw={600}>{longestSessionName}</Text>
-          <Text size="sm" c="dimmed">{longestSessionMinutes > 0 ? `${formatMinutes(longestSessionMinutes)} · ${formatDistanceKm(safeNum(aggregate.longestSession?.distance) / 1000)}` : '-'}</Text>
-        </Paper>
 
         <Paper withBorder p="xs" radius="sm">
           <Text size="10px" c="dimmed" tt="uppercase">{t('Key sessions') || 'Key sessions'}</Text>
@@ -693,7 +565,7 @@ const PeriodSummaryTable = ({
                     <Text size="sm">{session.filename}</Text>
                     <Text size="xs" c="dimmed">{new Date(session.created_at).toLocaleDateString()}</Text>
                   </Table.Td>
-                  <Table.Td>{formatMinutes(safeNum(session.duration) / 60)}</Table.Td>
+                  <Table.Td>{formatMinutes(safeNum(session.moving_time || session.duration) / 60)}</Table.Td>
                   <Table.Td>{safeNum(session.total_load_impact).toFixed(1)}</Table.Td>
                 </Table.Tr>
               ))}
@@ -1198,7 +1070,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     return [
       `${t('Volume change') || 'Volume change'}: ${formatDeltaPct(leftAggregate.totalMinutes, rightAggregate.totalMinutes)}`,
       `${t('Distance change') || 'Distance change'}: ${formatDeltaPct(leftAggregate.totalDistanceKm, rightAggregate.totalDistanceKm)}`,
-      `${t('Feedback coverage change') || 'Feedback coverage change'}: ${compareValue(leftAggregate.feedbackCoveragePct, rightAggregate.feedbackCoveragePct, '%')}`,
+      `${t('Load change') || 'Load change'}: ${compareValue(leftAggregate.totalLoadImpact, rightAggregate.totalLoadImpact)}`,
       `${t('Running zone focus') || 'Running zone focus'}: ${leftRunningLeader.zone} ${leftRunningLeader.sharePct.toFixed(0)}% vs ${rightRunningLeader.zone} ${rightRunningLeader.sharePct.toFixed(0)}%`,
       `${t('Cycling zone focus') || 'Cycling zone focus'}: ${leftCyclingLeader.zone} ${leftCyclingLeader.sharePct.toFixed(0)}% vs ${rightCyclingLeader.zone} ${rightCyclingLeader.sharePct.toFixed(0)}%`,
     ];
@@ -1215,7 +1087,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
         { label: t('Sessions') || 'Sessions', value: compareValue(leftAggregate.activitiesCount, rightAggregate.activitiesCount) },
         { label: t('Total time') || 'Total time', value: compareValue(leftAggregate.totalMinutes, rightAggregate.totalMinutes, ' min') },
         { label: t('Distance') || 'Distance', value: compareValue(leftAggregate.totalDistanceKm, rightAggregate.totalDistanceKm, ' km') },
-        { label: t('Feedback coverage') || 'Feedback coverage', value: compareValue(leftAggregate.feedbackCoveragePct, rightAggregate.feedbackCoveragePct, '%') },
+        { label: t('Load') || 'Load', value: compareValue(leftAggregate.totalLoadImpact, rightAggregate.totalLoadImpact) },
       ];
 
   const leftSideLabel = mode === 'workouts'
@@ -1359,7 +1231,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                 <MetricComparison label={t('Distance') || 'Distance'} leftVal={leftAggregate.totalDistanceKm} rightVal={rightAggregate.totalDistanceKm} suffix=" km" />
                 <MetricComparison label={t('Training Load') || 'Training Load'} leftVal={leftAggregate.totalLoadImpact} rightVal={rightAggregate.totalLoadImpact} />
                 <MetricComparison label={t('Avg HR') || 'Avg HR'} leftVal={leftAggregate.avgHr} rightVal={rightAggregate.avgHr} suffix=" bpm" lowerBetter decimals={0} />
-                <MetricComparison label={t('Feedback %') || 'Feedback %'} leftVal={leftAggregate.feedbackCoveragePct} rightVal={rightAggregate.feedbackCoveragePct} suffix="%" decimals={0} />
+                <MetricComparison label={t('Avg Power') || 'Avg Power'} leftVal={leftAggregate.avgPower} rightVal={rightAggregate.avgPower} suffix=" W" decimals={0} />
               </SimpleGrid>
             )}
 

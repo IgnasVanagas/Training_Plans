@@ -79,6 +79,7 @@ type ActivityListItem = {
   created_at: string;
   distance?: number | null;
   duration?: number | null;
+  moving_time?: number | null;
   average_hr?: number | null;
   average_watts?: number | null;
   avg_speed?: number | null;
@@ -113,28 +114,31 @@ type Aggregate = {
   activitiesCount: number;
   totalMinutes: number;
   totalDistanceKm: number;
-  avgSessionMinutes: number;
   avgHr: number | null;
   avgPower: number | null;
-  avgPaceMinPerKm: number | null;
-  avgRpe: number | null;
-  avgLactate: number | null;
-  activeDays: number;
-  densestDayMinutes: number;
+  weightedAvgPower: number | null;
   totalLoadImpact: number;
-  aerobicLoad: number;
-  anaerobicLoad: number;
-  feedbackCoveragePct: number;
-  noteCoveragePct: number;
-  lactateCoveragePct: number;
-  estimatedFtp: number | null;
-  estimatedLt2MinPerKm: number | null;
   runningZones: Record<string, number>;
   cyclingZones: Record<string, number>;
-  weekdayMinutes: Record<string, number>;
-  sportMix: Record<string, number>;
-  longestSession: ActivityDetail | null;
+  best20mPower: number | null;
+  best20mPace: number | null;
   keySessions: ActivityDetail[];
+  // Unused fields (for backwards compatibility with UI)
+  activeDays?: number;
+  avgSessionMinutes?: number;
+  densestDayMinutes?: number;
+  avgRpe?: number | null;
+  avgLactate?: number | null;
+  feedbackCoveragePct?: number;
+  noteCoveragePct?: number;
+  lactateCoveragePct?: number;
+  estimatedFtp?: number | null;
+  estimatedLt2MinPerKm?: number | null;
+  aerobicLoad?: number;
+  anaerobicLoad?: number;
+  weekdayMinutes?: Record<string, number>;
+  sportMix?: Record<string, number>;
+  longestSession?: ActivityDetail | null;
 };
 
 type SplitRow = {
@@ -167,7 +171,8 @@ const extractBestCurveValue = (curve: Record<string, number> | null | undefined,
 
 const extractZonesForDetail = (detail: ActivityDetail, athlete?: AthleteLike) => {
   const sport = normalizeSport(detail.sport);
-  const dur = safeNum(detail.duration);
+  // Use moving_time if available, fallback to duration
+  const dur = safeNum(detail.moving_time || detail.duration);
   const running = emptyRunningZones();
   const cycling = emptyCyclingZones();
   if (sport === 'running') {
@@ -209,65 +214,76 @@ const extractSplits = (detail: ActivityDetail): SplitRow[] => {
 
 const buildAggregate = (details: ActivityDetail[], athleteMap: Map<number, AthleteLike>): Aggregate => {
   const agg: Aggregate = {
-    activitiesCount: 0, totalMinutes: 0, totalDistanceKm: 0, avgSessionMinutes: 0,
-    avgHr: null, avgPower: null, avgPaceMinPerKm: null, avgRpe: null, avgLactate: null,
-    activeDays: 0, densestDayMinutes: 0, totalLoadImpact: 0, aerobicLoad: 0, anaerobicLoad: 0,
-    feedbackCoveragePct: 0, noteCoveragePct: 0, lactateCoveragePct: 0,
-    estimatedFtp: null, estimatedLt2MinPerKm: null,
-    runningZones: emptyRunningZones(), cyclingZones: emptyCyclingZones(),
-    weekdayMinutes: emptyWeekdayMinutes(), sportMix: {},
-    longestSession: null, keySessions: [],
+    activitiesCount: 0,
+    totalMinutes: 0,
+    totalDistanceKm: 0,
+    avgHr: null,
+    avgPower: null,
+    weightedAvgPower: null,
+    totalLoadImpact: 0,
+    runningZones: emptyRunningZones(),
+    cyclingZones: emptyCyclingZones(),
+    best20mPower: null,
+    best20mPace: null,
+    keySessions: [],
   };
-  let hrW = 0, hrM = 0, powW = 0, powM = 0, runM = 0, runKm = 0;
-  let rpeS = 0, rpeC = 0, lacS = 0, lacC = 0, fbC = 0, noteC = 0, best20P = 0, best20S = 0;
-  const dayTotals = new Map<string, number>();
-  const activeDays = new Set<string>();
-  const ranked = details.slice().sort((a, b) => (safeNum(b.total_load_impact) || safeNum(b.duration)) - (safeNum(a.total_load_impact) || safeNum(a.duration)));
+
+  let hrWeighted = 0;
+  let hrMinutes = 0;
+  let powerWeighted = 0;
+  let powerMinutes = 0;
+  let best20P = 0;
+  let best20S = 0;
+
+  // Sort by training load to identify key sessions
+  const rankedSessions = details.slice().sort((a, b) => (safeNum(b.total_load_impact) || safeNum(b.duration)) - (safeNum(a.total_load_impact) || safeNum(a.duration)));
 
   details.forEach((d) => {
     const ath = athleteMap.get(d.athlete_id);
-    const dm = safeNum(d.duration) / 60;
-    const dk = safeNum(d.distance) / 1000;
-    const day = d.created_at.slice(0, 10);
-    const sport = normalizeSport(d.sport);
-    const wdi = (new Date(d.created_at).getDay() + 6) % 7;
-    agg.activitiesCount++; agg.totalMinutes += dm; agg.totalDistanceKm += dk;
+    // Use moving_time if available, fallback to duration
+    const movingMinutes = safeNum(d.moving_time || d.duration) / 60;
+    const distanceKm = safeNum(d.distance) / 1000;
+
+    agg.activitiesCount += 1;
+    agg.totalMinutes += movingMinutes;
+    agg.totalDistanceKm += distanceKm;
     agg.totalLoadImpact += safeNum(d.total_load_impact);
-    agg.aerobicLoad += safeNum(d.aerobic_load); agg.anaerobicLoad += safeNum(d.anaerobic_load);
-    agg.weekdayMinutes[weekdayKeys[wdi]] += dm;
-    agg.sportMix[sport] = (agg.sportMix[sport] || 0) + dm;
-    activeDays.add(day);
-    dayTotals.set(day, (dayTotals.get(day) || 0) + dm);
-    if (!agg.longestSession || safeNum(d.duration) > safeNum(agg.longestSession.duration)) agg.longestSession = d;
-    if (d.average_hr && dm > 0) { hrW += d.average_hr * dm; hrM += dm; }
-    if (d.average_watts && dm > 0) { powW += d.average_watts * dm; powM += dm; }
-    if (sport === 'running' && dk > 0) { runM += dm; runKm += dk; }
-    if (d.rpe != null) { rpeS += safeNum(d.rpe); rpeC++; fbC++; } else if (d.notes || d.lactate_mmol_l != null) fbC++;
-    if (d.notes?.trim()) noteC++;
-    if (d.lactate_mmol_l != null) { lacS += safeNum(d.lactate_mmol_l); lacC++; }
+
+    // Weighted HR average (time-weighted)
+    if (d.average_hr && movingMinutes > 0) {
+      hrWeighted += d.average_hr * movingMinutes;
+      hrMinutes += movingMinutes;
+    }
+
+    // Weighted power average (time-weighted)
+    if (d.average_watts && movingMinutes > 0) {
+      powerWeighted += d.average_watts * movingMinutes;
+      powerMinutes += movingMinutes;
+    }
+
+    // Best 20-min efforts
     const p20 = safeNum(extractBestCurveValue(d.power_curve, ['20min', '1200s', '1800s']));
     if (p20 > best20P) best20P = p20;
+
     const s20 = safeNum(extractBestCurveValue(d.pace_curve, ['20min', '1200s', '1800s']));
     if (s20 > best20S) best20S = s20;
+
+    // Zone aggregation
     const zones = extractZonesForDetail(d, ath);
-    for (let z = 1; z <= 5; z++) agg.runningZones[`Z${z}`] += zones.running[`Z${z}`] || 0;
-    for (let z = 1; z <= 7; z++) agg.cyclingZones[`Z${z}`] += zones.cycling[`Z${z}`] || 0;
+    for (let z = 1; z <= 5; z += 1) agg.runningZones[`Z${z}`] += zones.running[`Z${z}`] || 0;
+    for (let z = 1; z <= 7; z += 1) agg.cyclingZones[`Z${z}`] += zones.cycling[`Z${z}`] || 0;
   });
 
-  agg.avgSessionMinutes = agg.activitiesCount > 0 ? agg.totalMinutes / agg.activitiesCount : 0;
-  agg.avgHr = hrM > 0 ? hrW / hrM : null;
-  agg.avgPower = powM > 0 ? powW / powM : null;
-  agg.avgPaceMinPerKm = runKm > 0 ? runM / runKm : null;
-  agg.avgRpe = rpeC > 0 ? rpeS / rpeC : null;
-  agg.avgLactate = lacC > 0 ? lacS / lacC : null;
-  agg.activeDays = activeDays.size;
-  agg.densestDayMinutes = Array.from(dayTotals.values()).sort((a, b) => b - a)[0] || 0;
-  agg.feedbackCoveragePct = agg.activitiesCount > 0 ? (fbC / agg.activitiesCount) * 100 : 0;
-  agg.noteCoveragePct = agg.activitiesCount > 0 ? (noteC / agg.activitiesCount) * 100 : 0;
-  agg.lactateCoveragePct = agg.activitiesCount > 0 ? (lacC / agg.activitiesCount) * 100 : 0;
-  agg.estimatedFtp = best20P > 0 ? best20P * 0.95 : null;
-  agg.estimatedLt2MinPerKm = best20S > 0 ? (1000 / (best20S * 60)) : null;
-  agg.keySessions = ranked.slice(0, 3);
+  // Calculate averages
+  agg.avgHr = hrMinutes > 0 ? hrWeighted / hrMinutes : null;
+  agg.avgPower = powerMinutes > 0 ? powerWeighted / powerMinutes : null;
+  agg.weightedAvgPower = powerMinutes > 0 ? powerWeighted / powerMinutes : null;
+  agg.best20mPower = best20P > 0 ? best20P : null;
+  agg.best20mPace = best20S > 0 ? (1000 / (best20S * 60)) : null;
+
+  // Keep only top session (highest training load)
+  agg.keySessions = rankedSessions.slice(0, 1);
+
   return agg;
 };
 
@@ -694,11 +710,13 @@ export const ComparisonPage = () => {
   /* ── weekday radar data for period mode ── */
   const weekdayRadarData = useMemo(() => {
     if (mode === 'workouts') return [];
-    return weekdayKeys.map((k) => ({
+    const rows = weekdayKeys.map((k) => ({
       day: k,
-      sideA: Math.round(leftAgg.weekdayMinutes[k]),
-      sideB: Math.round(rightAgg.weekdayMinutes[k]),
+      sideA: Math.round(leftAgg.weekdayMinutes?.[k] ?? 0),
+      sideB: Math.round(rightAgg.weekdayMinutes?.[k] ?? 0),
     }));
+    const hasData = rows.some((r) => r.sideA > 0 || r.sideB > 0);
+    return hasData ? rows : [];
   }, [mode, leftAgg, rightAgg]);
 
   const chartColors = { sideA: '#E95A12', sideB: '#6E4BF3' };
@@ -808,14 +826,11 @@ export const ComparisonPage = () => {
             </Alert>
           )}
 
-          {/* ──────────── RESULTS ──────────── */}
           {showResults && (
             <Stack gap="lg">
-
-              {/* ── delta cards ── */}
               {mode === 'workouts' && leftW && rightW && (
                 <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="sm">
-                  <MetricCard label={t('Duration') || 'Duration'} leftVal={safeNum(leftW.duration) / 60} rightVal={safeNum(rightW.duration) / 60} suffix=" min" lowerBetter t={t} />
+                  <MetricCard label={t('Duration') || 'Duration'} leftVal={safeNum(leftW.moving_time || leftW.duration) / 60} rightVal={safeNum(rightW.moving_time || rightW.duration) / 60} suffix=" min" lowerBetter t={t} />
                   <MetricCard label={t('Distance') || 'Distance'} leftVal={safeNum(leftW.distance) / 1000} rightVal={safeNum(rightW.distance) / 1000} suffix=" km" t={t} />
                   <MetricCard label={t('Avg HR') || 'Avg HR'} leftVal={leftW.average_hr ?? null} rightVal={rightW.average_hr ?? null} suffix=" bpm" lowerBetter t={t} />
                   <MetricCard label={t('Avg Power') || 'Avg Power'} leftVal={leftW.average_watts ?? null} rightVal={rightW.average_watts ?? null} suffix=" W" t={t} />
@@ -830,7 +845,7 @@ export const ComparisonPage = () => {
                   <MetricCard label={t('Distance') || 'Distance'} leftVal={leftAgg.totalDistanceKm} rightVal={rightAgg.totalDistanceKm} suffix=" km" t={t} />
                   <MetricCard label={t('Avg Power') || 'Avg Power'} leftVal={leftAgg.avgPower} rightVal={rightAgg.avgPower} suffix=" W" t={t} />
                   <MetricCard label={t('Training Load') || 'Training Load'} leftVal={leftAgg.totalLoadImpact} rightVal={rightAgg.totalLoadImpact} t={t} />
-                  <MetricCard label={t('Feedback') || 'Feedback'} leftVal={leftAgg.feedbackCoveragePct} rightVal={rightAgg.feedbackCoveragePct} suffix="%" t={t} />
+                  <MetricCard label={t('Avg HR') || 'Avg HR'} leftVal={leftAgg.avgHr} rightVal={rightAgg.avgHr} suffix=" bpm" lowerBetter t={t} />
                 </SimpleGrid>
               )}
 
@@ -861,7 +876,7 @@ export const ComparisonPage = () => {
                     {[
                       { lab: t('Volume change') || 'Volume change', val: formatDeltaPct(leftAgg.totalMinutes, rightAgg.totalMinutes) },
                       { lab: t('Distance change') || 'Distance change', val: formatDeltaPct(leftAgg.totalDistanceKm, rightAgg.totalDistanceKm) },
-                      { lab: t('Feedback coverage change') || 'Feedback coverage change', val: compareValue(leftAgg.feedbackCoveragePct, rightAgg.feedbackCoveragePct, '%') },
+                      { lab: t('Load change') || 'Load change', val: compareValue(leftAgg.totalLoadImpact, rightAgg.totalLoadImpact) },
                       { lab: t('Running zone focus') || 'Running zone focus', val: (() => { const l = dominantZone(leftAgg.runningZones); const r = dominantZone(rightAgg.runningZones); return `${l.zone} ${l.sharePct.toFixed(0)}% vs ${r.zone} ${r.sharePct.toFixed(0)}%`; })() },
                       { lab: t('Cycling zone focus') || 'Cycling zone focus', val: (() => { const l = dominantZone(leftAgg.cyclingZones); const r = dominantZone(rightAgg.cyclingZones); return `${l.zone} ${l.sharePct.toFixed(0)}% vs ${r.zone} ${r.sharePct.toFixed(0)}%`; })() },
                     ].map((r) => (
@@ -1118,18 +1133,6 @@ export const ComparisonPage = () => {
                 </Grid>
               )}
 
-              {/* ── period sport mix comparison ── */}
-              {mode !== 'workouts' && (
-                <Grid gutter="md">
-                  <Grid.Col span={{ base: 12, md: 6 }}>
-                    <SportMixCard label={leftLabel} agg={leftAgg} t={t} />
-                  </Grid.Col>
-                  <Grid.Col span={{ base: 12, md: 6 }}>
-                    <SportMixCard label={rightLabel} agg={rightAgg} t={t} />
-                  </Grid.Col>
-                </Grid>
-              )}
-
             </Stack>
           )}
 
@@ -1246,7 +1249,6 @@ const PeriodDetailCard = ({ label, agg, details, athlete, sideColor, t }: {
 }) => {
   const runLead = dominantZone(agg.runningZones);
   const cycLead = dominantZone(agg.cyclingZones);
-  const weekMax = Math.max(...Object.values(agg.weekdayMinutes), 0);
 
   return (
     <Paper withBorder p="md" radius="md" style={sideColor ? { borderLeft: `4px solid ${sideColor}` } : undefined}>
@@ -1263,38 +1265,19 @@ const PeriodDetailCard = ({ label, agg, details, athlete, sideColor, t }: {
         <SimpleGrid cols={3} spacing="xs">
           {([
             [t('Total time') || 'Total time', formatMinutes(agg.totalMinutes)],
-            [t('Active days') || 'Active days', String(agg.activeDays)],
-            [t('Average session') || 'Average session', formatMinutes(agg.avgSessionMinutes)],
-            [t('Densest day') || 'Densest day', formatMinutes(agg.densestDayMinutes)],
+            [t('Total distance') || 'Total distance', formatDistanceKm(agg.totalDistanceKm)],
+            [t('Training load') || 'Training load', agg.totalLoadImpact.toFixed(1)],
             [t('Average HR') || 'Average HR', agg.avgHr ? `${Math.round(agg.avgHr)} bpm` : '-'],
-            [t('Average power / pace') || 'Average power / pace', agg.avgPower ? `${Math.round(agg.avgPower)} W` : agg.avgPaceMinPerKm ? formatPace(agg.avgPaceMinPerKm) : '-'],
-            [t('Average RPE') || 'Average RPE', agg.avgRpe ? agg.avgRpe.toFixed(1) : '-'],
-            [t('Average lactate') || 'Average lactate', agg.avgLactate ? `${agg.avgLactate.toFixed(1)} mmol/L` : '-'],
-            [t('Estimated FTP') || 'Estimated FTP', agg.estimatedFtp ? `${Math.round(agg.estimatedFtp)} W` : '-'],
-            [t('Estimated LT2 Pace') || 'Estimated LT2 Pace', agg.estimatedLt2MinPerKm ? formatPace(agg.estimatedLt2MinPerKm) : '-'],
-            [t('Aerobic Load') || 'Aerobic Load', agg.aerobicLoad.toFixed(1)],
-            [t('Anaerobic Load') || 'Anaerobic Load', agg.anaerobicLoad.toFixed(1)],
+            [t('Average power') || 'Average power', agg.avgPower ? `${Math.round(agg.avgPower)} W` : '-'],
+            [t('Weighted avg power') || 'Weighted avg power', agg.weightedAvgPower ? `${Math.round(agg.weightedAvgPower)} W` : '-'],
+            [t('Best 20m power') || 'Best 20m power', agg.best20mPower ? `${Math.round(agg.best20mPower)} W` : '-'],
+            [t('Best 20m pace') || 'Best 20m pace', agg.best20mPace ? formatPace(agg.best20mPace) : '-'],
           ] as [string, string][]).map(([lab, val]) => (
             <Paper key={lab} withBorder p="xs" radius="sm">
               <Text size="10px" c="dimmed" tt="uppercase">{lab}</Text>
               <Text fw={700}>{val}</Text>
             </Paper>
           ))}
-        </SimpleGrid>
-
-        <SimpleGrid cols={3} spacing="xs">
-          <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Feedback coverage') || 'Feedback coverage'}</Text>
-            <Text fw={700}>{agg.feedbackCoveragePct.toFixed(0)}%</Text>
-          </Paper>
-          <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Notes coverage') || 'Notes coverage'}</Text>
-            <Text fw={700}>{agg.noteCoveragePct.toFixed(0)}%</Text>
-          </Paper>
-          <Paper withBorder p="xs" radius="sm">
-            <Text size="10px" c="dimmed" tt="uppercase">{t('Lactate coverage') || 'Lactate coverage'}</Text>
-            <Text fw={700}>{agg.lactateCoveragePct.toFixed(0)}%</Text>
-          </Paper>
         </SimpleGrid>
 
         {(Object.values(agg.runningZones).some((v) => v > 0) || Object.values(agg.cyclingZones).some((v) => v > 0)) && (
@@ -1316,28 +1299,6 @@ const PeriodDetailCard = ({ label, agg, details, athlete, sideColor, t }: {
           </SimpleGrid>
         )}
 
-        <Paper withBorder p="xs" radius="sm">
-          <Text size="10px" c="dimmed" tt="uppercase">{t('Weekday distribution') || 'Weekday distribution'}</Text>
-          <Stack gap={6} mt={4}>
-            {weekdayKeys.map((k) => {
-              const min = agg.weekdayMinutes[k];
-              const pct = weekMax > 0 ? (min / weekMax) * 100 : 0;
-              return (
-                <Group key={k} gap="xs" wrap="nowrap">
-                  <Text size="xs" w={28}>{k}</Text>
-                  <Progress value={pct} size="sm" radius="xl" flex={1} />
-                  <Text size="xs" c="dimmed" w={56} ta="right">{formatMinutes(min)}</Text>
-                </Group>
-              );
-            })}
-          </Stack>
-        </Paper>
-
-        <Paper withBorder p="xs" radius="sm">
-          <Text size="10px" c="dimmed" tt="uppercase">{t('Longest session') || 'Longest session'}</Text>
-          <Text fw={600}>{agg.longestSession?.filename || '-'}</Text>
-          <Text size="sm" c="dimmed">{agg.longestSession ? `${formatMinutes(safeNum(agg.longestSession.duration) / 60)} · ${formatDistanceKm(safeNum(agg.longestSession.distance) / 1000)}` : '-'}</Text>
-        </Paper>
       </Stack>
     </Paper>
   );
@@ -1364,27 +1325,5 @@ const KeySessionsTable = ({ sessions, t }: { sessions: ActivityDetail[]; t: (v: 
     </Table.Tbody>
   </Table>
 );
-
-const SportMixCard = ({ label, agg, t }: { label: string; agg: Aggregate; t: (v: string) => string }) => {
-  const total = Object.values(agg.sportMix).reduce((a, b) => a + b, 0);
-  return (
-    <Paper withBorder p="md" radius="md">
-      <Text fw={600} mb="sm">{label} — {t('Sport Mix') || 'Sport Mix'}</Text>
-      <Stack gap={6}>
-        {Object.entries(agg.sportMix).length === 0 && <Text size="sm" c="dimmed">{t('No sport mix data') || 'No sport mix data'}</Text>}
-        {Object.entries(agg.sportMix).map(([sport, min]) => {
-          const pct = total > 0 ? (min / total) * 100 : 0;
-          return (
-            <Group key={sport} gap="xs" wrap="nowrap">
-              <Text size="xs" w={72}>{sport}</Text>
-              <Progress value={pct} size="sm" radius="xl" flex={1} />
-              <Text size="xs" c="dimmed" w={56} ta="right">{pct.toFixed(0)}%</Text>
-            </Group>
-          );
-        })}
-      </Stack>
-    </Paper>
-  );
-};
 
 export default ComparisonPage;

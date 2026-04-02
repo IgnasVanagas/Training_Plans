@@ -1012,13 +1012,30 @@ export const ActivityDetailPage = () => {
 
         const maxHr = Number(me?.profile?.max_hr || activity?.max_hr || 190);
 
-        // Resolve profile HR zone upper bounds (absolute bpm)
+        // Resolve profile HR zone upper bounds from dashboard zone settings.
+        // Stored values may be either absolute bpm or legacy percentages.
         const sport = (activity?.sport || '').toLowerCase();
-        const sportKey = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride') ? 'cycling' : 'running';
-        const upperBounds: number[] | undefined = (me?.profile as any)?.zone_settings?.[sportKey]?.hr?.upper_bounds;
+        const sportKey = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride')
+            ? 'cycling'
+            : sport.includes('swim')
+                ? 'swimming'
+                : 'running';
+        const hrZoneCfg = (me?.profile as any)?.zone_settings?.[sportKey]?.hr;
+        const rawUpperBounds = Array.isArray(hrZoneCfg?.upper_bounds)
+            ? hrZoneCfg.upper_bounds.map((value: unknown) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0)
+            : [];
+        const hrThreshold = Number(hrZoneCfg?.lt2 || 0);
+        const looksLikePercentages = rawUpperBounds.length > 0
+            && hrThreshold > 0
+            && Math.max(...rawUpperBounds) <= Math.min(200, hrThreshold * 0.75);
+        const upperBounds: number[] = rawUpperBounds.length > 0
+            ? (looksLikePercentages
+                ? rawUpperBounds.map((pct: number) => Math.round((hrThreshold * pct) / 100))
+                : rawUpperBounds)
+            : [];
 
         const classifyHr = (hr: number): number => {
-            if (upperBounds?.length) {
+            if (upperBounds.length) {
                 for (let i = 0; i < upperBounds.length; i++) {
                     if (hr <= upperBounds[i]) return i + 1;
                 }
@@ -1028,8 +1045,13 @@ export const ActivityDetailPage = () => {
             return ratio < 0.6 ? 1 : ratio < 0.7 ? 2 : ratio < 0.8 ? 3 : ratio < 0.9 ? 4 : 5;
         };
 
-        // Check for pre-calculated backend zones first (most reliable)
-        if (activity?.hr_zones && typeof activity.hr_zones === 'object' && Object.keys(activity.hr_zones).length > 0) {
+        // Prefer recalculation when dashboard HR zones are configured so labels and bucket logic match.
+        const shouldUseBackendZones = !upperBounds.length
+            && activity?.hr_zones
+            && typeof activity.hr_zones === 'object'
+            && Object.keys(activity.hr_zones).length > 0;
+
+        if (shouldUseBackendZones) {
             for (let zone = 1; zone <= 5; zone += 1) {
                 zoneSeconds[`Z${zone}`] = Number((activity.hr_zones as any)[`Z${zone}`] || 0);
             }
@@ -1042,7 +1064,7 @@ export const ActivityDetailPage = () => {
                 }))
                 .filter((sample: { hr: number }) => Number.isFinite(sample.hr) && sample.hr > 0);
 
-            if (hrSamples.length > 0 && (upperBounds?.length || maxHr > 0)) {
+            if (hrSamples.length > 0 && (upperBounds.length || maxHr > 0)) {
                 const fallbackSeconds = activity?.duration && activity.duration > 0
                     ? Math.max(0.25, activity.duration / Math.max(streamPoints.length, 1))
                     : 1;
@@ -1075,7 +1097,7 @@ export const ActivityDetailPage = () => {
             let range: string;
             
             // Use upperBounds for display if available, otherwise use threshold ratios
-            if (upperBounds?.length) {
+            if (upperBounds.length) {
                 const low = idx === 0 ? 0 : upperBounds[idx - 1];
                 const high = idx === 4 ? maxHr : upperBounds[idx];
                 range = idx === 0 ? `< ${high} bpm` : idx === 4 ? `≥ ${low} bpm` : `${low}–${high} bpm`;

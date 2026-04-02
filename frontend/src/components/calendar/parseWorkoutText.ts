@@ -61,9 +61,11 @@ const PACE_RE  = /^(\d+):(\d{1,2})$/;
 // @Z3  @z3
 const ZONE_RE  = /^[zZ](\d+)$/;
 // @150bpm  @150BPM
-const HR_RE    = /^(\d+)\s*bpm$/i;
+const HR_RE    = /^(\d+)\s*(bpm|hr)$/i;
 // @RPE7  @rpe7
 const RPE_RE   = /^[rR][pP][eE]\s*(\d+(?:\.\d+)?)$/;
+
+const DURATION_PREFIX_RE = /^(\d+(?:\.\d+)?)\s*(h|hr|hrs|hours?|min|mins|minutes?|s|sec|secs|seconds?|km|mi|m)\s*(.*)$/i;
 
 /* Zone bounds — inline copy so we don't need to export from quickWorkout.ts */
 const zoneBounds = (sportType: string, zone: number) => {
@@ -147,6 +149,29 @@ interface RepeatBlock {
 
 type Segment = SimpleBlock | RepeatBlock;
 
+const splitDurationAndTarget = (raw: string): { durationRaw: string; targetRaw: string | null } | null => {
+  const source = raw.trim();
+  if (!source) return null;
+
+  const atIdx = source.indexOf('@');
+  if (atIdx >= 0) {
+    return {
+      durationRaw: source.slice(0, atIdx).trim(),
+      targetRaw: source.slice(atIdx + 1).trim() || null,
+    };
+  }
+
+  const m = source.match(DURATION_PREFIX_RE);
+  if (!m) return null;
+
+  const durationRaw = `${m[1]}${m[2]}`;
+  const tail = (m[3] || '').trim();
+  if (!tail) return { durationRaw, targetRaw: null };
+
+  // Support no-@ target syntax: "10min 200w", "10min 3:30", "10min 160bpm"
+  return { durationRaw, targetRaw: tail };
+};
+
 const parseSegment = (raw: string, sportType: string): Segment | null => {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -166,10 +191,11 @@ const parseSegment = (raw: string, sportType: string): Segment | null => {
     const workPart = parts[0].trim();
     const recoveryPart = parts.length > 1 ? parts.slice(1).join(RECOVERY_SEP).trim() : null;
 
-    // Parse work: "5min@200w" or "1km@4:30" or "5min"
-    const workPieces = workPart.split(TARGET_SPLIT_RE);
-    const workDurStr = workPieces[0].trim();
-    const workTargetStr = workPieces.length > 1 ? workPieces.slice(1).join('@').trim() : null;
+    // Parse work: "5min@200w", "5min 200w", "1km@4:30", "1km 4:30", or "5min"
+    const workSplit = splitDurationAndTarget(workPart);
+    if (!workSplit) return null;
+    const workDurStr = workSplit.durationRaw;
+    const workTargetStr = workSplit.targetRaw;
 
     const workDuration = parseDuration(workDurStr);
     if (!workDuration) return null;
@@ -181,17 +207,18 @@ const parseSegment = (raw: string, sportType: string): Segment | null => {
     if (recoveryPart) {
       const recCleaned = stripCategoryKeyword(recoveryPart);
       // Recovery might also have a target (unusual but handle gracefully)
-      const recPieces = recCleaned.split(TARGET_SPLIT_RE);
-      recoveryDuration = parseDuration(recPieces[0].trim());
+      const recSplit = splitDurationAndTarget(recCleaned);
+      recoveryDuration = recSplit ? parseDuration(recSplit.durationRaw) : null;
     }
 
     return { kind: 'repeat', repeats, workDuration, workTarget, recoveryDuration };
   }
 
   // Simple block: "15min", "5km@Z3", "10min wu"
-  const pieces = cleaned.split(TARGET_SPLIT_RE);
-  const durStr = pieces[0].trim();
-  const targetStr = pieces.length > 1 ? pieces.slice(1).join('@').trim() : null;
+  const split = splitDurationAndTarget(cleaned);
+  if (!split) return null;
+  const durStr = split.durationRaw;
+  const targetStr = split.targetRaw;
 
   const duration = parseDuration(durStr);
   if (!duration) return null;

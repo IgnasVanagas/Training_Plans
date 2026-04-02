@@ -169,6 +169,52 @@ describe('parseWorkoutText', () => {
     }
   });
 
+  it('parses no-@ power targets: 15min + 3x5min 200w/4min + 10min', () => {
+    const r = ok('15min + 3x5min 200w/4min + 10min');
+    const rep = r.structure[1];
+    if (rep.type === 'repeat') {
+      const work = rep.steps[0];
+      if (work.type === 'block') {
+        expect(work.target.type).toBe('power');
+        expect(work.target.value).toBe(200);
+      }
+    }
+  });
+
+  it('parses pace targets with and without @', () => {
+    const withAt = ok('15min + 10min@3:30 + 20min', 'Running');
+    const noAt = ok('15min + 10min 3:30 + 20min', 'Running');
+
+    const withAtMid = withAt.structure[1];
+    const noAtMid = noAt.structure[1];
+
+    if (withAtMid.type === 'block') {
+      expect(withAtMid.target.type).toBe('pace');
+      expect(withAtMid.target.value).toBe(210);
+    }
+    if (noAtMid.type === 'block') {
+      expect(noAtMid.target.type).toBe('pace');
+      expect(noAtMid.target.value).toBe(210);
+    }
+  });
+
+  it('parses HR targets with @160hr and no-@ 160bpm', () => {
+    const withAt = ok('15min + 10min@160hr + 20min', 'Running');
+    const noAt = ok('15min + 10min 160bpm + 20min', 'Running');
+
+    const withAtMid = withAt.structure[1];
+    const noAtMid = noAt.structure[1];
+
+    if (withAtMid.type === 'block') {
+      expect(withAtMid.target.type).toBe('heart_rate_zone');
+      expect(withAtMid.target.value).toBe(160);
+    }
+    if (noAtMid.type === 'block') {
+      expect(noAtMid.target.type).toBe('heart_rate_zone');
+      expect(noAtMid.target.value).toBe(160);
+    }
+  });
+
   it('parses distance: 800m', () => {
     const r = ok('800m', 'Running');
     const step = r.structure[0];
