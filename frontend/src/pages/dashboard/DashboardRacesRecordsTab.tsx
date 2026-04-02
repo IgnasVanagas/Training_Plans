@@ -24,6 +24,7 @@ import {
   Tooltip,
   ReferenceLine,
 } from "recharts";
+import { useNavigate } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { getPersonalRecords, type PersonalRecordsResponse } from "../../api/activities";
 import { getLatestSeasonPlan, type PlannerGoalRace } from "../../api/planning";
@@ -84,6 +85,7 @@ const sortedDistanceKeys = (keys: string[]): string[] =>
 
 const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
   const { t } = useI18n();
+  const navigate = useNavigate();
   const isDark = useComputedColorScheme("light") === "dark";
   const [prSport, setPrSport] = useState<string>(
     me.profile?.main_sport === "running" ? "running" : "cycling",
@@ -174,7 +176,18 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
                   const entry = data.power![window][0];
                   if (!entry) return null;
                   return (
-                    <Table.Tr key={window}>
+                    <Table.Tr
+                      key={window}
+                      style={{ cursor: entry.activity_id ? "pointer" : "default" }}
+                      onClick={() => {
+                        if (!entry.activity_id) return;
+                        navigate(`/dashboard/activities/${entry.activity_id}`, {
+                          state: {
+                            focusEffort: { type: "window", key: window },
+                          },
+                        });
+                      }}
+                    >
                       <Table.Td fw={600}>{window}</Table.Td>
                       <Table.Td>{entry.value}W</Table.Td>
                       {weight && <Table.Td>{(entry.value / weight).toFixed(2)}</Table.Td>}
@@ -266,7 +279,18 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
                     const meters = getMetersFromDistance(dist);
                     const speedKmh = meters && entry.value > 0 ? (meters / 1000) / (entry.value / 3600) : 0;
                     return (
-                      <Table.Tr key={dist}>
+                      <Table.Tr
+                        key={dist}
+                        style={{ cursor: entry.activity_id ? "pointer" : "default" }}
+                        onClick={() => {
+                          if (!entry.activity_id) return;
+                          navigate(`/dashboard/activities/${entry.activity_id}`, {
+                            state: {
+                              focusEffort: { type: "distance", key: dist },
+                            },
+                          });
+                        }}
+                      >
                         <Table.Td fw={600}>{dist}</Table.Td>
                         <Table.Td>{formatTime(entry.value)}</Table.Td>
                         <Table.Td>{speedKmh > 0 ? `${speedKmh.toFixed(1)} km/h` : "—"}</Table.Td>
@@ -308,7 +332,18 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
               if (!entry) return null;
               const meters = getMetersFromDistance(dist);
               return (
-                <Table.Tr key={dist}>
+                <Table.Tr
+                  key={dist}
+                  style={{ cursor: entry.activity_id ? "pointer" : "default" }}
+                  onClick={() => {
+                    if (!entry.activity_id) return;
+                    navigate(`/dashboard/activities/${entry.activity_id}`, {
+                      state: {
+                        focusEffort: { type: "distance", key: dist },
+                      },
+                    });
+                  }}
+                >
                   <Table.Td fw={600}>{dist}</Table.Td>
                   <Table.Td>{formatTime(entry.value)}</Table.Td>
                   <Table.Td>{formatPace(entry.value, meters)}</Table.Td>

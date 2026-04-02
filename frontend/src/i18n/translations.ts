@@ -700,6 +700,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Distance Records": "Atstumo rekordai"
     ,"Speed": "Greitis"
     ,"Effort": "Pasiekimas"
+    ,"Selected effort": "Pasirinktas pasiekimas"
     ,"Dual view": "Dvigubas vaizdas"
     ,"Upload FIT file": "Įkelti FIT failą"
     ,"Save a plan": "Išsaugoti planą"

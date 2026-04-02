@@ -69,7 +69,7 @@ type AthleteLike = {
   } | null;
 };
 
-const COMPARISON_ACTIVITY_FETCH_LIMIT = 180;
+const COMPARISON_ACTIVITY_FETCH_LIMIT = 500;
 
 type ActivityListItem = {
   id: number;
@@ -557,13 +557,18 @@ export const ComparisonPage = () => {
   const idsToLoad = useMemo(() => Array.from(new Set([...leftIds, ...rightIds])), [leftIds, rightIds]);
 
   const { data: detailsById = new Map<number, ActivityDetail>(), isLoading: detailsLoading } = useQuery({
-    queryKey: ['comparison-details', [...idsToLoad].sort((a, b) => a - b).join(',')],
+    queryKey: ['comparison-details', mode, [...idsToLoad].sort((a, b) => a - b).join(',')],
     queryFn: async () => {
-      const rows = await Promise.all(idsToLoad.map(async (id) => {
-        const r = await api.get<ActivityDetail>(`/activities/${id}`);
+      const params = mode !== 'workouts' ? { include_streams: false } : {};
+      const results = await Promise.allSettled(idsToLoad.map(async (id) => {
+        const r = await api.get<ActivityDetail>(`/activities/${id}`, { params });
         return [id, r.data] as const;
       }));
-      return new Map<number, ActivityDetail>(rows);
+      const map = new Map<number, ActivityDetail>();
+      results.forEach((res) => {
+        if (res.status === 'fulfilled') map.set(res.value[0], res.value[1]);
+      });
+      return map;
     },
     enabled: idsToLoad.length > 0,
     staleTime: 1000 * 60,

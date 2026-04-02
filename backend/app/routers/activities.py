@@ -2871,6 +2871,7 @@ async def make_activity_primary(
 @router.get("/{activity_id}", response_model=ActivityDetail)
 async def get_activity(
     activity_id: int,
+    include_streams: bool = Query(True),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -2940,12 +2941,13 @@ async def get_activity(
         source_activity_id = meta.get("source_activity_id")
         needs_streams = len(streams_list) == 0
         needs_laps = not laps
+        needs_curves = not power_curve and not hr_zones and not pace_curve
 
         if (
             activity.file_type == "provider"
             and source_provider == "strava"
             and source_activity_id
-            and (needs_streams or needs_laps)
+            and (needs_streams or needs_laps or needs_curves)
             and allow_lazy_provider_detail_fetch
         ):
             try:
@@ -3108,6 +3110,9 @@ async def get_activity(
             if moving_pts > 0:
                 secs_per_sample = activity.duration / total_pts
                 moving_time = round(moving_pts * secs_per_sample)
+
+    if not include_streams:
+        streams_list = []
 
     activity_response = ActivityDetail(
         id=activity.id,

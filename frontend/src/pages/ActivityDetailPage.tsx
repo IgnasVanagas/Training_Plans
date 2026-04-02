@@ -135,6 +135,17 @@ type ActivityDetail = {
     } | null;
 };
 
+type EffortSegmentMeta = {
+    startIndex: number;
+    endIndex: number;
+    centerIndex: number;
+    seconds: number | null;
+    meters: number | null;
+    avgPower: number | null;
+    avgHr: number | null;
+    speedKmh: number | null;
+};
+
 /* ── Fullscreen map helpers ── */
 
 const MapFitBounds = ({ positions }: { positions: [number, number][] }) => {
@@ -224,9 +235,11 @@ export const ActivityDetailPage = () => {
         heart_rate: true,
         power: true,
         pace: true,
+        speed: false,
         cadence: false,
         altitude: false
     });
+    const [powerChartMode, setPowerChartMode] = useState<'raw' | 'avg5s'>('raw');
     const [activityRpe, setActivityRpe] = useState<number | null>(null);
     const [activityNotes, setActivityNotes] = useState('');
     const [splitAnnotationsVisible, setSplitAnnotationsVisible] = useState(false);
@@ -243,6 +256,8 @@ export const ActivityDetailPage = () => {
     const [zoneInfoTitle, setZoneInfoTitle] = useState('');
     const [zoneInfoBody, setZoneInfoBody] = useState('');
     const [executionInfoOpen, setExecutionInfoOpen] = useState(false);
+    const [selectedEffortKey, setSelectedEffortKey] = useState<string | null>(null);
+    const [selectedEffortStreamIndex, setSelectedEffortStreamIndex] = useState<number | null>(null);
 
     const { data: me } = useQuery({
         queryKey: ['me'],
@@ -268,6 +283,7 @@ export const ActivityDetailPage = () => {
         activeTab?: 'dashboard' | 'activities' | 'plan' | 'settings';
         selectedAthleteId?: string | null;
         calendarDate?: string | null;
+        focusEffort?: { type: 'window' | 'distance'; key: string };
     };
 
     const handleBack = () => {
@@ -399,6 +415,118 @@ export const ActivityDetailPage = () => {
         return total > displayedBestEfforts.length;
     }, [activity?.best_efforts?.length, displayedBestEfforts.length]);
 
+    const bestEffortMetaByKey = useMemo(() => {
+        const empty: Record<string, EffortSegmentMeta> = {};
+        const efforts = activity?.best_efforts;
+        if (!efforts?.length || streamPoints.length < 2) return empty;
+
+        const dist = streamPoints.map((p: any) => {
+            const val = Number(p?.distance);
+            return Number.isFinite(val) ? val : null;
+        });
+        let lastDistance = 0;
+        const filledDist: number[] = [];
+        for (let i = 0; i < dist.length; i += 1) {
+            const value = dist[i];
+            if (value == null) {
+                filledDist.push(lastDistance);
+                continue;
+            }
+            lastDistance = value;
+            filledDist.push(value);
+        }
+
+        const power = streamPoints.map((p: any) => {
+            const val = Number(p?.power ?? p?.watts ?? p?.avg_watts);
+            return Number.isFinite(val) && val >= 0 ? val : 0;
+        });
+        const hr = streamPoints.map((p: any) => {
+            const val = Number(p?.heart_rate);
+            return Number.isFinite(val) && val > 0 ? val : 0;
+        });
+        const pPow = [0];
+        const pHr = [0];
+        for (let i = 0; i < streamPoints.length; i += 1) {
+            pPow.push(pPow[i] + power[i]);
+            pHr.push(pHr[i] + hr[i]);
+        }
+
+        const calcMeta = (start: number, end: number): EffortSegmentMeta => {
+            const safeStart = Math.max(0, Math.min(start, streamPoints.length - 1));
+            const safeEnd = Math.max(safeStart, Math.min(end, streamPoints.length - 1));
+            const sampleCount = safeEnd - safeStart + 1;
+            const seconds = sampleCount > 0 ? sampleCount : null;
+            const metersRaw = filledDist[safeEnd] - filledDist[safeStart];
+            const meters = Number.isFinite(metersRaw) && metersRaw > 0 ? metersRaw : null;
+            const avgPowerRaw = sampleCount > 0 ? (pPow[safeEnd + 1] - pPow[safeStart]) / sampleCount : NaN;
+            const avgHrRaw = sampleCount > 0 ? (pHr[safeEnd + 1] - pHr[safeStart]) / sampleCount : NaN;
+            const avgPower = Number.isFinite(avgPowerRaw) && avgPowerRaw > 0 ? avgPowerRaw : null;
+            const avgHr = Number.isFinite(avgHrRaw) && avgHrRaw > 0 ? avgHrRaw : null;
+            const speedKmh = meters && seconds && seconds > 0 ? ((meters / 1000) / (seconds / 3600)) : null;
+            return {
+                startIndex: safeStart,
+                endIndex: safeEnd,
+                centerIndex: Math.round((safeStart + safeEnd) / 2),
+                seconds,
+                meters,
+                avgPower,
+                avgHr,
+                speedKmh: speedKmh && Number.isFinite(speedKmh) ? speedKmh : null,
+            };
+        };
+
+        const metaByKey: Record<string, EffortSegmentMeta> = {};
+
+        efforts.forEach((effort, idx) => {
+            const key = effort.window || effort.distance || String(idx);
+
+            if (typeof effort.seconds === 'number' && effort.seconds > 0) {
+                const windowSize = Math.max(1, Math.round(effort.seconds));
+                if (streamPoints.length >= windowSize) {
+                    let bestStart = 0;
+                    let bestAvg = -1;
+                    for (let start = 0; start + windowSize <= streamPoints.length; start += 1) {
+                        const endExclusive = start + windowSize;
+                        const avg = (pPow[endExclusive] - pPow[start]) / windowSize;
+                        if (avg > bestAvg) {
+                            bestAvg = avg;
+                            bestStart = start;
+                        }
+                    }
+                    metaByKey[key] = calcMeta(bestStart, bestStart + windowSize - 1);
+                    return;
+                }
+            }
+
+            if (typeof effort.meters === 'number' && effort.meters > 0) {
+                let bestStart = -1;
+                let bestEnd = -1;
+                let bestSeconds = Number.POSITIVE_INFINITY;
+                let end = 0;
+
+                for (let start = 0; start < streamPoints.length; start += 1) {
+                    while (end < streamPoints.length && (filledDist[end] - filledDist[start]) < effort.meters!) {
+                        end += 1;
+                    }
+                    if (end < streamPoints.length) {
+                        const elapsed = end - start;
+                        if (elapsed > 0 && elapsed < bestSeconds) {
+                            bestSeconds = elapsed;
+                            bestStart = start;
+                            bestEnd = end;
+                        }
+                    }
+                }
+
+                if (bestStart >= 0 && bestEnd >= bestStart) {
+                    metaByKey[key] = calcMeta(bestStart, bestEnd);
+                }
+            }
+        });
+
+        return metaByKey;
+    }, [activity?.best_efforts, streamPoints]);
+
     const routePositions = useMemo(() => {
         return streamPoints
             .filter((p: any) => p.lat && p.lon)
@@ -409,8 +537,9 @@ export const ActivityDetailPage = () => {
         if (!activity || streamPoints.length === 0) return [];
         const startTs = new Date(streamPoints[0]?.timestamp).getTime();
         const isRunningLike = (activity.sport || '').toLowerCase().includes('run');
+        const speedUnitFactor = me?.profile?.preferred_units === 'imperial' ? 2.23694 : 3.6;
 
-        return streamPoints.map((s: any, index: number) => {
+        const base = streamPoints.map((s: any, index: number) => {
             let pace = null;
             if (isRunningLike && s.speed && s.speed > 0.1) {
                 // m/s to min/km or min/mi
@@ -442,6 +571,8 @@ export const ActivityDetailPage = () => {
                     : 0, 
                 time_min: timeMin,
                 pace,
+                speed_display: Number.isFinite(Number(s.speed)) && Number(s.speed) > 0 ? Number(s.speed) * speedUnitFactor : null,
+                power_raw: Number.isFinite(Number(s.power)) ? Number(s.power) : null,
                 // running cadence is typically doubled in FIT files (steps per minute vs revolutions)
                 // BUT garmin/fit often stores 1-sided vs 2-sided differently. 
                 // Usually for running, if cadence is < 120 it's likely single sided steps, > 120 is both steps.
@@ -453,6 +584,26 @@ export const ActivityDetailPage = () => {
                 cadence: (activity.sport === 'running' && s.cadence) ? Number(s.cadence) * 2 : Number(s.cadence)
             };
         });
+
+        const smoothed: any[] = [];
+        for (let index = 0; index < base.length; index += 1) {
+            const point = base[index];
+            const start = Math.max(0, index - 4);
+            let sum = 0;
+            let count = 0;
+            for (let i = start; i <= index; i += 1) {
+                const value = base[i]?.power_raw;
+                if (Number.isFinite(value)) {
+                    sum += Number(value);
+                    count += 1;
+                }
+            }
+            smoothed.push({
+                ...point,
+                power_5s: count > 0 ? sum / count : null,
+            });
+        }
+        return smoothed;
     }, [activity, streamPoints, me?.profile?.preferred_units]);
 
     // --- Range slider for chart zoom (replaces laggy Brush) ---
@@ -463,6 +614,21 @@ export const ActivityDetailPage = () => {
         const endIdx = Math.round((chartRange[1] / 100) * (chartData.length - 1));
         return chartData.slice(startIdx, endIdx + 1);
     }, [chartData, chartRange]);
+    const chartRenderData = useMemo(() => {
+        const MAX_RENDER_POINTS = 1400;
+        if (visibleChartData.length <= MAX_RENDER_POINTS) return visibleChartData;
+
+        const step = Math.max(1, Math.ceil(visibleChartData.length / MAX_RENDER_POINTS));
+        const sampled: any[] = [];
+        for (let i = 0; i < visibleChartData.length; i += step) {
+            sampled.push(visibleChartData[i]);
+        }
+        const lastPoint = visibleChartData[visibleChartData.length - 1];
+        if (sampled[sampled.length - 1] !== lastPoint) {
+            sampled.push(lastPoint);
+        }
+        return sampled;
+    }, [visibleChartData]);
     // Reset range when activity changes
     useEffect(() => { setChartRange([0, 100]); }, [activity?.id]);
     const rangeLabel = useMemo(() => {
@@ -488,6 +654,7 @@ export const ActivityDetailPage = () => {
         const startTs = streamPoints[0]?.timestamp ? new Date(streamPoints[0].timestamp).getTime() : 0;
         const isRunning = (activity.sport || '').toLowerCase().includes('run');
         return streamPoints
+            .map((p: any, idx: number) => ({ ...p, stream_index: idx }))
             .filter((p: any) => p.lat && p.lon)
             .map((p: any) => {
                 let timeMin = 0;
@@ -509,6 +676,7 @@ export const ActivityDetailPage = () => {
                     }
                 }
                 return {
+                    stream_index: p.stream_index,
                     lat: p.lat,
                     lon: p.lon,
                     altitude: p.altitude ?? null,
@@ -521,6 +689,64 @@ export const ActivityDetailPage = () => {
                 };
             });
     }, [activity, streamPoints]);
+
+    const focusedEffortMarkerPos = useMemo<[number, number] | null>(() => {
+        if (selectedEffortStreamIndex == null || streamPoints.length === 0) return null;
+        const maxRadius = Math.max(streamPoints.length, 1);
+        for (let radius = 0; radius < maxRadius; radius += 1) {
+            const left = selectedEffortStreamIndex - radius;
+            if (left >= 0) {
+                const p = streamPoints[left];
+                if (p?.lat && p?.lon) return [p.lat, p.lon];
+            }
+            if (radius === 0) continue;
+            const right = selectedEffortStreamIndex + radius;
+            if (right < streamPoints.length) {
+                const p = streamPoints[right];
+                if (p?.lat && p?.lon) return [p.lat, p.lon];
+            }
+        }
+        return null;
+    }, [selectedEffortStreamIndex, streamPoints]);
+
+    const focusEffortByKey = useCallback((effortKey: string, openFullscreenMap = true) => {
+        const meta = bestEffortMetaByKey[effortKey];
+        if (!meta) return;
+        setSelectedEffortKey(effortKey);
+        setSelectedEffortStreamIndex(meta.centerIndex);
+
+        if (openFullscreenMap) {
+            setMapFullscreen(true);
+            let fsIdx = -1;
+            for (let i = 0; i < gpsChartData.length; i += 1) {
+                if (gpsChartData[i].stream_index === meta.centerIndex) {
+                    fsIdx = i;
+                    break;
+                }
+            }
+            if (fsIdx >= 0) {
+                setFsMapIndex(fsIdx);
+                return;
+            }
+            const midpointDistance = meta.meters != null
+                ? meta.meters / 2 + Number(streamPoints[meta.startIndex]?.distance || 0)
+                : Number(streamPoints[meta.centerIndex]?.distance || 0);
+            if (Number.isFinite(midpointDistance)) {
+                let nearestIdx = -1;
+                let nearestDelta = Number.POSITIVE_INFINITY;
+                for (let idx = 0; idx < gpsChartData.length; idx += 1) {
+                    const point = gpsChartData[idx];
+                    const d = Number(point.distance_km) * 1000;
+                    const delta = Math.abs(d - midpointDistance);
+                    if (delta < nearestDelta) {
+                        nearestDelta = delta;
+                        nearestIdx = idx;
+                    }
+                }
+                setFsMapIndex(nearestIdx >= 0 ? nearestIdx : null);
+            }
+        }
+    }, [bestEffortMetaByKey, gpsChartData, streamPoints]);
 
     const fsMapPoint = useMemo(() => {
         if (fsMapIndex === null || !gpsChartData[fsMapIndex]) return null;
@@ -642,6 +868,10 @@ export const ActivityDetailPage = () => {
         const sportName = (activity?.sport || '').toLowerCase();
         return sportName.includes('run');
     }, [activity?.sport]);
+
+    const supportsSpeedSeries = useMemo(() => {
+        return chartData.some((point: any) => Number.isFinite(Number(point?.speed_display)) && Number(point.speed_display) > 0);
+    }, [chartData]);
 
     const plannedSummary = activity?.planned_comparison?.summary;
 
@@ -1153,6 +1383,14 @@ export const ActivityDetailPage = () => {
     useEffect(() => {
         setShowAllBestEfforts(true);
     }, [activity?.id]);
+
+    useEffect(() => {
+        const key = returnState.focusEffort?.key;
+        if (!key || !activity?.best_efforts?.length) return;
+        if (!bestEffortMetaByKey[key]) return;
+        setActiveSection('best_efforts');
+        focusEffortByKey(key, true);
+    }, [activity?.id, activity?.best_efforts?.length, bestEffortMetaByKey, returnState.focusEffort?.key, focusEffortByKey]);
     
     // Calculated Stats for activities where backend summary is missing (legacy compat)
     const derivedStats = useMemo(() => {
@@ -1232,11 +1470,17 @@ export const ActivityDetailPage = () => {
         setVisibleSeries((prev) => (prev.pace ? { ...prev, pace: false } : prev));
     }, [supportsPaceSeries]);
 
+    useEffect(() => {
+        if (supportsSpeedSeries) return;
+        setVisibleSeries((prev) => (prev.speed ? { ...prev, speed: false } : prev));
+    }, [supportsSpeedSeries]);
+
     const focusSeries = useMemo(() => {
         if (!focusMode) {
             return {
                 ...visibleSeries,
                 pace: supportsPaceSeries ? visibleSeries.pace : false,
+                speed: supportsSpeedSeries ? visibleSeries.speed : false,
             };
         }
         if (focusObjective === 'cardio') {
@@ -1244,6 +1488,7 @@ export const ActivityDetailPage = () => {
                 heart_rate: true,
                 power: false,
                 pace: supportsPaceSeries,
+                speed: false,
                 cadence: false,
                 altitude: false
             };
@@ -1253,6 +1498,7 @@ export const ActivityDetailPage = () => {
                 heart_rate: true,
                 power: true,
                 pace: false,
+                speed: false,
                 cadence: true,
                 altitude: false
             };
@@ -1261,10 +1507,11 @@ export const ActivityDetailPage = () => {
             heart_rate: true,
             power: false,
             pace: supportsPaceSeries,
+            speed: true,
             cadence: false,
             altitude: true
         };
-    }, [focusMode, focusObjective, visibleSeries, supportsPaceSeries]);
+    }, [focusMode, focusObjective, visibleSeries, supportsPaceSeries, supportsSpeedSeries]);
 
 
     if (isLoading) return <ActivityDetailSkeleton />;
@@ -1412,11 +1659,26 @@ export const ActivityDetailPage = () => {
                         </Card>
                     </SimpleGrid>
 
-                    <Tabs value={activeSection} onChange={(v) => setActiveSection(v as typeof activeSection)} mb="md">
+                    <Tabs
+                        value={activeSection === 'analysis' ? (graphMode === 'standard' ? 'hr_zones' : graphMode) : activeSection}
+                        onChange={(v) => {
+                            if (!v) return;
+                            if (v === 'hr_zones' || v === 'power_curve' || v === 'pace_zones' || v === 'power_zones') {
+                                setGraphMode(v);
+                                setActiveSection('analysis');
+                                return;
+                            }
+                            setActiveSection(v as typeof activeSection);
+                        }}
+                        mb="md"
+                    >
                         <Tabs.List mb="md">
                             <Tabs.Tab value="overview">Overview</Tabs.Tab>
                             <Tabs.Tab value="charts">Charts</Tabs.Tab>
-                            <Tabs.Tab value="analysis">Analysis</Tabs.Tab>
+                            <Tabs.Tab value="hr_zones" disabled={hrZoneData.every((z) => z.seconds <= 0)}>HR Zones</Tabs.Tab>
+                            <Tabs.Tab value="power_curve" disabled={!activity.power_curve}>Power Curve</Tabs.Tab>
+                            {isRunningActivity ? <Tabs.Tab value="pace_zones" disabled={runningPaceZoneData.every((z) => z.seconds <= 0)}>Pace Zones</Tabs.Tab> : null}
+                            {isCyclingActivity ? <Tabs.Tab value="power_zones" disabled={cyclingPowerZoneData.every((z) => z.seconds <= 0)}>Power Zones</Tabs.Tab> : null}
                             {(activity.splits_metric?.length || activity.laps?.length) ? <Tabs.Tab value="laps">Laps</Tabs.Tab> : null}
                             {activity.best_efforts?.length ? <Tabs.Tab value="best_efforts">Best Efforts</Tabs.Tab> : null}
                             {activity.planned_comparison ? <Tabs.Tab value="comparison">Comparison</Tabs.Tab> : null}
@@ -1630,6 +1892,14 @@ export const ActivityDetailPage = () => {
                                                     <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
                                                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
                                                         <Polyline positions={routePositions} color="blue" weight={4} />
+                                                        {focusedEffortMarkerPos && <MapPanTo position={focusedEffortMarkerPos} />}
+                                                        {focusedEffortMarkerPos && (
+                                                            <CircleMarker center={focusedEffortMarkerPos} radius={7} pathOptions={{ color: '#fff', fillColor: ui.accent, fillOpacity: 1, weight: 2 }}>
+                                                                <LeafletTooltip direction="top" offset={[0, -8]}>
+                                                                    {t('Selected effort')}
+                                                                </LeafletTooltip>
+                                                            </CircleMarker>
+                                                        )}
                                                     </MapContainer>
                                                 </Paper>
                                                 <ActionIcon
@@ -1664,11 +1934,21 @@ export const ActivityDetailPage = () => {
                                         <Text size="xs" fw={700} c={ui.textDim}>Show:</Text>
                                         <Chip size="xs" checked={visibleSeries.heart_rate} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, heart_rate: checked }))} variant="light">Heart Rate</Chip>
                                         {supportsPaceSeries && <Chip size="xs" checked={visibleSeries.pace} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, pace: checked }))} variant="light">Pace</Chip>}
+                                        {supportsSpeedSeries && <Chip size="xs" checked={visibleSeries.speed} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, speed: checked }))} variant="light">Speed</Chip>}
                                         <Chip size="xs" checked={visibleSeries.power} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, power: checked }))} variant="light">Power</Chip>
                                         <Chip size="xs" checked={visibleSeries.cadence} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, cadence: checked }))} variant="light">Cadence</Chip>
                                         <Chip size="xs" checked={visibleSeries.altitude} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, altitude: checked }))} variant="light">Altitude</Chip>
                                     </Group>
                                     <Group gap="xs">
+                                        <SegmentedControl
+                                            size="xs"
+                                            value={powerChartMode}
+                                            onChange={(v) => setPowerChartMode(v as 'raw' | 'avg5s')}
+                                            data={[
+                                                { label: 'Power', value: 'raw' },
+                                                { label: '5s Power avg', value: 'avg5s' },
+                                            ]}
+                                        />
                                         {focusMode && (
                                             <Select
                                                 size="xs"
@@ -1692,101 +1972,50 @@ export const ActivityDetailPage = () => {
                                 </Group>
                                 {chartData.length > 0 ? (
                                     <Stack gap="xs">
-                                        {focusSeries.heart_rate && (
-                                            <Box h={160}>
-                                                <ResponsiveContainer>
-                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                        <defs>
-                                                            <linearGradient id="hrGrad" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#fa5252" stopOpacity={0.3} />
-                                                                <stop offset="95%" stopColor="#fa5252" stopOpacity={0} />
-                                                            </linearGradient>
-                                                        </defs>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                                        <XAxis dataKey="distance_km" hide />
-                                                        <YAxis width={35} tick={{ fontSize: 10 }} domain={['auto', 'auto']} tickFormatter={(v) => `${Math.round(v)}`} />
-                                                        <Tooltip content={hrTooltipContent} />
-                                                        <Area type="monotone" dataKey="heart_rate" stroke="#fa5252" fill="url(#hrGrad)" strokeWidth={1.5} dot={false} name="HR" isAnimationActive={false} />
-                                                    </AreaChart>
-                                                </ResponsiveContainer>
-                                            </Box>
-                                        )}
-                                        {focusSeries.pace && (
-                                            <Box h={160}>
-                                                <ResponsiveContainer>
-                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                        <defs>
-                                                            <linearGradient id="paceGrad" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#228be6" stopOpacity={0.3} />
-                                                                <stop offset="95%" stopColor="#228be6" stopOpacity={0} />
-                                                            </linearGradient>
-                                                        </defs>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                                        <XAxis dataKey="distance_km" hide />
-                                                        <YAxis width={35} tick={{ fontSize: 10 }} reversed tickFormatter={(v) => { const m = Math.floor(v); const s = Math.round((v - m) * 60); return `${m}:${s.toString().padStart(2, '0')}`; }} />
-                                                        <Tooltip content={paceTooltipContent} />
-                                                        <Area type="monotone" dataKey="pace" stroke="#228be6" fill="url(#paceGrad)" strokeWidth={1.5} dot={false} name="Pace" isAnimationActive={false} connectNulls={false} />
-                                                    </AreaChart>
-                                                </ResponsiveContainer>
-                                            </Box>
-                                        )}
-                                        {focusSeries.power && (
-                                            <Box h={160}>
-                                                <ResponsiveContainer>
-                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                        <defs>
-                                                            <linearGradient id="powerGrad" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#fd7e14" stopOpacity={0.3} />
-                                                                <stop offset="95%" stopColor="#fd7e14" stopOpacity={0} />
-                                                            </linearGradient>
-                                                        </defs>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                                        <XAxis dataKey="distance_km" hide />
-                                                        <YAxis width={35} tick={{ fontSize: 10 }} domain={[0, 'auto']} tickFormatter={(v) => `${Math.round(v)}`} />
-                                                        <Tooltip content={powerTooltipContent} />
-                                                        <Area type="monotone" dataKey="power" stroke="#fd7e14" fill="url(#powerGrad)" strokeWidth={1.5} dot={false} name="Power" isAnimationActive={false} />
-                                                    </AreaChart>
-                                                </ResponsiveContainer>
-                                            </Box>
-                                        )}
-                                        {focusSeries.cadence && (
-                                            <Box h={120}>
-                                                <ResponsiveContainer>
-                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                        <defs>
-                                                            <linearGradient id="cadenceGrad" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#40c057" stopOpacity={0.3} />
-                                                                <stop offset="95%" stopColor="#40c057" stopOpacity={0} />
-                                                            </linearGradient>
-                                                        </defs>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                                        <XAxis dataKey="distance_km" hide />
-                                                        <YAxis width={35} tick={{ fontSize: 10 }} domain={['auto', 'auto']} tickFormatter={(v) => `${Math.round(v)}`} />
-                                                        <Tooltip content={cadenceTooltipContent} />
-                                                        <Area type="monotone" dataKey="cadence" stroke="#40c057" fill="url(#cadenceGrad)" strokeWidth={1.5} dot={false} name="Cadence" isAnimationActive={false} />
-                                                    </AreaChart>
-                                                </ResponsiveContainer>
-                                            </Box>
-                                        )}
-                                        {focusSeries.altitude && (
-                                            <Box h={120}>
-                                                <ResponsiveContainer>
-                                                    <AreaChart data={visibleChartData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                        <defs>
-                                                            <linearGradient id="altGrad" x1="0" y1="0" x2="0" y2="1">
-                                                                <stop offset="5%" stopColor="#868e96" stopOpacity={0.3} />
-                                                                <stop offset="95%" stopColor="#868e96" stopOpacity={0} />
-                                                            </linearGradient>
-                                                        </defs>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                                        <XAxis dataKey="distance_km" hide />
-                                                        <YAxis width={35} tick={{ fontSize: 10 }} domain={['auto', 'auto']} tickFormatter={(v) => `${Math.round(v)}`} />
-                                                        <Tooltip content={altitudeTooltipContent} />
-                                                        <Area type="monotone" dataKey="altitude" stroke="#868e96" fill="url(#altGrad)" strokeWidth={1.5} dot={false} name="Altitude" isAnimationActive={false} />
-                                                    </AreaChart>
-                                                </ResponsiveContainer>
-                                            </Box>
-                                        )}
+                                        <Box h={360}>
+                                            <ResponsiveContainer>
+                                                <LineChart data={chartRenderData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
+                                                    <XAxis dataKey="distance_km" hide />
+                                                    <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
+                                                    <YAxis yAxisId="power" hide domain={[0, 'auto']} />
+                                                    <YAxis yAxisId="pace" hide reversed domain={['auto', 'auto']} />
+                                                    <YAxis yAxisId="speed" hide domain={[0, 'auto']} />
+                                                    <YAxis yAxisId="cadence" hide domain={[0, 'auto']} />
+                                                    <YAxis yAxisId="altitude" hide domain={['auto', 'auto']} />
+                                                    <Tooltip
+                                                        {...sharedTooltipProps}
+                                                        content={({ active, payload }: any) => {
+                                                            const point = active && payload?.[0]?.payload ? payload[0].payload : null;
+                                                            if (!point) return null;
+                                                            const speedUnit = me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h';
+                                                            const paceValue = Number(point.pace);
+                                                            const paceText = Number.isFinite(paceValue)
+                                                                ? `${Math.floor(paceValue)}:${Math.floor((paceValue - Math.floor(paceValue)) * 60).toString().padStart(2, '0')}${me?.profile?.preferred_units === 'imperial' ? '/mi' : '/km'}`
+                                                                : '-';
+                                                            const powerValue = powerChartMode === 'avg5s' ? Number(point.power_5s) : Number(point.power_raw);
+                                                            return (
+                                                                <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt}>
+                                                                    <Text size="xs" c={ui.textDim} fw={600} mb={4}>{formatTooltipDistance(point.distance_km)}</Text>
+                                                                    {focusSeries.heart_rate && <Text size="xs" c={ui.textMain}>HR: {Number.isFinite(Number(point.heart_rate)) ? `${Math.round(Number(point.heart_rate))} bpm` : '-'}</Text>}
+                                                                    {focusSeries.power && <Text size="xs" c={ui.textMain}>Power: {Number.isFinite(powerValue) ? `${Math.round(powerValue)} W` : '-'}</Text>}
+                                                                    {focusSeries.pace && <Text size="xs" c={ui.textMain}>Pace: {paceText}</Text>}
+                                                                    {focusSeries.speed && <Text size="xs" c={ui.textMain}>Speed: {Number.isFinite(Number(point.speed_display)) ? `${Number(point.speed_display).toFixed(1)} ${speedUnit}` : '-'}</Text>}
+                                                                    {focusSeries.cadence && <Text size="xs" c={ui.textMain}>Cadence: {Number.isFinite(Number(point.cadence)) ? `${Math.round(Number(point.cadence))} rpm` : '-'}</Text>}
+                                                                    {focusSeries.altitude && <Text size="xs" c={ui.textMain}>Elev: {Number.isFinite(Number(point.altitude)) ? `${Math.round(Number(point.altitude))} m` : '-'}</Text>}
+                                                                </Paper>
+                                                            );
+                                                        }}
+                                                    />
+                                                    {focusSeries.heart_rate && <Line yAxisId="hr" type="monotone" dataKey="heart_rate" stroke="#fa5252" strokeWidth={1.5} dot={false} name="HR" isAnimationActive={false} connectNulls />}
+                                                    {focusSeries.power && <Line yAxisId="power" type="monotone" dataKey={powerChartMode === 'avg5s' ? 'power_5s' : 'power_raw'} stroke="#fd7e14" strokeWidth={1.5} dot={false} name="Power" isAnimationActive={false} connectNulls />}
+                                                    {focusSeries.pace && <Line yAxisId="pace" type="monotone" dataKey="pace" stroke="#228be6" strokeWidth={1.5} dot={false} name="Pace" isAnimationActive={false} connectNulls={false} />}
+                                                    {focusSeries.speed && <Line yAxisId="speed" type="monotone" dataKey="speed_display" stroke="#12b886" strokeWidth={1.4} dot={false} name="Speed" isAnimationActive={false} connectNulls />}
+                                                    {focusSeries.cadence && <Line yAxisId="cadence" type="monotone" dataKey="cadence" stroke="#40c057" strokeWidth={1.2} dot={false} name="Cadence" isAnimationActive={false} connectNulls />}
+                                                    {focusSeries.altitude && <Line yAxisId="altitude" type="monotone" dataKey="altitude" stroke="#868e96" strokeWidth={1.2} dot={false} name="Altitude" isAnimationActive={false} connectNulls />}
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </Box>
                                         <Box px="xs">
                                             <Group justify="space-between" mb={4}>
                                                 <Text size="xs" c={ui.textDim}>{rangeLabel[0]}</Text>
@@ -1818,19 +2047,6 @@ export const ActivityDetailPage = () => {
                         {/* ANALYSIS TAB */}
                         <Tabs.Panel value="analysis">
                             <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                <Group mb="md">
-                                    <SegmentedControl
-                                        radius="md"
-                                        value={graphMode === 'standard' ? 'hr_zones' : graphMode}
-                                        onChange={(v: any) => setGraphMode(v)}
-                                        data={[
-                                            { label: 'HR Zones', value: 'hr_zones', disabled: hrZoneData.every((z) => z.seconds <= 0) },
-                                            { label: 'Power Curve', value: 'power_curve', disabled: !activity.power_curve },
-                                            ...(isRunningActivity ? [{ label: 'Pace Zones', value: 'pace_zones', disabled: runningPaceZoneData.every((z) => z.seconds <= 0) }] : []),
-                                            ...(isCyclingActivity ? [{ label: 'Power Zones', value: 'power_zones', disabled: cyclingPowerZoneData.every((z) => z.seconds <= 0) }] : []),
-                                        ]}
-                                    />
-                                </Group>
                                 <Box w="100%" mih={300}>
                                     {(graphMode === 'hr_zones' || graphMode === 'standard') && (
                                         <Box h={400} w="100%">
@@ -2078,9 +2294,9 @@ export const ActivityDetailPage = () => {
                                             <Table.Th>{t('Effort')}</Table.Th>
                                             {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
                                             {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
-                                            {(isRunningActivity || hasCyclingDistEfforts) && <Table.Th>{t('Time')}</Table.Th>}
+                                            {(isRunningActivity || isCyclingActivity || hasCyclingDistEfforts) && <Table.Th>{t('Time')}</Table.Th>}
                                             {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
-                                            {hasCyclingDistEfforts && <Table.Th>{t('Speed')}</Table.Th>}
+                                            {isCyclingActivity && <Table.Th>{t('Speed')}</Table.Th>}
                                             <Table.Th>{t('Heart Rate')}</Table.Th>
                                         </Table.Tr>
                                     </Table.Thead>
@@ -2089,10 +2305,25 @@ export const ActivityDetailPage = () => {
                                             const key = effort.window || effort.distance || String(idx);
                                             const prRank = activity.personal_records?.[key];
                                             const weight = me?.profile?.weight;
+                                            const meta = bestEffortMetaByKey[key];
+                                            const displayPower = effort.power ?? (meta?.avgPower != null ? Math.round(meta.avgPower) : null);
+                                            const displaySeconds = effort.time_seconds ?? meta?.seconds ?? null;
+                                            const displayMeters = effort.meters ?? meta?.meters ?? null;
+                                            const displayHr = effort.avg_hr ?? (meta?.avgHr != null ? Math.round(meta.avgHr) : null);
+                                            const displaySpeedKmh = displayMeters != null && displaySeconds != null && displaySeconds > 0
+                                                ? (displayMeters / 1000) / (displaySeconds / 3600)
+                                                : (meta?.speedKmh ?? null);
                                             const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
                                             const rankLabel = prRank === 1 ? 'PR' : prRank === 2 ? '2nd' : prRank === 3 ? '3rd' : undefined;
                                             return (
-                                                <Table.Tr key={key}>
+                                                <Table.Tr
+                                                    key={key}
+                                                    style={{
+                                                        cursor: meta ? 'pointer' : 'default',
+                                                        backgroundColor: selectedEffortKey === key ? (isDark ? 'rgba(233,90,18,0.16)' : 'rgba(233,90,18,0.10)') : undefined,
+                                                    }}
+                                                    onClick={() => meta && focusEffortByKey(key, true)}
+                                                >
                                                     <Table.Td w={60} style={{ textAlign: 'center' }}>
                                                         {medalColor && (
                                                             <Group gap={2} wrap="nowrap" justify="center">
@@ -2102,24 +2333,24 @@ export const ActivityDetailPage = () => {
                                                         )}
                                                     </Table.Td>
                                                     <Table.Td fw={600}>{effort.window || effort.distance}</Table.Td>
-                                                    {isCyclingActivity && <Table.Td>{effort.power != null ? `${effort.power} W` : '-'}</Table.Td>}
-                                                    {isCyclingActivity && weight && <Table.Td>{effort.power != null ? `${(effort.power / weight).toFixed(2)} W/kg` : '-'}</Table.Td>}
-                                                    {(isRunningActivity || hasCyclingDistEfforts) && <Table.Td>{effort.time_seconds != null ? formatDuration(effort.time_seconds) : '-'}</Table.Td>}
+                                                    {isCyclingActivity && <Table.Td>{displayPower != null ? `${displayPower} W` : '-'}</Table.Td>}
+                                                    {isCyclingActivity && weight && <Table.Td>{displayPower != null ? `${(displayPower / weight).toFixed(2)} W/kg` : '-'}</Table.Td>}
+                                                    {(isRunningActivity || isCyclingActivity || hasCyclingDistEfforts) && <Table.Td>{displaySeconds != null ? formatDuration(displaySeconds) : '-'}</Table.Td>}
                                                     {isRunningActivity && (
                                                         <Table.Td>
-                                                            {effort.time_seconds != null && effort.meters
-                                                                ? (() => { const paceMinPerKm = (effort.time_seconds! / effort.meters!) * (1000 / 60); const mins = Math.floor(paceMinPerKm); const secs = Math.round((paceMinPerKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
+                                                            {displaySeconds != null && displayMeters
+                                                                ? (() => { const paceMinPerKm = (displaySeconds / displayMeters) * (1000 / 60); const mins = Math.floor(paceMinPerKm); const secs = Math.round((paceMinPerKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
                                                                 : '-'}
                                                         </Table.Td>
                                                     )}
-                                                    {hasCyclingDistEfforts && (
+                                                    {isCyclingActivity && (
                                                         <Table.Td>
-                                                            {effort.time_seconds != null && effort.meters
-                                                                ? `${((effort.meters / 1000) / (effort.time_seconds / 3600)).toFixed(1)} km/h`
+                                                            {displaySpeedKmh != null
+                                                                ? `${displaySpeedKmh.toFixed(1)} km/h`
                                                                 : '-'}
                                                         </Table.Td>
                                                     )}
-                                                    <Table.Td>{effort.avg_hr != null ? `${effort.avg_hr} bpm` : '-'}</Table.Td>
+                                                    <Table.Td>{displayHr != null ? `${displayHr} bpm` : '-'}</Table.Td>
                                                 </Table.Tr>
                                             );
                                         })}
