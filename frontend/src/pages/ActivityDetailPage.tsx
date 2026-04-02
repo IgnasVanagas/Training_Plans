@@ -205,10 +205,15 @@ export const ActivityDetailPage = () => {
         labelStyle: { color: ui.textDim, fontWeight: 600 },
         itemStyle: { color: ui.textMain },
     }), [ui.border, ui.surfaceAlt, ui.textDim, ui.textMain]);
-    const formatTooltipDistance = (value: unknown) => {
-        const distance = Number(value);
-        if (!Number.isFinite(distance)) return '-';
-        return `${distance.toFixed(3)} ${me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km'}`;
+    const formatElapsedFromMinutes = (value: unknown) => {
+        const minutes = Number(value);
+        if (!Number.isFinite(minutes) || minutes < 0) return '-';
+        const totalSeconds = Math.round(minutes * 60);
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        const s = totalSeconds % 60;
+        if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        return `${m}:${s.toString().padStart(2, '0')}`;
     };
     const [graphMode, setGraphMode] = useState<'standard' | 'power_curve' | 'hr_zones' | 'pace_zones' | 'power_zones'>('hr_zones');
     const [activeSection, setActiveSection] = useState<'overview' | 'charts' | 'analysis' | 'laps' | 'best_efforts' | 'comparison'>('overview');
@@ -635,13 +640,12 @@ export const ActivityDetailPage = () => {
         if (chartData.length === 0) return ['0', '0'];
         const startIdx = Math.round((chartRange[0] / 100) * (chartData.length - 1));
         const endIdx = Math.round((chartRange[1] / 100) * (chartData.length - 1));
-        const unitLabel = me?.profile?.preferred_units === 'imperial' ? 'mi' : 'km';
         const fmt = (idx: number) => {
-            const d = chartData[idx]?.distance_km;
-            return d != null ? `${Number(d).toFixed(1)} ${unitLabel}` : '';
+            const t = chartData[idx]?.time_min;
+            return t != null ? formatElapsedFromMinutes(t) : '';
         };
         return [fmt(startIdx), fmt(endIdx)];
-    }, [chartData, chartRange, me?.profile?.preferred_units]);
+    }, [chartData, chartRange]);
 
     const hoveredPoint = useMemo(() => {
         if (hoveredPointIndex === null) return null;
@@ -708,6 +712,21 @@ export const ActivityDetailPage = () => {
         }
         return null;
     }, [selectedEffortStreamIndex, streamPoints]);
+
+    const selectedEffortRoutePositions = useMemo<[number, number][]>(() => {
+        if (!selectedEffortKey) return [];
+        const meta = bestEffortMetaByKey[selectedEffortKey];
+        if (!meta) return [];
+
+        const points: [number, number][] = [];
+        for (let i = meta.startIndex; i <= meta.endIndex; i += 1) {
+            const sample = streamPoints[i];
+            if (sample?.lat && sample?.lon) {
+                points.push([sample.lat, sample.lon]);
+            }
+        }
+        return points;
+    }, [selectedEffortKey, bestEffortMetaByKey, streamPoints]);
 
     const focusEffortByKey = useCallback((effortKey: string, openFullscreenMap = true) => {
         const meta = bestEffortMetaByKey[effortKey];
@@ -817,7 +836,7 @@ export const ActivityDetailPage = () => {
         return (
             <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt}>
                 <Text size="xs" c={ui.textDim} fw={600} mb={4}>
-                    {formatTooltipDistance(point.distance_km)}
+                    {formatElapsedFromMinutes(point.time_min)}
                 </Text>
                 <Text size="xs" c={ui.textMain}>
                     {valueLabel}: {value}
@@ -1009,16 +1028,35 @@ export const ActivityDetailPage = () => {
             return ratio < 0.6 ? 1 : ratio < 0.7 ? 2 : ratio < 0.8 ? 3 : ratio < 0.9 ? 4 : 5;
         };
 
-        const validHrSamples = streamPoints
-            .map((sample: any) => Number(sample?.heart_rate || 0))
-            .filter((hr: number) => Number.isFinite(hr) && hr > 0);
+        const hrSamples = streamPoints
+            .map((sample: any, index: number) => ({
+                index,
+                hr: Number(sample?.heart_rate || 0),
+                ts: sample?.timestamp ? new Date(sample.timestamp).getTime() : NaN,
+            }))
+            .filter((sample: { hr: number }) => Number.isFinite(sample.hr) && sample.hr > 0);
 
-        if (validHrSamples.length > 0 && (upperBounds?.length || maxHr > 0)) {
-            const sampleSeconds = activity?.duration && activity.duration > 0 ? activity.duration / validHrSamples.length : 1;
-            validHrSamples.forEach((hr: number) => {
-                const zone = classifyHr(hr);
-                zoneSeconds[`Z${zone}`] += Math.round(sampleSeconds);
-            });
+        if (hrSamples.length > 0 && (upperBounds?.length || maxHr > 0)) {
+            const fallbackSeconds = activity?.duration && activity.duration > 0
+                ? Math.max(0.25, activity.duration / Math.max(streamPoints.length, 1))
+                : 1;
+
+            for (let i = 0; i < hrSamples.length; i += 1) {
+                const current = hrSamples[i];
+                const next = hrSamples[i + 1];
+
+                let sampleSeconds = fallbackSeconds;
+                if (Number.isFinite(current.ts) && Number.isFinite(next?.ts)) {
+                    const delta = (Number(next.ts) - Number(current.ts)) / 1000;
+                    if (Number.isFinite(delta) && delta > 0) {
+                        // Clamp to avoid giant gaps or ultra-high frequency spikes skewing totals.
+                        sampleSeconds = Math.min(5, Math.max(0.25, delta));
+                    }
+                }
+
+                const zone = classifyHr(current.hr);
+                zoneSeconds[`Z${zone}`] += sampleSeconds;
+            }
         } else if (activity?.hr_zones && typeof activity.hr_zones === 'object' && Object.keys(activity.hr_zones).length > 0) {
             for (let zone = 1; zone <= 5; zone += 1) {
                 zoneSeconds[`Z${zone}`] += Number((activity.hr_zones as any)[`Z${zone}`] || 0);
@@ -1892,6 +1930,9 @@ export const ActivityDetailPage = () => {
                                                     <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
                                                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
                                                         <Polyline positions={routePositions} color="blue" weight={4} />
+                                                        {selectedEffortRoutePositions.length > 1 && (
+                                                            <Polyline positions={selectedEffortRoutePositions} color={ui.accent} weight={7} opacity={0.95} />
+                                                        )}
                                                         {focusedEffortMarkerPos && <MapPanTo position={focusedEffortMarkerPos} />}
                                                         {focusedEffortMarkerPos && (
                                                             <CircleMarker center={focusedEffortMarkerPos} radius={7} pathOptions={{ color: '#fff', fillColor: ui.accent, fillOpacity: 1, weight: 2 }}>
@@ -1976,7 +2017,7 @@ export const ActivityDetailPage = () => {
                                             <ResponsiveContainer>
                                                 <LineChart data={chartRenderData}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                                    <XAxis dataKey="distance_km" hide />
+                                                    <XAxis dataKey="time_min" hide />
                                                     <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
                                                     <YAxis yAxisId="power" hide domain={[0, 'auto']} />
                                                     <YAxis yAxisId="pace" hide reversed domain={['auto', 'auto']} />
@@ -1996,7 +2037,7 @@ export const ActivityDetailPage = () => {
                                                             const powerValue = powerChartMode === 'avg5s' ? Number(point.power_5s) : Number(point.power_raw);
                                                             return (
                                                                 <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt}>
-                                                                    <Text size="xs" c={ui.textDim} fw={600} mb={4}>{formatTooltipDistance(point.distance_km)}</Text>
+                                                                    <Text size="xs" c={ui.textDim} fw={600} mb={4}>Time: {formatElapsedFromMinutes(point.time_min)}</Text>
                                                                     {focusSeries.heart_rate && <Text size="xs" c={ui.textMain}>HR: {Number.isFinite(Number(point.heart_rate)) ? `${Math.round(Number(point.heart_rate))} bpm` : '-'}</Text>}
                                                                     {focusSeries.power && <Text size="xs" c={ui.textMain}>Power: {Number.isFinite(powerValue) ? `${Math.round(powerValue)} W` : '-'}</Text>}
                                                                     {focusSeries.pace && <Text size="xs" c={ui.textMain}>Pace: {paceText}</Text>}
@@ -2834,6 +2875,9 @@ export const ActivityDetailPage = () => {
                                 <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
                                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
                                     <Polyline positions={routePositions} color="blue" weight={4} opacity={0.6} />
+                                    {selectedEffortRoutePositions.length > 1 && (
+                                        <Polyline positions={selectedEffortRoutePositions} color={ui.accent} weight={8} opacity={0.95} />
+                                    )}
                                     <MapFitBounds positions={routePositions} />
                                     {fsMapMarkerPos && <MapPanTo position={fsMapMarkerPos} />}
                                     {fsMapMarkerPos && (
@@ -2877,7 +2921,7 @@ export const ActivityDetailPage = () => {
                                                     <stop offset="100%" stopColor={isDark ? '#60A5FA' : '#3B82F6'} stopOpacity={0.05} />
                                                 </linearGradient>
                                             </defs>
-                                            <XAxis dataKey="distance_km" tick={{ fontSize: 10, fill: ui.textDim }} tickFormatter={(v: number) => `${v.toFixed(1)}`} axisLine={false} tickLine={false} />
+                                            <XAxis dataKey="timeMin" tick={{ fontSize: 10, fill: ui.textDim }} tickFormatter={(v: number) => formatElapsedFromMinutes(v)} axisLine={false} tickLine={false} />
                                             <YAxis tick={{ fontSize: 10, fill: ui.textDim }} axisLine={false} tickLine={false} width={35} domain={['dataMin - 10', 'dataMax + 10']} tickFormatter={(v: number) => `${Math.round(v)}m`} />
                                             <Tooltip
                                                 content={({ active, payload }) => {
@@ -2885,7 +2929,7 @@ export const ActivityDetailPage = () => {
                                                     const d = payload[0].payload;
                                                     return (
                                                         <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt} style={{ fontSize: 11 }}>
-                                                            <Text size="xs" fw={600} c={ui.textDim}>{d.distance_km?.toFixed(2)} km</Text>
+                                                            <Text size="xs" fw={600} c={ui.textDim}>Time: {formatElapsedFromMinutes(d.timeMin)}</Text>
                                                             <Text size="xs" c={ui.textMain}>Elevation: {Math.round(d.altitude ?? 0)} m</Text>
                                                         </Paper>
                                                     );
