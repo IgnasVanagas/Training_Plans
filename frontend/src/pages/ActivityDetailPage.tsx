@@ -2044,7 +2044,7 @@ export const ActivityDetailPage = () => {
                             </Paper>
                         </Tabs.Panel>
 
-                        {/* ANALYSIS TAB */}
+                        {/* ANALYSIS TABS */}
                         <Tabs.Panel value="analysis">
                             <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
                                 <Box w="100%" mih={300}>
@@ -2109,6 +2109,109 @@ export const ActivityDetailPage = () => {
                                             </Group>
                                         </Box>
                                     )}
+                                    {graphMode === 'power_zones' && (
+                                        <Box h={400} w="100%">
+                                            <ResponsiveContainer>
+                                                <BarChart data={cyclingPowerZoneData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis dataKey="zone" />
+                                                    <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                    <Bar dataKey="seconds" fill="#fd7e14" name="Power Zone Time" onClick={(entry: any) => entry?.zone && openZoneExplanation('power', entry.zone)} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                            <Group mt="sm" gap="xs" wrap="wrap">
+                                                {cyclingPowerZoneData.map((z) => (
+                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('power', z.zone)} readOnly variant="light" size="xs">{z.zone}</Chip>
+                                                ))}
+                                            </Group>
+                                        </Box>
+                                    )}
+                                </Box>
+                            </Paper>
+                        </Tabs.Panel>
+                        <Tabs.Panel value="hr_zones">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Box w="100%" mih={300}>
+                                    {(graphMode === 'hr_zones' || graphMode === 'standard') && (
+                                        <Box h={400} w="100%">
+                                            <ResponsiveContainer>
+                                                <BarChart data={hrZoneData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis dataKey="zone" />
+                                                    <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: number, _: string, item: any) => [`${formatZoneDuration(Number(val) || 0)}  ·  ${item?.payload?.range || ''}`, 'Time in Zone']} />
+                                                    <Bar dataKey="seconds" name="Time in Zone" onClick={(entry: any) => entry?.zone && openZoneExplanation('hr', entry.zone)}>
+                                                        {hrZoneData.map((_entry, index) => (
+                                                            <Cell key={`hr-cell-${index}`} fill={HR_ZONE_COLORS[index] || '#fa5252'} />
+                                                        ))}
+                                                    </Bar>
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                            <Group mt="sm" gap="xs" wrap="wrap">
+                                                {hrZoneData.map((z, index) => (
+                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('hr', z.zone)} readOnly variant="light" size="xs" styles={{ label: { borderColor: HR_ZONE_COLORS[index] } }}>{z.zone}: {z.range}</Chip>
+                                                ))}
+                                            </Group>
+                                        </Box>
+                                    )}
+                                </Box>
+                            </Paper>
+                        </Tabs.Panel>
+                        <Tabs.Panel value="power_curve">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Box w="100%" mih={300}>
+                                    {graphMode === 'power_curve' && (
+                                        <Box h={400} w="100%">
+                                            <ResponsiveContainer>
+                                                <LineChart data={powerCurveData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={0} tickFormatter={(v: string) => POWER_CURVE_KEY_LABELS.has(v) ? v : ''} />
+                                                    <YAxis />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: any, name: string) => [val != null ? `${val} W` : '-', name]} />
+                                                    <Line type="monotone" dataKey="watts" stroke="#fd7e14" strokeWidth={2} dot={false} name="This Activity" />
+                                                    {Object.keys(prPowerMap).length > 0 && (
+                                                        <Line type="monotone" dataKey="prWatts" stroke="#228be6" strokeWidth={1.5} dot={false} name="All-time Best" strokeDasharray="4 2" connectNulls />
+                                                    )}
+                                                    {Object.entries(activity.personal_records ?? {}).map(([key, rank]) =>
+                                                        rank === 1 && POWER_CURVE_KEY_LABELS.has(key) ? (
+                                                            <ReferenceLine key={key} x={key} stroke="#f0a500" strokeOpacity={0.7} strokeDasharray="3 3" label={{ value: 'PR', fill: '#f0a500', fontSize: 9, position: 'insideTopRight' }} />
+                                                        ) : null
+                                                    )}
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </Box>
+                                    )}
+                                </Box>
+                            </Paper>
+                        </Tabs.Panel>
+                        <Tabs.Panel value="pace_zones">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Box w="100%" mih={300}>
+                                    {graphMode === 'pace_zones' && (
+                                        <Box h={400} w="100%">
+                                            <ResponsiveContainer>
+                                                <BarChart data={runningPaceZoneData}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                                    <XAxis dataKey="zone" />
+                                                    <YAxis label={{ value: 'Duration', angle: -90, position: 'insideLeft' }} tickFormatter={(val) => formatZoneDuration(Number(val) || 0)} />
+                                                    <Tooltip {...sharedTooltipProps} formatter={(val: number) => [formatZoneDuration(Number(val) || 0), 'Time']} />
+                                                    <Bar dataKey="seconds" fill="#228be6" name="Pace Zone Time" onClick={(entry: any) => entry?.zone && openZoneExplanation('pace', entry.zone)} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                            <Group mt="sm" gap="xs" wrap="wrap">
+                                                {runningPaceZoneData.map((z) => (
+                                                    <Chip key={z.zone} checked={false} onClick={() => openZoneExplanation('pace', z.zone)} readOnly variant="light" size="xs">{z.zone}</Chip>
+                                                ))}
+                                            </Group>
+                                        </Box>
+                                    )}
+                                </Box>
+                            </Paper>
+                        </Tabs.Panel>
+                        <Tabs.Panel value="power_zones">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Box w="100%" mih={300}>
                                     {graphMode === 'power_zones' && (
                                         <Box h={400} w="100%">
                                             <ResponsiveContainer>
