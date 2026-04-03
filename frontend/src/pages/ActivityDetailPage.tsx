@@ -1057,15 +1057,10 @@ export const ActivityDetailPage = () => {
         };
     }, [executionTraceRows, plannedSummary]);
 
-    const HR_ZONE_COLORS = ['#22C55E', '#84CC16', '#EAB308', '#F97316', '#EF4444'];
+    const HR_ZONE_COLORS = ['#22C55E', '#84CC16', '#EAB308', '#F59E0B', '#F97316', '#EF4444', '#B91C1C'];
 
     const hrZoneData = useMemo(() => {
-        const zoneSeconds = Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>;
-
         const maxHr = Number(zoneProfile?.max_hr || activity?.max_hr || 190);
-
-        // Resolve profile HR zone upper bounds from dashboard zone settings.
-        // Stored values may be either absolute bpm or legacy percentages.
         const sport = (activity?.sport || '').toLowerCase();
         const sportKey = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride')
             ? 'cycling'
@@ -1073,89 +1068,87 @@ export const ActivityDetailPage = () => {
                 ? 'swimming'
                 : 'running';
         const hrZoneCfg = (zoneProfile as any)?.zone_settings?.[sportKey]?.hr;
-        const upperBounds: number[] = (Array.isArray(hrZoneCfg?.upper_bounds)
+
+        const rawBounds: number[] = Array.isArray(hrZoneCfg?.upper_bounds)
             ? hrZoneCfg.upper_bounds
-                .map((value: unknown) => Number(value))
+                .map((value: unknown) => Math.round(Number(value)))
                 .filter((value: number) => Number.isFinite(value) && value > 0)
-            : [])
-            .slice(0, 4);
+            : [];
+
+        const normalizedBounds = rawBounds.reduce<number[]>((acc, value) => {
+            if (!acc.length) return [value];
+            const prev = acc[acc.length - 1];
+            acc.push(value <= prev ? prev + 1 : value);
+            return acc;
+        }, []);
+
+        const fallbackBounds = [
+            Math.round(maxHr * 0.6),
+            Math.round(maxHr * 0.7),
+            Math.round(maxHr * 0.8),
+            Math.round(maxHr * 0.9),
+        ].reduce<number[]>((acc, value) => {
+            if (!acc.length) return [value];
+            const prev = acc[acc.length - 1];
+            acc.push(value <= prev ? prev + 1 : value);
+            return acc;
+        }, []);
+
+        const effectiveBounds = normalizedBounds.length > 0 ? normalizedBounds : fallbackBounds;
+        const usesImplicitLastZone = effectiveBounds.length === 4;
+        const zoneCount = usesImplicitLastZone ? 5 : effectiveBounds.length;
+        const zoneSeconds = Object.fromEntries(Array.from({ length: zoneCount }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>;
 
         const classifyHr = (hr: number): number => {
-            if (upperBounds.length) {
-                for (let i = 0; i < upperBounds.length; i++) {
-                    if (hr <= upperBounds[i]) return i + 1;
-                }
-                return upperBounds.length + 1;
+            for (let i = 0; i < effectiveBounds.length; i += 1) {
+                if (hr <= effectiveBounds[i]) return i + 1;
             }
-            const ratio = hr / maxHr;
-            return ratio < 0.6 ? 1 : ratio < 0.7 ? 2 : ratio < 0.8 ? 3 : ratio < 0.9 ? 4 : 5;
+            return usesImplicitLastZone ? zoneCount : Math.max(1, zoneCount);
         };
 
-        // Prefer recalculation when dashboard HR zones are configured so labels and bucket logic match.
-        const shouldUseBackendZones = !upperBounds.length
-            && activity?.hr_zones
-            && typeof activity.hr_zones === 'object'
-            && Object.keys(activity.hr_zones).length > 0;
+        const hrSamples = streamPoints
+            .map((sample: any) => ({
+                hr: Number(sample?.heart_rate || 0),
+                ts: sample?.timestamp ? new Date(sample.timestamp).getTime() : NaN,
+            }))
+            .filter((sample: { hr: number }) => Number.isFinite(sample.hr) && sample.hr > 0);
 
-        if (shouldUseBackendZones) {
-            for (let zone = 1; zone <= 5; zone += 1) {
-                zoneSeconds[`Z${zone}`] = Number((activity.hr_zones as any)[`Z${zone}`] || 0);
-            }
-        } else {
-            const hrSamples = streamPoints
-                .map((sample: any, index: number) => ({
-                    index,
-                    hr: Number(sample?.heart_rate || 0),
-                    ts: sample?.timestamp ? new Date(sample.timestamp).getTime() : NaN,
-                }))
-                .filter((sample: { hr: number }) => Number.isFinite(sample.hr) && sample.hr > 0);
+        if (hrSamples.length > 0) {
+            const fallbackSeconds = activity?.duration && activity.duration > 0
+                ? Math.max(0.25, activity.duration / Math.max(hrSamples.length, 1))
+                : 1;
 
-            if (hrSamples.length > 0 && (upperBounds.length || maxHr > 0)) {
-                const fallbackSeconds = activity?.duration && activity.duration > 0
-                    ? Math.max(0.25, activity.duration / Math.max(streamPoints.length, 1))
-                    : 1;
+            for (let i = 0; i < hrSamples.length; i += 1) {
+                const current = hrSamples[i];
+                const next = hrSamples[i + 1];
 
-                for (let i = 0; i < hrSamples.length; i += 1) {
-                    const current = hrSamples[i];
-                    const next = hrSamples[i + 1];
-
-                    let sampleSeconds = fallbackSeconds;
-                    if (Number.isFinite(current.ts) && Number.isFinite(next?.ts)) {
-                        const delta = (Number(next.ts) - Number(current.ts)) / 1000;
-                        if (Number.isFinite(delta) && delta > 0) {
-                            // Clamp to avoid giant gaps or ultra-high frequency spikes skewing totals.
-                            sampleSeconds = Math.min(5, Math.max(0.25, delta));
-                        }
+                let sampleSeconds = fallbackSeconds;
+                if (Number.isFinite(current.ts) && Number.isFinite(next?.ts)) {
+                    const delta = (Number(next.ts) - Number(current.ts)) / 1000;
+                    if (Number.isFinite(delta) && delta > 0) {
+                        sampleSeconds = Math.min(5, Math.max(0.25, delta));
                     }
-
-                    const zone = classifyHr(current.hr);
-                    zoneSeconds[`Z${zone}`] += sampleSeconds;
                 }
-            } else if (activity?.average_hr && activity?.duration) {
-                const zone = classifyHr(Number(activity.average_hr));
-                zoneSeconds[`Z${zone}`] += Math.round(activity.duration);
+
+                const zone = classifyHr(current.hr);
+                zoneSeconds[`Z${zone}`] += sampleSeconds;
             }
+        } else if (activity?.average_hr && activity?.duration) {
+            const zone = classifyHr(Number(activity.average_hr));
+            zoneSeconds[`Z${zone}`] += Math.round(activity.duration);
         }
 
-        const ZONE_THRESHOLDS = [0, 0.6, 0.7, 0.8, 0.9];
-        return Array.from({ length: 5 }, (_, idx) => {
+        return Array.from({ length: zoneCount }, (_, idx) => {
             const zone = `Z${idx + 1}`;
-            let range: string;
-            
-            // Use upperBounds for display if available, otherwise use threshold ratios
-            if (upperBounds.length) {
-                const low = idx === 0 ? null : upperBounds[idx - 1] ?? null;
-                const high = upperBounds[idx] ?? null;
-                if (low == null && high != null) range = `< ${Math.round(high)} bpm`;
-                else if (low != null && high != null) range = `${Math.round(low)}–${Math.round(high)} bpm`;
-                else if (low != null) range = `≥ ${Math.round(low)} bpm`;
-                else range = '-';
-            } else {
-                const low = Math.round(maxHr * ZONE_THRESHOLDS[idx]);
-                const high = idx === 4 ? Math.round(maxHr) : Math.round(maxHr * ZONE_THRESHOLDS[idx + 1]);
-                range = idx === 0 ? `< ${high} bpm` : idx === 4 ? `≥ ${low} bpm` : `${low}–${high} bpm`;
-            }
-            
+            const low = idx === 0 ? null : (effectiveBounds[idx - 1] + 1);
+            const high = idx < effectiveBounds.length ? effectiveBounds[idx] : null;
+            const range = low == null && high != null
+                ? `<= ${Math.round(high)} bpm`
+                : low != null && high != null
+                    ? `${Math.round(low)}-${Math.round(high)} bpm`
+                    : low != null
+                        ? `>= ${Math.round(low)} bpm`
+                        : '-';
             return { zone, seconds: zoneSeconds[zone] || 0, range };
         });
     }, [activity, streamPoints, zoneProfile]);
