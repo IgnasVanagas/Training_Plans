@@ -363,7 +363,13 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
 
     const handleDayDragOver = useCallback((e: React.DragEvent, dateKey: string) => {
         e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
+        // Library items set effectAllowed='copy'; internal drags use 'copyMove'
+        const types = e.dataTransfer.types;
+        if (types.includes('application/json') || types.includes('application/calendar-event')) {
+            e.dataTransfer.dropEffect = 'copy';
+        } else {
+            e.dataTransfer.dropEffect = 'move';
+        }
         setDragOverDate(dateKey);
     }, []);
 

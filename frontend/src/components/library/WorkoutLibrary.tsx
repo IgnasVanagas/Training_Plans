@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Stack, TextInput, MultiSelect, Button, Loader, Group, ActionIcon, ScrollArea, SegmentedControl, Text, Divider, Box, useComputedColorScheme } from '@mantine/core';
-import { IconSearch, IconFilter, IconPlus, IconX } from '@tabler/icons-react';
+import { Stack, TextInput, MultiSelect, Button, Loader, Group, ActionIcon, ScrollArea, SegmentedControl, Text, Box, useComputedColorScheme, ThemeIcon, Center } from '@mantine/core';
+import { IconSearch, IconFilter, IconPlus, IconX, IconDragDrop, IconClock, IconBookmark, IconTemplate } from '@tabler/icons-react';
 import { getWorkouts, deleteWorkout, updateWorkout, getRecentCoachWorkouts, RecentCoachWorkout } from '../../api/workouts';
 import { SavedWorkout } from '../../types/workout';
 import { WorkoutLibraryItem } from './WorkoutLibraryItem';
@@ -131,67 +131,103 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
     return (
         <Stack
             h="100%"
-            gap="sm"
-            p="sm"
-            bg={isDark ? 'rgba(8, 18, 38, 0.92)' : 'rgba(248, 250, 252, 0.92)'}
-            style={{ borderRadius: 10, border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(15,23,42,0.08)' }}
+            gap={0}
+            style={{
+                borderRadius: 12,
+                border: isDark ? '1px solid rgba(148,163,184,0.18)' : '1px solid rgba(15,23,42,0.10)',
+                background: isDark ? 'var(--mantine-color-dark-7)' : 'var(--mantine-color-gray-0)',
+                overflow: 'hidden',
+            }}
         >
-            <Group justify="space-between">
-                <Text fw={700} size="lg">Library</Text>
-                <Button size="xs" leftSection={<IconPlus size={14} />} onClick={handleCreate} variant="light">
-                    New
-                </Button>
-            </Group>
+            {/* Header */}
+            <Box
+                px="sm"
+                py="xs"
+                style={{
+                    borderBottom: isDark ? '1px solid rgba(148,163,184,0.12)' : '1px solid rgba(15,23,42,0.07)',
+                    background: isDark ? 'var(--mantine-color-dark-6)' : 'white',
+                    flexShrink: 0,
+                }}
+            >
+                <Group justify="space-between" mb="xs">
+                    <Group gap="xs">
+                        <ThemeIcon size="sm" variant="light" color="blue" radius="sm">
+                            <IconDragDrop size={13} />
+                        </ThemeIcon>
+                        <Text fw={700} size="sm">Workout Library</Text>
+                    </Group>
+                    <Button size="xs" leftSection={<IconPlus size={12} />} onClick={handleCreate} variant="light" radius="sm">
+                        New
+                    </Button>
+                </Group>
 
-            <TextInput 
-                placeholder="Search templates..." 
-                leftSection={<IconSearch size={14} />} 
-                value={search}
-                onChange={(e) => setSearch(e.currentTarget.value)}
-                rightSection={
-                    search && (
-                        <ActionIcon size="xs" variant="transparent" onClick={() => setSearch('')}>
-                            <IconX size={12} />
-                        </ActionIcon>
-                    )
-                }
-            />
-
-            <SegmentedControl 
-                fullWidth 
-                size="xs"
-                value={filterType}
-                onChange={(val) => setFilterType(val as 'recent' | 'saved' | 'templates')}
-                data={[
-                    { label: 'Templates', value: 'templates' },
-                    { label: 'Recent', value: 'recent' },
-                    { label: 'Saved', value: 'saved' }
-                ]}
-            />
-
-            {allTags.length > 0 && (
-                <MultiSelect 
-                    placeholder="Filter by tags" 
-                    data={allTags}
-                    value={selectedTags}
-                    onChange={setSelectedTags}
-                    searchable
-                    clearable
+                <TextInput
+                    placeholder="Search..."
+                    leftSection={<IconSearch size={13} />}
+                    value={search}
                     size="xs"
-                    leftSection={<IconFilter size={14} />}
+                    radius="sm"
+                    onChange={(e) => setSearch(e.currentTarget.value)}
+                    rightSection={
+                        search && (
+                            <ActionIcon size="xs" variant="transparent" onClick={() => setSearch('')}>
+                                <IconX size={11} />
+                            </ActionIcon>
+                        )
+                    }
+                    mb="xs"
                 />
+
+                <SegmentedControl
+                    fullWidth
+                    size="xs"
+                    radius="sm"
+                    value={filterType}
+                    onChange={(val) => setFilterType(val as 'recent' | 'saved' | 'templates')}
+                    data={[
+                        { label: 'Recent', value: 'recent' },
+                        { label: 'Saved', value: 'saved' },
+                        { label: 'Templates', value: 'templates' },
+                    ]}
+                />
+            </Box>
+
+            {/* Tag filter */}
+            {allTags.length > 0 && (
+                <Box px="sm" pt="xs" style={{ flexShrink: 0 }}>
+                    <MultiSelect
+                        placeholder="Filter by tags"
+                        data={allTags}
+                        value={selectedTags}
+                        onChange={setSelectedTags}
+                        searchable
+                        clearable
+                        size="xs"
+                        radius="sm"
+                        leftSection={<IconFilter size={13} />}
+                    />
+                </Box>
             )}
 
-            <Divider />
-
-            <ScrollArea flex={1} type="auto" offsetScrollbars>
+            <ScrollArea flex={1} type="auto" offsetScrollbars px="sm" pt="xs" pb="sm">
                 {(isLoading || (filterType === 'recent' && isLoadingRecent)) ? (
-                    <Group justify="center" pt="xl"><Loader size="sm" /></Group>
+                    <Center pt="xl"><Loader size="sm" /></Center>
+                ) : filteredWorkouts.length === 0 ? (
+                    <Center pt="xl">
+                        <Stack align="center" gap="xs">
+                            <ThemeIcon size="xl" variant="light" color="gray" radius="xl">
+                                {filterType === 'recent' ? <IconClock size={20} /> : filterType === 'saved' ? <IconBookmark size={20} /> : <IconTemplate size={20} />}
+                            </ThemeIcon>
+                            <Text c="dimmed" size="xs" ta="center">
+                                {filterType === 'recent' ? 'No recent workouts' : filterType === 'saved' ? 'No saved workouts' : 'No templates found'}
+                            </Text>
+                        </Stack>
+                    </Center>
                 ) : (
                     <Stack gap="xs">
                         {filteredWorkouts.map(workout => (
-                            <WorkoutLibraryItem 
-                                key={workout.id} 
+                            <WorkoutLibraryItem
+                                key={workout.id}
                                 workout={workout}
                                 isTemplate={isBuiltInTemplate(workout)}
                                 onDelete={handleDelete}
@@ -202,11 +238,6 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
                                 onSelect={onSelect ? () => onSelect(workout) : undefined}
                             />
                         ))}
-                        {filteredWorkouts.length === 0 && (
-                            <Text c="dimmed" size="sm" ta="center" pt="xl">
-                                No workouts found.
-                            </Text>
-                        )}
                     </Stack>
                 )}
             </ScrollArea>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Text, Badge, Group, ActionIcon, Stack, Tooltip, UnstyledButton, Box } from '@mantine/core';
+import { Card, Text, Badge, Group, ActionIcon, Stack, Box, useComputedColorScheme } from '@mantine/core';
 import { IconStar, IconStarFilled, IconGripVertical, IconTrash, IconEdit } from '@tabler/icons-react';
 import { SavedWorkout } from '../../types/workout';
 import { WorkoutPreviewGraph } from './WorkoutPreviewGraph';
@@ -16,83 +16,83 @@ interface WorkoutLibraryItemProps {
 }
 
 export const WorkoutLibraryItem = ({ workout, isTemplate, onToggleFavorite, onDelete, onEdit, onDragStart, onDragEnd, onSelect }: WorkoutLibraryItemProps) => {
+    const isDark = useComputedColorScheme('light') === 'dark';
+
     const handleDragStart = (e: React.DragEvent) => {
-        // Set drag data for HTML5 DnD
         e.dataTransfer.setData('application/json', JSON.stringify(workout));
         e.dataTransfer.effectAllowed = 'copy';
         onDragStart(e, workout);
     };
 
     return (
-        <Card 
-            withBorder 
-            padding="sm" 
-            radius="md" 
-            draggable={!onSelect} // Disable drag if in select mode? Or keep both? Keeping drag might be confusing in modal. Let's start with drag enabled only if no onSelect? actually keep both.
-            onDragStart={handleDragStart} 
+        <Card
+            withBorder
+            padding="xs"
+            radius="sm"
+            draggable
+            onDragStart={handleDragStart}
             onDragEnd={onDragEnd}
             onClick={() => onSelect?.(workout)}
-            style={{ 
-                cursor: onSelect ? 'pointer' : 'grab', 
-                marginBottom: '8px',
-                borderColor: onSelect ? 'var(--mantine-color-blue-filled)' : undefined // Highlight if selectable? Maybe just regular border.
+            style={{
+                cursor: onSelect ? 'pointer' : 'grab',
+                userSelect: 'none',
+                background: isDark ? 'var(--mantine-color-dark-6)' : 'white',
+                borderColor: isDark ? 'var(--mantine-color-dark-4)' : 'var(--mantine-color-gray-2)',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
+            }}
+            styles={{
+                root: {
+                    '&:hover': {
+                        borderColor: 'var(--mantine-color-blue-5)',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+                    }
+                }
             }}
         >
-            <Group justify="space-between" align="start" wrap="nowrap">
-                <Group gap="xs" style={{ flex: 1, minWidth: 0 }}>
-                    {!onSelect && <IconGripVertical size={16} style={{ color: 'var(--mantine-color-gray-5)', flexShrink: 0 }} />}
-                    <Stack gap={2} style={{ minWidth: 0 }}>
-                        <Text fw={500} size="sm" truncate>{workout.title}</Text>
-                        {workout.description && (
-                            <Text size="xs" c="dimmed" lineClamp={2} title={workout.description}>
-                                {workout.description}
-                            </Text>
+            <Group gap="xs" wrap="nowrap" align="flex-start">
+                {!onSelect && (
+                    <Box style={{ paddingTop: 2, flexShrink: 0 }}>
+                        <IconGripVertical size={14} style={{ color: 'var(--mantine-color-gray-5)' }} />
+                    </Box>
+                )}
+                <Stack gap={3} style={{ flex: 1, minWidth: 0 }}>
+                    <Group justify="space-between" wrap="nowrap" align="flex-start">
+                        <Text fw={600} size="xs" truncate style={{ flex: 1 }}>{workout.title}</Text>
+                        {!isTemplate && (
+                            <Group gap={2} style={{ flexShrink: 0 }}>
+                                <ActionIcon
+                                    variant="subtle"
+                                    color={workout.is_favorite ? 'yellow' : 'gray'}
+                                    size="xs"
+                                    onClick={(e) => onToggleFavorite(e, workout.id, !workout.is_favorite)}
+                                >
+                                    {workout.is_favorite ? <IconStarFilled size={12} /> : <IconStar size={12} />}
+                                </ActionIcon>
+                                <ActionIcon variant="subtle" size="xs" color="blue" onClick={(e) => onEdit(e, workout)}>
+                                    <IconEdit size={12} />
+                                </ActionIcon>
+                                <ActionIcon variant="subtle" size="xs" color="red" onClick={(e) => onDelete(e, workout.id)}>
+                                    <IconTrash size={12} />
+                                </ActionIcon>
+                            </Group>
                         )}
-                        
-                        {/* Visual Structure Preview */}
-                        <Box mt={4} mb={4}>
-                            <WorkoutPreviewGraph structure={workout.structure} sportType={workout.sport_type} height={24} />
-                        </Box>
+                    </Group>
 
-                        <Group gap={4} mt={4}>
-                            <Badge variant="light" size="xs" color="blue">
-                                {workout.sport_type}
-                            </Badge>
-                            {isTemplate && (
-                                <Badge variant="filled" size="xs" color="teal">
-                                    Template
-                                </Badge>
-                            )}
-                            {workout.tags?.map(tag => (
-                                <Badge key={tag} variant="outline" size="xs" color="gray">
-                                    {tag}
-                                </Badge>
-                            ))}
-                        </Group>
-                    </Stack>
-                </Group>
-                
-                <Stack gap={4} align="center">
-                    {!isTemplate && (
-                      <>
-                        <ActionIcon 
-                            variant="subtle" 
-                            color={workout.is_favorite ? "yellow" : "gray"} 
-                            size="sm"
-                            onClick={(e) => onToggleFavorite(e, workout.id, !workout.is_favorite)}
-                        >
-                            {workout.is_favorite ? <IconStarFilled size={16} /> : <IconStar size={16} />}
-                        </ActionIcon>
-                        <Group gap={2}>
-                            <ActionIcon variant="subtle" size="xs" color="blue" onClick={(e) => onEdit(e, workout)}>
-                                <IconEdit size={14} />
-                            </ActionIcon>
-                            <ActionIcon variant="subtle" size="xs" color="red" onClick={(e) => onDelete(e, workout.id)}>
-                                <IconTrash size={14} />
-                            </ActionIcon>
-                        </Group>
-                      </>
+                    {workout.description && (
+                        <Text size="xs" c="dimmed" lineClamp={1}>{workout.description}</Text>
                     )}
+
+                    <Box my={2}>
+                        <WorkoutPreviewGraph structure={workout.structure} sportType={workout.sport_type} height={20} />
+                    </Box>
+
+                    <Group gap={4}>
+                        <Badge variant="light" size="xs" color="blue">{workout.sport_type}</Badge>
+                        {isTemplate && <Badge variant="filled" size="xs" color="teal">Template</Badge>}
+                        {workout.tags?.slice(0, 2).map(tag => (
+                            <Badge key={tag} variant="outline" size="xs" color="gray">{tag}</Badge>
+                        ))}
+                    </Group>
                 </Stack>
             </Group>
         </Card>
