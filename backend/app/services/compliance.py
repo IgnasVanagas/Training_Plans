@@ -29,6 +29,33 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _is_rest_day_workout(workout: PlannedWorkout) -> bool:
+    sport_type = str(getattr(workout, "sport_type", "") or "").strip().lower()
+    title = str(getattr(workout, "title", "") or "").strip().lower()
+    planned_intensity = str(getattr(workout, "planned_intensity", "") or "").strip().lower()
+    planned_duration = _safe_float(getattr(workout, "planned_duration", None), default=0.0)
+
+    if sport_type == "rest":
+        return True
+    if "rest day" in title:
+        return True
+    if planned_intensity == "rest" and planned_duration <= 0:
+        return True
+    return False
+
+
+def _default_compliance_status_for_unmatched_workout(
+    workout: PlannedWorkout,
+    target_date: date,
+    *,
+    today: date | None = None,
+) -> ComplianceStatusEnum:
+    reference_today = today or date.today()
+    if target_date < reference_today:
+        return ComplianceStatusEnum.completed_green if _is_rest_day_workout(workout) else ComplianceStatusEnum.missed
+    return ComplianceStatusEnum.planned
+
+
 def _extract_stream_payload(activity: Activity) -> dict[str, Any]:
     return activity.streams if isinstance(activity.streams, dict) else {}
 
@@ -420,11 +447,7 @@ async def match_and_score(db: AsyncSession, user_id: int, target_date: date):
     # Reset all existing matches for this day first to ensure we find the GLOBAL BEST configuration
     for workout in planned_workouts:
         workout.matched_activity_id = None
-        # Default fallback status
-        if target_date < date.today():
-             workout.compliance_status = ComplianceStatusEnum.missed
-        else:
-             workout.compliance_status = ComplianceStatusEnum.planned
+        workout.compliance_status = _default_compliance_status_for_unmatched_workout(workout, target_date)
 
     unmatched_pairs: list[tuple[float, PlannedWorkout, Activity]] = []
     for workout in planned_workouts:

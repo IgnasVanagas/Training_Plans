@@ -57,6 +57,16 @@ const toLocalDateKey = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+const isRestDayCalendarEvent = (row: Pick<DashboardCalendarEvent, "title" | "sport_type" | "planned_duration">): boolean => {
+  const title = (row.title || "").trim().toLowerCase();
+  const sportType = (row.sport_type || "").trim().toLowerCase();
+  const plannedDuration = typeof row.planned_duration === "number" ? row.planned_duration : null;
+
+  return sportType === "rest"
+    || title.includes("rest day")
+    || (plannedDuration !== null && plannedDuration <= 0 && sportType === "other" && title.includes("rest"));
+};
+
 const VALID_TABS = new Set(["dashboard", "activities", "plan", "dual-calendar", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health", "comparison"]);
 
 const Dashboard = () => {
@@ -678,6 +688,7 @@ const Dashboard = () => {
     const rows = dashboardCalendarQuery.data || [];
     return rows
       .filter((row) => {
+        if (row.is_planned && isRestDayCalendarEvent(row)) return false;
         const isFlagged =
           row.compliance_status === "missed" || row.compliance_status === "completed_red" || row.compliance_status === "completed_yellow";
         const isOverduePlanned = Boolean(row.is_planned && row.date < todayIso);
