@@ -112,20 +112,6 @@ const addToTotals = (totals: ActivityTotals, activity: ActivityListItem) => {
   totals.totalLoad += activity.total_load_impact || 0;
 };
 
-const getCommonOrganizationId = (coach: User, athlete: User): number | null => {
-  const coachOrgIds = new Set(
-    (coach.organization_memberships || [])
-      .filter((membership) => membership.status === "active" && membership.organization?.id)
-      .map((membership) => membership.organization!.id),
-  );
-
-  const sharedOrg = (athlete.organization_memberships || []).find(
-    (membership) => membership.status === "active" && membership.organization?.id && coachOrgIds.has(membership.organization.id),
-  );
-
-  return sharedOrg?.organization?.id ?? null;
-};
-
 const DashboardCoachAthletesPage = ({
   me,
   athletes,
@@ -258,7 +244,6 @@ const DashboardCoachAthletesPage = ({
                   {filteredAthletes.map((athlete) => {
                     const isSelected = selectedAthlete?.id === athlete.id;
                     const summary = activitySummaryByAthlete.get(athlete.id);
-                    const sharedOrganizationId = getCommonOrganizationId(me, athlete);
                     return (
                       <Table.Tr
                         key={athlete.id}
@@ -300,14 +285,12 @@ const DashboardCoachAthletesPage = ({
                                 <IconCalendar size={16} />
                               </ActionIcon>
                             </Tooltip>
-                            <Tooltip label={sharedOrganizationId ? (t("Messages") || "Messages") : (t("No shared organization chat available") || "No shared organization chat available")}>
+                            <Tooltip label={t("Messages") || "Messages"}>
                               <ActionIcon
                                 variant="subtle"
-                                disabled={!sharedOrganizationId}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  if (!sharedOrganizationId) return;
-                                  onOpenAthleteMessages(String(athlete.id), sharedOrganizationId);
+                                  onOpenAthleteMessages(String(athlete.id), null);
                                 }}
                               >
                                 <IconMessageCircle size={16} />
@@ -350,8 +333,7 @@ const DashboardCoachAthletesPage = ({
                   <Button
                     variant="light"
                     leftSection={<IconMessageCircle size={16} />}
-                    disabled={!getCommonOrganizationId(me, selectedAthlete)}
-                    onClick={() => onOpenAthleteMessages(String(selectedAthlete.id), getCommonOrganizationId(me, selectedAthlete))}
+                    onClick={() => onOpenAthleteMessages(String(selectedAthlete.id), null)}
                   >
                     {t("Messages") || "Messages"}
                   </Button>

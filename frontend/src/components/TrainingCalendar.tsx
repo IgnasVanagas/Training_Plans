@@ -676,6 +676,7 @@ export const TrainingCalendar = ({
             }
             void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['recent-coach-workouts'] });
         },
         onError: (error: any, _vars, context) => {
             if (context?.snapshots) {
@@ -864,25 +865,26 @@ export const TrainingCalendar = ({
         }
     }, [updateMutation, canEditWorkouts]);
 
-    const onDropFromOutside = useCallback(({ start }: { start: string | Date }) => {
+    const onDropFromOutside = useCallback(({ start, workoutFromDrop }: { start: string | Date; workoutFromDrop?: SavedWorkout | null }) => {
         if (!canEditWorkouts) return;
         const startDate = typeof start === 'string' ? new Date(start) : start;
-        if (draggedWorkout) {
+        const sourceWorkout = workoutFromDrop || draggedWorkout;
+        if (sourceWorkout) {
             const dateStr = format(startDate, 'yyyy-MM-dd');
             const newEvent: CalendarEvent = {
-                title: draggedWorkout.title,
+                title: sourceWorkout.title,
                 date: dateStr,
-                sport_type: draggedWorkout.sport_type,
-                structure: draggedWorkout.structure,
-                description: draggedWorkout.description,
+                sport_type: sourceWorkout.sport_type,
+                structure: sourceWorkout.structure,
+                description: sourceWorkout.description,
                 is_planned: true,
                 user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
-                planned_duration: estimatePlannedDurationMinutesFromStructure(draggedWorkout.structure as any[]) ?? 60,
+                planned_duration: estimatePlannedDurationMinutesFromStructure(sourceWorkout.structure as any[]) ?? 60,
                 recurrence: null,
             };
             createMutation.mutate(newEvent);
 
-            if (onWorkoutDrop) onWorkoutDrop(draggedWorkout, startDate);
+            if (onWorkoutDrop) onWorkoutDrop(sourceWorkout, startDate);
         }
     }, [draggedWorkout, onWorkoutDrop, canEditWorkouts, athleteId, athletes, createMutation]);
 

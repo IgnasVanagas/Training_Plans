@@ -24,7 +24,7 @@ export type ContinuousCalendarGridProps = {
     onSelectEvent: (event: any) => void;
     onSelectSlot: (args: { start: Date; slots: Date[] }) => void;
     onEventDrop: (args: { event: any; start: Date }) => void;
-    onDropFromOutside: (args: { start: Date }) => void;
+    onDropFromOutside: (args: { start: Date; workoutFromDrop?: CalendarEvent | any }) => void;
     /** Called when an event from another calendar is dropped here (cross-calendar copy) */
     onDropCalendarEvent?: (resource: CalendarEvent, date: Date) => void;
     canEditWorkouts: boolean;
@@ -386,8 +386,18 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                     onDropCalendarEvent(resource, date);
                 } catch { /* malformed data — ignore */ }
             } else {
-                // Drop from outside (library)
-                onDropFromOutside({ start: date });
+                // Drop from outside (library) — prefer explicit payload from dataTransfer
+                const libraryWorkoutData = e.dataTransfer.getData('application/json');
+                if (libraryWorkoutData) {
+                    try {
+                        const workoutFromDrop = JSON.parse(libraryWorkoutData);
+                        onDropFromOutside({ start: date, workoutFromDrop });
+                    } catch {
+                        onDropFromOutside({ start: date });
+                    }
+                } else {
+                    onDropFromOutside({ start: date });
+                }
             }
         }
     }, [draggingEventId, events, onEventDrop, onDropFromOutside, onDropCalendarEvent]);

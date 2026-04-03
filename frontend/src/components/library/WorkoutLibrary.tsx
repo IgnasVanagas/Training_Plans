@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Stack, TextInput, MultiSelect, Button, Loader, Group, ActionIcon, ScrollArea, SegmentedControl, Text, Divider, Box } from '@mantine/core';
+import { Stack, TextInput, MultiSelect, Button, Loader, Group, ActionIcon, ScrollArea, SegmentedControl, Text, Divider, Box, useComputedColorScheme } from '@mantine/core';
 import { IconSearch, IconFilter, IconPlus, IconX } from '@tabler/icons-react';
 import { getWorkouts, deleteWorkout, updateWorkout, getRecentCoachWorkouts, RecentCoachWorkout } from '../../api/workouts';
 import { SavedWorkout } from '../../types/workout';
@@ -17,9 +17,10 @@ interface WorkoutLibraryProps {
 export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibraryProps) => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const isDark = useComputedColorScheme('light') === 'dark';
     const [search, setSearch] = useState('');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
-    const [filterType, setFilterType] = useState<'all' | 'recent' | 'saved' | 'templates'>('all');
+    const [filterType, setFilterType] = useState<'recent' | 'saved' | 'templates'>('recent');
 
     const { data: workouts, isLoading } = useQuery({
         queryKey: ['workouts'],
@@ -128,7 +129,13 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
     };
 
     return (
-        <Stack h="100%" gap="sm" p="sm" bg="var(--mantine-color-body)">
+        <Stack
+            h="100%"
+            gap="sm"
+            p="sm"
+            bg={isDark ? 'rgba(8, 18, 38, 0.92)' : 'rgba(248, 250, 252, 0.92)'}
+            style={{ borderRadius: 10, border: isDark ? '1px solid rgba(148,163,184,0.16)' : '1px solid rgba(15,23,42,0.08)' }}
+        >
             <Group justify="space-between">
                 <Text fw={700} size="lg">Library</Text>
                 <Button size="xs" leftSection={<IconPlus size={14} />} onClick={handleCreate} variant="light">
@@ -154,9 +161,8 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
                 fullWidth 
                 size="xs"
                 value={filterType}
-                onChange={(val) => setFilterType(val as 'all' | 'recent' | 'saved' | 'templates')}
+                onChange={(val) => setFilterType(val as 'recent' | 'saved' | 'templates')}
                 data={[
-                    { label: 'All', value: 'all' },
                     { label: 'Templates', value: 'templates' },
                     { label: 'Recent', value: 'recent' },
                     { label: 'Saved', value: 'saved' }
