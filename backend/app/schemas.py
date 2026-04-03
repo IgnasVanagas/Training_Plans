@@ -356,6 +356,44 @@ class AthleteOut(BaseModel):
         from_attributes = True
 
 
+class CoachOperationsAthleteOut(BaseModel):
+    athlete_id: int
+    athlete_name: str
+    athlete_email: EmailStr
+    main_sport: Optional[str] = None
+    last_activity_date: Optional[dt_date] = None
+    days_since_last_activity: Optional[int] = None
+    last_7d_load: float
+    previous_28d_weekly_avg_load: float
+    acwr: float
+    planned_7d_minutes: float
+    completed_7d_minutes: float
+    overdue_planned_count: int
+    missed_compliance_count: int
+    risk_score: int
+    risk_level: Literal["low", "moderate", "high"]
+    at_risk: bool
+    exception_reasons: list[str] = Field(default_factory=list)
+    workload_delta_minutes: float
+    workload_recommendation: Optional[str] = None
+
+
+class CoachOperationsWorkloadBalanceOut(BaseModel):
+    target_weekly_minutes: float
+    avg_weekly_minutes: float
+    overloaded_athletes: int
+    underloaded_athletes: int
+    balanced_athletes: int
+
+
+class CoachOperationsOut(BaseModel):
+    generated_at: datetime
+    athletes: list[CoachOperationsAthleteOut]
+    exception_queue: list[CoachOperationsAthleteOut]
+    at_risk_athletes: list[CoachOperationsAthleteOut]
+    workload_balance: CoachOperationsWorkloadBalanceOut
+
+
 class AthletePermissionSettings(BaseModel):
     allow_delete_activities: bool = True
     allow_delete_workouts: bool = True

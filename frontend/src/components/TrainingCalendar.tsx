@@ -188,22 +188,24 @@ const buildDateRangeTitle = (start: Date, end: Date) => {
     return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
 };
 
-export const TrainingCalendar = ({ 
-    athleteId, 
-    allAthletes, 
-    athletes, 
+export const TrainingCalendar = ({
+    athleteId,
+    allAthletes,
+    athletes,
     initialViewDate,
     draggedWorkout,
     onWorkoutDrop,
     actionButtons,
-}: { 
-    athleteId?: number | null, 
-    allAthletes?: boolean, 
-    athletes?: any[], 
+    compact,
+}: {
+    athleteId?: number | null,
+    allAthletes?: boolean,
+    athletes?: any[],
     initialViewDate?: string | null,
     draggedWorkout?: SavedWorkout | null,
     onWorkoutDrop?: (workout: SavedWorkout, date: Date) => void,
     actionButtons?: React.ReactNode,
+    compact?: boolean,
 }) => {
     const estimatePlannedDurationMinutesFromStructure = (nodes: any[]): number | undefined => {
         if (!Array.isArray(nodes) || nodes.length === 0) return undefined;
@@ -1658,7 +1660,7 @@ export const TrainingCalendar = ({
                         )}
                     </Box>
                 ) : (
-                    !isMobileViewport ? (
+                    !isMobileViewport && !compact ? (
                         <TrainingCalendarZoneSummaryPanel
                             monthlyOpenSignal={monthlyOpenSignal}
                             zoneSummary={zoneSummary}

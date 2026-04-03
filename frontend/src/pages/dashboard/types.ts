@@ -228,3 +228,41 @@ export type OrganizationDirectMessage = {
   attachment_name?: string | null;
   created_at: string;
 };
+
+export type CoachOperationsAthlete = {
+  athlete_id: number;
+  athlete_name: string;
+  athlete_email: string;
+  main_sport?: string | null;
+  last_activity_date?: string | null;
+  days_since_last_activity?: number | null;
+  last_7d_load: number;
+  previous_28d_weekly_avg_load: number;
+  acwr: number;
+  planned_7d_minutes: number;
+  completed_7d_minutes: number;
+  overdue_planned_count: number;
+  missed_compliance_count: number;
+  risk_score: number;
+  risk_level: "low" | "moderate" | "high";
+  at_risk: boolean;
+  exception_reasons: string[];
+  workload_delta_minutes: number;
+  workload_recommendation?: string | null;
+};
+
+export type CoachOperationsWorkloadBalance = {
+  target_weekly_minutes: number;
+  avg_weekly_minutes: number;
+  overloaded_athletes: number;
+  underloaded_athletes: number;
+  balanced_athletes: number;
+};
+
+export type CoachOperationsPayload = {
+  generated_at: string;
+  athletes: CoachOperationsAthlete[];
+  exception_queue: CoachOperationsAthlete[];
+  at_risk_athletes: CoachOperationsAthlete[];
+  workload_balance: CoachOperationsWorkloadBalance;
+};

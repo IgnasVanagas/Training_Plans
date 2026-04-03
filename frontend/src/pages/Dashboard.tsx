@@ -5,8 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { endOfWeek, endOfMonth, format, startOfWeek, startOfMonth } from "date-fns";
-import { IconBooks, IconX, IconUpload, IconColumns, IconCalendarEvent, IconChartBar } from "@tabler/icons-react";
+import DualCalendarView from "../components/DualCalendarView";
 import api from "../api/client";
+import { getCoachOperations } from "../api/coachOperations";
 import { getWellnessSummary, listIntegrationProviders, logManualWellness } from "../api/integrations";
 import { ActivitiesView } from "../components/ActivitiesView";
 import { TrainingCalendar } from "../components/TrainingCalendar";
@@ -42,6 +43,7 @@ import {
   ProfileMetricSnapshot,
   TrainingStatus,
   User,
+  CoachOperationsPayload,
 } from "./dashboard/types";
 import { extractApiErrorMessage } from "./dashboard/utils";
 import { useIntegrationSync } from "./dashboard/useIntegrationSync";
@@ -53,7 +55,7 @@ const toLocalDateKey = (value: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const VALID_TABS = new Set(["dashboard", "activities", "plan", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health", "comparison"]);
+const VALID_TABS = new Set(["dashboard", "activities", "plan", "dual-calendar", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health", "comparison"]);
 
 const Dashboard = () => {
   const location = useLocation();
@@ -70,7 +72,7 @@ const Dashboard = () => {
   const [inviteEmail, setInviteEmail] = useState("");
 
   // Resolve initial tab: navigation state > URL ?tab= > default "dashboard"
-  type DashboardTab = "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health" | "comparison";
+  type DashboardTab = "dashboard" | "activities" | "plan" | "dual-calendar" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health" | "comparison";
   const resolvedInitialTab: DashboardTab = (() => {
     if (navigationState.activeTab && VALID_TABS.has(navigationState.activeTab)) return navigationState.activeTab;
     const urlTab = searchParams.get("tab");
@@ -485,6 +487,17 @@ const Dashboard = () => {
     },
   });
 
+  const coachOperationsQuery = useQuery({
+    queryKey: ["coach-operations", selectedAthleteId],
+    enabled: Boolean(shouldLoadCoachFeedback),
+    staleTime: 1000 * 60 * 2,
+    queryFn: async (): Promise<CoachOperationsPayload> => {
+      return getCoachOperations({
+        athleteId: selectedAthleteId ? Number(selectedAthleteId) : null,
+      });
+    },
+  });
+
   const notificationsFeedQuery = useQuery({
     queryKey: ["notifications-feed", meQuery.data?.id],
     enabled: Boolean(meQuery.data?.id) && shouldLoadNotificationsData,
@@ -805,6 +818,11 @@ const Dashboard = () => {
                 )}
              </Flex>
           </Flex>
+        ) : activeTab === "dual-calendar" ? (
+          <DualCalendarView
+            me={me}
+            athletes={me.role === "coach" ? athletesQuery.data || [] : []}
+          />
         ) : activeTab === "races" ? (
           <DashboardRacesRecordsTab me={me} athleteId={athleteIdNum} />
         ) : activeTab === "insights" ? (
@@ -907,6 +925,8 @@ const Dashboard = () => {
             athletes={athletesQuery.data || []}
             complianceAlerts={complianceAlerts}
             coachFeedbackRows={coachFeedbackRows}
+            coachOperations={coachOperationsQuery.data || null}
+            coachOperationsLoading={coachOperationsQuery.isFetching}
             inviteUrl={inviteUrl}
             inviteEmail={inviteEmail}
             onInviteEmailChange={setInviteEmail}

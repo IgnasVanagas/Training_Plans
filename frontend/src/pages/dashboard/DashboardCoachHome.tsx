@@ -3,9 +3,12 @@ import {
   Avatar,
   Badge,
   Button,
+  Checkbox,
   CopyButton,
+  Divider,
   Group,
   Paper,
+  Select,
   SimpleGrid,
   Stack,
   Table,
@@ -28,10 +31,11 @@ import {
   IconUsers,
   IconAt,
 } from "@tabler/icons-react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMediaQuery } from "@mantine/hooks";
 import { CoachComparisonPanel } from "../../components/CoachComparisonPanel";
-import { ActivityFeedRow, DashboardCalendarEvent, User } from "./types";
+import { ActivityFeedRow, CoachOperationsPayload, DashboardCalendarEvent, User } from "./types";
 import { formatDuration } from "./utils";
 import { useI18n } from "../../i18n/I18nProvider";
 
@@ -40,6 +44,8 @@ type Props = {
   athletes: User[];
   complianceAlerts: DashboardCalendarEvent[];
   coachFeedbackRows: ActivityFeedRow[];
+  coachOperations: CoachOperationsPayload | null;
+  coachOperationsLoading: boolean;
   inviteUrl: string | null;
   inviteEmail: string;
   onInviteEmailChange: (value: string) => void;
@@ -57,6 +63,8 @@ const DashboardCoachHome = ({
   athletes,
   complianceAlerts,
   coachFeedbackRows,
+  coachOperations,
+  coachOperationsLoading,
   inviteUrl,
   inviteEmail,
   onInviteEmailChange,
@@ -72,6 +80,55 @@ const DashboardCoachHome = ({
   const isDark = useComputedColorScheme("light") === "dark";
   const isMobile = useMediaQuery("(max-width: 48em)");
   const { t } = useI18n();
+  const [operationsSport, setOperationsSport] = useState<string | null>(null);
+  const [operationsRisk, setOperationsRisk] = useState<string | null>(null);
+  const [operationsSearch, setOperationsSearch] = useState("");
+  const [exceptionsOnly, setExceptionsOnly] = useState(false);
+  const [atRiskOnly, setAtRiskOnly] = useState(false);
+
+  const operationsRows = useMemo(() => {
+    const rows = coachOperations?.athletes || [];
+    return rows.filter((row) => {
+      if (operationsSport && (row.main_sport || "").toLowerCase() !== operationsSport.toLowerCase()) return false;
+      if (operationsRisk && row.risk_level !== operationsRisk) return false;
+      if (exceptionsOnly && row.exception_reasons.length === 0) return false;
+      if (atRiskOnly && !row.at_risk) return false;
+      if (operationsSearch.trim()) {
+        const needle = operationsSearch.trim().toLowerCase();
+        const haystack = `${row.athlete_name} ${row.athlete_email}`.toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      return true;
+    });
+  }, [atRiskOnly, coachOperations?.athletes, exceptionsOnly, operationsRisk, operationsSearch, operationsSport]);
+
+  const openAthletePlan = (athleteId: number) => {
+    navigate("/dashboard", {
+      state: {
+        activeTab: "plan",
+        selectedAthleteId: String(athleteId),
+      },
+    });
+  };
+
+  const describeExceptionReason = (reasonCode: string): string => {
+    const labels: Record<string, string> = {
+      no_recent_activity_35d: t("No completed activities in the last 35 days") || "No completed activities in the last 35 days",
+      activity_gap_8d: t("Long activity gap (8+ days)") || "Long activity gap (8+ days)",
+      activity_gap_5d: t("Recent activity gap (5+ days)") || "Recent activity gap (5+ days)",
+      overdue_planned_multiple: t("Multiple overdue planned workouts") || "Multiple overdue planned workouts",
+      overdue_planned: t("Overdue planned workouts") || "Overdue planned workouts",
+      missed_compliance_repeated: t("Repeated missed/critical compliance outcomes") || "Repeated missed/critical compliance outcomes",
+      missed_compliance_recent: t("Recent missed or critical compliance") || "Recent missed or critical compliance",
+      no_planned_next_7d: t("No coach-planned load in next 7 days") || "No coach-planned load in next 7 days",
+      acwr_low_detraining: t("Acute load well below baseline (possible detraining)") || "Acute load well below baseline (possible detraining)",
+      acwr_high_spike: t("Acute load spike above baseline") || "Acute load spike above baseline",
+      workload_delta_high: t("Workload allocation is far from team median") || "Workload allocation is far from team median",
+      missing_threshold_metrics: t("Missing threshold metrics (FTP/LT2/Max HR)") || "Missing threshold metrics (FTP/LT2/Max HR)",
+    };
+
+    return labels[reasonCode] || reasonCode;
+  };
 
   const openComplianceAlert = (row: DashboardCalendarEvent) => {
     const activityId = row.is_planned ? row.matched_activity_id : row.id;
@@ -189,6 +246,164 @@ const DashboardCoachHome = ({
           )}
         </Paper>
       </SimpleGrid>
+
+      <Paper withBorder p="md" radius="md" shadow="sm">
+        <Group justify="space-between" mb="sm">
+          <div>
+            <Title order={4}>{t("Multi-athlete operations") || "Multi-athlete operations"}</Title>
+            <Text size="sm" c="dimmed">{t("Filter cohorts, balance weekly load, and clear risk queues quickly.") || "Filter cohorts, balance weekly load, and clear risk queues quickly."}</Text>
+          </div>
+          {coachOperationsLoading ? <Badge variant="light">{t("Refreshing") || "Refreshing"}</Badge> : null}
+        </Group>
+
+        <SimpleGrid cols={{ base: 1, md: 3 }} mb="md">
+          <Paper withBorder p="sm" radius="sm">
+            <Text size="xs" c="dimmed">{t("Target weekly minutes") || "Target weekly minutes"}</Text>
+            <Text fw={700} size="xl">{Math.round(coachOperations?.workload_balance?.target_weekly_minutes || 0)}</Text>
+          </Paper>
+          <Paper withBorder p="sm" radius="sm">
+            <Text size="xs" c="dimmed">{t("At-risk athletes") || "At-risk athletes"}</Text>
+            <Text fw={700} size="xl">{coachOperations?.at_risk_athletes?.length || 0}</Text>
+          </Paper>
+          <Paper withBorder p="sm" radius="sm">
+            <Text size="xs" c="dimmed">{t("Exception queue") || "Exception queue"}</Text>
+            <Text fw={700} size="xl">{coachOperations?.exception_queue?.length || 0}</Text>
+          </Paper>
+        </SimpleGrid>
+
+        <SimpleGrid cols={{ base: 1, lg: 5 }} mb="sm">
+          <TextInput
+            label={t("Search athlete") || "Search athlete"}
+            placeholder={t("Name or email") || "Name or email"}
+            value={operationsSearch}
+            onChange={(event) => setOperationsSearch(event.currentTarget.value)}
+          />
+          <Select
+            label={t("Sport") || "Sport"}
+            data={[
+              { value: "", label: t("All") || "All" },
+              { value: "running", label: t("Running") || "Running" },
+              { value: "cycling", label: t("Cycling") || "Cycling" },
+              { value: "triathlon", label: t("Triathlon") || "Triathlon" },
+            ]}
+            value={operationsSport || ""}
+            onChange={(value) => setOperationsSport(value || null)}
+          />
+          <Select
+            label={t("Risk level") || "Risk level"}
+            data={[
+              { value: "", label: t("All") || "All" },
+              { value: "high", label: t("High") || "High" },
+              { value: "moderate", label: t("Moderate") || "Moderate" },
+              { value: "low", label: t("Low") || "Low" },
+            ]}
+            value={operationsRisk || ""}
+            onChange={(value) => setOperationsRisk(value || null)}
+          />
+          <Checkbox
+            mt={26}
+            label={t("Exceptions only") || "Exceptions only"}
+            checked={exceptionsOnly}
+            onChange={(event) => setExceptionsOnly(event.currentTarget.checked)}
+          />
+          <Checkbox
+            mt={26}
+            label={t("At-risk only") || "At-risk only"}
+            checked={atRiskOnly}
+            onChange={(event) => setAtRiskOnly(event.currentTarget.checked)}
+          />
+        </SimpleGrid>
+
+        <SimpleGrid cols={{ base: 1, lg: 2 }}>
+          <Paper withBorder p="sm" radius="sm">
+            <Group justify="space-between" mb="xs">
+              <Text fw={600}>{t("Exception queue") || "Exception queue"}</Text>
+              <Badge color="red" variant="light">{operationsRows.filter((row) => row.exception_reasons.length > 0).length}</Badge>
+            </Group>
+            <Stack gap={8}>
+              {operationsRows.filter((row) => row.exception_reasons.length > 0).slice(0, 8).map((row) => (
+                <Paper key={row.athlete_id} withBorder p="xs" radius="sm">
+                  <Group justify="space-between" align="flex-start" wrap="nowrap">
+                    <Stack gap={2}>
+                      <Text size="sm" fw={600}>{row.athlete_name}</Text>
+                      <Text size="xs" c="dimmed">{describeExceptionReason(row.exception_reasons[0])}</Text>
+                    </Stack>
+                    <Group gap={6}>
+                      <Badge color={row.risk_level === "high" ? "red" : row.risk_level === "moderate" ? "yellow" : "gray"}>
+                        {row.risk_level}
+                      </Badge>
+                      <Button size="compact-xs" variant="light" onClick={() => openAthletePlan(row.athlete_id)}>
+                        {t("Open plan") || "Open plan"}
+                      </Button>
+                    </Group>
+                  </Group>
+                </Paper>
+              ))}
+              {operationsRows.filter((row) => row.exception_reasons.length > 0).length === 0 ? (
+                <Text size="sm" c="dimmed">{t("No current exceptions in this filter set.") || "No current exceptions in this filter set."}</Text>
+              ) : null}
+            </Stack>
+          </Paper>
+
+          <Paper withBorder p="sm" radius="sm">
+            <Group justify="space-between" mb="xs">
+              <Text fw={600}>{t("At-risk athlete view") || "At-risk athlete view"}</Text>
+              <Badge color="orange" variant="light">{operationsRows.filter((row) => row.at_risk).length}</Badge>
+            </Group>
+            <Stack gap={8}>
+              {operationsRows.filter((row) => row.at_risk).slice(0, 8).map((row) => (
+                <Group key={row.athlete_id} justify="space-between" wrap="nowrap">
+                  <Stack gap={0}>
+                    <Text size="sm" fw={600}>{row.athlete_name}</Text>
+                    <Text size="xs" c="dimmed">
+                      {(t("ACWR") || "ACWR") + ` ${row.acwr.toFixed(2)} • ` + (t("Overdue") || "Overdue") + ` ${row.overdue_planned_count}`}
+                    </Text>
+                  </Stack>
+                  <Badge color={row.risk_level === "high" ? "red" : "yellow"}>{row.risk_score}</Badge>
+                </Group>
+              ))}
+              {operationsRows.filter((row) => row.at_risk).length === 0 ? (
+                <Text size="sm" c="dimmed">{t("No at-risk athletes under current filters.") || "No at-risk athletes under current filters."}</Text>
+              ) : null}
+            </Stack>
+          </Paper>
+        </SimpleGrid>
+
+        <Divider my="md" />
+        <Text fw={600} mb="xs">{t("Workload balancing") || "Workload balancing"}</Text>
+        <ScrollArea type="auto" offsetScrollbars>
+          <Table striped highlightOnHover verticalSpacing="sm" miw={780}>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>{t("Athlete") || "Athlete"}</Table.Th>
+                <Table.Th>{t("Planned 7d (min)") || "Planned 7d (min)"}</Table.Th>
+                <Table.Th>{t("Completed 7d (min)") || "Completed 7d (min)"}</Table.Th>
+                <Table.Th>{t("Load delta") || "Load delta"}</Table.Th>
+                <Table.Th>{t("Recommendation") || "Recommendation"}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {operationsRows.map((row) => (
+                <Table.Tr key={`op-${row.athlete_id}`}>
+                  <Table.Td>
+                    <Text size="sm" fw={600}>{row.athlete_name}</Text>
+                  </Table.Td>
+                  <Table.Td>{Math.round(row.planned_7d_minutes)}</Table.Td>
+                  <Table.Td>{Math.round(row.completed_7d_minutes)}</Table.Td>
+                  <Table.Td>
+                    <Badge color={row.workload_delta_minutes > 120 ? "red" : row.workload_delta_minutes < -120 ? "blue" : "teal"} variant="light">
+                      {row.workload_delta_minutes > 0 ? "+" : ""}{Math.round(row.workload_delta_minutes)}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Text size="xs" c="dimmed">{row.workload_recommendation || (t("Balanced") || "Balanced")}</Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </ScrollArea>
+      </Paper>
 
       <Paper withBorder p="md" radius="md" shadow="sm">
         <Group justify="space-between" mb="xs">

@@ -1,6 +1,8 @@
 import os
 import uuid
 from datetime import date as dt_date, datetime, timedelta
+from collections import defaultdict
+from statistics import median
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, and_, or_
@@ -9,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import get_current_user, get_password_hash, verify_password
 from ..database import get_db
-from ..models import CoachAthleteLink, RoleEnum, User, Profile, ProfileMetricHistory, Organization, OrganizationMember, PlannedWorkout
-from ..schemas import AthleteOut, InviteLinkResponse, InviteByEmailRequest, InviteByEmailResponse, UserOut, ProfileUpdate, OrganizationOut, OrganizationUpdate, JoinOrganization, JoinOrganizationRequest, InvitationRespondRequest, OrganizationCreate, AthletePermissionOut, AthletePermissionUpdate, AthletePermissionSettings, ChangePasswordRequest, CoachSummaryOut, OrganizationDiscoverOut, OrganizationDiscoverItemOut, OrganizationCoachOut
+from ..models import CoachAthleteLink, RoleEnum, User, Profile, ProfileMetricHistory, Organization, OrganizationMember, PlannedWorkout, Activity, ComplianceStatusEnum
+from ..schemas import AthleteOut, InviteLinkResponse, InviteByEmailRequest, InviteByEmailResponse, UserOut, ProfileUpdate, OrganizationOut, OrganizationUpdate, JoinOrganization, JoinOrganizationRequest, InvitationRespondRequest, OrganizationCreate, AthletePermissionOut, AthletePermissionUpdate, AthletePermissionSettings, ChangePasswordRequest, CoachSummaryOut, OrganizationDiscoverOut, OrganizationDiscoverItemOut, OrganizationCoachOut, CoachOperationsOut, CoachOperationsAthleteOut, CoachOperationsWorkloadBalanceOut
 from ..services.permissions import get_shared_org_ids, get_athlete_permissions, set_athlete_permissions_for_shared_orgs
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -85,6 +87,99 @@ async def _annotate_athletes_with_upcoming_workout_status(
         next_workout_date = lookup.get(athlete.id)
         athlete.has_upcoming_coach_workout = next_workout_date is not None
         athlete.next_coach_workout_date = next_workout_date
+
+
+def _athlete_display_name(user: User) -> str:
+    first_name = (user.profile.first_name or "").strip() if user.profile else ""
+    last_name = (user.profile.last_name or "").strip() if user.profile else ""
+    joined = f"{first_name} {last_name}".strip()
+    return joined or user.email
+
+
+def _clamp_float(value: float, min_value: float, max_value: float) -> float:
+    return max(min_value, min(max_value, value))
+
+
+def _estimate_activity_load_points(
+    *,
+    duration_seconds: float | None,
+    average_hr: float | None,
+    max_hr: float | None,
+    average_watts: float | None,
+    ftp: float | None,
+) -> float:
+    duration_minutes = max(0.0, float(duration_seconds or 0.0) / 60.0)
+    if duration_minutes <= 0:
+        return 0.0
+
+    intensity_factor = 0.72
+    if max_hr and max_hr > 0 and average_hr and average_hr > 0:
+        intensity_factor = max(intensity_factor, _clamp_float(float(average_hr) / float(max_hr), 0.5, 1.25))
+    if ftp and ftp > 0 and average_watts and average_watts > 0:
+        intensity_factor = max(intensity_factor, _clamp_float(float(average_watts) / float(ftp), 0.5, 1.5))
+
+    return duration_minutes * intensity_factor
+
+
+def _build_risk_and_reasons(
+    *,
+    days_since_last_activity: int | None,
+    acwr: float,
+    last_7d_load: float,
+    previous_28d_weekly_avg_load: float,
+    planned_7d_minutes: float,
+    overdue_planned_count: int,
+    missed_compliance_count: int,
+    workload_delta_minutes: float,
+    has_threshold_metrics: bool,
+) -> tuple[int, list[str]]:
+    score = 0
+    reasons: list[str] = []
+
+    if days_since_last_activity is None:
+        score += 2
+        reasons.append("no_recent_activity_35d")
+    elif days_since_last_activity >= 8:
+        score += 3
+        reasons.append("activity_gap_8d")
+    elif days_since_last_activity >= 5:
+        score += 2
+        reasons.append("activity_gap_5d")
+
+    if overdue_planned_count >= 3:
+        score += 3
+        reasons.append("overdue_planned_multiple")
+    elif overdue_planned_count >= 1:
+        score += 1
+        reasons.append("overdue_planned")
+
+    if missed_compliance_count >= 2:
+        score += 2
+        reasons.append("missed_compliance_repeated")
+    elif missed_compliance_count == 1:
+        score += 1
+        reasons.append("missed_compliance_recent")
+
+    if planned_7d_minutes <= 0:
+        score += 2
+        reasons.append("no_planned_next_7d")
+
+    if previous_28d_weekly_avg_load >= 90 and acwr < 0.65:
+        score += 1
+        reasons.append("acwr_low_detraining")
+    if last_7d_load >= 120 and acwr > 1.35:
+        score += 2
+        reasons.append("acwr_high_spike")
+
+    if abs(workload_delta_minutes) >= 150:
+        score += 1
+        reasons.append("workload_delta_high")
+
+    if not has_threshold_metrics:
+        score += 1
+        reasons.append("missing_threshold_metrics")
+
+    return score, reasons
 
 
 def _apply_profile_update_to_user(target_user: User, profile_update: ProfileUpdate) -> None:
@@ -244,6 +339,261 @@ async def get_athletes(
         _normalize_user_for_response(athlete)
     await _annotate_athletes_with_upcoming_workout_status(db, current_user.id, athletes)
     return athletes
+
+
+@router.get("/coach/operations", response_model=CoachOperationsOut)
+async def get_coach_operations_view(
+    athlete_id: int | None = Query(default=None),
+    sport: str | None = Query(default=None),
+    risk_level: str | None = Query(default=None),
+    exceptions_only: bool = Query(default=False),
+    at_risk_only: bool = Query(default=False),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CoachOperationsOut:
+    if current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Only coaches can access coach operations")
+
+    my_org_ids = [
+        membership.organization_id
+        for membership in current_user.organization_memberships
+        if membership.role == RoleEnum.coach.value and membership.status == "active"
+    ]
+    if not my_org_ids:
+        return CoachOperationsOut(
+            generated_at=datetime.utcnow(),
+            athletes=[],
+            exception_queue=[],
+            at_risk_athletes=[],
+            workload_balance=CoachOperationsWorkloadBalanceOut(
+                target_weekly_minutes=0.0,
+                avg_weekly_minutes=0.0,
+                overloaded_athletes=0,
+                underloaded_athletes=0,
+                balanced_athletes=0,
+            ),
+        )
+
+    athlete_stmt = (
+        select(User)
+        .join(OrganizationMember, OrganizationMember.user_id == User.id)
+        .where(
+            OrganizationMember.organization_id.in_(my_org_ids),
+            OrganizationMember.role == RoleEnum.athlete.value,
+            OrganizationMember.status == "active",
+        )
+        .distinct()
+        .options(selectinload(User.profile))
+    )
+    if athlete_id is not None:
+        athlete_stmt = athlete_stmt.where(User.id == athlete_id)
+
+    athletes = (await db.execute(athlete_stmt)).scalars().all()
+    if not athletes:
+        return CoachOperationsOut(
+            generated_at=datetime.utcnow(),
+            athletes=[],
+            exception_queue=[],
+            at_risk_athletes=[],
+            workload_balance=CoachOperationsWorkloadBalanceOut(
+                target_weekly_minutes=0.0,
+                avg_weekly_minutes=0.0,
+                overloaded_athletes=0,
+                underloaded_athletes=0,
+                balanced_athletes=0,
+            ),
+        )
+
+    athlete_ids = [athlete.id for athlete in athletes]
+    athlete_by_id = {athlete.id: athlete for athlete in athletes}
+
+    today = dt_date.today()
+    activities_start = datetime.combine(today - timedelta(days=35), datetime.min.time())
+
+    activity_rows = (
+        await db.execute(
+            select(
+                Activity.athlete_id,
+                Activity.created_at,
+                Activity.duration,
+                Activity.average_hr,
+                Activity.average_watts,
+            ).where(
+                Activity.athlete_id.in_(athlete_ids),
+                Activity.created_at >= activities_start,
+                Activity.duplicate_of_id.is_(None),
+                Activity.is_deleted.is_(False),
+            )
+        )
+    ).all()
+
+    plan_window_start = today - timedelta(days=14)
+    plan_window_end = today + timedelta(days=7)
+    planned_rows = (
+        await db.execute(
+            select(
+                PlannedWorkout.user_id,
+                PlannedWorkout.date,
+                PlannedWorkout.planned_duration,
+                PlannedWorkout.compliance_status,
+            ).where(
+                PlannedWorkout.user_id.in_(athlete_ids),
+                PlannedWorkout.created_by_user_id == current_user.id,
+                PlannedWorkout.date >= plan_window_start,
+                PlannedWorkout.date <= plan_window_end,
+            )
+        )
+    ).all()
+
+    last_activity_date: dict[int, dt_date] = {}
+    load_last_7d = defaultdict(float)
+    load_prev_28d = defaultdict(float)
+    completed_7d_minutes = defaultdict(float)
+
+    for athlete_key, created_at, duration, avg_hr, avg_watts in activity_rows:
+        athlete = athlete_by_id.get(athlete_key)
+        ftp = athlete.profile.ftp if athlete and athlete.profile else None
+        max_hr = athlete.profile.max_hr if athlete and athlete.profile else None
+        load_points = _estimate_activity_load_points(
+            duration_seconds=duration,
+            average_hr=avg_hr,
+            max_hr=max_hr,
+            average_watts=avg_watts,
+            ftp=ftp,
+        )
+
+        activity_date = created_at.date()
+        previous_last = last_activity_date.get(athlete_key)
+        if previous_last is None or activity_date > previous_last:
+            last_activity_date[athlete_key] = activity_date
+
+        days_ago = (today - activity_date).days
+        if 0 <= days_ago <= 6:
+            load_last_7d[athlete_key] += load_points
+            completed_7d_minutes[athlete_key] += max(0.0, float(duration or 0.0) / 60.0)
+        elif 7 <= days_ago <= 34:
+            load_prev_28d[athlete_key] += load_points
+
+    planned_7d_minutes = defaultdict(float)
+    overdue_planned_count = defaultdict(int)
+    missed_compliance_count = defaultdict(int)
+
+    for athlete_key, planned_date, planned_duration, compliance_status in planned_rows:
+        planned_minutes = max(0.0, float(planned_duration or 0.0))
+        if today <= planned_date <= (today + timedelta(days=7)):
+            planned_7d_minutes[athlete_key] += planned_minutes
+
+        if planned_date < today and compliance_status == ComplianceStatusEnum.planned:
+            overdue_planned_count[athlete_key] += 1
+
+        if compliance_status in {ComplianceStatusEnum.missed, ComplianceStatusEnum.completed_red}:
+            missed_compliance_count[athlete_key] += 1
+
+    team_planned_distribution = [planned_7d_minutes[athlete_key] for athlete_key in athlete_ids]
+    target_weekly_minutes = float(median(team_planned_distribution)) if team_planned_distribution else 0.0
+    avg_weekly_minutes = (sum(team_planned_distribution) / len(team_planned_distribution)) if team_planned_distribution else 0.0
+
+    rows: list[CoachOperationsAthleteOut] = []
+    for athlete in athletes:
+        athlete_key = athlete.id
+        previous_weekly_avg = load_prev_28d[athlete_key] / 4.0 if load_prev_28d[athlete_key] > 0 else 0.0
+        acwr = load_last_7d[athlete_key] / max(previous_weekly_avg, 1.0)
+        delta_minutes = planned_7d_minutes[athlete_key] - target_weekly_minutes
+
+        has_threshold_metrics = bool(
+            athlete.profile
+            and (
+                athlete.profile.ftp is not None
+                or athlete.profile.lt2 is not None
+                or athlete.profile.max_hr is not None
+            )
+        )
+
+        days_since = None
+        if athlete_key in last_activity_date:
+            days_since = (today - last_activity_date[athlete_key]).days
+
+        risk_score, exception_reasons = _build_risk_and_reasons(
+            days_since_last_activity=days_since,
+            acwr=acwr,
+            last_7d_load=load_last_7d[athlete_key],
+            previous_28d_weekly_avg_load=previous_weekly_avg,
+            planned_7d_minutes=planned_7d_minutes[athlete_key],
+            overdue_planned_count=overdue_planned_count[athlete_key],
+            missed_compliance_count=missed_compliance_count[athlete_key],
+            workload_delta_minutes=delta_minutes,
+            has_threshold_metrics=has_threshold_metrics,
+        )
+
+        if risk_score >= 6:
+            computed_risk_level = "high"
+        elif risk_score >= 3:
+            computed_risk_level = "moderate"
+        else:
+            computed_risk_level = "low"
+
+        recommendation = None
+        if delta_minutes >= 120:
+            recommendation = f"Reduce approximately {int(round(delta_minutes))} min this week"
+        elif delta_minutes <= -120:
+            recommendation = f"Add approximately {int(round(abs(delta_minutes)))} min this week"
+
+        row = CoachOperationsAthleteOut(
+            athlete_id=athlete_key,
+            athlete_name=_athlete_display_name(athlete),
+            athlete_email=athlete.email,
+            main_sport=athlete.profile.main_sport if athlete.profile else None,
+            last_activity_date=last_activity_date.get(athlete_key),
+            days_since_last_activity=days_since,
+            last_7d_load=round(load_last_7d[athlete_key], 1),
+            previous_28d_weekly_avg_load=round(previous_weekly_avg, 1),
+            acwr=round(acwr, 2),
+            planned_7d_minutes=round(planned_7d_minutes[athlete_key], 1),
+            completed_7d_minutes=round(completed_7d_minutes[athlete_key], 1),
+            overdue_planned_count=overdue_planned_count[athlete_key],
+            missed_compliance_count=missed_compliance_count[athlete_key],
+            risk_score=risk_score,
+            risk_level=computed_risk_level,
+            at_risk=risk_score >= 4,
+            exception_reasons=exception_reasons,
+            workload_delta_minutes=round(delta_minutes, 1),
+            workload_recommendation=recommendation,
+        )
+        rows.append(row)
+
+    if sport:
+        normalized_sport = sport.strip().lower()
+        rows = [row for row in rows if (row.main_sport or "").strip().lower() == normalized_sport]
+    if risk_level:
+        normalized_risk = risk_level.strip().lower()
+        if normalized_risk in {"low", "moderate", "high"}:
+            rows = [row for row in rows if row.risk_level == normalized_risk]
+    if exceptions_only:
+        rows = [row for row in rows if len(row.exception_reasons) > 0]
+    if at_risk_only:
+        rows = [row for row in rows if row.at_risk]
+
+    rows.sort(key=lambda row: (row.risk_score, row.overdue_planned_count, row.days_since_last_activity or -1), reverse=True)
+    exception_queue = [row for row in rows if row.exception_reasons]
+    at_risk_rows = [row for row in rows if row.at_risk]
+
+    overloaded_count = len([row for row in rows if row.workload_delta_minutes >= 120])
+    underloaded_count = len([row for row in rows if row.workload_delta_minutes <= -120])
+    balanced_count = max(0, len(rows) - overloaded_count - underloaded_count)
+
+    return CoachOperationsOut(
+        generated_at=datetime.utcnow(),
+        athletes=rows,
+        exception_queue=exception_queue,
+        at_risk_athletes=at_risk_rows,
+        workload_balance=CoachOperationsWorkloadBalanceOut(
+            target_weekly_minutes=round(target_weekly_minutes, 1),
+            avg_weekly_minutes=round(avg_weekly_minutes, 1),
+            overloaded_athletes=overloaded_count,
+            underloaded_athletes=underloaded_count,
+            balanced_athletes=balanced_count,
+        ),
+    )
 
 
 @router.get("/athletes/pending", response_model=list[AthleteOut])
