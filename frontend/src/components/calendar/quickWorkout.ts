@@ -10,10 +10,44 @@ const formatPaceFromMinutesPerKm = (minutesPerKm: number) => {
   return `${mins + carry}:${secs.toString().padStart(2, "0")}/km`;
 };
 
+const resolveZoneBoundsFromSettings = (profile: any, sport: "running" | "cycling", metric: "hr" | "pace" | "power", zone: number) => {
+  const upperBounds = Array.isArray(profile?.zone_settings?.[sport]?.[metric]?.upper_bounds)
+    ? profile.zone_settings[sport][metric].upper_bounds
+        .map((value: unknown) => Number(value))
+        .filter((value: number) => Number.isFinite(value) && value > 0)
+    : [];
+  if (!upperBounds.length || zone < 1) return null;
+  const index = zone - 1;
+  const low = index > 0 ? upperBounds[index - 1] : null;
+  const high = upperBounds[index] ?? null;
+  if (low == null && high == null) return null;
+  return { low, high };
+};
+
+const formatZoneRange = (
+  bounds: { low: number | null; high: number | null },
+  formatter: (value: number) => string,
+) => {
+  const lowLabel = bounds.low != null ? formatter(bounds.low) : null;
+  const highLabel = bounds.high != null ? formatter(bounds.high) : null;
+  if (lowLabel && highLabel) return `${lowLabel}-${highLabel}`;
+  if (highLabel) return `<= ${highLabel}`;
+  return lowLabel ? `>= ${lowLabel}` : "";
+};
+
 export const buildQuickWorkoutZoneDetails = (sportType: string, zone: number, profile: any) => {
   const normalizedSport = (sportType || "").toLowerCase();
 
   if (normalizedSport.includes("run")) {
+    const paceBounds = resolveZoneBoundsFromSettings(profile, "running", "pace", zone);
+    if (paceBounds) {
+      return `Pace ${formatZoneRange(paceBounds, (value) => formatPaceFromMinutesPerKm(value))}`;
+    }
+    const hrBounds = resolveZoneBoundsFromSettings(profile, "running", "hr", zone);
+    if (hrBounds) {
+      return `HR ${formatZoneRange(hrBounds, (value) => `${Math.round(value)} bpm`)}`;
+    }
+
     const lt2 = Number(profile?.lt2 || 0);
     if (lt2 > 0) {
       const paceRanges: Array<[number, number]> = [
@@ -48,6 +82,15 @@ export const buildQuickWorkoutZoneDetails = (sportType: string, zone: number, pr
     }
 
     return "";
+  }
+
+  const powerBounds = resolveZoneBoundsFromSettings(profile, "cycling", "power", zone);
+  if (powerBounds) {
+    return `Power ${formatZoneRange(powerBounds, (value) => `${Math.round(value)} W`)}`;
+  }
+  const cyclingHrBounds = resolveZoneBoundsFromSettings(profile, "cycling", "hr", zone);
+  if (cyclingHrBounds) {
+    return `HR ${formatZoneRange(cyclingHrBounds, (value) => `${Math.round(value)} bpm`)}`;
   }
 
   const ftp = Number(profile?.ftp || 0);

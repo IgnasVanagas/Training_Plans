@@ -188,6 +188,33 @@ const buildDateRangeTitle = (start: Date, end: Date) => {
     return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
 };
 
+const parseZoneFromText = (value?: string | null): number | null => {
+    if (!value) return null;
+    const match = String(value).match(/(?:zone|z)\s*([1-7])/i);
+    if (!match) return null;
+    const zone = Number(match[1]);
+    return Number.isFinite(zone) && zone >= 1 && zone <= 7 ? zone : null;
+};
+
+const findZoneInStructure = (nodes: any[]): number | null => {
+    for (const node of nodes || []) {
+        if (node?.type === 'repeat') {
+            const nestedZone = findZoneInStructure(node.steps || []);
+            if (nestedZone) return nestedZone;
+            continue;
+        }
+        const zone = Number(node?.target?.zone);
+        if (Number.isFinite(zone) && zone >= 1 && zone <= 7) return zone;
+    }
+    return null;
+};
+
+const detectWorkoutZone = (eventLike: { planned_intensity?: string; title?: string; structure?: any[] }): number | null => {
+    return parseZoneFromText(eventLike.planned_intensity)
+        || parseZoneFromText(eventLike.title)
+        || findZoneInStructure(eventLike.structure || []);
+};
+
 export const TrainingCalendar = ({
     athleteId,
     allAthletes,
@@ -302,6 +329,12 @@ export const TrainingCalendar = ({
         });
         return map;
     }, [athletes]);
+
+    const resolveProfileForAthlete = useCallback((targetAthleteId?: number) => {
+        if (!targetAthleteId) return me?.profile;
+        if (targetAthleteId === me?.id) return me?.profile;
+        return athleteById.get(targetAthleteId)?.profile;
+    }, [athleteById, me?.id, me?.profile]);
 
     const [optimisticPlanningMarkers, setOptimisticPlanningMarkers] = useState<PendingPlanningMarker[]>([]);
 
@@ -871,41 +904,70 @@ export const TrainingCalendar = ({
         const sourceWorkout = workoutFromDrop || draggedWorkout;
         if (sourceWorkout) {
             const dateStr = format(startDate, 'yyyy-MM-dd');
+            const targetAthleteId = athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined);
+            const targetProfile = resolveProfileForAthlete(targetAthleteId);
+            const detectedZone = detectWorkoutZone({
+                planned_intensity: (sourceWorkout as any)?.planned_intensity,
+                title: sourceWorkout.title,
+                structure: sourceWorkout.structure as any[],
+            });
+            const sportType = sourceWorkout.sport_type || 'Cycling';
+            const targetDetails = detectedZone ? buildQuickWorkoutZoneDetails(sportType, detectedZone, targetProfile) : '';
+            const shouldRewriteQuickDescription = typeof sourceWorkout.description === 'string' && sourceWorkout.description.startsWith('Quick workout:');
             const newEvent: CalendarEvent = {
                 title: sourceWorkout.title,
                 date: dateStr,
-                sport_type: sourceWorkout.sport_type,
+                sport_type: sportType,
                 structure: sourceWorkout.structure,
-                description: sourceWorkout.description,
+                description: shouldRewriteQuickDescription
+                    ? buildQuickWorkoutDescription(
+                        'time',
+                        estimatePlannedDurationMinutesFromStructure(sourceWorkout.structure as any[]) ?? 60,
+                        0,
+                        detectedZone || 1,
+                        targetDetails,
+                    )
+                    : sourceWorkout.description,
                 is_planned: true,
-                user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
+                user_id: targetAthleteId,
                 planned_duration: estimatePlannedDurationMinutesFromStructure(sourceWorkout.structure as any[]) ?? 60,
+                planned_intensity: detectedZone ? `Zone ${detectedZone}` : undefined,
                 recurrence: null,
             };
             createMutation.mutate(newEvent);
 
             if (onWorkoutDrop) onWorkoutDrop(sourceWorkout, startDate);
         }
-    }, [draggedWorkout, onWorkoutDrop, canEditWorkouts, athleteId, athletes, createMutation]);
+    }, [draggedWorkout, onWorkoutDrop, canEditWorkouts, athleteId, athletes, resolveProfileForAthlete, createMutation]);
 
     const handleDropCalendarEvent = useCallback((resource: CalendarEvent, targetDate: Date) => {
         if (!canEditWorkouts) return;
         const dateStr = format(targetDate, 'yyyy-MM-dd');
+        const targetAthleteId = athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined);
+        const targetProfile = resolveProfileForAthlete(targetAthleteId);
+        const detectedZone = detectWorkoutZone(resource);
+        const targetDetails = detectedZone ? buildQuickWorkoutZoneDetails(resource.sport_type || 'Cycling', detectedZone, targetProfile) : '';
+        const shouldRewriteQuickDescription = typeof resource.description === 'string' && resource.description.startsWith('Quick workout:');
+        const minutes = Math.max(5, Math.round(resource.planned_duration || 0));
+        const distanceKm = Math.max(0, Number(resource.planned_distance || 0));
+        const mode: 'time' | 'distance' = distanceKm > 0 ? 'distance' : 'time';
         const newEvent: CalendarEvent = {
             title: resource.title,
             date: dateStr,
             sport_type: resource.sport_type,
             structure: resource.structure,
-            description: resource.description,
+            description: shouldRewriteQuickDescription
+                ? buildQuickWorkoutDescription(mode, minutes, distanceKm, detectedZone || 1, targetDetails)
+                : resource.description,
             planned_duration: resource.planned_duration,
             planned_distance: resource.planned_distance,
-            planned_intensity: resource.planned_intensity,
+            planned_intensity: detectedZone ? `Zone ${detectedZone}` : resource.planned_intensity,
             is_planned: true,
-            user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
+            user_id: targetAthleteId,
             recurrence: null,
         };
         createMutation.mutate(newEvent);
-    }, [canEditWorkouts, createMutation, athleteId, athletes]);
+    }, [canEditWorkouts, createMutation, athleteId, athletes, resolveProfileForAthlete]);
 
     const handleSelectSlot = useCallback(({ start }: any) => {
         setSelectedEvent({ 

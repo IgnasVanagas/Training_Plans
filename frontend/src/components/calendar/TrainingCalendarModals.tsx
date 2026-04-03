@@ -1168,6 +1168,87 @@ const formatVersionAction = (action: string, t: (value: string) => string): stri
   return actionMap[action] || action;
 };
 
+const parseZoneNumber = (value: unknown): number | null => {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+  const match = text.match(/(?:zone|z)\s*([1-7])/i);
+  if (!match) return null;
+  const zone = Number(match[1]);
+  if (!Number.isFinite(zone) || zone < 1 || zone > 7) return null;
+  return zone;
+};
+
+const findFirstStructuredZone = (steps: any[]): number | null => {
+  for (const step of steps || []) {
+    if (step?.type === 'repeat') {
+      const nested = findFirstStructuredZone(step.steps || []);
+      if (nested) return nested;
+      continue;
+    }
+    const zone = Number(step?.target?.zone);
+    if (Number.isFinite(zone) && zone > 0) return zone;
+  }
+  return null;
+};
+
+const resolvePlannedZone = (event: any): number | null => {
+  const fromIntensity = parseZoneNumber(event?.planned_intensity);
+  if (fromIntensity) return fromIntensity;
+  return findFirstStructuredZone(event?.structure || []);
+};
+
+const formatPaceRange = (value: number): string => {
+  if (!Number.isFinite(value) || value <= 0) return '-';
+  const mins = Math.floor(value);
+  const secValue = Math.round((value - mins) * 60);
+  const carry = secValue >= 60 ? 1 : 0;
+  const secs = secValue >= 60 ? 0 : secValue;
+  return `${mins + carry}:${String(secs).padStart(2, '0')}/km`;
+};
+
+const resolveZoneRange = (upperBoundsRaw: unknown, zone: number): { low: number | null; high: number | null } | null => {
+  const upperBounds = Array.isArray(upperBoundsRaw)
+    ? upperBoundsRaw.map((value: unknown) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0)
+    : [];
+  if (!upperBounds.length || zone < 1) return null;
+  const index = zone - 1;
+  const low = index <= 0 ? null : upperBounds[index - 1] ?? null;
+  const high = upperBounds[index] ?? null;
+  if (low == null && high == null) return null;
+  return { low, high };
+};
+
+const formatZoneTargetLabel = (
+  profile: any,
+  sport: 'running' | 'cycling',
+  metric: 'hr' | 'pace' | 'power',
+  zone: number,
+): string | null => {
+  const zoneCfg = profile?.zone_settings?.[sport]?.[metric];
+  const range = resolveZoneRange(zoneCfg?.upper_bounds, zone);
+  if (!range) return null;
+
+  if (metric === 'hr') {
+    const lowLabel = range.low != null ? `${Math.round(range.low)} bpm` : null;
+    const highLabel = range.high != null ? `${Math.round(range.high)} bpm` : null;
+    if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
+    return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
+  }
+
+  if (metric === 'power') {
+    const lowLabel = range.low != null ? `${Math.round(range.low)} W` : null;
+    const highLabel = range.high != null ? `${Math.round(range.high)} W` : null;
+    if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
+    return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
+  }
+
+  const lowLabel = range.low != null ? formatPaceRange(range.low) : null;
+  const highLabel = range.high != null ? formatPaceRange(range.high) : null;
+  if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
+  return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
+};
+
 export const WorkoutEditModal = ({
   opened,
   onClose,
@@ -1187,6 +1268,30 @@ export const WorkoutEditModal = ({
   const isMobileEdit = useMediaQuery('(max-width: 48em)');
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+
+  const inferredSport = ((selectedEvent.sport_type || athleteProfile?.main_sport || 'running') as string).toLowerCase() === 'cycling' ? 'cycling' : 'running';
+  const plannedZone = useMemo(() => resolvePlannedZone(selectedEvent), [selectedEvent]);
+  const workoutTypeLabel = useMemo(() => {
+    if (selectedEvent.planned_intensity) return String(selectedEvent.planned_intensity);
+    const firstZone = plannedZone;
+    if (firstZone) return `Zone ${firstZone}`;
+    if (selectedEvent.sport_type) return String(selectedEvent.sport_type);
+    return t('Custom') || 'Custom';
+  }, [plannedZone, selectedEvent.planned_intensity, selectedEvent.sport_type, t]);
+
+  const athleteZoneTargets = useMemo(() => {
+    if (!plannedZone) return [] as Array<{ label: string; value: string | null }>;
+    if (inferredSport === 'cycling') {
+      return [
+        { label: t('Cycling Heart Rate') || 'Cycling Heart Rate', value: formatZoneTargetLabel(athleteProfile, 'cycling', 'hr', plannedZone) },
+        { label: t('Cycling Power') || 'Cycling Power', value: formatZoneTargetLabel(athleteProfile, 'cycling', 'power', plannedZone) },
+      ];
+    }
+    return [
+      { label: t('Running Heart Rate') || 'Running Heart Rate', value: formatZoneTargetLabel(athleteProfile, 'running', 'hr', plannedZone) },
+      { label: t('Running Pace') || 'Running Pace', value: formatZoneTargetLabel(athleteProfile, 'running', 'pace', plannedZone) },
+    ];
+  }, [athleteProfile, inferredSport, plannedZone, t]);
 
   const versionHistoryQuery = useQuery({
     queryKey: ['workout-version-history', selectedEvent.id],
@@ -1306,6 +1411,28 @@ export const WorkoutEditModal = ({
     <Container fluid p={0}>
       <Stack gap="sm" mb="md">
         {saveError && <Alert color="orange" variant="light">{saveError}</Alert>}
+
+        <Paper withBorder p="sm" radius="md">
+          <Stack gap={6}>
+            <Text fw={600}>{t('Workout Type') || 'Workout Type'}: {workoutTypeLabel}</Text>
+            {plannedZone ? (
+              <>
+                <Text size="sm" c="dimmed">{t('Athlete-specific targets for this planned zone') || 'Athlete-specific targets for this planned zone'}</Text>
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+                  {athleteZoneTargets.map((item) => (
+                    <Paper key={item.label} withBorder p="xs" radius="sm">
+                      <Text size="xs" c="dimmed">{item.label}</Text>
+                      <Text fw={600}>{item.value || (t('Not configured') || 'Not configured')}</Text>
+                    </Paper>
+                  ))}
+                </SimpleGrid>
+              </>
+            ) : (
+              <Text size="sm" c="dimmed">{t('No specific zone was detected in this workout yet.') || 'No specific zone was detected in this workout yet.'}</Text>
+            )}
+          </Stack>
+        </Paper>
+
         <Group grow>
           {athleteOptions.length > 0 && (
             <Select
