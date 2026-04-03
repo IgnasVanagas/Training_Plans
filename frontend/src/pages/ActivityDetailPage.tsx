@@ -3,6 +3,7 @@ import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, I
 import ShareToChatModal from "../components/ShareToChatModal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useMediaQuery } from "@mantine/hooks";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -216,6 +217,7 @@ export const ActivityDetailPage = () => {
         return `${m}:${s.toString().padStart(2, '0')}`;
     };
     const [graphMode, setGraphMode] = useState<'standard' | 'power_curve' | 'hr_zones' | 'pace_zones' | 'power_zones'>('hr_zones');
+    const isDesktopViewport = useMediaQuery('(min-width: 62em)');
     const [activeSection, setActiveSection] = useState<'overview' | 'charts' | 'analysis' | 'laps' | 'best_efforts' | 'comparison'>('overview');
     const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
     const hoveredPointIndexRef = useRef<number | null>(null);
@@ -229,8 +231,8 @@ export const ActivityDetailPage = () => {
     const [visibleSplitStats, setVisibleSplitStats] = useState({
         distance: true,
         duration: true,
-        total_distance: false,
-        total_time: false,
+        total_distance: Boolean(isDesktopViewport),
+        total_time: Boolean(isDesktopViewport),
         pace_or_speed: true,
         avg_hr: true,
         max_hr: true,
@@ -242,9 +244,9 @@ export const ActivityDetailPage = () => {
         heart_rate: true,
         power: true,
         pace: true,
-        speed: false,
-        cadence: false,
-        altitude: false
+        speed: Boolean(isDesktopViewport),
+        cadence: Boolean(isDesktopViewport),
+        altitude: Boolean(isDesktopViewport)
     });
     const [powerChartMode, setPowerChartMode] = useState<'raw' | 'avg5s'>('raw');
     const [activityRpe, setActivityRpe] = useState<number | null>(null);
@@ -265,6 +267,37 @@ export const ActivityDetailPage = () => {
     const [executionInfoOpen, setExecutionInfoOpen] = useState(false);
     const [selectedEffortKey, setSelectedEffortKey] = useState<string | null>(null);
     const [selectedEffortStreamIndex, setSelectedEffortStreamIndex] = useState<number | null>(null);
+    const desktopDefaultsAppliedRef = useRef(false);
+
+    useEffect(() => {
+        if (!isDesktopViewport || desktopDefaultsAppliedRef.current) return;
+
+        setVisibleSplitStats((prev) => ({
+            ...prev,
+            distance: true,
+            duration: true,
+            total_distance: true,
+            total_time: true,
+            pace_or_speed: true,
+            avg_hr: true,
+            max_hr: true,
+            avg_watts: true,
+            max_watts: true,
+            normalized_power: true,
+        }));
+
+        setVisibleSeries((prev) => ({
+            ...prev,
+            heart_rate: true,
+            power: true,
+            pace: true,
+            speed: true,
+            cadence: true,
+            altitude: true,
+        }));
+
+        desktopDefaultsAppliedRef.current = true;
+    }, [isDesktopViewport]);
 
     const { data: me } = useQuery({
         queryKey: ['me'],

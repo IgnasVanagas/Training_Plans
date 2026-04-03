@@ -3,7 +3,7 @@ from typing import Any, List, Optional
 from datetime import date, timedelta, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, or_, func
 from sqlalchemy.orm import load_only
 
 from app.database import get_db
@@ -749,11 +749,32 @@ async def recent_coach_workouts(
     if current_user.role != RoleEnum.coach:
         raise HTTPException(status_code=403, detail="Only coaches can access this endpoint")
 
+    # Include legacy rows where created_by_user_id is null but the workout
+    # belongs to an athlete currently linked to this coach.
+    coach_orgs_subq = select(OrganizationMember.organization_id).where(
+        OrganizationMember.user_id == current_user.id,
+        OrganizationMember.role == RoleEnum.coach.value,
+        OrganizationMember.status == 'active',
+    )
+    athlete_ids_subq = select(OrganizationMember.user_id).where(
+        OrganizationMember.organization_id.in_(coach_orgs_subq),
+        OrganizationMember.role == RoleEnum.athlete.value,
+        OrganizationMember.status == 'active',
+    )
+
     stmt = (
         select(PlannedWorkout)
-        .where(PlannedWorkout.created_by_user_id == current_user.id)
+        .where(
+            or_(
+                PlannedWorkout.created_by_user_id == current_user.id,
+                and_(
+                    PlannedWorkout.created_by_user_id.is_(None),
+                    PlannedWorkout.user_id.in_(athlete_ids_subq),
+                ),
+            )
+        )
         .order_by(PlannedWorkout.id.desc())
-        .limit(limit * 5)  # fetch extra to account for dedup
+        .limit(limit * 8)  # fetch extra to account for dedup + fallback rows
     )
     result = await db.execute(stmt)
     rows = result.scalars().all()
