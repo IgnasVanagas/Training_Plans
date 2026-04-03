@@ -469,7 +469,10 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
           <Stack gap={6}>
             {hrCol.zones.map((zone, idx) => {
               const th = hrCol.editing ? hrCol.threshold : hrThreshold;
-              const lowAbs = computeAbsValue(zone.low, th);
+              const prevHighAbs = idx > 0 ? computeAbsValue(hrCol.zones[idx - 1].high, th) : null;
+              const lowAbs = idx === 0
+                ? computeAbsValue(zone.low, th)
+                : prevHighAbs != null ? prevHighAbs + 1 : computeAbsValue(zone.low, th);
               const highAbs = computeAbsValue(zone.high, th);
               return (
                 <ZoneCard
@@ -596,7 +599,10 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
               const th = paceCol.editing ? paceCol.threshold : paceThreshold;
               let lowAbs: string, highAbs: string;
               if (sport === "cycling") {
-                const l = computeAbsValue(zone.low, th);
+                const prevHighAbs = idx > 0 ? computeAbsValue(paceCol.zones[idx - 1].high, th) : null;
+                const l = idx === 0
+                  ? computeAbsValue(zone.low, th)
+                  : prevHighAbs != null ? prevHighAbs + 1 : computeAbsValue(zone.low, th);
                 const h = computeAbsValue(zone.high, th);
                 lowAbs = l != null ? String(l) : "—";
                 highAbs = h != null ? String(h) : "—";

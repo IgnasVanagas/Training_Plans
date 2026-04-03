@@ -1082,17 +1082,15 @@ export const ActivityDetailPage = () => {
             return acc;
         }, []);
 
-        const fallbackBounds = [
-            Math.round(maxHr * 0.6),
-            Math.round(maxHr * 0.7),
-            Math.round(maxHr * 0.8),
-            Math.round(maxHr * 0.9),
-        ].reduce<number[]>((acc, value) => {
-            if (!acc.length) return [value];
-            const prev = acc[acc.length - 1];
-            acc.push(value <= prev ? prev + 1 : value);
-            return acc;
-        }, []);
+        // Use same defaults as Training Zones tab: % of LTHR
+        // Running/Swimming: 5 zones [65-84, 85-89, 90-94, 95-99, 100-106]
+        // Cycling: 7 zones [65-81, 82-89, 90-93, 94-99, 100-102, 103-106, 107-120]
+        const lthr = Number(hrZoneCfg?.lt2 || 0);
+        const baseHr = lthr > 0 ? lthr : maxHr;
+        const defaultHighPcts = sportKey === 'cycling'
+            ? [81, 89, 93, 99, 102, 106, 120]
+            : [84, 89, 94, 99, 106];
+        const fallbackBounds = defaultHighPcts.map(pct => Math.round(baseHr * pct / 100));
 
         const effectiveBounds = normalizedBounds.length > 0 ? normalizedBounds : fallbackBounds;
         const usesImplicitLastZone = effectiveBounds.length === 4;
@@ -1283,7 +1281,9 @@ export const ActivityDetailPage = () => {
             'Easy aerobic endurance. Comfortable, sustainable pace for long sessions.',
             'Steady aerobic / tempo. Controlled but noticeably harder than endurance pace.',
             'Threshold-focused work. Hard effort, speaking becomes limited.',
-            'High-intensity / near-max effort. Short, demanding intervals.'
+            'High-intensity / near-max effort. Short, demanding intervals.',
+            'Very high intensity. Approaching maximal aerobic capacity.',
+            'Maximal effort. All-out sprint or peak intensity.'
         ];
 
         const paceDescriptions = [
