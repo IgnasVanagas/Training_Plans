@@ -20,7 +20,6 @@ import ActivityUploadPanel from "../components/dashboard/ActivityUploadPanel";
 import SupportContactButton from "../components/common/SupportContactButton";
 import DashboardAthleteHome from "./dashboard/DashboardAthleteHome";
 import InsightsPage from "./dashboard/InsightsPage";
-import { CoachComparisonPanel } from "../components/CoachComparisonPanel";
 import DashboardCoachHome from "./dashboard/DashboardCoachHome";
 import DashboardLayoutShell from "./dashboard/DashboardLayoutShell";
 import DashboardNotificationsTab from "./dashboard/DashboardNotificationsTab";
@@ -237,6 +236,11 @@ const Dashboard = () => {
 
 
   }, [meQuery.data, queryClient, selectedAthleteId]);
+
+  useEffect(() => {
+    if (activeTab !== "comparison") return;
+    navigate("/dashboard/compare");
+  }, [activeTab, navigate]);
 
   const {
     connectingProvider,
@@ -886,12 +890,6 @@ const Dashboard = () => {
             athleteId={athleteIdNum}
             athletes={athletesQuery.data || []}
           />
-        ) : activeTab === "comparison" ? (
-          <CoachComparisonPanel
-            athletes={athletesQuery.data || []}
-            me={me as any}
-            isAthlete={me.role === "athlete"}
-          />
         ) : activeTab === "profile" ? (
           <DashboardAthleteProfileTab
             user={me}
@@ -1002,6 +1000,7 @@ const Dashboard = () => {
             onOpenPlan={() => setActiveTab("plan")}
             onOpenActivities={() => setActiveTab("activities")}
             onOpenOrganizations={() => setActiveTab("organizations")}
+            onOpenComparison={() => navigate("/dashboard/compare")}
           />
         ) : (
           <DashboardAthleteHome

@@ -34,7 +34,6 @@ import {
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMediaQuery } from "@mantine/hooks";
-import { CoachComparisonPanel } from "../../components/CoachComparisonPanel";
 import { ActivityFeedRow, CalendarApprovalItem, CoachOperationsPayload, DashboardCalendarEvent, User } from "./types";
 import { formatDuration } from "./utils";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -59,6 +58,7 @@ type Props = {
   onOpenPlan: () => void;
   onOpenActivities: () => void;
   onOpenOrganizations: () => void;
+  onOpenComparison: () => void;
 };
 
 const DashboardCoachHome = ({
@@ -81,6 +81,7 @@ const DashboardCoachHome = ({
   onOpenPlan,
   onOpenActivities,
   onOpenOrganizations,
+  onOpenComparison,
 }: Props) => {
   const navigate = useNavigate();
   const isDark = useComputedColorScheme("light") === "dark";
@@ -448,6 +449,20 @@ const DashboardCoachHome = ({
       </Paper>
 
       <Paper withBorder p="md" radius="md" shadow="sm">
+        <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
+          <div>
+            <Title order={4}>{t("Coach Split-Screen Analysis") || "Coach Split-Screen Analysis"}</Title>
+            <Text size="sm" c="dimmed">
+              {t("Compare two workouts, weeks, or months side by side with the same analysis model.") || "Compare two workouts, weeks, or months side by side with the same analysis model."}
+            </Text>
+          </div>
+          <Button variant="light" onClick={onOpenComparison}>
+            {t("Comparison") || "Comparison"}
+          </Button>
+        </Group>
+      </Paper>
+
+      <Paper withBorder p="md" radius="md" shadow="sm">
         <Group justify="space-between" mb="xs">
           <div>
             <Title order={4}>Invite Athlete</Title>
@@ -590,8 +605,6 @@ const DashboardCoachHome = ({
           </Stack>
         )}
       </Paper>
-
-      <CoachComparisonPanel athletes={athletes} me={me as any} />
     </Stack>
   );
 };

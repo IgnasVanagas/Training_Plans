@@ -134,6 +134,7 @@ const DashboardLayoutShell = ({
     { key: "dashboard", icon: IconLayoutDashboard, label: t("Dashboard"), color: "#E95A12" },
     { key: "activities", icon: IconActivity, label: t("Activities") },
     { key: "plan", icon: IconCalendar, label: t("Calendar"), color: "#E95A12" },
+    { key: "comparison", icon: IconChartPie, label: t("Comparison"), color: "#8B5CF6" },
     { key: "dual-calendar", icon: IconColumns, label: t("Dual Calendar"), color: "#0EA5E9" },
     { key: "organizations", icon: IconUsersGroup, label: t("Organizations"), color: "#6366F1" },
     { key: "notifications", icon: IconBell, label: t("Notifications") },

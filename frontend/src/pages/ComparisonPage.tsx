@@ -761,10 +761,12 @@ export const ComparisonPage = () => {
               <Box>
                 <Group gap="xs">
                   <IconChartBar size={22} color={ui.accent} />
-                  <Title order={2}>{t('Training Comparison') || 'Training Comparison'}</Title>
+                  <Title order={2}>{isAthlete ? (t('Training Comparison') || 'Training Comparison') : (t('Coach Split-Screen Analysis') || 'Coach Split-Screen Analysis')}</Title>
                 </Group>
                 <Text size="sm" c="dimmed">
-                  {t('Compare workouts, weeks, or months side by side.') || 'Compare workouts, weeks, or months side by side.'}
+                  {isAthlete
+                    ? (t('Compare workouts, weeks, or months side by side.') || 'Compare workouts, weeks, or months side by side.')
+                    : (t('Compare two workouts, weeks, or months side by side with the same analysis model.') || 'Compare two workouts, weeks, or months side by side with the same analysis model.')}
                 </Text>
               </Box>
             </Group>
