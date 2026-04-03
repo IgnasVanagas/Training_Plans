@@ -75,6 +75,23 @@ function groupEventsByDate(events: any[]) {
         list.push(evt);
         map.set(dateKey, list);
     }
+
+    // Keep planned workouts visible in constrained day cells (+N overflow) by
+    // ordering planned first, then newest ids first within each bucket.
+    map.forEach((list, key) => {
+        list.sort((left, right) => {
+            const leftPlanned = Boolean(left?.resource?.is_planned);
+            const rightPlanned = Boolean(right?.resource?.is_planned);
+            if (leftPlanned !== rightPlanned) {
+                return leftPlanned ? -1 : 1;
+            }
+            const leftId = Number(left?.resource?.id || 0);
+            const rightId = Number(right?.resource?.id || 0);
+            return rightId - leftId;
+        });
+        map.set(key, list);
+    });
+
     return map;
 }
 

@@ -593,7 +593,14 @@ async def get_calendar_events(
                     except (ValueError, AttributeError):
                         pass
 
-    visible_activity_ids = {activity.id for activity in activities}
+    def _activity_display_date(activity: Activity) -> date:
+        return local_date_map.get(activity.id) or (activity.created_at.date() if activity.created_at else date.today())
+
+    visible_activity_ids = {
+        activity.id
+        for activity in activities
+        if start_date <= _activity_display_date(activity) <= end_date
+    }
     workout_by_matched_activity_id = {
         workout.matched_activity_id: workout
         for workout in workouts
@@ -686,8 +693,10 @@ async def get_calendar_events(
         created_by_user_id, created_by_name, created_by_email = (None, None, None)
         if matched_workout is not None:
             created_by_user_id, created_by_name, created_by_email = _creator_payload(matched_workout)
-        
-        display_date = local_date_map.get(a.id) or (a.created_at.date() if a.created_at else date.today())
+
+        display_date = _activity_display_date(a)
+        if display_date < start_date or display_date > end_date:
+            continue
 
         events.append(CalendarEvent(
             id=a.id,

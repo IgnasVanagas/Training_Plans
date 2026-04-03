@@ -229,6 +229,8 @@ export const ActivityDetailPage = () => {
     const [visibleSplitStats, setVisibleSplitStats] = useState({
         distance: true,
         duration: true,
+        total_distance: false,
+        total_time: false,
         pace_or_speed: true,
         avg_hr: true,
         max_hr: true,
@@ -1408,6 +1410,25 @@ export const ActivityDetailPage = () => {
         });
     }, [activity, splitsToDisplay, streamPoints]);
 
+    const splitsWithCumulativeTotals = useMemo(() => {
+        let cumulativeDistance = 0;
+        let cumulativeDuration = 0;
+
+        return splitsToDisplayWithPower.map((split: any) => {
+            const splitDistance = Number(split?.distance || 0);
+            const splitDuration = Number(split?.duration || 0);
+
+            cumulativeDistance += Number.isFinite(splitDistance) ? splitDistance : 0;
+            cumulativeDuration += Number.isFinite(splitDuration) ? splitDuration : 0;
+
+            return {
+                ...split,
+                cumulative_distance: cumulativeDistance,
+                cumulative_duration: cumulativeDuration,
+            };
+        });
+    }, [splitsToDisplayWithPower]);
+
     useEffect(() => {
         if (!activity) return;
         setActivityRpe(activity.rpe ?? null);
@@ -2335,6 +2356,8 @@ export const ActivityDetailPage = () => {
                                     <Text size="xs" c={ui.textDim} fw={700}>{t("Visible stats")}:</Text>
                                     <Chip size="xs" checked={visibleSplitStats.distance} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, distance: checked }))} variant="light">{t("Distance")}</Chip>
                                     <Chip size="xs" checked={visibleSplitStats.duration} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, duration: checked }))} variant="light">{t("Time")}</Chip>
+                                    <Chip size="xs" checked={visibleSplitStats.total_distance} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, total_distance: checked }))} variant="light">{t("Total distance")}</Chip>
+                                    <Chip size="xs" checked={visibleSplitStats.total_time} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, total_time: checked }))} variant="light">{t("Total time")}</Chip>
                                     <Chip size="xs" checked={visibleSplitStats.pace_or_speed} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, pace_or_speed: checked }))} variant="light">{isRunningActivity ? t('Pace') : t('Speed')}</Chip>
                                     <Chip size="xs" checked={visibleSplitStats.avg_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_hr: checked }))} variant="light">{t("Avg HR")}</Chip>
                                     <Chip size="xs" checked={visibleSplitStats.max_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_hr: checked }))} variant="light">{t("Max HR")}</Chip>
@@ -2353,6 +2376,8 @@ export const ActivityDetailPage = () => {
                                             <Table.Th>{t("Split")}</Table.Th>
                                             {visibleSplitStats.distance && <Table.Th>{t("Distance")}</Table.Th>}
                                             {visibleSplitStats.duration && <Table.Th>{t("Time")}</Table.Th>}
+                                            {visibleSplitStats.total_distance && <Table.Th>{t("Total distance")}</Table.Th>}
+                                            {visibleSplitStats.total_time && <Table.Th>{t("Total time")}</Table.Th>}
                                             {visibleSplitStats.pace_or_speed && <Table.Th>{isRunningActivity ? t('Pace') : t('Avg Speed')}</Table.Th>}
                                             {visibleSplitStats.avg_hr && <Table.Th>{t("Avg HR")}</Table.Th>}
                                             {visibleSplitStats.max_hr && <Table.Th>{t("Max HR")}</Table.Th>}
@@ -2365,7 +2390,7 @@ export const ActivityDetailPage = () => {
                                         </Table.Tr>
                                     </Table.Thead>
                                     <Table.Tbody>
-                                        {splitsToDisplayWithPower.map((split: any, idx: number) => (
+                                        {splitsWithCumulativeTotals.map((split: any, idx: number) => (
                                             <Table.Tr key={split.split}>
                                                 <Table.Td>{split.split}</Table.Td>
                                                 {visibleSplitStats.distance && (
@@ -2376,6 +2401,14 @@ export const ActivityDetailPage = () => {
                                                     </Table.Td>
                                                 )}
                                                 {visibleSplitStats.duration && <Table.Td>{formatDuration(split.duration, true)}</Table.Td>}
+                                                {visibleSplitStats.total_distance && (
+                                                    <Table.Td>
+                                                        {me?.profile?.preferred_units === 'imperial'
+                                                            ? `${((split.cumulative_distance || 0) * 0.000621371).toFixed(2)} mi`
+                                                            : `${((split.cumulative_distance || 0) / 1000).toFixed(2)} km`}
+                                                    </Table.Td>
+                                                )}
+                                                {visibleSplitStats.total_time && <Table.Td>{formatDuration(split.cumulative_duration, true)}</Table.Td>}
                                                 {visibleSplitStats.pace_or_speed && (
                                                     <Table.Td>
                                                         {isRunningActivity
