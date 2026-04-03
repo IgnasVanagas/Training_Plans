@@ -7,6 +7,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { endOfWeek, endOfMonth, format, startOfWeek, startOfMonth } from "date-fns";
 import DualCalendarView from "../components/DualCalendarView";
 import api from "../api/client";
+import { getCalendarApprovals, getCalendarShareSettings, reviewCalendarApproval, updateCalendarShareSettings } from "../api/calendarCollaboration";
 import { getCoachOperations } from "../api/coachOperations";
 import { getWellnessSummary, listIntegrationProviders, logManualWellness } from "../api/integrations";
 import { ActivitiesView } from "../components/ActivitiesView";
@@ -34,6 +35,8 @@ import { useI18n } from "../i18n/I18nProvider";
 import {
   ActivityFeedRow,
   AthletePermissions,
+  CalendarApprovalItem,
+  CalendarShareSettings,
   DashboardCalendarEvent,
   InviteByEmailResponse,
   InviteResponse,
@@ -391,6 +394,54 @@ const Dashboard = () => {
       return response.data;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["athlete-permissions"] }),
+  });
+
+  const calendarShareSettingsQuery = useQuery({
+    queryKey: ["calendar-share-settings"],
+    enabled: meQuery.data?.role === "coach",
+    queryFn: async (): Promise<CalendarShareSettings[]> => getCalendarShareSettings(),
+  });
+
+  const updateCalendarShareMutation = useMutation({
+    mutationFn: async (vars: { athleteId: number; payload: Partial<CalendarShareSettings> }) => {
+      return updateCalendarShareSettings(vars.athleteId, vars.payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-share-settings"] });
+    },
+  });
+
+  const calendarApprovalsQuery = useQuery({
+    queryKey: ["calendar-approvals", selectedAthleteId],
+    enabled: meQuery.data?.role === "coach" && shouldLoadHomeData,
+    queryFn: async (): Promise<CalendarApprovalItem[]> => {
+      return getCalendarApprovals(selectedAthleteId ? Number(selectedAthleteId) : null);
+    },
+  });
+
+  const reviewCalendarApprovalMutation = useMutation({
+    mutationFn: async (vars: { workoutId: number; decision: "approve" | "reject" }) => {
+      return reviewCalendarApproval(vars.workoutId, vars.decision);
+    },
+    onSuccess: (_data, vars) => {
+      notifications.show({
+        color: vars.decision === "approve" ? "green" : "orange",
+        title: vars.decision === "approve"
+          ? (t("Calendar request approved") || "Calendar request approved")
+          : (t("Calendar request rejected") || "Calendar request rejected"),
+        message: t("Coach review has been applied.") || "Coach review has been applied.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["calendar-approvals"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-calendar"] });
+    },
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: t("Calendar review failed") || "Calendar review failed",
+        message: extractApiErrorMessage(error),
+      });
+    },
   });
 
   const respondInvitationMutation = useMutation({
@@ -895,6 +946,7 @@ const Dashboard = () => {
             me={me}
             athletes={athletesQuery.data || []}
             permissionsRows={athletePermissionsQuery.data || []}
+            shareSettingsRows={calendarShareSettingsQuery.data || []}
             isSavingProfile={profileUpdateMutation.isPending}
             onSaveProfile={(data) => profileUpdateMutation.mutate(data)}
             initialAthleteId={settingsAthleteId}
@@ -914,6 +966,9 @@ const Dashboard = () => {
             onUpdateAthletePermission={(athleteId, permissions) =>
               updateAthletePermissionMutation.mutate({ athleteId, permissions })
             }
+            onUpdateCalendarShare={(athleteId, payload) =>
+              updateCalendarShareMutation.mutate({ athleteId, payload })
+            }
             savingAthleteProfileId={athleteProfileUpdateMutation.isPending ? athleteProfileUpdateMutation.variables?.athleteId ?? null : null}
             onSaveAthleteProfile={(athleteId, updatedProfile) =>
               athleteProfileUpdateMutation.mutate({ athleteId, updatedProfile })
@@ -927,6 +982,9 @@ const Dashboard = () => {
             coachFeedbackRows={coachFeedbackRows}
             coachOperations={coachOperationsQuery.data || null}
             coachOperationsLoading={coachOperationsQuery.isFetching}
+            approvalQueue={calendarApprovalsQuery.data || []}
+            reviewingApproval={reviewCalendarApprovalMutation.isPending}
+            onReviewApproval={(workoutId, decision) => reviewCalendarApprovalMutation.mutate({ workoutId, decision })}
             inviteUrl={inviteUrl}
             inviteEmail={inviteEmail}
             onInviteEmailChange={setInviteEmail}

@@ -9,9 +9,21 @@ PERMISSION_KEYS = (
     "allow_delete_activities",
     "allow_delete_workouts",
     "allow_edit_workouts",
+    "allow_export_calendar",
+    "allow_public_calendar_share",
+    "require_workout_approval",
 )
 
-DEFAULT_PERMISSIONS = {key: True for key in PERMISSION_KEYS}
+DEFAULT_PERMISSIONS = {
+    "allow_delete_activities": True,
+    "allow_delete_workouts": True,
+    "allow_edit_workouts": True,
+    "allow_export_calendar": True,
+    "allow_public_calendar_share": True,
+    "require_workout_approval": False,
+}
+
+RESTRICTIVE_ANY_TRUE_KEYS = {"require_workout_approval"}
 
 
 def normalize_permissions(raw: Optional[dict]) -> dict:
@@ -21,6 +33,16 @@ def normalize_permissions(raw: Optional[dict]) -> dict:
         key: bool(raw.get(key, DEFAULT_PERMISSIONS.get(key, False)))
         for key in PERMISSION_KEYS
     }
+
+
+def _merge_effective_permissions(current: dict, parsed: dict) -> dict:
+    merged = dict(current)
+    for key in PERMISSION_KEYS:
+        if key in RESTRICTIVE_ANY_TRUE_KEYS:
+            merged[key] = bool(current.get(key, False) or parsed.get(key, False))
+        else:
+            merged[key] = bool(current.get(key, True) and parsed.get(key, True))
+    return merged
 
 
 async def get_shared_org_ids(db: AsyncSession, coach_id: int, athlete_id: int) -> list[int]:
@@ -93,8 +115,7 @@ async def get_athlete_permissions(
         athlete_permissions = settings.get("athlete_permissions") if isinstance(settings, dict) else None
         athlete_raw = athlete_permissions.get(str(athlete_id)) if isinstance(athlete_permissions, dict) else None
         parsed = normalize_permissions(athlete_raw)
-        for key in PERMISSION_KEYS:
-            effective[key] = effective[key] or parsed[key]
+        effective = _merge_effective_permissions(effective, parsed)
 
     return effective
 

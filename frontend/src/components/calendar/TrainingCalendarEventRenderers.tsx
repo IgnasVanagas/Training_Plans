@@ -282,6 +282,7 @@ export const DayEventItem = ({
           </Box>
           <Text fw={700} size="sm" c={palette.textMain}>{r.title}</Text>
           {!r.is_planned && <Badge size="xs" variant="light" color="gray">Completed</Badge>}
+          {r.is_planned && r.approval_status === 'pending' && <Badge size="xs" variant="light" color="orange">Pending approval</Badge>}
         </Group>
         <Text size="xs" c={palette.textDim} fw={700}>
           {r.is_planned ? formatMinutesHm(r.planned_duration) : formatMinutesHm(r.duration)}
@@ -301,6 +302,11 @@ export const DayEventItem = ({
             {r.planning_context?.phase && (
               <Text size="xs" c={palette.textDim}>
                 {`${r.planning_context.phase.toUpperCase()}${r.planning_context.countdown_days != null ? ` • ${r.planning_context.countdown_days}d` : ""}`}
+              </Text>
+            )}
+            {r.approval_status === 'pending' && (
+              <Text size="xs" c={palette.textDim}>
+                {`Pending ${r.approval_request_type || 'change'}${r.approval_requested_by_name ? ` • ${r.approval_requested_by_name}` : ''}`}
               </Text>
             )}
           </Box>

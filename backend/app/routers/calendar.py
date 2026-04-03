@@ -7,11 +7,11 @@ from sqlalchemy import select, and_, func
 from sqlalchemy.orm import load_only
 
 from app.database import get_db
-from app.models import User, PlannedWorkout, Activity, ComplianceStatusEnum, RoleEnum, OrganizationMember, Profile, DayNote
-from app.schemas import PlannedWorkoutCreate, PlannedWorkoutUpdate, PlannedWorkoutOut, CalendarEvent, DayNoteOut, DayNoteUpsert
+from app.models import User, PlannedWorkout, PlannedWorkoutVersion, Activity, ComplianceStatusEnum, RoleEnum, OrganizationMember, Profile, DayNote, Organization
+from app.schemas import PlannedWorkoutCreate, PlannedWorkoutUpdate, PlannedWorkoutOut, PlannedWorkoutVersionOut, PlannedWorkoutVersionDiffItemOut, CalendarEvent, DayNoteOut, DayNoteUpsert, CalendarShareSettingsOut, CalendarShareSettingsUpdate, CalendarApprovalSummaryOut, CalendarApprovalDecisionRequest, CalendarApprovalDecisionResponse, PublicCalendarResponse, PublicCalendarMetaOut
 from app.auth import get_current_user
 from app.services.compliance import match_and_score
-from app.services.permissions import get_athlete_permissions
+from app.services.permissions import get_athlete_permissions, get_shared_org_ids, get_athlete_org_ids
 
 router = APIRouter(
     prefix="/calendar",
@@ -28,6 +28,175 @@ def _escape_ics_text(value: str | None) -> str:
         .replace(",", "\\,")
         .replace("\n", "\\n")
     )
+
+
+CALENDAR_SHARE_DEFAULTS = {
+    "enabled": False,
+    "token": None,
+    "include_completed": False,
+    "include_descriptions": False,
+}
+
+
+def _normalize_calendar_share_settings(raw: object) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return dict(CALENDAR_SHARE_DEFAULTS)
+    return {
+        "enabled": bool(raw.get("enabled", False)),
+        "token": str(raw.get("token") or "").strip() or None,
+        "include_completed": bool(raw.get("include_completed", False)),
+        "include_descriptions": bool(raw.get("include_descriptions", False)),
+    }
+
+
+def _approval_from_planning_context(planning_context: object) -> dict[str, Any] | None:
+    if not isinstance(planning_context, dict):
+        return None
+    approval = planning_context.get("approval")
+    if not isinstance(approval, dict):
+        return None
+    status = str(approval.get("status") or "").strip().lower()
+    request_type = str(approval.get("request_type") or "").strip().lower()
+    if status not in {"pending", "approved", "rejected"}:
+        return None
+    if request_type not in {"create", "update", "delete"}:
+        return None
+    return approval
+
+
+def _approval_datetime(raw: object) -> datetime | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _strip_approval_context(planning_context: object) -> dict[str, Any] | None:
+    if not isinstance(planning_context, dict):
+        return None
+    next_context = dict(planning_context)
+    next_context.pop("approval", None)
+    return next_context or None
+
+
+def _set_approval_context(
+    planning_context: object,
+    *,
+    status: str,
+    request_type: str,
+    requested_by_user_id: int,
+    proposed_changes: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    next_context = dict(planning_context) if isinstance(planning_context, dict) else {}
+    next_context["approval"] = {
+        "status": status,
+        "request_type": request_type,
+        "requested_by_user_id": requested_by_user_id,
+        "requested_at": datetime.utcnow().isoformat(),
+        "proposed_changes": proposed_changes or None,
+    }
+    return next_context
+
+
+def _serialize_proposed_changes(proposed_changes: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(proposed_changes, dict):
+        return None
+    serialized: dict[str, Any] = {}
+    for key, value in proposed_changes.items():
+        if isinstance(value, (date, datetime)):
+            serialized[key] = value.isoformat()
+        else:
+            serialized[key] = value
+    return serialized or None
+
+
+async def _user_display_lookup(db: AsyncSession, user_ids: list[int]) -> dict[int, str]:
+    if not user_ids:
+        return {}
+    unique_ids = list(set(user_ids))
+    user_rows = await db.execute(select(User.id, User.email).where(User.id.in_(unique_ids)))
+    email_by_id = {row[0]: row[1] for row in user_rows.all()}
+    profile_rows = await db.execute(select(Profile.user_id, Profile.first_name, Profile.last_name).where(Profile.user_id.in_(unique_ids)))
+    display_by_id = dict(email_by_id)
+    for user_id, first_name, last_name in profile_rows.all():
+        display_name = " ".join(part for part in [first_name, last_name] if part).strip()
+        if display_name:
+            display_by_id[user_id] = display_name
+    return display_by_id
+
+
+def _annotate_workout_with_approval(workout: PlannedWorkout, display_by_id: dict[int, str] | None = None) -> PlannedWorkout:
+    approval = _approval_from_planning_context(workout.planning_context)
+    if not approval:
+        workout.approval_status = None
+        workout.approval_request_type = None
+        workout.approval_requested_by_user_id = None
+        workout.approval_requested_by_name = None
+        workout.approval_requested_at = None
+        return workout
+
+    requester_id = approval.get("requested_by_user_id")
+    workout.approval_status = approval.get("status")
+    workout.approval_request_type = approval.get("request_type")
+    workout.approval_requested_by_user_id = requester_id if isinstance(requester_id, int) else None
+    workout.approval_requested_by_name = display_by_id.get(requester_id) if display_by_id and isinstance(requester_id, int) else None
+    workout.approval_requested_at = _approval_datetime(approval.get("requested_at"))
+    return workout
+
+
+async def _resolve_share_org_ids(db: AsyncSession, current_user: User, athlete_id: int) -> list[int]:
+    if current_user.role == RoleEnum.coach and athlete_id != current_user.id:
+        return await get_shared_org_ids(db, current_user.id, athlete_id)
+    return await get_athlete_org_ids(db, athlete_id)
+
+
+async def _get_calendar_share_settings(db: AsyncSession, athlete_id: int, org_ids: list[int]) -> dict[str, Any]:
+    if not org_ids:
+        return dict(CALENDAR_SHARE_DEFAULTS)
+    orgs = (await db.execute(select(Organization).where(Organization.id.in_(org_ids)))).scalars().all()
+    for org in orgs:
+        settings = org.settings_json if isinstance(org.settings_json, dict) else {}
+        share_map = settings.get("calendar_public_shares") if isinstance(settings.get("calendar_public_shares"), dict) else {}
+        raw = share_map.get(str(athlete_id))
+        if raw is not None:
+            return _normalize_calendar_share_settings(raw)
+    return dict(CALENDAR_SHARE_DEFAULTS)
+
+
+async def _set_calendar_share_settings(db: AsyncSession, athlete_id: int, org_ids: list[int], payload: dict[str, Any]) -> dict[str, Any]:
+    normalized = _normalize_calendar_share_settings(payload)
+    if normalized["enabled"] and not normalized["token"]:
+        normalized["token"] = uuid.uuid4().hex
+    if not org_ids:
+        return normalized
+    orgs = (await db.execute(select(Organization).where(Organization.id.in_(org_ids)))).scalars().all()
+    for org in orgs:
+        settings = org.settings_json if isinstance(org.settings_json, dict) else {}
+        share_map = settings.get("calendar_public_shares") if isinstance(settings.get("calendar_public_shares"), dict) else {}
+        share_map[str(athlete_id)] = normalized
+        settings["calendar_public_shares"] = share_map
+        org.settings_json = settings
+        db.add(org)
+    await db.commit()
+    return normalized
+
+
+async def _find_share_by_token(db: AsyncSession, token: str) -> tuple[int, dict[str, Any]] | None:
+    orgs = (await db.execute(select(Organization))).scalars().all()
+    for org in orgs:
+        settings = org.settings_json if isinstance(org.settings_json, dict) else {}
+        share_map = settings.get("calendar_public_shares") if isinstance(settings.get("calendar_public_shares"), dict) else {}
+        for athlete_key, raw in share_map.items():
+            normalized = _normalize_calendar_share_settings(raw)
+            if normalized["enabled"] and normalized.get("token") == token:
+                try:
+                    return int(athlete_key), normalized
+                except (TypeError, ValueError):
+                    continue
+    return None
 
 
 
@@ -95,6 +264,79 @@ def _merge_planning_context(base_context: object, recurrence: Optional[dict[str,
     else:
         next_context["recurrence"] = recurrence
     return next_context or None
+
+
+_WORKOUT_VERSION_FIELDS = [
+    "date",
+    "title",
+    "description",
+    "sport_type",
+    "planned_duration",
+    "planned_distance",
+    "planned_intensity",
+    "structure",
+    "season_plan_id",
+    "planning_context",
+]
+
+
+def _snapshot_workout(workout: PlannedWorkout) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {}
+    for field in _WORKOUT_VERSION_FIELDS:
+        value = getattr(workout, field)
+        snapshot[field] = value.isoformat() if isinstance(value, date) else value
+    return snapshot
+
+
+def _compute_workout_diff(before: dict[str, Any] | None, after: dict[str, Any] | None) -> list[dict[str, Any]]:
+    left = before or {}
+    right = after or {}
+    fields = sorted(set(left.keys()) | set(right.keys()))
+    diff: list[dict[str, Any]] = []
+    for field in fields:
+        if left.get(field) != right.get(field):
+            diff.append({"field": field, "before": left.get(field), "after": right.get(field)})
+    return diff
+
+
+async def _record_workout_version(
+    db: AsyncSession,
+    *,
+    workout_id: int,
+    workout_user_id: int,
+    action: str,
+    changed_by_user_id: int | None,
+    before_snapshot: dict[str, Any] | None,
+    after_snapshot: dict[str, Any] | None,
+    note: str | None = None,
+) -> None:
+    max_version_row = await db.execute(
+        select(func.max(PlannedWorkoutVersion.version_number)).where(PlannedWorkoutVersion.workout_id == workout_id)
+    )
+    current_max = int(max_version_row.scalar() or 0)
+    version = PlannedWorkoutVersion(
+        workout_id=workout_id,
+        workout_user_id=workout_user_id,
+        version_number=current_max + 1,
+        action=action,
+        changed_by_user_id=changed_by_user_id,
+        before_snapshot=before_snapshot,
+        after_snapshot=after_snapshot,
+        diff_json=_compute_workout_diff(before_snapshot, after_snapshot),
+        note=note,
+    )
+    db.add(version)
+
+
+def _apply_workout_snapshot(workout: PlannedWorkout, snapshot: dict[str, Any]) -> None:
+    for field in _WORKOUT_VERSION_FIELDS:
+        if field not in snapshot:
+            continue
+        value = snapshot.get(field)
+        if field == "date" and isinstance(value, str):
+            setattr(workout, field, date.fromisoformat(value))
+        else:
+            setattr(workout, field, value)
 
 
 def _expand_weekly_recurrence_dates(start_date: date, recurrence: dict[str, Any]) -> list[date]:
@@ -359,6 +601,12 @@ async def get_calendar_events(
     }
 
     creator_ids = {workout.created_by_user_id for workout in workouts if workout.created_by_user_id is not None}
+    approval_requester_ids = {
+        approval.get("requested_by_user_id")
+        for workout in workouts
+        for approval in [_approval_from_planning_context(workout.planning_context)]
+        if isinstance(approval, dict) and isinstance(approval.get("requested_by_user_id"), int)
+    }
     creator_by_id: dict[int, tuple[str, Optional[str], Optional[str]]] = {}
     if creator_ids:
         creator_result = await db.execute(
@@ -377,6 +625,8 @@ async def get_calendar_events(
         for user_id, email in email_by_id.items():
             if user_id not in creator_by_id:
                 creator_by_id[user_id] = (email, None, None)
+
+    requester_name_by_id = await _user_display_lookup(db, [requester_id for requester_id in approval_requester_ids if isinstance(requester_id, int)])
 
     def _creator_payload(workout: PlannedWorkout) -> tuple[Optional[int], Optional[str], Optional[str]]:
         created_by_user_id = workout.created_by_user_id
@@ -422,6 +672,11 @@ async def get_calendar_events(
             season_plan_id=w.season_plan_id,
             planning_context=w.planning_context,
             recurrence=_extract_recurrence(w),
+            approval_status=(_approval_from_planning_context(w.planning_context) or {}).get("status"),
+            approval_request_type=(_approval_from_planning_context(w.planning_context) or {}).get("request_type"),
+            approval_requested_by_user_id=(_approval_from_planning_context(w.planning_context) or {}).get("requested_by_user_id"),
+            approval_requested_by_name=requester_name_by_id.get((_approval_from_planning_context(w.planning_context) or {}).get("requested_by_user_id")),
+            approval_requested_at=_approval_datetime((_approval_from_planning_context(w.planning_context) or {}).get("requested_at")),
             start_time=datetime.combine(w.date, datetime.min.time())
         ))
 
@@ -456,6 +711,11 @@ async def get_calendar_events(
             season_plan_id=matched_workout.season_plan_id if matched_workout else None,
             planning_context=matched_workout.planning_context if matched_workout else None,
             recurrence=_extract_recurrence(matched_workout),
+            approval_status=(_approval_from_planning_context(matched_workout.planning_context) or {}).get("status") if matched_workout else None,
+            approval_request_type=(_approval_from_planning_context(matched_workout.planning_context) or {}).get("request_type") if matched_workout else None,
+            approval_requested_by_user_id=(_approval_from_planning_context(matched_workout.planning_context) or {}).get("requested_by_user_id") if matched_workout else None,
+            approval_requested_by_name=requester_name_by_id.get((_approval_from_planning_context(matched_workout.planning_context) or {}).get("requested_by_user_id")) if matched_workout else None,
+            approval_requested_at=_approval_datetime((_approval_from_planning_context(matched_workout.planning_context) or {}).get("requested_at")) if matched_workout else None,
             avg_hr=a.average_hr,
             avg_watts=a.average_watts,
             avg_speed=a.avg_speed,
@@ -514,6 +774,497 @@ async def recent_coach_workouts(
     return unique
 
 
+@router.get("/sharing/settings", response_model=list[CalendarShareSettingsOut])
+async def list_calendar_share_settings(
+    athlete_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role == RoleEnum.coach:
+        coach_org_ids = [
+            membership.organization_id
+            for membership in current_user.organization_memberships
+            if membership.role == RoleEnum.coach.value and membership.status == 'active'
+        ]
+        if not coach_org_ids:
+            return []
+        athlete_rows = await db.execute(
+            select(OrganizationMember.user_id)
+            .where(
+                OrganizationMember.organization_id.in_(coach_org_ids),
+                OrganizationMember.role == RoleEnum.athlete.value,
+                OrganizationMember.status == 'active',
+            )
+        )
+        athlete_ids = sorted(set(athlete_rows.scalars().all()))
+        if athlete_id is not None:
+            athlete_ids = [value for value in athlete_ids if value == athlete_id]
+    else:
+        athlete_ids = [current_user.id]
+        athlete_id = current_user.id
+
+    rows: list[CalendarShareSettingsOut] = []
+    for target_athlete_id in athlete_ids:
+        if current_user.role == RoleEnum.coach:
+            org_ids = await get_shared_org_ids(db, current_user.id, target_athlete_id)
+        else:
+            permissions = await get_athlete_permissions(db, target_athlete_id)
+            if not permissions.get("allow_public_calendar_share", True):
+                rows.append(CalendarShareSettingsOut(athlete_id=target_athlete_id))
+                continue
+            org_ids = await get_athlete_org_ids(db, target_athlete_id)
+        share = await _get_calendar_share_settings(db, target_athlete_id, org_ids)
+        rows.append(CalendarShareSettingsOut(athlete_id=target_athlete_id, **share))
+    return rows
+
+
+@router.put("/sharing/settings", response_model=CalendarShareSettingsOut)
+async def update_calendar_share_settings(
+    payload: CalendarShareSettingsUpdate,
+    athlete_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target_athlete_id = athlete_id or current_user.id
+    if current_user.role == RoleEnum.coach:
+        org_ids = await get_shared_org_ids(db, current_user.id, target_athlete_id)
+        if not org_ids:
+            raise HTTPException(status_code=403, detail="Not authorized to manage this athlete's shared calendar")
+    else:
+        if target_athlete_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized to manage this shared calendar")
+        permissions = await get_athlete_permissions(db, target_athlete_id)
+        if not permissions.get("allow_public_calendar_share", True):
+            raise HTTPException(status_code=403, detail="Coach has not allowed public calendar sharing")
+        org_ids = await get_athlete_org_ids(db, target_athlete_id)
+
+    existing = await _get_calendar_share_settings(db, target_athlete_id, org_ids)
+    next_payload = {
+        **existing,
+        **payload.model_dump(exclude_unset=True),
+    }
+    share = await _set_calendar_share_settings(db, target_athlete_id, org_ids, next_payload)
+    return CalendarShareSettingsOut(athlete_id=target_athlete_id, **share)
+
+
+@router.get("/public/{token}", response_model=PublicCalendarResponse)
+async def get_public_calendar(
+    token: str,
+    start_date: date,
+    end_date: date,
+    db: AsyncSession = Depends(get_db),
+):
+    share_match = await _find_share_by_token(db, token)
+    if share_match is None:
+        raise HTTPException(status_code=404, detail="Shared calendar not found")
+
+    athlete_id, share_settings = share_match
+    athlete_permissions = await get_athlete_permissions(db, athlete_id)
+    if not athlete_permissions.get("allow_public_calendar_share", True):
+        raise HTTPException(status_code=404, detail="Shared calendar not found")
+    athlete = await db.scalar(select(User).where(User.id == athlete_id))
+    athlete_profile = await db.scalar(select(Profile).where(Profile.user_id == athlete_id))
+    athlete_name = _note_display_name(athlete_profile) or (athlete.email if athlete else "Athlete")
+
+    workout_rows = (
+        await db.execute(
+            select(PlannedWorkout)
+            .where(
+                PlannedWorkout.user_id == athlete_id,
+                PlannedWorkout.date >= start_date,
+                PlannedWorkout.date <= end_date,
+            )
+            .order_by(PlannedWorkout.date.asc(), PlannedWorkout.id.asc())
+        )
+    ).scalars().all()
+
+    events: list[CalendarEvent] = []
+    for workout in workout_rows:
+        approval = _approval_from_planning_context(workout.planning_context)
+        if approval and approval.get("status") == "pending":
+            continue
+        events.append(CalendarEvent(
+            id=workout.id,
+            user_id=athlete_id,
+            date=workout.date,
+            title=workout.title,
+            sport_type=workout.sport_type,
+            duration=float(workout.planned_duration) if workout.planned_duration else None,
+            is_planned=True,
+            description=workout.description if share_settings.get("include_descriptions") else None,
+            planned_duration=workout.planned_duration,
+            planned_distance=workout.planned_distance,
+            planned_intensity=workout.planned_intensity,
+            compliance_status=workout.compliance_status,
+            start_time=datetime.combine(workout.date, datetime.min.time()),
+        ))
+
+    if share_settings.get("include_completed"):
+        activity_rows = (
+            await db.execute(
+                select(Activity)
+                .options(load_only(
+                    Activity.id, Activity.athlete_id, Activity.filename, Activity.sport,
+                    Activity.created_at, Activity.distance, Activity.duration,
+                    Activity.avg_speed, Activity.average_hr, Activity.average_watts,
+                ))
+                .where(
+                    Activity.athlete_id == athlete_id,
+                    Activity.created_at >= datetime.combine(start_date - timedelta(days=1), datetime.min.time()),
+                    Activity.created_at <= datetime.combine(end_date + timedelta(days=1), datetime.max.time()),
+                    Activity.duplicate_of_id.is_(None),
+                    Activity.is_deleted.is_(False),
+                )
+            )
+        ).scalars().all()
+        for activity in activity_rows:
+            display_date = activity.created_at.date() if activity.created_at else start_date
+            if display_date < start_date or display_date > end_date:
+                continue
+            events.append(CalendarEvent(
+                id=activity.id,
+                user_id=athlete_id,
+                date=display_date,
+                title=activity.filename or "Activity",
+                sport_type=activity.sport,
+                duration=(activity.duration or 0) / 60 if activity.duration else None,
+                distance=(activity.distance / 1000) if activity.distance else None,
+                is_planned=False,
+                avg_hr=activity.average_hr,
+                avg_watts=activity.average_watts,
+                avg_speed=activity.avg_speed,
+                start_time=activity.created_at,
+            ))
+
+    events.sort(key=lambda row: row.start_time or datetime.combine(row.date, datetime.min.time()))
+    return PublicCalendarResponse(
+        meta=PublicCalendarMetaOut(
+            athlete_name=athlete_name,
+            include_completed=bool(share_settings.get("include_completed")),
+            include_descriptions=bool(share_settings.get("include_descriptions")),
+        ),
+        events=events,
+    )
+
+
+@router.get("/public/{token}/ics")
+async def download_public_calendar_ics(
+    token: str,
+    start_date: date,
+    end_date: date,
+    db: AsyncSession = Depends(get_db),
+):
+    public_calendar = await get_public_calendar(token=token, start_date=start_date, end_date=end_date, db=db)
+
+    dtstamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Endurance//Shared Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+    ]
+    for event in public_calendar.events:
+        if not event.is_planned:
+            continue
+        event_end = event.date + timedelta(days=1)
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:shared-planned-workout-{event.id}@endurance.local",
+            f"DTSTAMP:{dtstamp}",
+            f"DTSTART;VALUE=DATE:{event.date.strftime('%Y%m%d')}",
+            f"DTEND;VALUE=DATE:{event_end.strftime('%Y%m%d')}",
+            f"SUMMARY:{_escape_ics_text(event.title)}",
+            f"DESCRIPTION:{_escape_ics_text(event.description or '')}",
+            "STATUS:CONFIRMED",
+            "END:VEVENT",
+        ])
+    lines.extend(["END:VCALENDAR", ""])
+    return Response(
+        content="\r\n".join(lines),
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="shared-calendar.ics"'},
+    )
+
+
+@router.get("/approvals", response_model=list[CalendarApprovalSummaryOut])
+async def list_calendar_approvals(
+    athlete_id: Optional[int] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Only coaches can review calendar approvals")
+
+    coach_org_ids = [
+        membership.organization_id
+        for membership in current_user.organization_memberships
+        if membership.role == RoleEnum.coach.value and membership.status == 'active'
+    ]
+    if not coach_org_ids:
+        return []
+
+    athlete_rows = await db.execute(
+        select(OrganizationMember.user_id).where(
+            OrganizationMember.organization_id.in_(coach_org_ids),
+            OrganizationMember.role == RoleEnum.athlete.value,
+            OrganizationMember.status == 'active',
+        )
+    )
+    athlete_ids = sorted(set(athlete_rows.scalars().all()))
+    if athlete_id is not None:
+        athlete_ids = [value for value in athlete_ids if value == athlete_id]
+    if not athlete_ids:
+        return []
+
+    workouts = (
+        await db.execute(
+            select(PlannedWorkout)
+            .where(PlannedWorkout.user_id.in_(athlete_ids))
+            .order_by(PlannedWorkout.date.asc(), PlannedWorkout.id.asc())
+        )
+    ).scalars().all()
+
+    display_by_id = await _user_display_lookup(db, athlete_ids + [current_user.id] + [
+        approval.get("requested_by_user_id")
+        for workout in workouts
+        for approval in [_approval_from_planning_context(workout.planning_context)]
+        if isinstance(approval, dict) and isinstance(approval.get("requested_by_user_id"), int)
+    ])
+
+    rows: list[CalendarApprovalSummaryOut] = []
+    for workout in workouts:
+        approval = _approval_from_planning_context(workout.planning_context)
+        if not approval or approval.get("status") != "pending":
+            continue
+        requester_id = approval.get("requested_by_user_id")
+        if not isinstance(requester_id, int):
+            continue
+        rows.append(CalendarApprovalSummaryOut(
+            workout_id=workout.id,
+            athlete_id=workout.user_id,
+            athlete_name=display_by_id.get(workout.user_id, f"Athlete {workout.user_id}"),
+            title=workout.title,
+            date=workout.date,
+            sport_type=workout.sport_type,
+            request_type=approval.get("request_type"),
+            requested_by_user_id=requester_id,
+            requested_by_name=display_by_id.get(requester_id),
+            requested_at=_approval_datetime(approval.get("requested_at")) or datetime.utcnow(),
+            proposed_changes=_serialize_proposed_changes(approval.get("proposed_changes")),
+        ))
+    return rows
+
+
+@router.post("/{workout_id}/review", response_model=CalendarApprovalDecisionResponse)
+async def review_calendar_approval(
+    workout_id: int,
+    payload: CalendarApprovalDecisionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Only coaches can review calendar approvals")
+
+    workout = await db.scalar(select(PlannedWorkout).where(PlannedWorkout.id == workout_id))
+    if not workout:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    if workout.user_id != current_user.id:
+        await check_coach_access(current_user.id, workout.user_id, db)
+
+    approval = _approval_from_planning_context(workout.planning_context)
+    if not approval or approval.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="This workout has no pending approval request")
+
+    request_type = approval.get("request_type")
+    proposed_changes = approval.get("proposed_changes") if isinstance(approval.get("proposed_changes"), dict) else {}
+
+    if payload.decision == 'reject':
+        if request_type == 'create':
+            target_user_id = workout.user_id
+            target_date = workout.date
+            before_snapshot = _snapshot_workout(workout)
+            await _record_workout_version(
+                db,
+                workout_id=workout.id,
+                workout_user_id=workout.user_id,
+                action="reject_create",
+                changed_by_user_id=current_user.id,
+                before_snapshot=before_snapshot,
+                after_snapshot=None,
+            )
+            await db.delete(workout)
+            await db.commit()
+            await match_and_score(db, target_user_id, target_date)
+            return CalendarApprovalDecisionResponse(workout_id=workout_id, status='rejected', deleted=True)
+
+        before_snapshot = _snapshot_workout(workout)
+        workout.planning_context = _strip_approval_context(workout.planning_context)
+        db.add(workout)
+        await _record_workout_version(
+            db,
+            workout_id=workout.id,
+            workout_user_id=workout.user_id,
+            action="reject_request",
+            changed_by_user_id=current_user.id,
+            before_snapshot=before_snapshot,
+            after_snapshot=_snapshot_workout(workout),
+        )
+        await db.commit()
+        await db.refresh(workout)
+        return CalendarApprovalDecisionResponse(workout_id=workout_id, status='rejected', deleted=False)
+
+    before_snapshot = _snapshot_workout(workout)
+    original_date = workout.date
+    if request_type == 'update':
+        for key, value in proposed_changes.items():
+            if key == 'date' and isinstance(value, str):
+                setattr(workout, key, date.fromisoformat(value))
+            else:
+                setattr(workout, key, value)
+    elif request_type == 'delete':
+        target_user_id = workout.user_id
+        target_date = workout.date
+        await _record_workout_version(
+            db,
+            workout_id=workout.id,
+            workout_user_id=workout.user_id,
+            action="approve_delete",
+            changed_by_user_id=current_user.id,
+            before_snapshot=before_snapshot,
+            after_snapshot=None,
+        )
+        await db.delete(workout)
+        await db.commit()
+        await match_and_score(db, target_user_id, target_date)
+        return CalendarApprovalDecisionResponse(workout_id=workout_id, status='approved', deleted=True)
+
+    workout.planning_context = _strip_approval_context(workout.planning_context)
+    db.add(workout)
+    await _record_workout_version(
+        db,
+        workout_id=workout.id,
+        workout_user_id=workout.user_id,
+        action="approve_update" if request_type == "update" else "approve_create",
+        changed_by_user_id=current_user.id,
+        before_snapshot=before_snapshot,
+        after_snapshot=_snapshot_workout(workout),
+    )
+    await db.commit()
+    await db.refresh(workout)
+    if workout.date != original_date:
+        await match_and_score(db, workout.user_id, original_date)
+    await match_and_score(db, workout.user_id, workout.date)
+    return CalendarApprovalDecisionResponse(workout_id=workout_id, status='approved', deleted=False)
+
+
+@router.get("/{workout_id}/history", response_model=list[PlannedWorkoutVersionOut])
+async def get_workout_history(
+    workout_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    workout = await db.scalar(select(PlannedWorkout).where(PlannedWorkout.id == workout_id))
+    if not workout:
+        raise HTTPException(status_code=404, detail="Workout not found")
+
+    if current_user.role == RoleEnum.coach:
+        if workout.user_id != current_user.id:
+            await check_coach_access(current_user.id, workout.user_id, db)
+    elif workout.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    versions = (
+        await db.execute(
+            select(PlannedWorkoutVersion)
+            .where(PlannedWorkoutVersion.workout_id == workout_id)
+            .order_by(PlannedWorkoutVersion.version_number.desc())
+        )
+    ).scalars().all()
+
+    changed_by_ids = [row.changed_by_user_id for row in versions if isinstance(row.changed_by_user_id, int)]
+    display_by_id = await _user_display_lookup(db, changed_by_ids)
+
+    rows: list[PlannedWorkoutVersionOut] = []
+    for row in versions:
+        diff_items = [
+            PlannedWorkoutVersionDiffItemOut(
+                field=str(item.get("field")),
+                before=item.get("before"),
+                after=item.get("after"),
+            )
+            for item in (row.diff_json or [])
+            if isinstance(item, dict) and item.get("field")
+        ]
+        rows.append(
+            PlannedWorkoutVersionOut(
+                id=row.id,
+                workout_id=row.workout_id,
+                version_number=row.version_number,
+                action=row.action,
+                changed_by_user_id=row.changed_by_user_id,
+                changed_by_name=display_by_id.get(row.changed_by_user_id) if row.changed_by_user_id else None,
+                changed_at=row.changed_at,
+                note=row.note,
+                diff=diff_items,
+            )
+        )
+    return rows
+
+
+@router.post("/{workout_id}/history/{version_id}/rollback", response_model=PlannedWorkoutOut)
+async def rollback_workout_version(
+    workout_id: int,
+    version_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Only coaches can rollback workout versions")
+
+    workout = await db.scalar(select(PlannedWorkout).where(PlannedWorkout.id == workout_id))
+    if not workout:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    if workout.user_id != current_user.id:
+        await check_coach_access(current_user.id, workout.user_id, db)
+
+    version = await db.scalar(
+        select(PlannedWorkoutVersion).where(
+            PlannedWorkoutVersion.id == version_id,
+            PlannedWorkoutVersion.workout_id == workout_id,
+        )
+    )
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    if not isinstance(version.after_snapshot, dict):
+        raise HTTPException(status_code=400, detail="Selected version has no restorable snapshot")
+
+    before_snapshot = _snapshot_workout(workout)
+    original_date = workout.date
+    _apply_workout_snapshot(workout, version.after_snapshot)
+
+    db.add(workout)
+    await _record_workout_version(
+        db,
+        workout_id=workout.id,
+        workout_user_id=workout.user_id,
+        action="rollback",
+        changed_by_user_id=current_user.id,
+        before_snapshot=before_snapshot,
+        after_snapshot=_snapshot_workout(workout),
+        note=f"rollback_to_version:{version.version_number}",
+    )
+    await db.commit()
+    await db.refresh(workout)
+
+    if workout.date != original_date:
+        await match_and_score(db, workout.user_id, original_date)
+    await match_and_score(db, workout.user_id, workout.date)
+
+    _annotate_workout_with_approval(workout, {current_user.id: current_user.email})
+    return workout
+
+
 @router.post("/", response_model=PlannedWorkoutOut)
 async def create_workout(
     workout_in: PlannedWorkoutCreate,
@@ -522,6 +1273,7 @@ async def create_workout(
     db: AsyncSession = Depends(get_db)
 ):
     target_user_id = current_user.id
+    athlete_permissions = None
 
     if athlete_id is not None:
          if current_user.role != RoleEnum.coach:
@@ -529,6 +1281,8 @@ async def create_workout(
          if athlete_id != current_user.id:
              await check_coach_access(current_user.id, athlete_id, db)
              target_user_id = athlete_id
+    elif current_user.role != RoleEnum.coach:
+        athlete_permissions = await get_athlete_permissions(db, current_user.id)
 
     payload = workout_in.model_dump()
     recurrence = payload.pop("recurrence", None)
@@ -573,8 +1327,27 @@ async def create_workout(
             created_by_user_id=current_user.id,
             **workout_payload
         )
+        if current_user.role != RoleEnum.coach and athlete_permissions and athlete_permissions.get("require_workout_approval", False):
+            new_workout.planning_context = _set_approval_context(
+                new_workout.planning_context,
+                status="pending",
+                request_type="create",
+                requested_by_user_id=current_user.id,
+            )
         db.add(new_workout)
         created_workouts.append(new_workout)
+
+    await db.flush()
+    for workout in created_workouts:
+        await _record_workout_version(
+            db,
+            workout_id=workout.id,
+            workout_user_id=workout.user_id,
+            action="create",
+            changed_by_user_id=current_user.id,
+            before_snapshot=None,
+            after_snapshot=_snapshot_workout(workout),
+        )
 
     await db.commit()
     for workout in created_workouts:
@@ -584,6 +1357,7 @@ async def create_workout(
         await match_and_score(db, target_user_id, workout_date)
 
     primary_workout = created_workouts[0]
+    _annotate_workout_with_approval(primary_workout, {current_user.id: current_user.email})
     await db.refresh(primary_workout)
     return primary_workout
 
@@ -612,6 +1386,39 @@ async def update_workout(
         athlete_permissions = await get_athlete_permissions(db, workout.user_id)
         if not athlete_permissions.get("allow_edit_workouts", True):
             raise HTTPException(status_code=403, detail="Coach has not allowed workout editing")
+        if athlete_permissions.get("require_workout_approval", False):
+            if _approval_from_planning_context(workout.planning_context):
+                raise HTTPException(status_code=409, detail="This workout already has a pending approval request")
+            before_snapshot = _snapshot_workout(workout)
+            update_data = workout_update.model_dump(exclude_unset=True)
+            recurrence = update_data.pop("recurrence", None) if "recurrence" in update_data else None
+            if "structure" in update_data:
+                estimated_duration = _estimate_planned_duration_minutes(update_data.get("structure"))
+                if estimated_duration is not None:
+                    update_data["planned_duration"] = estimated_duration
+            if "recurrence" in workout_update.model_fields_set:
+                update_data["planning_context"] = _merge_planning_context(workout.planning_context, recurrence)
+            workout.planning_context = _set_approval_context(
+                workout.planning_context,
+                status="pending",
+                request_type="update",
+                requested_by_user_id=current_user.id,
+                proposed_changes=_serialize_proposed_changes(update_data),
+            )
+            db.add(workout)
+            await _record_workout_version(
+                db,
+                workout_id=workout.id,
+                workout_user_id=workout.user_id,
+                action="request_update",
+                changed_by_user_id=current_user.id,
+                before_snapshot=before_snapshot,
+                after_snapshot=_snapshot_workout(workout),
+            )
+            await db.commit()
+            await db.refresh(workout)
+            _annotate_workout_with_approval(workout, {current_user.id: current_user.email})
+            return workout
 
     update_data = workout_update.model_dump(exclude_unset=True)
     recurrence = update_data.pop("recurrence", None) if "recurrence" in update_data else None
@@ -624,6 +1431,7 @@ async def update_workout(
     if "recurrence" in workout_update.model_fields_set:
         workout.planning_context = _merge_planning_context(workout.planning_context, recurrence)
     
+    before_snapshot = _snapshot_workout(workout)
     original_date = workout.date
     new_date = update_data.get('date')
     
@@ -631,6 +1439,15 @@ async def update_workout(
         setattr(workout, key, value)
         
     db.add(workout)
+    await _record_workout_version(
+        db,
+        workout_id=workout.id,
+        workout_user_id=workout.user_id,
+        action="update",
+        changed_by_user_id=current_user.id,
+        before_snapshot=before_snapshot,
+        after_snapshot=_snapshot_workout(workout),
+    )
     await db.commit()
     
     # If date changed, re-score both dates
@@ -643,6 +1460,7 @@ async def update_workout(
         await match_and_score(db, target_user_id, workout.date)
         
     await db.refresh(workout)
+    _annotate_workout_with_approval(workout, {current_user.id: current_user.email})
     return workout
 
 @router.delete("/{workout_id}")
@@ -668,10 +1486,42 @@ async def delete_workout(
         athlete_permissions = await get_athlete_permissions(db, current_user.id)
         if not athlete_permissions.get("allow_delete_workouts", True):
             raise HTTPException(status_code=403, detail="Coach has not allowed plan deletion")
+        if athlete_permissions.get("require_workout_approval", False):
+            if _approval_from_planning_context(workout.planning_context):
+                raise HTTPException(status_code=409, detail="This workout already has a pending approval request")
+            before_snapshot = _snapshot_workout(workout)
+            workout.planning_context = _set_approval_context(
+                workout.planning_context,
+                status="pending",
+                request_type="delete",
+                requested_by_user_id=current_user.id,
+            )
+            db.add(workout)
+            await _record_workout_version(
+                db,
+                workout_id=workout.id,
+                workout_user_id=workout.user_id,
+                action="request_delete",
+                changed_by_user_id=current_user.id,
+                before_snapshot=before_snapshot,
+                after_snapshot=_snapshot_workout(workout),
+            )
+            await db.commit()
+            return {"status": "pending_approval", "deleted": False}
 
     target_user_id = workout.user_id
     target_date = workout.date
-    
+    before_snapshot = _snapshot_workout(workout)
+
+    await _record_workout_version(
+        db,
+        workout_id=workout.id,
+        workout_user_id=workout.user_id,
+        action="delete",
+        changed_by_user_id=current_user.id,
+        before_snapshot=before_snapshot,
+        after_snapshot=None,
+    )
     await db.delete(workout)
     await db.commit()
     
@@ -700,6 +1550,10 @@ async def copy_workout(
             await check_coach_access(current_user.id, source_workout.user_id, db)
          else:
             raise HTTPException(status_code=403, detail="Not authorized")
+    elif current_user.role != RoleEnum.coach:
+        athlete_permissions = await get_athlete_permissions(db, current_user.id)
+        if not athlete_permissions.get("allow_edit_workouts", True):
+            raise HTTPException(status_code=403, detail="Coach has not allowed workout editing")
 
     target_user_id = source_workout.user_id
 
@@ -717,8 +1571,28 @@ async def copy_workout(
         planning_context=source_workout.planning_context,
         compliance_status=ComplianceStatusEnum.planned
     )
+    if current_user.role != RoleEnum.coach:
+        athlete_permissions = await get_athlete_permissions(db, current_user.id)
+        if athlete_permissions.get("require_workout_approval", False):
+            new_workout.planning_context = _set_approval_context(
+                new_workout.planning_context,
+                status="pending",
+                request_type="create",
+                requested_by_user_id=current_user.id,
+            )
     
     db.add(new_workout)
+    await db.flush()
+    await _record_workout_version(
+        db,
+        workout_id=new_workout.id,
+        workout_user_id=new_workout.user_id,
+        action="copy_create",
+        changed_by_user_id=current_user.id,
+        before_snapshot=None,
+        after_snapshot=_snapshot_workout(new_workout),
+        note=f"copied_from_workout_id:{source_workout.id}",
+    )
     await db.commit()
     await db.refresh(new_workout)
     
@@ -884,6 +1758,9 @@ async def download_workout_fit(
     else:
         if workout.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized")
+        athlete_permissions = await get_athlete_permissions(db, current_user.id)
+        if not athlete_permissions.get("allow_export_calendar", True):
+            raise HTTPException(status_code=403, detail="Coach has not allowed workout export")
 
     if not workout.structure:
         raise HTTPException(status_code=400, detail="Workout has no structured steps to export")
@@ -918,6 +1795,9 @@ async def download_workout(
     else:
         if workout.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized")
+        athlete_permissions = await get_athlete_permissions(db, current_user.id)
+        if not athlete_permissions.get("allow_export_calendar", True):
+            raise HTTPException(status_code=403, detail="Coach has not allowed workout export")
 
     start_date = workout.date
     end_date = workout.date + timedelta(days=1)

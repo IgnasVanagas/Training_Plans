@@ -1,10 +1,11 @@
 import { format } from 'date-fns';
-import { Activity, AlertTriangle, Award, Bandage, CalendarOff, CheckCircle, ChevronDown, Download, HelpCircle, HeartPulse, Medal, Moon, Pencil, Plane, Trash2, Trophy, X } from 'lucide-react';
+import { Activity, AlertTriangle, Award, Bandage, CalendarOff, CheckCircle, ChevronDown, Download, HelpCircle, HeartPulse, History, Medal, Moon, Pencil, Plane, RotateCcw, Trash2, Trophy, X } from 'lucide-react';
 import { ActionIcon, Alert, Box, Button, Container, Divider, Group, Menu, Modal, MultiSelect, NumberInput, Paper, Select, SimpleGrid, Stack, SegmentedControl, Text, TextInput, Textarea, ThemeIcon, Tooltip } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { notifications } from '@mantine/notifications';
 import { WorkoutEditor } from '../builder/WorkoutEditor';
 import api from '../../api/client';
 
@@ -616,8 +617,8 @@ export const DayDetailsModal = ({
                                       position="top"
                                       withArrow
                                     >
-                                      <span style={{ display: 'inline-flex', cursor: 'help' }}>
-                                        <HelpCircle size={14} style={{ opacity: 0.5 }} />
+                                      <span>
+                                        <HelpCircle size={14} />
                                       </span>
                                     </Tooltip>
                                   </Group>
@@ -1120,6 +1121,53 @@ export const BulkEditModal = ({
   </Modal>
 );
 
+type WorkoutVersionDiffItem = {
+  field: string;
+  before: any;
+  after: any;
+};
+
+type WorkoutVersionItem = {
+  id: number;
+  workout_id: number;
+  version_number: number;
+  action: string;
+  changed_by_user_id?: number | null;
+  changed_by_name?: string | null;
+  changed_at: string;
+  note?: string | null;
+  diff: WorkoutVersionDiffItem[];
+};
+
+const formatDiffValue = (value: any): string => {
+  if (value === null || value === undefined) return '∅';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const formatVersionAction = (action: string, t: (value: string) => string): string => {
+  const actionMap: Record<string, string> = {
+    create: t('Created') || 'Created',
+    update: t('Updated') || 'Updated',
+    delete: t('Deleted') || 'Deleted',
+    copy_create: t('Copied') || 'Copied',
+    request_update: t('Requested update') || 'Requested update',
+    request_delete: t('Requested delete') || 'Requested delete',
+    approve_update: t('Approved update') || 'Approved update',
+    approve_create: t('Approved create') || 'Approved create',
+    approve_delete: t('Approved delete') || 'Approved delete',
+    reject_request: t('Rejected request') || 'Rejected request',
+    reject_create: t('Rejected create') || 'Rejected create',
+    rollback: t('Rolled back') || 'Rolled back',
+  };
+  return actionMap[action] || action;
+};
+
 export const WorkoutEditModal = ({
   opened,
   onClose,
@@ -1135,8 +1183,46 @@ export const WorkoutEditModal = ({
   handleSave,
 }: any) => {
   const { t } = useI18n();
+  const queryClient = useQueryClient();
   const isMobileEdit = useMediaQuery('(max-width: 48em)');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const versionHistoryQuery = useQuery({
+    queryKey: ['workout-version-history', selectedEvent.id],
+    enabled: historyOpen && Boolean(selectedEvent.id),
+    queryFn: async () => {
+      const response = await api.get<WorkoutVersionItem[]>(`/calendar/${selectedEvent.id}/history`);
+      return response.data;
+    },
+    staleTime: 15_000,
+  });
+
+  const rollbackMutation = useMutation({
+    mutationFn: async (versionId: number) => {
+      const response = await api.post(`/calendar/${selectedEvent.id}/history/${versionId}/rollback`);
+      return response.data;
+    },
+    onSuccess: (data: any) => {
+      setSelectedEvent(data);
+      queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['workout-version-history', selectedEvent.id] });
+      notifications.show({
+        color: 'green',
+        title: t('Rollback applied') || 'Rollback applied',
+        message: t('Workout has been restored to the selected version.') || 'Workout has been restored to the selected version.',
+      });
+      setHistoryOpen(false);
+    },
+    onError: (error: any) => {
+      notifications.show({
+        color: 'red',
+        title: t('Rollback failed') || 'Rollback failed',
+        message: error?.response?.data?.detail || error?.message || t('Please try again.') || 'Please try again.',
+      });
+    },
+  });
 
   const handleDownloadWorkout = () => {
     if (!selectedEvent.title && !selectedEvent.structure?.length) return;
@@ -1301,6 +1387,15 @@ export const WorkoutEditModal = ({
             {t('Delete Workout') || 'Delete Workout'}
           </Button>
         )}
+        {selectedEvent.id && (
+          <Button
+            variant="light"
+            leftSection={<History size={16} />}
+            onClick={() => setHistoryOpen(true)}
+          >
+            {t('Version history') || 'Version history'}
+          </Button>
+        )}
         {selectedEvent.id && selectedEvent.structure?.length > 0 && (
           <Menu position="top-end" withinPortal>
             <Menu.Target>
@@ -1337,6 +1432,67 @@ export const WorkoutEditModal = ({
         </Button>
       </Group>
     </Paper>
+
+    <Modal
+      opened={historyOpen}
+      onClose={() => setHistoryOpen(false)}
+      title={t('Version history') || 'Version history'}
+      centered
+      radius="md"
+      size="lg"
+      overlayProps={{ backgroundOpacity: 0.4, blur: 2 }}
+    >
+      <Stack gap="sm">
+        {versionHistoryQuery.isLoading && (
+          <Text size="sm" c="dimmed">{t('Loading version history...') || 'Loading version history...'}</Text>
+        )}
+        {!versionHistoryQuery.isLoading && (versionHistoryQuery.data || []).length === 0 && (
+          <Text size="sm" c="dimmed">{t('No version history found.') || 'No version history found.'}</Text>
+        )}
+        {(versionHistoryQuery.data || []).map((item) => (
+          <Paper key={item.id} withBorder p="sm" radius="md">
+            <Group justify="space-between" align="flex-start" wrap="nowrap">
+              <Stack gap={2} style={{ flex: 1 }}>
+                <Group gap="xs">
+                  <Text size="sm" fw={700}>#{item.version_number}</Text>
+                  <Text size="sm">{formatVersionAction(item.action, t)}</Text>
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {(item.changed_by_name || t('Unknown user') || 'Unknown user')} · {new Date(item.changed_at).toLocaleString()}
+                </Text>
+                {item.note && (
+                  <Text size="xs" c="dimmed">{item.note}</Text>
+                )}
+                <Stack gap={4} mt={4}>
+                  {item.diff.length === 0 && (
+                    <Text size="xs" c="dimmed">{t('No field-level changes recorded.') || 'No field-level changes recorded.'}</Text>
+                  )}
+                  {item.diff.map((change, idx) => (
+                    <Text key={`${item.id}-${change.field}-${idx}`} size="xs" style={{ wordBreak: 'break-word' }}>
+                      <Text component="span" fw={600}>{change.field}</Text>
+                      {': '}
+                      <Text component="span" c="dimmed">{formatDiffValue(change.before)}</Text>
+                      {' → '}
+                      <Text component="span">{formatDiffValue(change.after)}</Text>
+                    </Text>
+                  ))}
+                </Stack>
+              </Stack>
+              <Button
+                variant="light"
+                size="xs"
+                leftSection={<RotateCcw size={12} />}
+                disabled={!canEditWorkouts || rollbackMutation.isPending}
+                loading={rollbackMutation.isPending}
+                onClick={() => rollbackMutation.mutate(item.id)}
+              >
+                {t('Rollback') || 'Rollback'}
+              </Button>
+            </Group>
+          </Paper>
+        ))}
+      </Stack>
+    </Modal>
 
     <Modal
       opened={confirmDelete}

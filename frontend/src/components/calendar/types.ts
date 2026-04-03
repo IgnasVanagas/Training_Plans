@@ -38,6 +38,11 @@ export interface CalendarEvent {
       name?: string;
     }>;
   };
+  approval_status?: "pending" | "approved" | "rejected" | null;
+  approval_request_type?: "create" | "update" | "delete" | null;
+  approval_requested_by_user_id?: number | null;
+  approval_requested_by_name?: string | null;
+  approval_requested_at?: string | null;
   title: string;
   date: string;
   is_more_indicator?: boolean;
@@ -64,6 +69,9 @@ export interface ZoneSportSummary {
   activities_count: number;
   total_duration_minutes: number;
   total_distance_km: number;
+    allow_export_calendar: boolean;
+    allow_public_calendar_share: boolean;
+    require_workout_approval: boolean;
   zone_seconds: Record<string, number>;
   zone_seconds_by_metric?: Record<string, Record<string, number>>;
 }

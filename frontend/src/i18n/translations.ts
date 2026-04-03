@@ -236,6 +236,31 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Load delta": "Krūvio delta",
     "Recommendation": "Rekomendacija",
     "Balanced": "Subalansuota",
+    "Approval queue": "Patvirtinimų eilė",
+    "Athlete-requested calendar changes waiting for coach review.": "Atletų prašomi kalendoriaus pakeitimai laukia trenerio peržiūros.",
+    "No pending calendar approvals.": "Laukiančių kalendoriaus patvirtinimų nėra.",
+    "Request": "Prašymas",
+    "Calendar request approved": "Kalendoriaus prašymas patvirtintas",
+    "Calendar request rejected": "Kalendoriaus prašymas atmestas",
+    "Coach review has been applied.": "Trenerio peržiūra pritaikyta.",
+    "Calendar review failed": "Kalendoriaus peržiūra nepavyko",
+    "Allow calendar export": "Leisti kalendoriaus eksportą",
+    "Allow public calendar sharing": "Leisti viešą kalendoriaus bendrinimą",
+    "Require coach approval for athlete workout changes": "Reikalauti trenerio patvirtinimo atleto treniruočių pakeitimams",
+    "Public calendar view": "Viešas kalendoriaus vaizdas",
+    "Enable shared public calendar": "Įjungti bendrinamą viešą kalendorių",
+    "Include completed activities in public view": "Įtraukti užbaigtas veiklas į viešą vaizdą",
+    "Include workout descriptions in public view": "Įtraukti treniruočių aprašymus į viešą vaizdą",
+    "Approval requested": "Paprašyta patvirtinimo",
+    "Workout change has been sent for coach approval.": "Treniruotės pakeitimas išsiųstas trenerio patvirtinimui.",
+    "Workout deletion has been sent for coach approval.": "Treniruotės ištrynimas išsiųstas trenerio patvirtinimui.",
+    "Shared training calendar": "Bendrinamas treniruočių kalendorius",
+    "Shared calendar unavailable": "Bendrinamas kalendorius nepasiekiamas",
+    "This share link is invalid or no longer available.": "Ši bendrinimo nuoroda neteisinga arba nebegalioja.",
+    "Planned + completed": "Suplanuota + įvykdyta",
+    "Planned only": "Tik suplanuota",
+    "No visible events in this month.": "Šiame mėnesyje matomų įvykių nėra.",
+    "Pending approval": "Laukiama patvirtinimo",
     "No completed activities in the last 35 days": "Per paskutines 35 dienas nėra užbaigtų veiklų",
     "Long activity gap (8+ days)": "Ilga veiklos pertrauka (8+ d.)",
     "Recent activity gap (5+ days)": "Nauja veiklos pertrauka (5+ d.)",
@@ -548,7 +573,40 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Coaches": "Treneriai"
     ,"None listed": "Nenurodyta"
     ,"Active": "Aktyvi"
-    ,"Pending approval": "Laukiama patvirtinimo"
+    ,"Organization settings": "Organizacijos nustatymai"
+    ,"Organization updated.": "Organizacija atnaujinta."
+    ,"Picture updated": "Piktograma atnaujinta"
+    ,"Could not update admin": "Nepavyko atnaujinti administratoriaus"
+    ,"Organization name": "Organizacijos pavadinimas"
+    ,"Description": "Aprašymas"
+    ,"Organization icon": "Organizacijos piktograma"
+    ,"Choose image": "Pasirinkti paveikslėlį"
+    ,"Upload": "Įkelti"
+    ,"Invite code": "Prisijungimo kodas"
+    ,"Members and admins": "Nariai ir administratoriai"
+    ,"Creator": "Kūrėjas"
+    ,"Admin": "Administratorius"
+    ,"Version history": "Versijų istorija"
+    ,"Loading version history...": "Kraunama versijų istorija..."
+    ,"No version history found.": "Versijų istorijos nerasta."
+    ,"No field-level changes recorded.": "Lauko lygio pakeitimų neužfiksuota."
+    ,"Rollback": "Atstatyti"
+    ,"Rollback applied": "Atstatymas pritaikytas"
+    ,"Workout has been restored to the selected version.": "Treniruotė atkurta į pasirinktą versiją."
+    ,"Rollback failed": "Atstatyti nepavyko"
+    ,"Please try again.": "Bandykite dar kartą."
+    ,"Created": "Sukurta"
+    ,"Updated": "Atnaujinta"
+    ,"Copied": "Nukopijuota"
+    ,"Requested update": "Paprašytas atnaujinimas"
+    ,"Requested delete": "Paprašytas ištrynimas"
+    ,"Approved update": "Atnaujinimas patvirtintas"
+    ,"Approved create": "Sukūrimas patvirtintas"
+    ,"Approved delete": "Ištrynimas patvirtintas"
+    ,"Rejected request": "Užklausa atmesta"
+    ,"Rejected create": "Sukūrimas atmestas"
+    ,"Rolled back": "Atstatyta"
+    ,"Unknown user": "Nežinomas naudotojas"
     ,"Request to Join": "Prašyti prisijungti"
     ,"Chats": "Pokalbiai"
     ,"Join an organization to use group and coach chat.": "Prisijunkite prie organizacijos, kad galėtumėte naudotis grupės ir trenerio pokalbiais."

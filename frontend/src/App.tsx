@@ -18,6 +18,7 @@ const ActivityDetailPage = lazy(() =>
 const ComparisonPage = lazy(() =>
   import("./pages/ComparisonPage").then((module) => ({ default: module.ComparisonPage }))
 );
+const PublicCalendarPage = lazy(() => import("./pages/PublicCalendarPage"));
 
 const JoinRedirect = () => {
   const [searchParams] = useSearchParams();
@@ -43,6 +44,7 @@ const App = () => {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/join" element={<JoinRedirect />} />
           <Route path="/invite/:token" element={<InvitePage />} />
+          <Route path="/calendar/public/:token" element={<PublicCalendarPage />} />
           <Route
             path="/dashboard"
             element={

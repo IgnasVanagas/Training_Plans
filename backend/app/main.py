@@ -90,6 +90,11 @@ _UPLOADS_DIR = pathlib.Path(os.getenv("UPLOADS_DIR", "uploads/chat"))
 _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads/chat", StaticFiles(directory=str(_UPLOADS_DIR)), name="chat_uploads")
 
+# Org picture uploads — served at /uploads/org/<filename>
+_ORG_UPLOADS_DIR = pathlib.Path(os.getenv("ORG_UPLOADS_DIR", "uploads/org"))
+_ORG_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads/org", StaticFiles(directory=str(_ORG_UPLOADS_DIR)), name="org_uploads")
+
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://training-plans-1.onrender.com,https://training-plans.onrender.com")
 allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
 # Auto-include FRONTEND_BASE_URL so CORS works even if ALLOWED_ORIGINS is out of sync

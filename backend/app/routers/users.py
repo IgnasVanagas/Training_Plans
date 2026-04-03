@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth import get_current_user, get_password_hash, verify_password
 from ..database import get_db
 from ..models import CoachAthleteLink, RoleEnum, User, Profile, ProfileMetricHistory, Organization, OrganizationMember, PlannedWorkout, Activity, ComplianceStatusEnum
-from ..schemas import AthleteOut, InviteLinkResponse, InviteByEmailRequest, InviteByEmailResponse, UserOut, ProfileUpdate, OrganizationOut, OrganizationUpdate, JoinOrganization, JoinOrganizationRequest, InvitationRespondRequest, OrganizationCreate, AthletePermissionOut, AthletePermissionUpdate, AthletePermissionSettings, ChangePasswordRequest, CoachSummaryOut, OrganizationDiscoverOut, OrganizationDiscoverItemOut, OrganizationCoachOut, CoachOperationsOut, CoachOperationsAthleteOut, CoachOperationsWorkloadBalanceOut
+from fastapi import UploadFile, File
+import pathlib
+import shutil
+from ..schemas import AthleteOut, InviteLinkResponse, InviteByEmailRequest, InviteByEmailResponse, UserOut, ProfileUpdate, OrganizationOut, OrganizationUpdate, JoinOrganization, JoinOrganizationRequest, InvitationRespondRequest, OrganizationCreate, AthletePermissionOut, AthletePermissionUpdate, AthletePermissionSettings, ChangePasswordRequest, CoachSummaryOut, OrganizationDiscoverOut, OrganizationDiscoverItemOut, OrganizationCoachOut, CoachOperationsOut, CoachOperationsAthleteOut, CoachOperationsWorkloadBalanceOut, OrgSettingsOut, OrgMemberWithAdminOut, OrgUpdateRequest, OrgAdminUpdateRequest
 from ..services.permissions import get_shared_org_ids, get_athlete_permissions, set_athlete_permissions_for_shared_orgs
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -309,8 +312,9 @@ async def get_athletes(
 
     # Get orgs where I am a coach
     my_org_ids = [
-        m.organization_id for m in current_user.organization_memberships 
-        if m.role == RoleEnum.coach.value and m.status == 'active'
+        m.organization_id
+        for m in current_user.organization_memberships
+        if m.status == "active" and (m.role == RoleEnum.coach.value or m.is_admin)
     ]
 
     if not my_org_ids:
@@ -833,6 +837,9 @@ async def update_athlete_permissions_endpoint(
         'allow_delete_activities': bool(incoming.get('allow_delete_activities', existing['allow_delete_activities'])),
         'allow_delete_workouts': bool(incoming.get('allow_delete_workouts', existing['allow_delete_workouts'])),
         'allow_edit_workouts': bool(incoming.get('allow_edit_workouts', existing['allow_edit_workouts'])),
+        'allow_export_calendar': bool(incoming.get('allow_export_calendar', existing['allow_export_calendar'])),
+        'allow_public_calendar_share': bool(incoming.get('allow_public_calendar_share', existing['allow_public_calendar_share'])),
+        'require_workout_approval': bool(incoming.get('require_workout_approval', existing['require_workout_approval'])),
     }
 
     updated_orgs = await set_athlete_permissions_for_shared_orgs(
@@ -1158,6 +1165,62 @@ async def update_profile(
     return current_user
 
 
+# ─── Org admin helpers ─────────────────────────────────────────────────────────
+
+_ORG_UPLOADS_DIR = pathlib.Path("uploads/org")
+_ORG_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+def _get_org_admin_ids(org: Organization) -> list[int]:
+    if not org.settings_json:
+        return []
+    return list(org.settings_json.get("admin_ids", []))
+
+
+def _is_org_admin(org: Organization, user_id: int) -> bool:
+    return user_id in _get_org_admin_ids(org)
+
+
+def _set_org_admin(org: Organization, user_id: int, make_admin: bool) -> None:
+    settings = dict(org.settings_json or {})
+    admin_ids: list[int] = list(settings.get("admin_ids", []))
+    if make_admin and user_id not in admin_ids:
+        admin_ids.append(user_id)
+    elif not make_admin and user_id in admin_ids:
+        admin_ids.remove(user_id)
+    settings["admin_ids"] = admin_ids
+    org.settings_json = settings
+
+
+async def _load_org_for_admin(db: AsyncSession, org_id: int, user_id: int) -> Organization:
+    """Load org and verify caller is an admin; raise 403/404 otherwise."""
+    org = await db.scalar(
+        select(Organization).where(Organization.id == org_id)
+    )
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+    # Backward-compat: if admin_ids are missing on older orgs, bootstrap caller
+    # as admin when they are an active coach member of the org.
+    if not _get_org_admin_ids(org):
+        coach_membership = await db.scalar(
+            select(OrganizationMember).where(
+                OrganizationMember.organization_id == org_id,
+                OrganizationMember.user_id == user_id,
+                OrganizationMember.role == RoleEnum.coach.value,
+                OrganizationMember.status == "active",
+            )
+        )
+        if coach_membership:
+            settings = dict(org.settings_json or {})
+            settings["admin_ids"] = [user_id]
+            settings.setdefault("creator_id", user_id)
+            org.settings_json = settings
+            await db.commit()
+            await db.refresh(org)
+    if not _is_org_admin(org, user_id):
+        raise HTTPException(status_code=403, detail="You are not an admin of this organization")
+    return org
+
+
 @router.post("/organization", response_model=OrganizationOut)
 async def create_organization(
     payload: OrganizationCreate,
@@ -1184,14 +1247,149 @@ async def create_organization(
     member = OrganizationMember(
         user_id=current_user.id,
         organization_id=new_org.id,
-        role=RoleEnum.coach.value, # Default role for creator
+            role=current_user.role.value,
         status="active"
     )
     db.add(member)
-    
+
+    # Mark creator as admin
+    new_org.settings_json = {"admin_ids": [current_user.id], "creator_id": current_user.id}
+
     await db.commit()
     await db.refresh(new_org)
     return new_org
+
+
+@router.get("/organizations/{org_id}", response_model=OrgSettingsOut)
+async def get_organization_settings(
+    org_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrgSettingsOut:
+    """Admin-only: returns full org settings including member list and admin flags."""
+    org = await _load_org_for_admin(db, org_id, current_user.id)
+
+    admin_ids = _get_org_admin_ids(org)
+    creator_id = (org.settings_json or {}).get("creator_id")
+
+    member_rows = (
+        await db.execute(
+            select(
+                OrganizationMember.user_id,
+                OrganizationMember.role,
+                OrganizationMember.status,
+                User.email,
+                Profile.first_name,
+                Profile.last_name,
+            )
+            .join(User, User.id == OrganizationMember.user_id)
+            .outerjoin(Profile, Profile.user_id == User.id)
+            .where(OrganizationMember.organization_id == org_id)
+            .order_by(Profile.first_name.asc().nulls_last(), User.email.asc())
+        )
+    ).all()
+
+    members = [
+        OrgMemberWithAdminOut(
+            id=uid,
+            email=email,
+            role=role,
+            status=status,
+            first_name=first_name,
+            last_name=last_name,
+            is_admin=uid in admin_ids,
+        )
+        for uid, role, status, email, first_name, last_name in member_rows
+    ]
+
+    return OrgSettingsOut(
+        id=org.id,
+        name=org.name,
+        code=org.code,
+        description=org.description,
+        picture=org.picture,
+        creator_id=creator_id,
+        members=members,
+    )
+
+
+@router.put("/organizations/{org_id}", response_model=OrganizationOut)
+async def update_organization_by_id(
+    org_id: int,
+    payload: OrgUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrganizationOut:
+    """Admin: update organization name/description."""
+    org = await _load_org_for_admin(db, org_id, current_user.id)
+
+    if payload.name is not None:
+        org.name = payload.name.strip() or org.name
+    if payload.description is not None:
+        org.description = payload.description or None
+
+    await db.commit()
+    await db.refresh(org)
+    return org
+
+
+@router.post("/organizations/{org_id}/picture", response_model=OrganizationOut)
+async def upload_organization_picture(
+    org_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> OrganizationOut:
+    """Admin: upload/replace organization picture."""
+    org = await _load_org_for_admin(db, org_id, current_user.id)
+
+    # Validate file type
+    ext = pathlib.Path(file.filename or "").suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+        raise HTTPException(status_code=400, detail="Only image files are allowed (jpg, png, webp, gif)")
+
+    filename = f"{uuid.uuid4()}{ext}"
+    dest = _ORG_UPLOADS_DIR / filename
+    with dest.open("wb") as out_file:
+        shutil.copyfileobj(file.file, out_file)
+
+    org.picture = filename
+    await db.commit()
+    await db.refresh(org)
+    return org
+
+
+@router.patch("/organizations/{org_id}/members/{user_id}/admin", response_model=dict)
+async def set_member_admin(
+    org_id: int,
+    user_id: int,
+    payload: OrgAdminUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Admin: promote or demote a member's admin status."""
+    org = await _load_org_for_admin(db, org_id, current_user.id)
+
+    creator_id = (org.settings_json or {}).get("creator_id")
+    if not payload.is_admin and user_id == creator_id:
+        raise HTTPException(status_code=400, detail="Cannot remove admin from the organization creator")
+    if user_id == current_user.id and not payload.is_admin and current_user.id == creator_id:
+        raise HTTPException(status_code=400, detail="Creator cannot revoke their own admin status")
+
+    # Verify target is a member
+    target = await db.scalar(
+        select(OrganizationMember).where(
+            OrganizationMember.user_id == user_id,
+            OrganizationMember.organization_id == org_id,
+            OrganizationMember.status == "active",
+        )
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="Active member not found in this organization")
+
+    _set_org_admin(org, user_id, payload.is_admin)
+    await db.commit()
+    return {"status": "ok", "is_admin": payload.is_admin}
 
 
 @router.put("/organization/join", response_model=UserOut)
@@ -1305,19 +1503,25 @@ async def remove_organization_member(
     db: AsyncSession = Depends(get_db),
 ):
     """Coach removes a member from their organization."""
-    if current_user.role != RoleEnum.coach:
-        raise HTTPException(status_code=403, detail="Only coaches can remove members")
-
-    # Verify current user is an active coach in this org
-    coach_stmt = select(OrganizationMember).where(
+    """Coach or org admin removes a member from the organization."""
+    # Must be an active member of this org AND either a coach role or an admin
+    caller_stmt = select(OrganizationMember).where(
         OrganizationMember.user_id == current_user.id,
         OrganizationMember.organization_id == org_id,
-        OrganizationMember.role == RoleEnum.coach.value,
         OrganizationMember.status == "active",
     )
-    coach_membership = (await db.execute(coach_stmt)).scalar_one_or_none()
-    if not coach_membership:
-        raise HTTPException(status_code=403, detail="You are not a coach in this organization")
+    caller_membership = (await db.execute(caller_stmt)).scalar_one_or_none()
+    if not caller_membership:
+        raise HTTPException(status_code=403, detail="You are not a member of this organization")
+
+    org = await db.scalar(select(Organization).where(Organization.id == org_id))
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    is_admin = _is_org_admin(org, current_user.id)
+    is_coach = current_user.role == RoleEnum.coach
+    if not is_admin and not is_coach:
+        raise HTTPException(status_code=403, detail="Only coaches or org admins can remove members")
 
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot remove yourself; use leave instead")

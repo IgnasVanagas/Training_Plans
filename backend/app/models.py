@@ -53,6 +53,22 @@ class PlannedWorkout(Base):
     season_plan = relationship("SeasonPlan", back_populates="planned_workouts")
 
 
+class PlannedWorkoutVersion(Base):
+    __tablename__ = "planned_workout_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    workout_id = Column(Integer, nullable=False, index=True)
+    workout_user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    action = Column(String(50), nullable=False)
+    changed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    changed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    before_snapshot = Column(JSONB, nullable=True)
+    after_snapshot = Column(JSONB, nullable=True)
+    diff_json = Column(JSONB, nullable=True)
+    note = Column(Text, nullable=True)
+
+
 class OrganizationMember(Base):
     __tablename__ = "organization_members"
 
@@ -63,6 +79,14 @@ class OrganizationMember(Base):
 
     user = relationship("User", back_populates="organization_memberships")
     organization = relationship("Organization", back_populates="members")
+
+    @property
+    def is_admin(self) -> bool:
+        """True when this user is listed as an admin of the organization."""
+        if not self.organization or not self.organization.settings_json:
+            return False
+        admin_ids = self.organization.settings_json.get("admin_ids", [])
+        return self.user_id in admin_ids
 
 
 class Organization(Base):

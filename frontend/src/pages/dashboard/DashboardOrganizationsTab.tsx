@@ -37,6 +37,18 @@ import {
   IconUsersGroup,
   IconX,
 } from "@tabler/icons-react";
+import {
+  Divider,
+  FileInput,
+  Loader,
+  Switch,
+} from "@mantine/core";
+import {
+  IconSettings,
+  IconShield,
+  IconShieldOff,
+  IconUpload,
+} from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@mantine/hooks";
@@ -54,6 +66,13 @@ import {
   removeOrganizationMember,
   requestOrganizationJoin,
   uploadChatAttachment,
+} from "../../api/organizations";
+import {
+  getOrgSettings,
+  updateOrganization,
+  uploadOrgPicture,
+  setMemberAdmin,
+  resolveOrgPictureUrl,
 } from "../../api/organizations";
 import { useI18n } from "../../i18n/I18nProvider";
 import { OrganizationDirectMessage, OrganizationCoachMessage, OrganizationGroupMessage, User } from "./types";
@@ -109,6 +128,13 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     onConfirm: () => void;
   }>({ open: false, title: "", message: "", onConfirm: () => {} });
 
+  // ── Org settings modal state ──
+  const [orgSettingsOpen, setOrgSettingsOpen] = useState(false);
+  const [orgSettingsId, setOrgSettingsId] = useState<number | null>(null);
+  const [orgEditName, setOrgEditName] = useState("");
+  const [orgEditDescription, setOrgEditDescription] = useState("");
+  const [orgPictureFile, setOrgPictureFile] = useState<File | null>(null);
+
   const discoverQuery = useQuery({
     queryKey: ["organization-discover", search],
     queryFn: () => discoverOrganizations(search),
@@ -118,9 +144,9 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
   const activeMemberships = useMemo(
     () =>
       (me.organization_memberships || []).filter(
-        (membership) => membership.role === me.role && membership.status === "active" && membership.organization,
+        (membership) => membership.status === "active" && membership.organization,
       ),
-    [me.organization_memberships, me.role],
+    [me.organization_memberships],
   );
 
   const [selectedActiveOrgId, setSelectedActiveOrgId] = useState<string | null>(
@@ -144,6 +170,73 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
   }, [activeMemberships, selectedActiveOrgId]);
 
   const selectedActiveOrganizationId = selectedActiveOrgId ? Number(selectedActiveOrgId) : null;
+
+  // Is the current user an admin of the selected active org?
+  const isCurrentUserOrgAdmin = useMemo(() => {
+    if (!selectedActiveOrganizationId) return false;
+    return (me.organization_memberships || []).some(
+      (m) => m.organization?.id === selectedActiveOrganizationId && m.is_admin,
+    );
+  }, [me.organization_memberships, selectedActiveOrganizationId]);
+
+  // ── Org settings query (only loads when modal is open) ──
+  const orgSettingsQuery = useQuery({
+    queryKey: ["org-settings", orgSettingsId],
+    queryFn: () => getOrgSettings(orgSettingsId as number),
+    enabled: orgSettingsOpen && orgSettingsId !== null,
+  });
+
+  const updateOrgMutation = useMutation({
+    mutationFn: (vars: { name: string; description: string }) =>
+      updateOrganization(orgSettingsId as number, { name: vars.name, description: vars.description }),
+    onSuccess: () => {
+      notifications.show({ color: "green", title: t("Saved"), message: t("Organization updated.") });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["org-settings", orgSettingsId] });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("Could not save"), message: extractApiErrorMessage(error) });
+    },
+  });
+
+  const uploadOrgPictureMutation = useMutation({
+    mutationFn: (file: File) => uploadOrgPicture(orgSettingsId as number, file),
+    onSuccess: () => {
+      notifications.show({ color: "green", title: t("Picture updated"), message: "" });
+      setOrgPictureFile(null);
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["org-settings", orgSettingsId] });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("Upload failed"), message: extractApiErrorMessage(error) });
+    },
+  });
+
+  const setAdminMutation = useMutation({
+    mutationFn: (vars: { userId: number; isAdmin: boolean }) =>
+      setMemberAdmin(orgSettingsId as number, vars.userId, vars.isAdmin),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings", orgSettingsId] });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("Could not update admin"), message: extractApiErrorMessage(error) });
+    },
+  });
+
+  const openOrgSettings = (orgId: number, currentName: string, currentDescription: string) => {
+    setOrgSettingsId(orgId);
+    setOrgEditName(currentName);
+    setOrgEditDescription(currentDescription || "");
+    setOrgPictureFile(null);
+    setOrgSettingsOpen(true);
+
+    useEffect(() => {
+      if (!orgSettingsQuery.data) return;
+      setOrgEditName(orgSettingsQuery.data.name || "");
+      setOrgEditDescription(orgSettingsQuery.data.description || "");
+    }, [orgSettingsQuery.data]);
+  };
 
   const [activeThreadKey, setActiveThreadKey] = useState<string>("group");
   const [mobilePane, setMobilePane] = useState<"threads" | "messages">("threads");
@@ -499,19 +592,36 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
           </ThemeIcon>
           <Title order={3}>{t("Organizations")}</Title>
         </Group>
-        {activeMemberships.length > 1 && (
-          <Select
-            size="xs"
-            w={220}
-            placeholder={t("Switch organization")}
-            data={activeMemberships
-              .filter((m) => m.organization)
-              .map((m) => ({ value: String(m.organization?.id), label: m.organization?.name || t("Organization") }))}
-            value={selectedActiveOrgId}
-            onChange={setSelectedActiveOrgId}
-            allowDeselect={false}
-          />
-        )}
+        <Group gap="xs">
+          {activeMemberships.length > 1 && (
+            <Select
+              size="xs"
+              w={220}
+              placeholder={t("Switch organization")}
+              data={activeMemberships
+                .filter((m) => m.organization)
+                .map((m) => ({ value: String(m.organization?.id), label: m.organization?.name || t("Organization") }))}
+              value={selectedActiveOrgId}
+              onChange={setSelectedActiveOrgId}
+              allowDeselect={false}
+            />
+          )}
+          {selectedActiveOrganizationId && isCurrentUserOrgAdmin && (
+            <Tooltip label={t("Organization settings")}>
+              <ActionIcon
+                variant="light"
+                color="indigo"
+                onClick={() => {
+                  const selected = activeMemberships.find((m) => m.organization?.id === selectedActiveOrganizationId)?.organization;
+                  if (!selected) return;
+                  openOrgSettings(selected.id, selected.name, selected.description || "");
+                }}
+              >
+                <IconSettings size={16} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </Group>
       </Group>
 
       {/* ── Discover section (athlete only) ── */}
@@ -543,7 +653,16 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
                     style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)" }}
                   >
                     <Group justify="space-between" align="flex-start" wrap="nowrap">
-                      <Stack gap={2} style={{ flex: 1 }}>
+                      <Group gap="sm" align="flex-start" style={{ flex: 1 }} wrap="nowrap">
+                        <Avatar
+                          radius="xl"
+                          size="md"
+                          src={resolveOrgPictureUrl(item.picture) || undefined}
+                          color="indigo"
+                        >
+                          {item.name.slice(0, 1).toUpperCase()}
+                        </Avatar>
+                        <Stack gap={2} style={{ flex: 1 }}>
                         <Group gap="xs">
                           <Text fw={600} size="sm">{item.name}</Text>
                           {item.my_membership_status && (
@@ -556,7 +675,8 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
                         <Text size="xs" c="dimmed">
                           {item.coaches.map((c) => `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.email).join(", ") || t("No coaches")}
                         </Text>
-                      </Stack>
+                        </Stack>
+                      </Group>
                       <Button
                         size="compact-xs"
                         variant="light"
@@ -948,6 +1068,124 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
           </Group>
         </Stack>
       </Modal>
+
+          <Modal
+            opened={orgSettingsOpen}
+            onClose={() => setOrgSettingsOpen(false)}
+            title={t("Organization settings")}
+            centered
+            radius="md"
+            size="lg"
+            overlayProps={{ backgroundOpacity: 0.4, blur: 2 }}
+          >
+            <Stack gap="md">
+              {orgSettingsQuery.isLoading && (
+                <Group justify="center" py="md">
+                  <Loader size="sm" />
+                </Group>
+              )}
+
+              {!orgSettingsQuery.isLoading && orgSettingsQuery.data && (
+                <>
+                  <Group align="flex-start" wrap="nowrap">
+                    <Avatar
+                      radius="xl"
+                      size={64}
+                      src={resolveOrgPictureUrl(orgSettingsQuery.data.picture) || undefined}
+                      color="indigo"
+                    >
+                      {orgSettingsQuery.data.name.slice(0, 1).toUpperCase()}
+                    </Avatar>
+                    <Stack gap={4} style={{ flex: 1 }}>
+                      <TextInput
+                        label={t("Organization name")}
+                        value={orgEditName}
+                        onChange={(e) => setOrgEditName(e.currentTarget.value)}
+                        maxLength={200}
+                      />
+                      <Textarea
+                        label={t("Description")}
+                        value={orgEditDescription}
+                        onChange={(e) => setOrgEditDescription(e.currentTarget.value)}
+                        maxLength={2000}
+                        minRows={2}
+                      />
+                    </Stack>
+                  </Group>
+
+                  <Group justify="space-between" align="end">
+                    <FileInput
+                      label={t("Organization icon")}
+                      placeholder={t("Choose image")}
+                      value={orgPictureFile}
+                      onChange={(value) => setOrgPictureFile(value)}
+                      accept="image/png,image/jpeg,image/webp,image/gif"
+                      leftSection={<IconPhoto size={14} />}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      leftSection={<IconUpload size={14} />}
+                      onClick={() => {
+                        if (!orgPictureFile) return;
+                        uploadOrgPictureMutation.mutate(orgPictureFile);
+                      }}
+                      loading={uploadOrgPictureMutation.isPending}
+                      disabled={!orgPictureFile}
+                      variant="light"
+                    >
+                      {t("Upload")}
+                    </Button>
+                  </Group>
+
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">
+                      {t("Invite code")}: <Text component="span" fw={600}>{orgSettingsQuery.data.code || "-"}</Text>
+                    </Text>
+                    <Button
+                      onClick={() => updateOrgMutation.mutate({ name: orgEditName.trim(), description: orgEditDescription.trim() })}
+                      loading={updateOrgMutation.isPending}
+                    >
+                      {t("Save")}
+                    </Button>
+                  </Group>
+
+                  <Divider my="xs" label={t("Members and admins")} labelPosition="left" />
+
+                  <Stack gap="xs">
+                    {orgSettingsQuery.data.members.map((member) => {
+                      const fullName = `${member.first_name || ""} ${member.last_name || ""}`.trim() || member.email;
+                      const isCreator = orgSettingsQuery.data.creator_id === member.id;
+                      return (
+                        <Group key={member.id} justify="space-between" wrap="nowrap">
+                          <Group gap="xs" wrap="nowrap">
+                            <Avatar size="sm" radius="xl" color="blue">{fullName.slice(0, 1).toUpperCase()}</Avatar>
+                            <Stack gap={0}>
+                              <Group gap={6}>
+                                <Text size="sm" fw={600}>{fullName}</Text>
+                                <Badge size="xs" variant="light" color={member.role === "coach" ? "indigo" : "blue"}>{member.role}</Badge>
+                                {isCreator && <Badge size="xs" variant="filled" color="grape">{t("Creator")}</Badge>}
+                              </Group>
+                              <Text size="xs" c="dimmed">{member.email}</Text>
+                            </Stack>
+                          </Group>
+
+                          <Switch
+                            size="sm"
+                            checked={member.is_admin}
+                            disabled={isCreator || setAdminMutation.isPending}
+                            onChange={(e) => setAdminMutation.mutate({ userId: member.id, isAdmin: e.currentTarget.checked })}
+                            onLabel={<IconShield size={12} />}
+                            offLabel={<IconShieldOff size={12} />}
+                            label={t("Admin")}
+                          />
+                        </Group>
+                      );
+                    })}
+                  </Stack>
+                </>
+              )}
+            </Stack>
+          </Modal>
     </Stack>
   );
 };

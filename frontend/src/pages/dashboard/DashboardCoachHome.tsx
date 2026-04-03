@@ -35,7 +35,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMediaQuery } from "@mantine/hooks";
 import { CoachComparisonPanel } from "../../components/CoachComparisonPanel";
-import { ActivityFeedRow, CoachOperationsPayload, DashboardCalendarEvent, User } from "./types";
+import { ActivityFeedRow, CalendarApprovalItem, CoachOperationsPayload, DashboardCalendarEvent, User } from "./types";
 import { formatDuration } from "./utils";
 import { useI18n } from "../../i18n/I18nProvider";
 
@@ -46,6 +46,9 @@ type Props = {
   coachFeedbackRows: ActivityFeedRow[];
   coachOperations: CoachOperationsPayload | null;
   coachOperationsLoading: boolean;
+  approvalQueue: CalendarApprovalItem[];
+  reviewingApproval: boolean;
+  onReviewApproval: (workoutId: number, decision: "approve" | "reject") => void;
   inviteUrl: string | null;
   inviteEmail: string;
   onInviteEmailChange: (value: string) => void;
@@ -65,6 +68,9 @@ const DashboardCoachHome = ({
   coachFeedbackRows,
   coachOperations,
   coachOperationsLoading,
+  approvalQueue,
+  reviewingApproval,
+  onReviewApproval,
   inviteUrl,
   inviteEmail,
   onInviteEmailChange,
@@ -242,6 +248,42 @@ const DashboardCoachHome = ({
                   </Group>
                 );
               })}
+            </Stack>
+          )}
+        </Paper>
+
+        <Paper withBorder p="md" radius="md" shadow="sm">
+          <Group justify="space-between" mb="xs">
+            <Group gap="xs">
+              <ThemeIcon color="orange" variant="light" radius="xl"><IconAlertTriangle size={16} /></ThemeIcon>
+              <Title order={4}>{t("Approval queue") || "Approval queue"}</Title>
+            </Group>
+            <Badge variant="light" color="orange">{approvalQueue.length}</Badge>
+          </Group>
+          <Text size="sm" c="dimmed" mb="sm">{t("Athlete-requested calendar changes waiting for coach review.") || "Athlete-requested calendar changes waiting for coach review."}</Text>
+          {approvalQueue.length === 0 ? (
+            <Text size="sm" c="dimmed">{t("No pending calendar approvals.") || "No pending calendar approvals."}</Text>
+          ) : (
+            <Stack gap={6}>
+              {approvalQueue.slice(0, 6).map((item) => (
+                <Paper key={item.workout_id} withBorder p="xs" radius="sm">
+                  <Group justify="space-between" wrap="nowrap" align="flex-start">
+                    <Stack gap={0}>
+                      <Text size="sm" fw={600}>{item.athlete_name}</Text>
+                      <Text size="xs" c="dimmed">{item.date} · {item.title}</Text>
+                      <Text size="xs" c="dimmed">{(t("Request") || "Request") + `: ${item.request_type}` + (item.requested_by_name ? ` • ${item.requested_by_name}` : "")}</Text>
+                    </Stack>
+                    <Group gap={6}>
+                      <Button size="compact-xs" variant="light" color="green" loading={reviewingApproval} onClick={() => onReviewApproval(item.workout_id, "approve")}>
+                        {t("Approve") || "Approve"}
+                      </Button>
+                      <Button size="compact-xs" variant="light" color="red" loading={reviewingApproval} onClick={() => onReviewApproval(item.workout_id, "reject")}>
+                        {t("Reject") || "Reject"}
+                      </Button>
+                    </Group>
+                  </Group>
+                </Paper>
+              ))}
             </Stack>
           )}
         </Paper>

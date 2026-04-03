@@ -665,7 +665,15 @@ export const TrainingCalendar = ({
             return { snapshots, tempId };
         },
         onSuccess: (response: any, _vars, context) => {
-            upsertCalendarResourceInQueries({ ...(response.data || response), is_planned: true }, context?.tempId);
+            const payload = response.data || response;
+            upsertCalendarResourceInQueries({ ...payload, is_planned: true }, context?.tempId);
+            if (payload?.approval_status === 'pending') {
+                notifications.show({
+                    color: 'orange',
+                    title: t('Approval requested') || 'Approval requested',
+                    message: t('Workout change has been sent for coach approval.') || 'Workout change has been sent for coach approval.',
+                });
+            }
             void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
         },
@@ -696,7 +704,15 @@ export const TrainingCalendar = ({
             return { snapshots, existing };
         },
         onSuccess: (response: any, vars, context) => {
-            upsertCalendarResourceInQueries({ ...(context?.existing || {}), ...(response.data || response), is_planned: true }, vars.id);
+            const payload = response.data || response;
+            upsertCalendarResourceInQueries({ ...(context?.existing || {}), ...payload, is_planned: true }, vars.id);
+            if (payload?.approval_status === 'pending') {
+                notifications.show({
+                    color: 'orange',
+                    title: t('Approval requested') || 'Approval requested',
+                    message: t('Workout change has been sent for coach approval.') || 'Workout change has been sent for coach approval.',
+                });
+            }
             void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
         },
@@ -723,7 +739,14 @@ export const TrainingCalendar = ({
             close();
             return { snapshots };
         },
-        onSuccess: () => {
+        onSuccess: (response: any) => {
+            if ((response?.data || response)?.status === 'pending_approval') {
+                notifications.show({
+                    color: 'orange',
+                    title: t('Approval requested') || 'Approval requested',
+                    message: t('Workout deletion has been sent for coach approval.') || 'Workout deletion has been sent for coach approval.',
+                });
+            }
             void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
         },

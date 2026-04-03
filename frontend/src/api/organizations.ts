@@ -7,6 +7,7 @@ import {
   OrganizationGroupMessage,
   OrganizationInboxResponse,
 } from "../pages/dashboard/types";
+import { OrgSettingsResponse } from "../pages/dashboard/types";
 
 export const discoverOrganizations = async (query?: string): Promise<OrganizationDiscoverResponse> => {
   const response = await client.get<OrganizationDiscoverResponse>("/users/organizations/discover", {
@@ -130,4 +131,54 @@ export const leaveOrganization = async (organizationId: number): Promise<{ statu
 export const removeOrganizationMember = async (organizationId: number, userId: number): Promise<{ status: string; detail: string }> => {
   const response = await client.delete<{ status: string; detail: string }>(`/users/organizations/${organizationId}/members/${userId}`);
   return response.data;
+};
+
+export const getOrgSettings = async (organizationId: number): Promise<OrgSettingsResponse> => {
+  const response = await client.get<OrgSettingsResponse>(`/users/organizations/${organizationId}`);
+  return response.data;
+};
+
+export const updateOrganization = async (
+  organizationId: number,
+  data: { name?: string; description?: string },
+): Promise<{ id: number; name: string; description?: string | null; picture?: string | null; code?: string | null }> => {
+  const response = await client.put(`/users/organizations/${organizationId}`, data);
+  return response.data;
+};
+
+export const uploadOrgPicture = async (
+  organizationId: number,
+  file: File,
+): Promise<{ id: number; name: string; picture?: string | null }> => {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await client.post(`/users/organizations/${organizationId}/picture`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+};
+
+export const setMemberAdmin = async (
+  organizationId: number,
+  userId: number,
+  isAdmin: boolean,
+): Promise<{ status: string; is_admin: boolean }> => {
+  const response = await client.patch<{ status: string; is_admin: boolean }>(
+    `/users/organizations/${organizationId}/members/${userId}/admin`,
+    { is_admin: isAdmin },
+  );
+  return response.data;
+};
+
+export const resolveOrgPictureUrl = (filename?: string | null): string | null => {
+  if (!filename) return null;
+    if (/^https?:\/\//i.test(filename)) return filename;
+    if (filename.startsWith("/uploads/org/")) {
+      const base = (import.meta as unknown as Record<string, unknown> & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL
+        ?? "http://localhost:8000";
+      return `${base.replace(/\/$/, "")}${filename}`;
+    }
+  const base = (import.meta as unknown as Record<string, unknown> & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL
+    ?? "http://localhost:8000";
+  return `${base.replace(/\/$/, "")}/uploads/org/${filename}`;
 };

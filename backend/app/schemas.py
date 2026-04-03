@@ -21,6 +21,7 @@ class OrganizationMemberOut(BaseModel):
     organization: OrganizationOut
     role: str
     status: str
+    is_admin: bool = False
 
     class Config:
         from_attributes = True
@@ -398,6 +399,9 @@ class AthletePermissionSettings(BaseModel):
     allow_delete_activities: bool = True
     allow_delete_workouts: bool = True
     allow_edit_workouts: bool = True
+    allow_export_calendar: bool = True
+    allow_public_calendar_share: bool = True
+    require_workout_approval: bool = False
 
 
 class AthletePermissionOut(BaseModel):
@@ -409,6 +413,9 @@ class AthletePermissionUpdate(BaseModel):
     allow_delete_activities: Optional[bool] = None
     allow_delete_workouts: Optional[bool] = None
     allow_edit_workouts: Optional[bool] = None
+    allow_export_calendar: Optional[bool] = None
+    allow_public_calendar_share: Optional[bool] = None
+    require_workout_approval: Optional[bool] = None
 
 
 class ActivityBase(BaseModel):
@@ -550,10 +557,34 @@ class PlannedWorkoutOut(PlannedWorkoutBase):
     created_by_email: Optional[str] = None
     matched_activity_id: Optional[int] = None
     compliance_status: ComplianceStatusEnum
+    approval_status: Optional[Literal['pending', 'approved', 'rejected']] = None
+    approval_request_type: Optional[Literal['create', 'update', 'delete']] = None
+    approval_requested_by_user_id: Optional[int] = None
+    approval_requested_by_name: Optional[str] = None
+    approval_requested_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
         use_enum_values = True
+
+
+class PlannedWorkoutVersionDiffItemOut(BaseModel):
+    field: str
+    before: Any = None
+    after: Any = None
+
+
+class PlannedWorkoutVersionOut(BaseModel):
+    id: int
+    workout_id: int
+    version_number: int
+    action: str
+    changed_by_user_id: Optional[int] = None
+    changed_by_name: Optional[str] = None
+    changed_at: datetime
+    note: Optional[str] = None
+    diff: list[PlannedWorkoutVersionDiffItemOut] = []
+
 
 class CalendarEvent(BaseModel):
     id: int
@@ -581,6 +612,11 @@ class CalendarEvent(BaseModel):
     season_plan_id: Optional[int] = None
     planning_context: Optional[dict[str, Any]] = None
     recurrence: Optional[WorkoutRecurrenceRule] = None
+    approval_status: Optional[Literal['pending', 'approved', 'rejected']] = None
+    approval_request_type: Optional[Literal['create', 'update', 'delete']] = None
+    approval_requested_by_user_id: Optional[int] = None
+    approval_requested_by_name: Optional[str] = None
+    approval_requested_at: Optional[datetime] = None
     
     # Activity specific
     filename: Optional[str] = None
@@ -953,6 +989,35 @@ class OrgMemberOut(BaseModel):
     last_name: Optional[str] = None
 
 
+class OrgMemberWithAdminOut(BaseModel):
+    id: int
+    email: str
+    role: str
+    status: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    is_admin: bool = False
+
+
+class OrgSettingsOut(BaseModel):
+    id: int
+    name: str
+    code: Optional[str] = None
+    description: Optional[str] = None
+    picture: Optional[str] = None
+    creator_id: Optional[int] = None
+    members: list[OrgMemberWithAdminOut] = []
+
+
+class OrgUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=2000)
+
+
+class OrgAdminUpdateRequest(BaseModel):
+    is_admin: bool
+
+
 class OrganizationInboxThreadOut(BaseModel):
     key: str
     thread_type: Literal["group", "coach", "member"]
@@ -1008,7 +1073,52 @@ class DayNoteOut(BaseModel):
 class DayNoteUpsert(BaseModel):
     content: str = Field(min_length=1, max_length=5000)
 
-    @field_validator("content")
-    @classmethod
-    def strip_content(cls, value: str) -> str:
-        return value.strip()
+
+class CalendarShareSettingsUpdate(BaseModel):
+    enabled: Optional[bool] = None
+    include_completed: Optional[bool] = None
+    include_descriptions: Optional[bool] = None
+
+
+class CalendarShareSettingsOut(BaseModel):
+    athlete_id: int
+    enabled: bool = False
+    token: Optional[str] = None
+    include_completed: bool = False
+    include_descriptions: bool = False
+
+
+class CalendarApprovalSummaryOut(BaseModel):
+    workout_id: int
+    athlete_id: int
+    athlete_name: str
+    title: str
+    date: dt_date
+    sport_type: Optional[str] = None
+    request_type: Literal['create', 'update', 'delete']
+    requested_by_user_id: int
+    requested_by_name: Optional[str] = None
+    requested_at: datetime
+    proposed_changes: Optional[dict[str, Any]] = None
+
+
+class CalendarApprovalDecisionRequest(BaseModel):
+    decision: Literal['approve', 'reject']
+    note: Optional[str] = Field(default=None, max_length=1000)
+
+
+class CalendarApprovalDecisionResponse(BaseModel):
+    workout_id: int
+    status: Literal['approved', 'rejected']
+    deleted: bool = False
+
+
+class PublicCalendarMetaOut(BaseModel):
+    athlete_name: str
+    include_completed: bool = False
+    include_descriptions: bool = False
+
+
+class PublicCalendarResponse(BaseModel):
+    meta: PublicCalendarMetaOut
+    events: List[CalendarEvent]

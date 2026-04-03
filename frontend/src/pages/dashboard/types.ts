@@ -51,6 +51,7 @@ export type User = {
     };
     role: string;
     status: string;
+    is_admin: boolean;
   }>;
   profile?: Profile | null;
 };
@@ -89,7 +90,32 @@ export type AthletePermissions = {
     allow_delete_activities: boolean;
     allow_delete_workouts: boolean;
     allow_edit_workouts: boolean;
+    allow_export_calendar: boolean;
+    allow_public_calendar_share: boolean;
+    require_workout_approval: boolean;
   };
+};
+
+export type CalendarShareSettings = {
+  athlete_id: number;
+  enabled: boolean;
+  token?: string | null;
+  include_completed: boolean;
+  include_descriptions: boolean;
+};
+
+export type CalendarApprovalItem = {
+  workout_id: number;
+  athlete_id: number;
+  athlete_name: string;
+  title: string;
+  date: string;
+  sport_type?: string | null;
+  request_type: "create" | "update" | "delete";
+  requested_by_user_id: number;
+  requested_by_name?: string | null;
+  requested_at: string;
+  proposed_changes?: Record<string, unknown> | null;
 };
 
 export type DashboardCalendarEvent = {
@@ -172,6 +198,26 @@ export type OrgMember = {
   role: string;
   first_name?: string | null;
   last_name?: string | null;
+};
+
+export type OrgMemberWithAdmin = {
+  id: number;
+  email: string;
+  role: string;
+  status: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  is_admin: boolean;
+};
+
+export type OrgSettingsResponse = {
+  id: number;
+  name: string;
+  code?: string | null;
+  description?: string | null;
+  picture?: string | null;
+  creator_id?: number | null;
+  members: OrgMemberWithAdmin[];
 };
 
 export type OrganizationInboxThread = {
