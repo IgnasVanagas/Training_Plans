@@ -877,7 +877,7 @@ export const TrainingCalendar = ({
                 description: draggedWorkout.description,
                 is_planned: true,
                 user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
-                planned_duration: 60,
+                planned_duration: estimatePlannedDurationMinutesFromStructure(draggedWorkout.structure as any[]) ?? 60,
                 recurrence: null,
             };
             createMutation.mutate(newEvent);
@@ -885,6 +885,25 @@ export const TrainingCalendar = ({
             if (onWorkoutDrop) onWorkoutDrop(draggedWorkout, startDate);
         }
     }, [draggedWorkout, onWorkoutDrop, canEditWorkouts, athleteId, athletes, createMutation]);
+
+    const handleDropCalendarEvent = useCallback((resource: CalendarEvent, targetDate: Date) => {
+        if (!canEditWorkouts) return;
+        const dateStr = format(targetDate, 'yyyy-MM-dd');
+        const newEvent: CalendarEvent = {
+            title: resource.title,
+            date: dateStr,
+            sport_type: resource.sport_type,
+            structure: resource.structure,
+            description: resource.description,
+            planned_duration: resource.planned_duration,
+            planned_distance: resource.planned_distance,
+            planned_intensity: resource.planned_intensity,
+            is_planned: true,
+            user_id: athleteId || (athletes && athletes.length > 0 ? athletes[0].id : undefined),
+            recurrence: null,
+        };
+        createMutation.mutate(newEvent);
+    }, [canEditWorkouts, createMutation, athleteId, athletes]);
 
     const handleSelectSlot = useCallback(({ start }: any) => {
         setSelectedEvent({ 
@@ -1586,7 +1605,9 @@ export const TrainingCalendar = ({
                 onViewChange={setCurrentView}
                 monthlyTotalsLabel={monthlyHeaderLabel}
                 onMonthlyTotalsClick={handleMonthlyTotalsOpen}
-                actionButtons={upcomingRacesNode ?? actionButtons}
+                actionButtons={upcomingRacesNode && actionButtons
+                    ? <Group gap="xs" wrap="nowrap">{upcomingRacesNode}{actionButtons}</Group>
+                    : (upcomingRacesNode ?? actionButtons)}
             />
             
             <Group align="stretch" gap={8} wrap={isMobileViewport ? 'wrap' : 'nowrap'} style={{ flex: 1, minHeight: 0 }}>
@@ -1737,6 +1758,7 @@ export const TrainingCalendar = ({
                                             onSelectSlot={handleSlotSelection}
                                             onEventDrop={onEventDrop}
                                             onDropFromOutside={onDropFromOutside}
+                                            onDropCalendarEvent={handleDropCalendarEvent}
                                             canEditWorkouts={canEditWorkouts}
                                             gridRef={monthGridRef}
                                             scrollContainerRef={gridScrollRef}
@@ -1785,6 +1807,7 @@ export const TrainingCalendar = ({
                                     onSelectSlot={handleSlotSelection}
                                     onEventDrop={onEventDrop}
                                     onDropFromOutside={onDropFromOutside}
+                                    onDropCalendarEvent={handleDropCalendarEvent}
                                     canEditWorkouts={canEditWorkouts}
                                     gridRef={monthGridRef}
                                     scrollContainerRef={gridScrollRef}

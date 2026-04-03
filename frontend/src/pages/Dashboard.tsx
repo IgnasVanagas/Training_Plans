@@ -1,10 +1,11 @@
-import { Container, Modal, Select, Text, useComputedColorScheme, Button, Flex, Box, Group, Stack, Skeleton } from "@mantine/core";
+import { Container, Modal, Select, Text, useComputedColorScheme, Button, Flex, Box, Group, Stack, Skeleton, ActionIcon, Tooltip } from "@mantine/core";
 import { useDisclosure, useMediaQuery } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { endOfWeek, endOfMonth, format, startOfWeek, startOfMonth } from "date-fns";
+import { IconBooks, IconX } from "@tabler/icons-react";
 import DualCalendarView from "../components/DualCalendarView";
 import api from "../api/client";
 import { getCalendarApprovals, getCalendarShareSettings, reviewCalendarApproval, updateCalendarShareSettings } from "../api/calendarCollaboration";
@@ -901,8 +902,21 @@ const Dashboard = () => {
                     draggedWorkout={draggedWorkout}
                     onWorkoutDrop={(w, d) => {
                         setDraggedWorkout(null);
-                        notifications.show({ title: 'Workout Scheduled', message: `${w.title} on ${format(d, 'MMM do')}` });
+                        notifications.show({ title: t("Workout Scheduled") || "Workout Scheduled", message: `${w.title} on ${format(d, 'MMM do')}` });
                     }}
+                    actionButtons={
+                      <Tooltip label={showLibrary ? (t("Close library") || "Close library") : (t("Workout library") || "Workout library")}>
+                        <ActionIcon
+                          variant={showLibrary ? "filled" : "subtle"}
+                          color={showLibrary ? "violet" : undefined}
+                          size="md"
+                          onClick={() => setShowLibrary((v) => !v)}
+                          aria-label={showLibrary ? "Close library" : "Workout library"}
+                        >
+                          {showLibrary ? <IconX size={16} /> : <IconBooks size={16} />}
+                        </ActionIcon>
+                      </Tooltip>
+                    }
                   />
                 </Box>
                 {showLibrary && !isMobile && (

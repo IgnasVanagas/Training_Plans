@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Box, Flex, Select, Text, Group, Paper, Alert, Divider, useComputedColorScheme } from "@mantine/core";
+import { ActionIcon, Box, Divider, Flex, Group, Paper, Alert, ScrollArea, Select, Text, Tooltip, useComputedColorScheme } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { subMonths, format, startOfMonth } from "date-fns";
-import { IconColumns } from "@tabler/icons-react";
+import { IconBooks, IconColumns, IconX } from "@tabler/icons-react";
 import { TrainingCalendar } from "./TrainingCalendar";
+import { WorkoutLibrary } from "./library/WorkoutLibrary";
+import { SavedWorkout } from "../types/workout";
 import { useI18n } from "../i18n/I18nProvider";
 
 type Athlete = {
@@ -49,6 +51,9 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
         ? athletes[0].id
         : null,
   );
+
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [draggedWorkout, setDraggedWorkout] = useState<SavedWorkout | null>(null);
 
   // Athlete: both panels show own calendar; right panel starts one month back
   const rightInitialDate = format(startOfMonth(subMonths(new Date(), 1)), "yyyy-MM-dd");
@@ -117,6 +122,8 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
               allAthletes={isCoach && leftAthleteId === null}
               athletes={isCoach ? athletes : []}
               compact
+              draggedWorkout={draggedWorkout}
+              onWorkoutDrop={() => setDraggedWorkout(null)}
             />
           </Box>
         </Box>
@@ -149,13 +156,38 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
                   style={{ flex: 1 }}
                   styles={{ input: { fontWeight: 600 } }}
                 />
+                {/* Library toggle button aligned to right panel header */}
+                <Tooltip label={showLibrary ? t("Close library") : t("Workout library")}>
+                  <ActionIcon
+                    variant={showLibrary ? "filled" : "subtle"}
+                    color={showLibrary ? "violet" : undefined}
+                    size="sm"
+                    onClick={() => setShowLibrary((v) => !v)}
+                    aria-label={showLibrary ? t("Close library") : t("Workout library")}
+                  >
+                    {showLibrary ? <IconX size={14} /> : <IconBooks size={14} />}
+                  </ActionIcon>
+                </Tooltip>
               </Group>
             </Paper>
           )}
           {!isCoach && (
-            <Text size="xs" fw={600} c="dimmed" mb={4} px={2}>
-              {panelLabel("right")}
-            </Text>
+            <Group mb={4} px={2} justify="space-between" align="center">
+              <Text size="xs" fw={600} c="dimmed">
+                {panelLabel("right")}
+              </Text>
+              <Tooltip label={showLibrary ? t("Close library") : t("Workout library")}>
+                <ActionIcon
+                  variant={showLibrary ? "filled" : "subtle"}
+                  color={showLibrary ? "violet" : undefined}
+                  size="sm"
+                  onClick={() => setShowLibrary((v) => !v)}
+                  aria-label={showLibrary ? t("Close library") : t("Workout library")}
+                >
+                  {showLibrary ? <IconX size={14} /> : <IconBooks size={14} />}
+                </ActionIcon>
+              </Tooltip>
+            </Group>
           )}
           <Box style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
             <TrainingCalendar
@@ -165,9 +197,34 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
               athletes={isCoach ? athletes : []}
               initialViewDate={isCoach ? undefined : rightInitialDate}
               compact
+              draggedWorkout={draggedWorkout}
+              onWorkoutDrop={() => setDraggedWorkout(null)}
             />
           </Box>
         </Box>
+
+        {/* Workout Library Panel */}
+        {showLibrary && (
+          <>
+            <Divider orientation="vertical" color={borderColor} mx={6} />
+            <Box
+              w={252}
+              style={{
+                flexShrink: 0,
+                display: "flex",
+                flexDirection: "column",
+                borderLeft: `1px solid ${borderColor}`,
+              }}
+            >
+              <ScrollArea style={{ flex: 1 }} scrollbarSize={4}>
+                <WorkoutLibrary
+                  onDragStart={setDraggedWorkout}
+                  onDragEnd={() => setDraggedWorkout(null)}
+                />
+              </ScrollArea>
+            </Box>
+          </>
+        )}
       </Flex>
     </Flex>
   );

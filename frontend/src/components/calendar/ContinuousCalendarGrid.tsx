@@ -25,6 +25,8 @@ export type ContinuousCalendarGridProps = {
     onSelectSlot: (args: { start: Date; slots: Date[] }) => void;
     onEventDrop: (args: { event: any; start: Date }) => void;
     onDropFromOutside: (args: { start: Date }) => void;
+    /** Called when an event from another calendar is dropped here (cross-calendar copy) */
+    onDropCalendarEvent?: (resource: CalendarEvent, date: Date) => void;
     canEditWorkouts: boolean;
     /** Ref forwarded so parent can measure week row heights */
     gridRef?: React.RefObject<HTMLDivElement | null>;
@@ -93,6 +95,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     onSelectSlot,
     onEventDrop,
     onDropFromOutside,
+    onDropCalendarEvent,
     canEditWorkouts,
     gridRef,
     scrollContainerRef,
@@ -375,10 +378,19 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
             }
             setDraggingEventId(null);
         } else {
-            // Drop from outside (library)
-            onDropFromOutside({ start: date });
+            // Check if a calendar event was dragged from another calendar instance
+            const calendarEventData = e.dataTransfer.getData('application/calendar-event');
+            if (calendarEventData && onDropCalendarEvent) {
+                try {
+                    const resource = JSON.parse(calendarEventData) as CalendarEvent;
+                    onDropCalendarEvent(resource, date);
+                } catch { /* malformed data — ignore */ }
+            } else {
+                // Drop from outside (library)
+                onDropFromOutside({ start: date });
+            }
         }
-    }, [draggingEventId, events, onEventDrop, onDropFromOutside]);
+    }, [draggingEventId, events, onEventDrop, onDropFromOutside, onDropCalendarEvent]);
 
     const handleDayDragLeave = useCallback(() => {
         setDragOverDate(null);
@@ -386,9 +398,14 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
 
     const handleEventDragStart = useCallback((e: React.DragEvent, eventId: number) => {
         setDraggingEventId(eventId);
-        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.effectAllowed = 'copyMove';
         e.dataTransfer.setData('text/plain', String(eventId));
-    }, []);
+        // Store full resource JSON so cross-calendar drops can create a copy
+        const fullEvent = events.find((ev: any) => ev.resource?.id === eventId);
+        if (fullEvent?.resource) {
+            e.dataTransfer.setData('application/calendar-event', JSON.stringify(fullEvent.resource));
+        }
+    }, [events]);
 
     /* ── Day click (slot selection) ── */
     const handleDayClick = useCallback((date: Date, e: React.MouseEvent) => {
@@ -635,6 +652,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                                                     ? (e) => handleEventDragStart(e, evtId)
                                                                     : undefined
                                                             }
+                                                            onDragEnd={() => setDraggingEventId(null)}
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 onSelectEvent(evt);
