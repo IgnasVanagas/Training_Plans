@@ -21,6 +21,7 @@ import SupportContactButton from "../components/common/SupportContactButton";
 import DashboardAthleteHome from "./dashboard/DashboardAthleteHome";
 import InsightsPage from "./dashboard/InsightsPage";
 import DashboardCoachHome from "./dashboard/DashboardCoachHome";
+import DashboardCoachAthletesPage from "./dashboard/DashboardCoachAthletesPage";
 import DashboardLayoutShell from "./dashboard/DashboardLayoutShell";
 import DashboardNotificationsTab from "./dashboard/DashboardNotificationsTab";
 import DashboardOrganizationsTab from "./dashboard/DashboardOrganizationsTab";
@@ -67,16 +68,18 @@ const isRestDayCalendarEvent = (row: Pick<DashboardCalendarEvent, "title" | "spo
     || (plannedDuration !== null && plannedDuration <= 0 && sportType === "other" && title.includes("rest"));
 };
 
-const VALID_TABS = new Set(["dashboard", "activities", "plan", "dual-calendar", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health", "comparison"]);
+const VALID_TABS = new Set(["dashboard", "activities", "athletes", "plan", "dual-calendar", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health", "comparison"]);
 
 const Dashboard = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigationState = (location.state || {}) as {
-    activeTab?: "dashboard" | "activities" | "plan" | "organizations" | "notifications" | "settings";
+    activeTab?: "dashboard" | "activities" | "athletes" | "plan" | "organizations" | "notifications" | "settings";
     selectedAthleteId?: string | null;
     calendarDate?: string | null;
+    messageAthleteId?: string | null;
+    organizationId?: string | null;
   };
 
   const [opened, { toggle }] = useDisclosure();
@@ -84,7 +87,7 @@ const Dashboard = () => {
   const [inviteEmail, setInviteEmail] = useState("");
 
   // Resolve initial tab: navigation state > URL ?tab= > default "dashboard"
-  type DashboardTab = "dashboard" | "activities" | "plan" | "dual-calendar" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health" | "comparison";
+  type DashboardTab = "dashboard" | "activities" | "athletes" | "plan" | "dual-calendar" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health" | "comparison";
   const resolvedInitialTab: DashboardTab = (() => {
     if (navigationState.activeTab && VALID_TABS.has(navigationState.activeTab)) return navigationState.activeTab;
     const urlTab = searchParams.get("tab");
@@ -100,6 +103,10 @@ const Dashboard = () => {
   const setActiveTab = (tab: DashboardTab) => {
     _setActiveTab(tab);
     if (tab !== "settings") setSettingsAthleteId(null);
+    if (tab !== "organizations") {
+      setOrganizationMessageAthleteId(null);
+      setOrganizationFocusId(null);
+    }
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (tab === "dashboard") {
@@ -112,6 +119,8 @@ const Dashboard = () => {
   };
   const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(navigationState.selectedAthleteId ?? null);
   const [settingsAthleteId, setSettingsAthleteId] = useState<string | null>(null);
+  const [organizationMessageAthleteId, setOrganizationMessageAthleteId] = useState<string | null>(navigationState.messageAthleteId ?? null);
+  const [organizationFocusId, setOrganizationFocusId] = useState<string | null>(navigationState.organizationId ?? null);
   const initialCalendarViewDate = useMemo(() => {
     const navEntry = (typeof window !== "undefined"
       ? (window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)
@@ -858,6 +867,28 @@ const Dashboard = () => {
             athletes={athletesQuery.data || []}
             showUploadSection={false}
           />
+        ) : activeTab === "athletes" ? (
+          <DashboardCoachAthletesPage
+            me={me}
+            athletes={athletesQuery.data || []}
+            onOpenAthleteSettings={(athleteId) => {
+              setSettingsAthleteId(athleteId);
+              setActiveTab("settings");
+            }}
+            onOpenAthleteCalendar={(athleteId) => {
+              navigate(`/dashboard/athlete/${athleteId}`);
+            }}
+            onOpenAthleteMessages={(athleteId, organizationId) => {
+              setOrganizationMessageAthleteId(athleteId);
+              setOrganizationFocusId(organizationId ? String(organizationId) : null);
+              _setActiveTab("organizations");
+              setSearchParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.set("tab", "organizations");
+                return next;
+              }, { replace: true });
+            }}
+          />
         ) : activeTab === "plan" ? (
           <Flex direction="column" gap="xs" style={{ height: 'calc(100dvh - 140px)' }}>
              <Flex style={{ flex: 1, minHeight: 0 }} gap="md">
@@ -949,7 +980,12 @@ const Dashboard = () => {
             respondingInvitation={respondInvitationMutation.isPending}
           />
         ) : activeTab === "organizations" ? (
-          <DashboardOrganizationsTab me={me} athletes={athletesQuery.data || []} />
+          <DashboardOrganizationsTab
+            me={me}
+            athletes={athletesQuery.data || []}
+            initialOrganizationId={organizationFocusId ? Number(organizationFocusId) : null}
+            initialCoachAthleteId={organizationMessageAthleteId ? Number(organizationMessageAthleteId) : null}
+          />
         ) : activeTab === "settings" ? (
           <DashboardSettingsTab
             me={me}

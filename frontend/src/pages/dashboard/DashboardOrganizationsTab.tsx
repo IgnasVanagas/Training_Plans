@@ -87,6 +87,8 @@ type Props = {
   me: User;
   athletes: User[];
   initialShareText?: string;
+  initialOrganizationId?: number | null;
+  initialCoachAthleteId?: number | null;
 };
 
 // Resolve backend attachment URL → full URL served by the backend
@@ -101,7 +103,7 @@ const isImageAttachment = (name?: string | null) => {
   return /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(name);
 };
 
-const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) => {
+const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrganizationId = null, initialCoachAthleteId = null }: Props) => {
   const queryClient = useQueryClient();
   const { t } = useI18n();
   const isDark = useComputedColorScheme("light") === "dark";
@@ -150,7 +152,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
   );
 
   const [selectedActiveOrgId, setSelectedActiveOrgId] = useState<string | null>(
-    activeMemberships[0]?.organization?.id?.toString() || null,
+    (initialOrganizationId ? String(initialOrganizationId) : activeMemberships[0]?.organization?.id?.toString()) || null,
   );
 
   useEffect(() => {
@@ -165,9 +167,13 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
     }
 
     if (!selectedActiveOrgId || !validIds.includes(selectedActiveOrgId)) {
-      setSelectedActiveOrgId(validIds[0]);
+      if (initialOrganizationId && validIds.includes(String(initialOrganizationId))) {
+        setSelectedActiveOrgId(String(initialOrganizationId));
+      } else {
+        setSelectedActiveOrgId(validIds[0]);
+      }
     }
-  }, [activeMemberships, selectedActiveOrgId]);
+  }, [activeMemberships, initialOrganizationId, selectedActiveOrgId]);
 
   const selectedActiveOrganizationId = selectedActiveOrgId ? Number(selectedActiveOrgId) : null;
 
@@ -276,7 +282,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
       ? items
       : [{ key: "group", thread_type: "group" as const, body_preview: null, created_at: null, sender_id: null }];
 
-    return sourceItems.map((item) => {
+    const mappedThreads = sourceItems.map((item) => {
       const isGroupThread = item.thread_type === "group";
       const label = isGroupThread
         ? t("Organization Group")
@@ -299,7 +305,46 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText }: Props) =>
         unread: Boolean(item.sender_id && item.sender_id !== me.id),
       };
     });
-  }, [inboxQuery.data?.items, me.id, me.role, t]);
+
+    if (me.role !== "coach") return mappedThreads;
+
+    const threadKeys = new Set(mappedThreads.map((thread) => `${thread.subtype}:${thread.participantId ?? "group"}`));
+    const syntheticAthleteThreads = athletes
+      .filter((athlete) => athlete.id !== me.id)
+      .filter((athlete) => !threadKeys.has(`coach:${athlete.id}`))
+      .map((athlete) => {
+        const label = (athlete.profile?.first_name || athlete.profile?.last_name)
+          ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
+          : athlete.email;
+
+        return {
+          key: `coach:${athlete.id}`,
+          type: "direct" as const,
+          subtype: "coach" as const,
+          label,
+          subtitle: t("Direct athlete conversation"),
+          participantId: athlete.id,
+          lastMessageAt: null,
+          unread: false,
+        };
+      });
+
+    return [...mappedThreads, ...syntheticAthleteThreads];
+  }, [athletes, inboxQuery.data?.items, me.id, me.role, t]);
+
+  useEffect(() => {
+    if (!initialCoachAthleteId) return;
+    const targetThread = threads.find(
+      (thread) => thread.subtype === "coach" && thread.participantId === initialCoachAthleteId,
+    );
+    if (!targetThread) return;
+    if (activeThreadKey !== targetThread.key) {
+      setActiveThreadKey(targetThread.key);
+    }
+    if (isMobile) {
+      setMobilePane("messages");
+    }
+  }, [activeThreadKey, initialCoachAthleteId, isMobile, threads]);
 
   useEffect(() => {
     if (threads.length === 0) return;

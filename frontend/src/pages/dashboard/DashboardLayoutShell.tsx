@@ -58,7 +58,7 @@ import api from "../../api/client";
 
 const appLogo = "/origami-logo.png";
 
-type DashboardTab = "dashboard" | "activities" | "plan" | "dual-calendar" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health" | "comparison";
+type DashboardTab = "dashboard" | "activities" | "athletes" | "plan" | "dual-calendar" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health" | "comparison";
 
 type SidebarAthlete = {
   id: number;
@@ -133,6 +133,7 @@ const DashboardLayoutShell = ({
   const coachNavItems: NavItem[] = [
     { key: "dashboard", icon: IconLayoutDashboard, label: t("Dashboard"), color: "#E95A12" },
     { key: "activities", icon: IconActivity, label: t("Activities") },
+    { key: "athletes", icon: IconUsersGroup, label: t("Athletes"), color: "#2563EB" },
     { key: "plan", icon: IconCalendar, label: t("Calendar"), color: "#E95A12" },
     { key: "comparison", icon: IconChartPie, label: t("Comparison"), color: "#8B5CF6" },
     { key: "dual-calendar", icon: IconColumns, label: t("Dual Calendar"), color: "#0EA5E9" },
