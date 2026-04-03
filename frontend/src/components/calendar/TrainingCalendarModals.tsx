@@ -1227,24 +1227,59 @@ const formatZoneTargetLabel = (
 ): string | null => {
   const zoneCfg = profile?.zone_settings?.[sport]?.[metric];
   const range = resolveZoneRange(zoneCfg?.upper_bounds, zone);
-  if (!range) return null;
+  const fallbackRange = (() => {
+    if (metric === 'power') {
+      const threshold = Number(zoneCfg?.lt2 || profile?.ftp || 0);
+      if (threshold <= 0) return null;
+      const pctRanges: Array<[number, number]> = [[50, 55], [56, 75], [76, 90], [91, 105], [106, 120], [121, 150], [151, 200]];
+      const idx = Math.max(1, Math.min(pctRanges.length, zone)) - 1;
+      const [lowPct, highPct] = pctRanges[idx];
+      return {
+        low: Math.round((threshold * lowPct) / 100),
+        high: Math.round((threshold * highPct) / 100),
+      };
+    }
+    if (metric === 'hr') {
+      const threshold = Number(zoneCfg?.lt2 || profile?.max_hr || 0);
+      if (threshold <= 0) return null;
+      const pctRanges: Array<[number, number]> = [[50, 60], [61, 70], [71, 80], [81, 90], [91, 100], [101, 105], [106, 110]];
+      const idx = Math.max(1, Math.min(pctRanges.length, zone)) - 1;
+      const [lowPct, highPct] = pctRanges[idx];
+      return {
+        low: Math.round((threshold * lowPct) / 100),
+        high: Math.round((threshold * highPct) / 100),
+      };
+    }
+    const lt2Pace = Number(zoneCfg?.lt2 || profile?.lt2 || 0);
+    if (lt2Pace <= 0) return null;
+    const pacePctRanges: Array<[number, number]> = [[120, 113], [112, 106], [105, 100], [99, 94], [93, 88], [87, 82], [81, 76]];
+    const idx = Math.max(1, Math.min(pacePctRanges.length, zone)) - 1;
+    const [slowPct, fastPct] = pacePctRanges[idx];
+    return {
+      low: (lt2Pace * fastPct) / 100,
+      high: (lt2Pace * slowPct) / 100,
+    };
+  })();
+
+  const effectiveRange = range || fallbackRange;
+  if (!effectiveRange) return null;
 
   if (metric === 'hr') {
-    const lowLabel = range.low != null ? `${Math.round(range.low)} bpm` : null;
-    const highLabel = range.high != null ? `${Math.round(range.high)} bpm` : null;
+    const lowLabel = effectiveRange.low != null ? `${Math.round(effectiveRange.low)} bpm` : null;
+    const highLabel = effectiveRange.high != null ? `${Math.round(effectiveRange.high)} bpm` : null;
     if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
     return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
   }
 
   if (metric === 'power') {
-    const lowLabel = range.low != null ? `${Math.round(range.low)} W` : null;
-    const highLabel = range.high != null ? `${Math.round(range.high)} W` : null;
+    const lowLabel = effectiveRange.low != null ? `${Math.round(effectiveRange.low)} W` : null;
+    const highLabel = effectiveRange.high != null ? `${Math.round(effectiveRange.high)} W` : null;
     if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
     return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
   }
 
-  const lowLabel = range.low != null ? formatPaceRange(range.low) : null;
-  const highLabel = range.high != null ? formatPaceRange(range.high) : null;
+  const lowLabel = effectiveRange.low != null ? formatPaceRange(effectiveRange.low) : null;
+  const highLabel = effectiveRange.high != null ? formatPaceRange(effectiveRange.high) : null;
   if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
   return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
 };

@@ -419,6 +419,23 @@ export const ActivityDetailPage = () => {
            retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
     });
 
+    const viewedAthleteId = Number(activity?.athlete_id || 0);
+    const shouldFetchViewedAthlete = Boolean(
+        me?.role === 'coach'
+        && viewedAthleteId > 0
+        && viewedAthleteId !== me?.id,
+    );
+    const { data: viewedAthlete } = useQuery({
+        queryKey: ['athlete', viewedAthleteId],
+        enabled: shouldFetchViewedAthlete,
+        queryFn: async () => {
+            const res = await api.get(`/users/athletes/${viewedAthleteId}`);
+            return res.data;
+        },
+        staleTime: 60_000,
+    });
+    const zoneProfile = viewedAthlete?.profile || me?.profile;
+
     const streamPoints = useMemo(() => {
         if (!activity?.streams) return [];
         if (Array.isArray(activity.streams)) return activity.streams;
@@ -1045,7 +1062,7 @@ export const ActivityDetailPage = () => {
     const hrZoneData = useMemo(() => {
         const zoneSeconds = Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>;
 
-        const maxHr = Number(me?.profile?.max_hr || activity?.max_hr || 190);
+        const maxHr = Number(zoneProfile?.max_hr || activity?.max_hr || 190);
 
         // Resolve profile HR zone upper bounds from dashboard zone settings.
         // Stored values may be either absolute bpm or legacy percentages.
@@ -1055,26 +1072,20 @@ export const ActivityDetailPage = () => {
             : sport.includes('swim')
                 ? 'swimming'
                 : 'running';
-        const hrZoneCfg = (me?.profile as any)?.zone_settings?.[sportKey]?.hr;
-        const rawUpperBounds = Array.isArray(hrZoneCfg?.upper_bounds)
-            ? hrZoneCfg.upper_bounds.map((value: unknown) => Number(value)).filter((value: number) => Number.isFinite(value) && value > 0)
-            : [];
-        const hrThreshold = Number(hrZoneCfg?.lt2 || 0);
-        const looksLikePercentages = rawUpperBounds.length > 0
-            && hrThreshold > 0
-            && Math.max(...rawUpperBounds) <= Math.min(200, hrThreshold * 0.75);
-        const upperBounds: number[] = rawUpperBounds.length > 0
-            ? (looksLikePercentages
-                ? rawUpperBounds.map((pct: number) => Math.round((hrThreshold * pct) / 100))
-                : rawUpperBounds)
-            : [];
+        const hrZoneCfg = (zoneProfile as any)?.zone_settings?.[sportKey]?.hr;
+        const upperBounds: number[] = (Array.isArray(hrZoneCfg?.upper_bounds)
+            ? hrZoneCfg.upper_bounds
+                .map((value: unknown) => Number(value))
+                .filter((value: number) => Number.isFinite(value) && value > 0)
+            : [])
+            .slice(0, 4);
 
         const classifyHr = (hr: number): number => {
             if (upperBounds.length) {
                 for (let i = 0; i < upperBounds.length; i++) {
                     if (hr <= upperBounds[i]) return i + 1;
                 }
-                return 5; // Above all thresholds → Z5
+                return upperBounds.length + 1;
             }
             const ratio = hr / maxHr;
             return ratio < 0.6 ? 1 : ratio < 0.7 ? 2 : ratio < 0.8 ? 3 : ratio < 0.9 ? 4 : 5;
@@ -1133,9 +1144,12 @@ export const ActivityDetailPage = () => {
             
             // Use upperBounds for display if available, otherwise use threshold ratios
             if (upperBounds.length) {
-                const low = idx === 0 ? 0 : upperBounds[idx - 1];
-                const high = idx === 4 ? maxHr : upperBounds[idx];
-                range = idx === 0 ? `< ${high} bpm` : idx === 4 ? `≥ ${low} bpm` : `${low}–${high} bpm`;
+                const low = idx === 0 ? null : upperBounds[idx - 1] ?? null;
+                const high = upperBounds[idx] ?? null;
+                if (low == null && high != null) range = `< ${Math.round(high)} bpm`;
+                else if (low != null && high != null) range = `${Math.round(low)}–${Math.round(high)} bpm`;
+                else if (low != null) range = `≥ ${Math.round(low)} bpm`;
+                else range = '-';
             } else {
                 const low = Math.round(maxHr * ZONE_THRESHOLDS[idx]);
                 const high = idx === 4 ? Math.round(maxHr) : Math.round(maxHr * ZONE_THRESHOLDS[idx + 1]);
@@ -1144,7 +1158,7 @@ export const ActivityDetailPage = () => {
             
             return { zone, seconds: zoneSeconds[zone] || 0, range };
         });
-    }, [activity, streamPoints, me?.profile?.max_hr, me?.profile]);
+    }, [activity, streamPoints, zoneProfile]);
 
     const POWER_CURVE_KEY_LABELS = new Set(['1s','5s','10s','30s','1min','5min','10min','20min','30min','60min','90min','120min']);
     const _pcLabelToSec = (label: string): number => {

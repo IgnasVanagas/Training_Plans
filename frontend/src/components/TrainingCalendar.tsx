@@ -529,6 +529,25 @@ export const TrainingCalendar = ({
         return dateKey >= start && dateKey <= end;
     }, []);
 
+    const calendarQueryMatchesResourceScope = useCallback((queryKey: readonly unknown[], resource: CalendarEvent) => {
+        const scopedAthleteRaw = queryKey?.[3];
+        const scopedAthleteId = typeof scopedAthleteRaw === 'number'
+            ? scopedAthleteRaw
+            : (typeof scopedAthleteRaw === 'string' && scopedAthleteRaw.trim() ? Number(scopedAthleteRaw) : null);
+        const allAthletesScope = queryKey?.[4] === true;
+
+        if (allAthletesScope) return true;
+        if (scopedAthleteId != null && Number.isFinite(scopedAthleteId)) {
+            return Number(resource.user_id) === Number(scopedAthleteId);
+        }
+
+        if (!resource.user_id) return true;
+        if (!athleteId && !allAthletes && me?.id) {
+            return Number(resource.user_id) === Number(me.id);
+        }
+        return true;
+    }, [allAthletes, athleteId, me?.id]);
+
     const snapshotCalendarQueries = useCallback(() => {
         return queryClient.getQueriesData<any[]>({ queryKey: ['calendar'] });
     }, [queryClient]);
@@ -549,13 +568,13 @@ export const TrainingCalendar = ({
                 && row?.resource?.id !== previousId
             ));
 
-            if (calendarQueryContainsDate(queryKey, resource.date)) {
+            if (calendarQueryMatchesResourceScope(queryKey, resource) && calendarQueryContainsDate(queryKey, resource.date)) {
                 next = sortCalendarRows([envelope, ...next]);
             }
 
             queryClient.setQueryData(queryKey, next);
         });
-    }, [buildCalendarEventEnvelope, calendarQueryContainsDate, queryClient, snapshotCalendarQueries]);
+    }, [buildCalendarEventEnvelope, calendarQueryContainsDate, calendarQueryMatchesResourceScope, queryClient, snapshotCalendarQueries]);
 
     const removeCalendarResourceFromQueries = useCallback((resourceId: number | string) => {
         snapshotCalendarQueries().forEach(([queryKey, current]) => {

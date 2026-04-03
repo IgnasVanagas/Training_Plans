@@ -1,4 +1,5 @@
-import { ActionIcon, Divider, Group, Paper, Stack, Switch, Text, Title, useComputedColorScheme } from "@mantine/core";
+import { useEffect, useMemo, useState } from "react";
+import { ActionIcon, Divider, Group, Paper, Select, Stack, Switch, Text, Title, useComputedColorScheme } from "@mantine/core";
 import { IconCheck, IconCopy } from "@tabler/icons-react";
 import { CopyButton } from "@mantine/core";
 import { buildPublicCalendarIcsUrl, buildPublicCalendarShareUrl } from "../../api/calendarCollaboration";
@@ -61,6 +62,37 @@ const DashboardSettingsTab = ({
     fontFamily: '"Inter", sans-serif',
   } as const;
   const currentYear = new Date().getFullYear();
+  const athleteOptions = useMemo(
+    () => athletes.map((athlete) => ({
+      value: String(athlete.id),
+      label: (athlete.profile?.first_name || athlete.profile?.last_name)
+        ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
+        : athlete.email,
+    })),
+    [athletes],
+  );
+  const [selectedAthleteId, setSelectedAthleteId] = useState<string | null>(() => {
+    if (initialAthleteId && athleteOptions.some((option) => option.value === initialAthleteId)) return initialAthleteId;
+    return athleteOptions[0]?.value || null;
+  });
+
+  useEffect(() => {
+    if (!athleteOptions.length) {
+      setSelectedAthleteId(null);
+      return;
+    }
+    if (selectedAthleteId && athleteOptions.some((option) => option.value === selectedAthleteId)) return;
+    if (initialAthleteId && athleteOptions.some((option) => option.value === initialAthleteId)) {
+      setSelectedAthleteId(initialAthleteId);
+      return;
+    }
+    setSelectedAthleteId(athleteOptions[0].value);
+  }, [athleteOptions, initialAthleteId, selectedAthleteId]);
+
+  const selectedAthlete = useMemo(
+    () => athletes.find((athlete) => String(athlete.id) === selectedAthleteId) || null,
+    [athletes, selectedAthleteId],
+  );
 
   const showingAthleteSettings = !!(me.role === "coach" && initialAthleteId);
 
@@ -84,8 +116,18 @@ const DashboardSettingsTab = ({
             <Stack gap="sm">
               <Title order={4}>{t('Athlete Permissions') || 'Athlete Permissions'}</Title>
               <Text size="sm" c="dimmed">{t('Control whether each athlete can delete activities, edit plans, and delete plans.') || 'Control whether each athlete can delete activities, edit plans, and delete plans.'}</Text>
-              {athletes.map((athlete) => {
-                const permissionRow = permissionsRows.find((row) => row.athlete_id === athlete.id);
+              <Select
+                label={t('Choose Athlete') || 'Choose Athlete'}
+                placeholder={t('Select an athlete') || 'Select an athlete'}
+                data={athleteOptions}
+                value={selectedAthleteId}
+                onChange={setSelectedAthleteId}
+                searchable
+                allowDeselect={false}
+              />
+
+              {selectedAthlete && (() => {
+                const permissionRow = permissionsRows.find((row) => row.athlete_id === selectedAthlete.id);
                 const permissions = permissionRow?.permissions || {
                   allow_delete_activities: true,
                   allow_delete_workouts: true,
@@ -94,19 +136,19 @@ const DashboardSettingsTab = ({
                   allow_public_calendar_share: true,
                   require_workout_approval: false,
                 };
-                const shareSettings = shareSettingsRows.find((row) => row.athlete_id === athlete.id) || {
-                  athlete_id: athlete.id,
+                const shareSettings = shareSettingsRows.find((row) => row.athlete_id === selectedAthlete.id) || {
+                  athlete_id: selectedAthlete.id,
                   enabled: false,
                   token: null,
                   include_completed: false,
                   include_descriptions: false,
                 };
-                const athleteName = (athlete.profile?.first_name || athlete.profile?.last_name)
-                  ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
-                  : athlete.email;
+                const athleteName = (selectedAthlete.profile?.first_name || selectedAthlete.profile?.last_name)
+                  ? `${selectedAthlete.profile?.first_name || ""} ${selectedAthlete.profile?.last_name || ""}`.trim()
+                  : selectedAthlete.email;
 
                 const updateFlag = (key: keyof AthletePermissions["permissions"], checked: boolean) => {
-                  onUpdateAthletePermission(athlete.id, {
+                  onUpdateAthletePermission(selectedAthlete.id, {
                     ...permissions,
                     [key]: checked,
                   });
@@ -114,7 +156,6 @@ const DashboardSettingsTab = ({
 
                 return (
                   <Paper
-                    key={athlete.id}
                     withBorder
                     p="sm"
                     radius="sm"
@@ -162,7 +203,7 @@ const DashboardSettingsTab = ({
                         label={t('Enable shared public calendar') || 'Enable shared public calendar'}
                         checked={shareSettings.enabled}
                         disabled={!permissions.allow_public_calendar_share}
-                        onChange={(event) => onUpdateCalendarShare(athlete.id, {
+                        onChange={(event) => onUpdateCalendarShare(selectedAthlete.id, {
                           ...shareSettings,
                           enabled: event.currentTarget.checked,
                         })}
@@ -171,7 +212,7 @@ const DashboardSettingsTab = ({
                         label={t('Include completed activities in public view') || 'Include completed activities in public view'}
                         checked={shareSettings.include_completed}
                         disabled={!shareSettings.enabled}
-                        onChange={(event) => onUpdateCalendarShare(athlete.id, {
+                        onChange={(event) => onUpdateCalendarShare(selectedAthlete.id, {
                           ...shareSettings,
                           include_completed: event.currentTarget.checked,
                         })}
@@ -180,7 +221,7 @@ const DashboardSettingsTab = ({
                         label={t('Include workout descriptions in public view') || 'Include workout descriptions in public view'}
                         checked={shareSettings.include_descriptions}
                         disabled={!shareSettings.enabled}
-                        onChange={(event) => onUpdateCalendarShare(athlete.id, {
+                        onChange={(event) => onUpdateCalendarShare(selectedAthlete.id, {
                           ...shareSettings,
                           include_descriptions: event.currentTarget.checked,
                         })}
@@ -216,7 +257,7 @@ const DashboardSettingsTab = ({
                     </Stack>
                   </Paper>
                 );
-              })}
+              })()}
             </Stack>
           </Paper>
 
