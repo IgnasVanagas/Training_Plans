@@ -624,7 +624,11 @@ const Dashboard = () => {
 
     const withoutToday = existing.filter((row) => row.date !== today);
     const updated = [...withoutToday, currentSnapshot].slice(-60);
-    localStorage.setItem(storageKey, JSON.stringify(updated));
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch {
+      // quota exceeded — history won't persist this session
+    }
     setProfileMetricHistory(updated);
   }, [
     me?.id,
