@@ -126,8 +126,8 @@ export default function DashboardActivityTrackersTab({
                           src="/strava.png"
                           alt=""
                           aria-hidden="true"
-                          width={22}
-                          height={22}
+                          width={34}
+                          height={34}
                         />
                       ) : (
                         <IconPlugConnected size={22} />
