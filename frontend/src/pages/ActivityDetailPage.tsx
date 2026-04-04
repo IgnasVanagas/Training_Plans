@@ -928,6 +928,7 @@ export const ActivityDetailPage = () => {
     const isDraggingChartRef = useRef(false);
     const dragStartIdxRef = useRef<number | null>(null);
     useEffect(() => { setChartSelection(null); }, [activity?.id]);
+    useEffect(() => { setChartSelection(null); }, [chartRange]);
 
     const chartSelectionStats = useMemo(() => {
         if (!chartSelection) return null;
