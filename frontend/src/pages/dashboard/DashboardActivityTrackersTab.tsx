@@ -13,7 +13,6 @@ import {
   Alert,
 } from "@mantine/core";
 import {
-  IconBrandStrava,
   IconCheck,
   IconInfoCircle,
   IconPlugConnected,
@@ -123,7 +122,13 @@ export default function DashboardActivityTrackersTab({
                       }}
                     >
                       {item.provider.toLowerCase() === "strava" ? (
-                        <IconBrandStrava size={22} />
+                        <img
+                          src="/strava.png"
+                          alt=""
+                          aria-hidden="true"
+                          width={22}
+                          height={22}
+                        />
                       ) : (
                         <IconPlugConnected size={22} />
                       )}
