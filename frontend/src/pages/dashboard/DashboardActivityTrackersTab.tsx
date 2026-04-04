@@ -13,6 +13,7 @@ import {
   Alert,
 } from "@mantine/core";
 import {
+  IconBrandStrava,
   IconCheck,
   IconInfoCircle,
   IconPlugConnected,
@@ -121,7 +122,11 @@ export default function DashboardActivityTrackersTab({
                         color: accent,
                       }}
                     >
-                      <IconPlugConnected size={22} />
+                      {item.provider.toLowerCase() === "strava" ? (
+                        <IconBrandStrava size={22} />
+                      ) : (
+                        <IconPlugConnected size={22} />
+                      )}
                     </ThemeIcon>
                     <Stack gap={0}>
                       <Text fw={700} size="sm">

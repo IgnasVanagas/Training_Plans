@@ -1352,24 +1352,39 @@ export const ActivityDetailPage = () => {
                 : 'running';
         const hrZoneCfg = (zoneProfile as any)?.zone_settings?.[sportKey]?.hr;
 
+        // Use same defaults as Training Zones tab: % of LTHR
+        // Running/Swimming: 5 zones [65-84, 85-89, 90-94, 95-99, 100-106]
+        // Cycling: 7 zones [65-81, 82-89, 90-93, 94-99, 100-102, 103-106, 107-120]
+        const lthr = Number(hrZoneCfg?.lt2 || 0);
+        const baseHr = lthr > 0 ? lthr : maxHr;
+
         const rawBounds: number[] = Array.isArray(hrZoneCfg?.upper_bounds)
             ? hrZoneCfg.upper_bounds
                 .map((value: unknown) => Math.round(Number(value)))
                 .filter((value: number) => Number.isFinite(value) && value > 0)
             : [];
 
-        const normalizedBounds = rawBounds.reduce<number[]>((acc, value) => {
+        // Mirror the corrupt-data detection from Training Zones tab:
+        // bounds saved without a threshold are raw percentages, not bpm.
+        // If LTHR is known: convert them. If LTHR is unknown: discard them and use fallback.
+        const correctedRawBounds = rawBounds.length > 0
+            ? (() => {
+                const maxBound = Math.max(...rawBounds);
+                const looksLikePercentages = maxBound <= 200 && (lthr <= 0 || maxBound <= lthr * 0.75);
+                if (looksLikePercentages) {
+                    // If we have LTHR, convert to absolute bpm; otherwise discard (return [])
+                    return lthr > 0 ? rawBounds.map(b => Math.round(b * lthr / 100)) : [];
+                }
+                return rawBounds;
+            })()
+            : rawBounds;
+
+        const normalizedBounds = correctedRawBounds.reduce<number[]>((acc, value) => {
             if (!acc.length) return [value];
             const prev = acc[acc.length - 1];
             acc.push(value <= prev ? prev + 1 : value);
             return acc;
         }, []);
-
-        // Use same defaults as Training Zones tab: % of LTHR
-        // Running/Swimming: 5 zones [65-84, 85-89, 90-94, 95-99, 100-106]
-        // Cycling: 7 zones [65-81, 82-89, 90-93, 94-99, 100-102, 103-106, 107-120]
-        const lthr = Number(hrZoneCfg?.lt2 || 0);
-        const baseHr = lthr > 0 ? lthr : maxHr;
         const defaultHighPcts = sportKey === 'cycling'
             ? [81, 89, 93, 99, 102, 106, 120]
             : [84, 89, 94, 99, 106];
