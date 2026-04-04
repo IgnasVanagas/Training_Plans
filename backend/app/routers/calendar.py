@@ -532,10 +532,14 @@ async def get_calendar_events(
             Activity.created_at, Activity.distance, Activity.duration,
             Activity.avg_speed, Activity.average_hr, Activity.average_watts,
             Activity.duplicate_of_id,
+            Activity.aerobic_load, Activity.anaerobic_load,
+            Activity.moving_time, Activity.local_date,
         ))
         .where(
-            Activity.created_at >= search_start_dt,
-            Activity.created_at <= search_end_dt,
+            or_(
+                and_(Activity.local_date.isnot(None), Activity.local_date >= start_date - timedelta(days=0), Activity.local_date <= end_date),
+                and_(Activity.local_date.is_(None), Activity.created_at >= search_start_dt, Activity.created_at <= search_end_dt),
+            ),
             Activity.athlete_id.in_(target_user_ids),
             Activity.duplicate_of_id.is_(None),
             Activity.is_deleted.is_(False),
@@ -548,7 +552,6 @@ async def get_calendar_events(
     primary_ids = [a.id for a in activities]
     dup_count_map: dict[int, int] = {}
     training_load_map: dict[int, float] = {}
-    local_date_map: dict[int, date] = {}
     moving_time_map: dict[int, float] = {}
     if primary_ids:
         dup_counts_res = await db.execute(
@@ -559,42 +562,18 @@ async def get_calendar_events(
         for row in dup_counts_res.all():
             dup_count_map[row[0]] = row[1]
 
-        meta_res = await db.execute(
-            select(
-                Activity.id,
-                Activity.streams['_meta'].label('meta'),
-                Activity.streams['stats'].label('stats_data'),
-                Activity.streams['provider_payload']['summary']['start_date_local'].label('summary_local'),
-                Activity.streams['provider_payload']['detail']['start_date_local'].label('detail_local'),
-                Activity.streams['provider_payload']['summary']['moving_time'].label('summary_moving_time'),
-            )
-            .where(Activity.id.in_(primary_ids))
-        )
-        for row in meta_res.all():
-            m = row.meta if isinstance(row.meta, dict) else {}
-            aerobic = float(m.get('aerobic_load') or 0)
-            anaerobic = float(m.get('anaerobic_load') or 0)
-            total = round(aerobic + anaerobic, 1)
-            if total > 0:
-                training_load_map[row.id] = total
-            stats = row.stats_data if isinstance(row.stats_data, dict) else {}
-            mt = (
-                (stats.get('total_timer_time') if isinstance(stats, dict) else None)
-                or (float(row.summary_moving_time) if row.summary_moving_time else None)
-            )
-            if mt:
-                moving_time_map[row.id] = float(mt)
-            # Resolve local date from provider_payload JSONB paths
-            for candidate in (row.summary_local, row.detail_local):
-                if candidate and isinstance(candidate, str):
-                    try:
-                        local_date_map[row.id] = date.fromisoformat(candidate.split("T")[0])
-                        break
-                    except (ValueError, AttributeError):
-                        pass
+    # Populate load/moving_time maps from the new denormalized columns (no JSONB needed)
+    for activity in activities:
+        aerobic = float(activity.aerobic_load or 0)
+        anaerobic = float(activity.anaerobic_load or 0)
+        total = round(aerobic + anaerobic, 1)
+        if total > 0:
+            training_load_map[activity.id] = total
+        if activity.moving_time:
+            moving_time_map[activity.id] = float(activity.moving_time)
 
     def _activity_display_date(activity: Activity) -> date:
-        return local_date_map.get(activity.id) or (activity.created_at.date() if activity.created_at else date.today())
+        return activity.local_date or (activity.created_at.date() if activity.created_at else date.today())
 
     visible_activity_ids = {
         activity.id

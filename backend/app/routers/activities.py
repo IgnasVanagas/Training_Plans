@@ -1843,6 +1843,9 @@ async def reparse_activity(
         }
     }
     activity.streams = composite_streams_data
+    activity.moving_time = summary.get("total_timer_time") or summary.get("duration") or activity.moving_time
+    if activity.local_date is None:
+        activity.local_date = activity.created_at.date() if activity.created_at else None
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(activity, "streams")
 
@@ -1880,6 +1883,8 @@ async def create_manual_activity(
         average_watts=payload.average_watts,
         rpe=payload.rpe,
         notes=payload.notes,
+        local_date=payload.date,
+        moving_time=payload.duration if payload.duration else None,
         streams={
             "data": [],
             "power_curve": None,
@@ -1915,6 +1920,10 @@ async def create_manual_activity(
     ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
     max_hr_val = _safe_number(getattr(profile, "max_hr", None), default=190.0)
     aerobic_load, anaerobic_load = _activity_training_load(new_activity, ftp, max_hr_val, profile)
+    new_activity.aerobic_load = aerobic_load
+    new_activity.anaerobic_load = anaerobic_load
+    db.add(new_activity)
+    await db.commit()
 
     return ActivityDetail(
         id=new_activity.id,
@@ -2113,7 +2122,9 @@ async def upload_activity(
     }
     
     new_activity.streams = composite_streams_data
-    
+    new_activity.local_date = created_at_date.date() if hasattr(created_at_date, 'date') else created_at_date
+    new_activity.moving_time = summary.get("total_timer_time") or summary.get("duration")
+
     db.add(new_activity)
     await db.commit()
     await db.refresh(new_activity)
@@ -2125,6 +2136,10 @@ async def upload_activity(
     ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
     max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
     aerobic_load, anaerobic_load = _activity_training_load(new_activity, ftp, max_hr, profile)
+    new_activity.aerobic_load = aerobic_load
+    new_activity.anaerobic_load = anaerobic_load
+    db.add(new_activity)
+    await db.commit()
     
     return ActivityDetail(
         id=new_activity.id,

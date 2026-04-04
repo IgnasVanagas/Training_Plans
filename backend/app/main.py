@@ -167,6 +167,30 @@ async def on_startup() -> None:
             await conn.execute(text("ALTER TABLE organization_group_messages ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255)"))
             await conn.execute(text("ALTER TABLE organization_coach_messages ADD COLUMN IF NOT EXISTS attachment_url VARCHAR(500)"))
             await conn.execute(text("ALTER TABLE organization_coach_messages ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255)"))
+            # Denormalized columns to avoid JSONB scanning on hot calendar/list paths
+            await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS aerobic_load FLOAT"))
+            await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS anaerobic_load FLOAT"))
+            await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS moving_time FLOAT"))
+            await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS local_date DATE"))
+            await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_activities_athlete_local_date ON activities (athlete_id, local_date)"))
+            # Backfill: populate new columns from streams JSONB for rows that are missing them
+            await conn.execute(text("""
+                UPDATE activities SET
+                    aerobic_load = COALESCE(aerobic_load, (streams->'_meta'->>'aerobic_load')::float),
+                    anaerobic_load = COALESCE(anaerobic_load, (streams->'_meta'->>'anaerobic_load')::float),
+                    moving_time = COALESCE(moving_time,
+                        NULLIF((streams->'stats'->>'total_timer_time')::float, 0),
+                        NULLIF((streams->'provider_payload'->'summary'->>'moving_time')::float, 0)
+                    ),
+                    local_date = COALESCE(local_date,
+                        (streams->'provider_payload'->'summary'->>'start_date_local')::timestamp::date,
+                        (streams->'provider_payload'->'detail'->>'start_date_local')::timestamp::date,
+                        DATE(created_at)
+                    )
+                WHERE is_deleted = FALSE
+                  AND (aerobic_load IS NULL OR local_date IS NULL)
+                  AND streams IS NOT NULL
+            """))
         logger.info("Database schema ready")
 
     try:

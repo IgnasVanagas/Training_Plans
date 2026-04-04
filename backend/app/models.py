@@ -203,6 +203,12 @@ class Activity(Base):
     # Soft-delete flag (set when Strava webhook reports deletion)
     is_deleted = Column(Boolean, default=False, server_default="false", nullable=False)
 
+    # Denormalized fields for fast calendar/list queries (avoid JSONB extraction at read time)
+    aerobic_load = Column(Float, nullable=True)
+    anaerobic_load = Column(Float, nullable=True)
+    moving_time = Column(Float, nullable=True)   # seconds
+    local_date = Column(Date, nullable=True)     # activity date in athlete's local timezone
+
     athlete = relationship("User", back_populates="activities")
     matched_workout = relationship("PlannedWorkout", back_populates="matched_activity", uselist=False)
     duplicate_recordings = relationship("Activity", foreign_keys="Activity.duplicate_of_id", back_populates="duplicate_of", lazy="noload")

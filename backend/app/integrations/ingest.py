@@ -1,12 +1,40 @@
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import date, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Activity
 from ..services.activity_dedupe import build_fingerprint, find_duplicate_activity
 from ..services.personal_records import compute_activity_best_efforts
+
+
+def _local_date_from_payload(payload: dict | None, fallback_ts) -> date:
+    """Resolve the athlete's local calendar date from provider payload."""
+    if isinstance(payload, dict):
+        summary = payload.get("summary") or {}
+        detail = payload.get("detail") or {}
+        for src in (summary, detail):
+            raw = src.get("start_date_local") if isinstance(src, dict) else None
+            if raw and isinstance(raw, str):
+                try:
+                    return date.fromisoformat(raw.split("T")[0])
+                except (ValueError, AttributeError):
+                    pass
+    return fallback_ts.date() if fallback_ts else date.today()
+
+
+def _moving_time_from_parts(stats: dict | None, payload: dict | None) -> float | None:
+    if isinstance(stats, dict):
+        val = stats.get("total_timer_time")
+        if val:
+            return float(val)
+    if isinstance(payload, dict):
+        summary = payload.get("summary") or {}
+        val = summary.get("moving_time") if isinstance(summary, dict) else None
+        if val:
+            return float(val)
+    return None
 
 
 async def ingest_provider_activity(
@@ -85,6 +113,10 @@ async def ingest_provider_activity(
             duplicate.avg_speed = average_speed if average_speed is not None else duplicate.avg_speed
             duplicate.average_hr = average_hr if average_hr is not None else duplicate.average_hr
             duplicate.average_watts = average_watts if average_watts is not None else duplicate.average_watts
+            if duplicate.local_date is None:
+                duplicate.local_date = _local_date_from_payload(payload, ts)
+            if duplicate.moving_time is None:
+                duplicate.moving_time = _moving_time_from_parts(stats, payload)
 
             merged_streams = dict(existing_streams)
             merged_streams["provider_payload"] = payload or merged_streams.get("provider_payload") or {}
@@ -140,6 +172,8 @@ async def ingest_provider_activity(
         avg_speed=average_speed,
         average_hr=average_hr,
         average_watts=average_watts,
+        local_date=_local_date_from_payload(payload, ts),
+        moving_time=_moving_time_from_parts(stats, payload),
         streams={
             "data": stream_points,
             "power_curve": power_curve,
