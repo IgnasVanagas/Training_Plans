@@ -247,9 +247,9 @@ const MapRouteInteractionLayer = ({
 }: {
     points: RouteInteractivePoint[];
     onHover: (chartIndex: number | null) => void;
-    onDragStart: (chartIndex: number) => void;
-    onDrag: (chartIndex: number) => void;
-    onDragEnd: () => void;
+    onDragStart?: (chartIndex: number) => void;
+    onDrag?: (chartIndex: number) => void;
+    onDragEnd?: () => void;
 }) => {
     const draggingRef = useRef(false);
 
@@ -257,7 +257,7 @@ const MapRouteInteractionLayer = ({
         mouseup: () => {
             if (!draggingRef.current) return;
             draggingRef.current = false;
-            onDragEnd();
+            onDragEnd?.();
         },
     });
 
@@ -275,6 +275,7 @@ const MapRouteInteractionLayer = ({
             pathOptions={{ color: '#000', opacity: 0.001, weight: 18 }}
             eventHandlers={{
                 mousedown: (e) => {
+                    if (!onDragStart) return;
                     const nearest = resolvePoint(e);
                     if (!nearest) return;
                     draggingRef.current = true;
@@ -283,7 +284,7 @@ const MapRouteInteractionLayer = ({
                 mousemove: (e) => {
                     const nearest = resolvePoint(e);
                     if (!nearest) return;
-                    if (draggingRef.current) {
+                    if (draggingRef.current && onDrag) {
                         onDrag(nearest.chartIndex);
                     } else {
                         onHover(nearest.chartIndex);
@@ -292,7 +293,7 @@ const MapRouteInteractionLayer = ({
                 mouseup: () => {
                     if (!draggingRef.current) return;
                     draggingRef.current = false;
-                    onDragEnd();
+                    onDragEnd?.();
                 },
                 mouseout: () => {
                     if (!draggingRef.current) {
@@ -399,8 +400,11 @@ export const ActivityDetailPage = () => {
     const [selectedEffortStreamIndex, setSelectedEffortStreamIndex] = useState<number | null>(null);
     const [mapHeatMetric, setMapHeatMetric] = useState<'none' | 'speed' | 'heart_rate' | 'power' | 'gradient'>('none');
     const [mapHoveredChartIndex, setMapHoveredChartIndex] = useState<number | null>(null);
+    const [fsVisibleMetrics, setFsVisibleMetrics] = useState({ altitude: true, heart_rate: false, pace: false, power: false, cadence: false });
     const mapDragStartChartIndexRef = useRef<number | null>(null);
     const isDraggingMapRef = useRef(false);
+    const fsDragStartIdxRef = useRef<number | null>(null);
+    const isFsDraggingRef = useRef(false);
     const desktopDefaultsAppliedRef = useRef(false);
 
     useEffect(() => {
@@ -1156,7 +1160,11 @@ export const ActivityDetailPage = () => {
 
     const mapHeatSegments = useMemo(() => {
         if (mapHeatMetric === 'none' || !mapHeatRange) return [] as Array<{ positions: [number, number][]; color: string }>;
+        // Merge consecutive same-color points into a single polyline to reduce Leaflet layer count (5 discrete buckets → O(transitions) instead of O(n))
         const segments: Array<{ positions: [number, number][]; color: string }> = [];
+        let currentColor: string | null = null;
+        let currentPositions: [number, number][] = [];
+        const flush = () => { if (currentPositions.length > 1 && currentColor) segments.push({ positions: currentPositions, color: currentColor }); currentColor = null; currentPositions = []; };
         for (let i = 1; i < chartData.length; i += 1) {
             const left = chartData[i - 1];
             const right = chartData[i];
@@ -1164,14 +1172,19 @@ export const ActivityDetailPage = () => {
             const leftLon = Number(left?.lon);
             const rightLat = Number(right?.lat);
             const rightLon = Number(right?.lon);
-            if (!Number.isFinite(leftLat) || !Number.isFinite(leftLon) || !Number.isFinite(rightLat) || !Number.isFinite(rightLon)) continue;
+            if (!Number.isFinite(leftLat) || !Number.isFinite(leftLon) || !Number.isFinite(rightLat) || !Number.isFinite(rightLon)) { flush(); continue; }
             const rawValue = Number(right?.[mapHeatMetric === 'gradient' ? 'gradient_pct' : mapHeatMetric]);
-            if (!Number.isFinite(rawValue)) continue;
-            segments.push({
-                positions: [[leftLat, leftLon], [rightLat, rightLon]],
-                color: getHeatColor(rawValue, mapHeatRange.min, mapHeatRange.max),
-            });
+            if (!Number.isFinite(rawValue)) { flush(); continue; }
+            const color = getHeatColor(rawValue, mapHeatRange.min, mapHeatRange.max);
+            if (color === currentColor) {
+                currentPositions.push([rightLat, rightLon]);
+            } else {
+                flush();
+                currentColor = color;
+                currentPositions = [[leftLat, leftLon], [rightLat, rightLon]];
+            }
         }
+        flush();
         return segments;
     }, [chartData, mapHeatMetric, mapHeatRange]);
 
@@ -1349,9 +1362,25 @@ export const ActivityDetailPage = () => {
     }, [selectedEffortKey, bestEffortMetaByKey, hardEffortMetaByKey, gpsChartData]);
 
     const fsMapPoint = useMemo(() => {
-        if (fsMapIndex === null || !gpsChartData[fsMapIndex]) return null;
-        return gpsChartData[fsMapIndex];
-    }, [fsMapIndex, gpsChartData]);
+        if (fsMapIndex === null || !chartRenderData[fsMapIndex]) return null;
+        const p = chartRenderData[fsMapIndex];
+        const isImperial = me?.profile?.preferred_units === 'imperial';
+        return {
+            timeMin: Number(p.time_min || 0),
+            heart_rate: p.heart_rate ?? null,
+            paceDisplay: Number.isFinite(Number(p.pace))
+                ? `${Math.floor(Number(p.pace))}:${Math.floor((Number(p.pace) - Math.floor(Number(p.pace))) * 60).toString().padStart(2, '0')}${isImperial ? '/mi' : '/km'}`
+                : null,
+            speedKmh: Number.isFinite(Number(p.speed_display))
+                ? (isImperial ? Number(p.speed_display) * 1.60934 : Number(p.speed_display))
+                : null,
+            power: p.power ?? null,
+            altitude: p.altitude ?? null,
+            gradient_pct: p.gradient_pct ?? null,
+            lat: p.lat,
+            lon: p.lon,
+        };
+    }, [fsMapIndex, chartRenderData, me?.profile?.preferred_units]);
 
     const fullscreenMarkerPoint = useMemo(() => {
         if (mapHoveredPoint) {
@@ -1388,6 +1417,24 @@ export const ActivityDetailPage = () => {
     }, []);
 
     const handleFsElevationLeave = useCallback(() => {
+        setFsMapIndex(null);
+    }, []);
+
+    const handleFsChartMove = useCallback((state: any) => {
+        const idx = state?.activeTooltipIndex;
+        if (typeof idx !== 'number' || !Number.isFinite(idx)) return;
+        if (isFsDraggingRef.current && fsDragStartIdxRef.current !== null) {
+            const startIdx = Math.min(fsDragStartIdxRef.current, idx);
+            const endIdx = Math.max(fsDragStartIdxRef.current, idx);
+            if (endIdx - startIdx >= 3) setChartSelection({ startIdx, endIdx });
+            return;
+        }
+        setFsMapIndex(idx);
+    }, []);
+
+    const handleFsChartLeave = useCallback(() => {
+        isFsDraggingRef.current = false;
+        fsDragStartIdxRef.current = null;
         setFsMapIndex(null);
     }, []);
 
@@ -2660,9 +2707,6 @@ export const ActivityDetailPage = () => {
                                                         <MapRouteInteractionLayer
                                                             points={interactiveMapRoutePoints}
                                                             onHover={handleMapHover}
-                                                            onDragStart={handleMapDragStart}
-                                                            onDrag={handleMapDrag}
-                                                            onDragEnd={handleMapDragEnd}
                                                         />
                                                         {activeMapMarkerPos && <MapPanTo position={activeMapMarkerPos} />}
                                                         {activeMapMarkerPos && (
@@ -3798,9 +3842,6 @@ export const ActivityDetailPage = () => {
                                     <MapRouteInteractionLayer
                                         points={interactiveMapRoutePoints}
                                         onHover={handleMapHover}
-                                        onDragStart={handleMapDragStart}
-                                        onDrag={handleMapDrag}
-                                        onDragEnd={handleMapDragEnd}
                                     />
                                     <MapFitBounds positions={routePositions} />
                                     {fullscreenMarkerPos && <MapPanTo position={fullscreenMarkerPos} />}
@@ -3837,38 +3878,90 @@ export const ActivityDetailPage = () => {
                                     )}
                                 </MapContainer>
                             </Box>
-                            {/* Elevation graph */}
-                            {gpsChartData.length > 0 && (
-                                <Box style={{ height: 120, flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}` }} px="xs">
-                                    <ResponsiveContainer width="100%" height={120}>
-                                        <AreaChart data={gpsChartData} onMouseMove={handleFsElevationMove} onMouseLeave={handleFsElevationLeave} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
-                                            <defs>
-                                                <linearGradient id="fsElevGrad" x1="0" y1="0" x2="0" y2="1">
-                                                    <stop offset="0%" stopColor={isDark ? '#60A5FA' : '#3B82F6'} stopOpacity={0.4} />
-                                                    <stop offset="100%" stopColor={isDark ? '#60A5FA' : '#3B82F6'} stopOpacity={0.05} />
-                                                </linearGradient>
-                                            </defs>
-                                            <XAxis dataKey="distance_km" tick={{ fontSize: 10, fill: ui.textDim }} tickFormatter={(v: number) => `${v.toFixed(1)} km`} axisLine={false} tickLine={false} />
-                                            <YAxis tick={{ fontSize: 10, fill: ui.textDim }} axisLine={false} tickLine={false} width={35} domain={['dataMin - 10', 'dataMax + 10']} tickFormatter={(v: number) => `${Math.round(v)}m`} />
+                            {/* Bottom toolbar: map metric selector */}
+                            <Box style={{ flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}` }} px="xs" py={4}>
+                                <Group justify="space-between" align="center" wrap="wrap" gap="xs">
+                                    <SegmentedControl
+                                        size="xs"
+                                        value={mapHeatMetric}
+                                        onChange={(value) => setMapHeatMetric(value as typeof mapHeatMetric)}
+                                        data={[
+                                            { label: t('Map metric: None'), value: 'none' },
+                                            { label: t('Speed'), value: 'speed' },
+                                            { label: t('Heart Rate'), value: 'heart_rate' },
+                                            { label: t('Power'), value: 'power' },
+                                            { label: t('Gradient'), value: 'gradient' },
+                                        ]}
+                                    />
+                                    <Group gap={4} wrap="wrap">
+                                        <Text size="xs" c={ui.textDim} fw={600}>{t('Show')}:</Text>
+                                        <Chip size="xs" checked={fsVisibleMetrics.altitude} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, altitude: checked }))} variant="light">Elevation</Chip>
+                                        <Chip size="xs" checked={fsVisibleMetrics.heart_rate} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, heart_rate: checked }))} variant="light">Heart Rate</Chip>
+                                        {supportsPaceSeries && <Chip size="xs" checked={fsVisibleMetrics.pace} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, pace: checked }))} variant="light">Pace</Chip>}
+                                        {supportsSpeedSeries && <Chip size="xs" checked={fsVisibleMetrics.cadence} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, cadence: checked }))} variant="light">Cadence</Chip>}
+                                        <Chip size="xs" checked={fsVisibleMetrics.power} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, power: checked }))} variant="light">Power</Chip>
+                                    </Group>
+                                </Group>
+                            </Box>
+                            {/* Multi-metric chart — drag to select segment */}
+                            {chartRenderData.length > 0 && (
+                                <Box
+                                    style={{ height: 140, flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}`, cursor: 'crosshair', userSelect: 'none' }}
+                                    px="xs"
+                                    onMouseDown={() => {
+                                        isFsDraggingRef.current = true;
+                                        fsDragStartIdxRef.current = fsMapIndex;
+                                        setChartSelection(null);
+                                    }}
+                                    onMouseUp={() => { isFsDraggingRef.current = false; fsDragStartIdxRef.current = null; }}
+                                    onMouseLeave={handleFsChartLeave}
+                                >
+                                    <ResponsiveContainer width="100%" height={140}>
+                                        <LineChart data={chartRenderData} onMouseMove={handleFsChartMove} onMouseLeave={handleFsChartLeave} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
+                                            <XAxis dataKey="distance" hide tickFormatter={(v: number) => `${(v / 1000).toFixed(1)} km`} />
+                                            <YAxis yAxisId="alt" hide domain={['dataMin - 10', 'dataMax + 10']} />
+                                            <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
+                                            <YAxis yAxisId="power" hide domain={[0, 'auto']} />
+                                            <YAxis yAxisId="pace" hide reversed domain={['auto', 'auto']} />
+                                            <YAxis yAxisId="cad" hide domain={[0, 'auto']} />
                                             <Tooltip
-                                                content={({ active, payload }) => {
-                                                    if (!active || !payload?.[0]) return null;
+                                                isAnimationActive={false}
+                                                cursor={{ stroke: ui.accent, strokeWidth: 1 }}
+                                                content={({ active, payload }: any) => {
+                                                    if (isFsDraggingRef.current || !active || !payload?.[0]) return null;
                                                     const d = payload[0].payload;
+                                                    const distKm = d.distance ? (d.distance / 1000).toFixed(2) : null;
                                                     return (
                                                         <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt} style={{ fontSize: 11 }}>
-                                                            <Text size="xs" fw={600} c={ui.textDim}>{t('Distance')}: {toDistanceLabel(d.distance_km)}</Text>
-                                                            <Text size="xs" c={ui.textMain}>Elevation: {Math.round(d.altitude ?? 0)} m</Text>
+                                                            {distKm && <Text size="xs" fw={600} c={ui.textDim}>{t('Distance')}: {distKm} km</Text>}
+                                                            {fsVisibleMetrics.altitude && d.altitude != null && <Text size="xs" c={ui.textMain}>Elev: {Math.round(d.altitude)} m</Text>}
+                                                            {fsVisibleMetrics.heart_rate && d.heart_rate != null && <Text size="xs" c="#fa5252">HR: {Math.round(Number(d.heart_rate))} bpm</Text>}
+                                                            {fsVisibleMetrics.power && d.power_raw != null && <Text size="xs" c="#fd7e14">Power: {Math.round(Number(d.power_raw))} W</Text>}
+                                                            {fsVisibleMetrics.pace && d.pace != null && Number.isFinite(Number(d.pace)) && <Text size="xs" c="#228be6">Pace: {Math.floor(Number(d.pace))}:{Math.floor((Number(d.pace) % 1) * 60).toString().padStart(2, '0')}/km</Text>}
+                                                            {fsVisibleMetrics.cadence && d.cadence != null && <Text size="xs" c="#40c057">Cad: {Math.round(Number(d.cadence))} rpm</Text>}
                                                         </Paper>
                                                     );
                                                 }}
-                                                isAnimationActive={false}
-                                                cursor={{ stroke: ui.accent, strokeWidth: 1 }}
                                             />
-                                            <Area type="monotone" dataKey="altitude" stroke={isDark ? '#60A5FA' : '#3B82F6'} strokeWidth={1.5} fill="url(#fsElevGrad)" isAnimationActive={false} dot={false} connectNulls />
-                                            {selectedEffortElevBounds && (
-                                                <ReferenceArea x1={selectedEffortElevBounds.x1} x2={selectedEffortElevBounds.x2} fill={ui.accent} fillOpacity={0.25} stroke={ui.accent} strokeOpacity={0.6} strokeWidth={1} />
+                                            {fsVisibleMetrics.altitude && <Line yAxisId="alt" type="monotone" dataKey="altitude" stroke={isDark ? '#60A5FA' : '#3B82F6'} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
+                                            {fsVisibleMetrics.heart_rate && <Line yAxisId="hr" type="monotone" dataKey="heart_rate" stroke="#fa5252" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
+                                            {fsVisibleMetrics.power && <Line yAxisId="power" type="monotone" dataKey="power_raw" stroke="#fd7e14" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
+                                            {fsVisibleMetrics.pace && <Line yAxisId="pace" type="monotone" dataKey="pace" stroke="#228be6" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={false} />}
+                                            {fsVisibleMetrics.cadence && <Line yAxisId="cad" type="monotone" dataKey="cadence" stroke="#40c057" strokeWidth={1.2} dot={false} isAnimationActive={false} connectNulls />}
+                                            {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
+                                                <ReferenceArea
+                                                    yAxisId="alt"
+                                                    x1={chartRenderData[chartSelection.startIdx].distance}
+                                                    x2={chartRenderData[chartSelection.endIdx].distance}
+                                                    fill={ui.accent}
+                                                    fillOpacity={0.13}
+                                                    stroke={ui.accent}
+                                                    strokeOpacity={0.5}
+                                                    strokeWidth={1}
+                                                />
                                             )}
-                                        </AreaChart>
+                                        </LineChart>
                                     </ResponsiveContainer>
                                 </Box>
                             )}
