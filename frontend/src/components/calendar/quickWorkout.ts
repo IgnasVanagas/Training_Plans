@@ -1,5 +1,6 @@
 import { formatMinutesHm } from "./dateUtils";
 import { WorkoutNode, ConcreteStep } from "../../types/workout";
+import { formatHrZoneLabel } from "../../utils/hrZones";
 
 const formatPaceFromMinutesPerKm = (minutesPerKm: number) => {
   if (!Number.isFinite(minutesPerKm) || minutesPerKm <= 0) return "-";
@@ -48,6 +49,11 @@ export const buildQuickWorkoutZoneDetails = (sportType: string, zone: number, pr
       return `HR ${formatZoneRange(hrBounds, (value) => `${Math.round(value)} bpm`)}`;
     }
 
+    const hrLabel = formatHrZoneLabel(profile, "running", zone, Number(profile?.max_hr || 0));
+    if (hrLabel) {
+      return `HR ${hrLabel}`;
+    }
+
     const lt2 = Number(profile?.lt2 || 0);
     if (lt2 > 0) {
       const paceRanges: Array<[number, number]> = [
@@ -91,6 +97,11 @@ export const buildQuickWorkoutZoneDetails = (sportType: string, zone: number, pr
   const cyclingHrBounds = resolveZoneBoundsFromSettings(profile, "cycling", "hr", zone);
   if (cyclingHrBounds) {
     return `HR ${formatZoneRange(cyclingHrBounds, (value) => `${Math.round(value)} bpm`)}`;
+  }
+
+  const cyclingHrLabel = formatHrZoneLabel(profile, "cycling", zone, Number(profile?.max_hr || 0));
+  if (cyclingHrLabel) {
+    return `HR ${cyclingHrLabel}`;
   }
 
   const ftp = Number(profile?.ftp || 0);

@@ -1,5 +1,5 @@
 import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, RangeSlider, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput, Tooltip as MantineTooltip } from "@mantine/core";
-import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink, IconShare, IconFlame, IconMinus } from "@tabler/icons-react";
+import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink, IconShare, IconFlame, IconMinus, IconX } from "@tabler/icons-react";
 import ShareToChatModal from "../components/ShareToChatModal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -14,6 +14,7 @@ import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
 import { ActivityDetailSkeleton } from "../components/common/SkeletonScreens";
 import SupportContactButton from "../components/common/SupportContactButton";
+import { formatHrZoneLabel, getHrZoneClassifierBounds } from "../utils/hrZones";
 import { useI18n } from "../i18n/I18nProvider";
 import { readSnapshot, writeSnapshot } from "../utils/localSnapshot";
 import { CommentsPanel } from "../components/activityDetail/CommentsPanel";
@@ -238,6 +239,9 @@ const getHeatColor = (value: number, min: number, max: number) => {
     return '#dc2626';
 };
 
+// Threshold in degrees² for snapping hover to nearest route point (~400m radius)
+const MAP_HOVER_SNAP_SQ = 0.0036 * 0.0036;
+
 const MapRouteInteractionLayer = ({
     points,
     onHover,
@@ -254,6 +258,37 @@ const MapRouteInteractionLayer = ({
     const draggingRef = useRef(false);
 
     useMapEvents({
+        mousemove: (e) => {
+            const nearest = findNearestRoutePoint(e.latlng, points);
+            if (!nearest) {
+                if (!draggingRef.current) onHover(null);
+                return;
+            }
+            const dLat = nearest.lat - e.latlng.lat;
+            const dLon = nearest.lon - e.latlng.lng;
+            if (dLat * dLat + dLon * dLon > MAP_HOVER_SNAP_SQ) {
+                if (!draggingRef.current) onHover(null);
+                return;
+            }
+            if (draggingRef.current && onDrag) {
+                onDrag(nearest.chartIndex);
+            } else {
+                onHover(nearest.chartIndex);
+            }
+        },
+        mouseout: () => {
+            if (!draggingRef.current) onHover(null);
+        },
+        mousedown: (e) => {
+            if (!onDragStart) return;
+            const nearest = findNearestRoutePoint(e.latlng, points);
+            if (!nearest) return;
+            const dLat = nearest.lat - e.latlng.lat;
+            const dLon = nearest.lon - e.latlng.lng;
+            if (dLat * dLat + dLon * dLon > MAP_HOVER_SNAP_SQ) return;
+            draggingRef.current = true;
+            onDragStart(nearest.chartIndex);
+        },
         mouseup: () => {
             if (!draggingRef.current) return;
             draggingRef.current = false;
@@ -262,47 +297,7 @@ const MapRouteInteractionLayer = ({
     });
 
     if (points.length < 2) return null;
-
-    const positions = points.map((point) => [point.lat, point.lon] as [number, number]);
-
-    const resolvePoint = (e: L.LeafletMouseEvent) => {
-        return findNearestRoutePoint(e.latlng, points);
-    };
-
-    return (
-        <Polyline
-            positions={positions}
-            pathOptions={{ color: '#000', opacity: 0.001, weight: 18 }}
-            eventHandlers={{
-                mousedown: (e) => {
-                    if (!onDragStart) return;
-                    const nearest = resolvePoint(e);
-                    if (!nearest) return;
-                    draggingRef.current = true;
-                    onDragStart(nearest.chartIndex);
-                },
-                mousemove: (e) => {
-                    const nearest = resolvePoint(e);
-                    if (!nearest) return;
-                    if (draggingRef.current && onDrag) {
-                        onDrag(nearest.chartIndex);
-                    } else {
-                        onHover(nearest.chartIndex);
-                    }
-                },
-                mouseup: () => {
-                    if (!draggingRef.current) return;
-                    draggingRef.current = false;
-                    onDragEnd?.();
-                },
-                mouseout: () => {
-                    if (!draggingRef.current) {
-                        onHover(null);
-                    }
-                },
-            }}
-        />
-    );
+    return null;
 };
 
 export const ActivityDetailPage = () => {
@@ -1674,56 +1669,15 @@ export const ActivityDetailPage = () => {
             : sport.includes('swim')
                 ? 'swimming'
                 : 'running';
-        const hrZoneCfg = (zoneProfile as any)?.zone_settings?.[sportKey]?.hr;
-
-        // Use same defaults as Training Zones tab: % of LTHR
-        // Running/Swimming: 5 zones [65-84, 85-89, 90-94, 95-99, 100-106]
-        // Cycling: 7 zones [65-81, 82-89, 90-93, 94-99, 100-102, 103-106, 107-120]
-        const lthr = Number(hrZoneCfg?.lt2 || 0);
-        const baseHr = lthr > 0 ? lthr : maxHr;
-
-        const rawBounds: number[] = Array.isArray(hrZoneCfg?.upper_bounds)
-            ? hrZoneCfg.upper_bounds
-                .map((value: unknown) => Math.round(Number(value)))
-                .filter((value: number) => Number.isFinite(value) && value > 0)
-            : [];
-
-        // Mirror the corrupt-data detection from Training Zones tab:
-        // bounds saved without a threshold are raw percentages, not bpm.
-        // If LTHR is known: convert them. If LTHR is unknown: discard them and use fallback.
-        const correctedRawBounds = rawBounds.length > 0
-            ? (() => {
-                const maxBound = Math.max(...rawBounds);
-                const looksLikePercentages = maxBound <= 200 && (lthr <= 0 || maxBound <= lthr * 0.75);
-                if (looksLikePercentages) {
-                    // If we have LTHR, convert to absolute bpm; otherwise discard (return [])
-                    return lthr > 0 ? rawBounds.map(b => Math.round(b * lthr / 100)) : [];
-                }
-                return rawBounds;
-            })()
-            : rawBounds;
-
-        const normalizedBounds = correctedRawBounds.reduce<number[]>((acc, value) => {
-            if (!acc.length) return [value];
-            const prev = acc[acc.length - 1];
-            acc.push(value <= prev ? prev + 1 : value);
-            return acc;
-        }, []);
-        const defaultHighPcts = sportKey === 'cycling'
-            ? [81, 89, 93, 99, 102, 106, 120]
-            : [84, 89, 94, 99, 106];
-        const fallbackBounds = defaultHighPcts.map(pct => Math.round(baseHr * pct / 100));
-
-        const effectiveBounds = normalizedBounds.length > 0 ? normalizedBounds : fallbackBounds;
-        const usesImplicitLastZone = effectiveBounds.length === 4;
-        const zoneCount = usesImplicitLastZone ? 5 : effectiveBounds.length;
+        const { rows, upperBounds } = getHrZoneClassifierBounds(zoneProfile, sportKey, maxHr);
+        const zoneCount = rows.length;
         const zoneSeconds = Object.fromEntries(Array.from({ length: zoneCount }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>;
 
         const classifyHr = (hr: number): number => {
-            for (let i = 0; i < effectiveBounds.length; i += 1) {
-                if (hr <= effectiveBounds[i]) return i + 1;
+            for (let i = 0; i < upperBounds.length; i += 1) {
+                if (hr <= upperBounds[i]) return i + 1;
             }
-            return usesImplicitLastZone ? zoneCount : Math.max(1, zoneCount);
+            return Math.max(1, zoneCount);
         };
 
         const hrSamples = streamPoints
@@ -1760,15 +1714,7 @@ export const ActivityDetailPage = () => {
 
         return Array.from({ length: zoneCount }, (_, idx) => {
             const zone = `Z${idx + 1}`;
-            const low = idx === 0 ? null : (effectiveBounds[idx - 1] + 1);
-            const high = idx < effectiveBounds.length ? effectiveBounds[idx] : null;
-            const range = low == null && high != null
-                ? `< ${Math.round(high)} bpm`
-                : low != null && high != null
-                    ? `${Math.round(low)}-${Math.round(high)} bpm`
-                    : low != null
-                        ? `> ${Math.round(low)} bpm`
-                        : '-';
+            const range = formatHrZoneLabel(zoneProfile, sportKey, idx + 1, maxHr) || '-';
             return { zone, seconds: zoneSeconds[zone] || 0, range };
         });
     }, [activity, streamPoints, zoneProfile]);
@@ -3816,9 +3762,8 @@ export const ActivityDetailPage = () => {
                     onClose={() => { setMapFullscreen(false); setFsMapIndex(null); }}
                     size="100%"
                     padding={0}
-                    withCloseButton
-                    title={activity.filename}
-                    styles={{ body: { height: 'calc(90vh - 60px)', padding: 0, display: 'flex', flexDirection: 'column' }, content: { height: '90vh' } }}
+                    withCloseButton={false}
+                    styles={{ body: { height: '100vh', padding: 0, display: 'flex', flexDirection: 'column' }, content: { height: '100vh', maxHeight: '100vh', borderRadius: 0 }, inner: { padding: 0 } }}
                 >
                     {routePositions.length > 0 && (
                         <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -3877,6 +3822,37 @@ export const ActivityDetailPage = () => {
                                         </CircleMarker>
                                     )}
                                 </MapContainer>
+                                {/* Floating close button */}
+                                <ActionIcon
+                                    variant="white"
+                                    size="md"
+                                    radius="sm"
+                                    style={{ position: 'absolute', top: 10, right: 10, zIndex: 1001, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
+                                    onClick={() => { setMapFullscreen(false); setFsMapIndex(null); }}
+                                    aria-label="Close fullscreen"
+                                >
+                                    <IconX size={16} />
+                                </ActionIcon>
+                                {/* Segment stats overlay */}
+                                {chartSelectionStats && (
+                                    <Box style={{ position: 'absolute', top: 10, left: 10, zIndex: 1000, pointerEvents: 'auto' }}>
+                                        <Paper withBorder p="sm" radius="md" bg={ui.surfaceAlt} style={{ borderColor: ui.border, minWidth: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+                                            <Group justify="space-between" mb={4} align="center">
+                                                <Text size="xs" fw={700} c={ui.textDim}>{t('Selected segment')}</Text>
+                                                <Button size="compact-xs" variant="subtle" c={ui.textDim} onClick={() => setChartSelection(null)}>{t('Clear')}</Button>
+                                            </Group>
+                                            <Stack gap={2}>
+                                                {chartSelectionStats.durationMin != null && chartSelectionStats.durationMin > 0 && <Text size="xs" c={ui.textMain}>{t('Duration')}: {formatElapsedFromMinutes(chartSelectionStats.durationMin)}</Text>}
+                                                {chartSelectionStats.avgHr != null && <Text size="xs" c={ui.textMain}>{t('Avg HR')}: {Math.round(chartSelectionStats.avgHr)} bpm</Text>}
+                                                {chartSelectionStats.avgPace != null && supportsPaceSeries && (() => { const p = chartSelectionStats.avgPace!; return <Text size="xs" c={ui.textMain}>{t('Avg Pace')}: {Math.floor(p)}:{Math.round((p % 1) * 60).toString().padStart(2, '0')}/km</Text>; })()}
+                                                {chartSelectionStats.avgSpeed != null && !supportsPaceSeries && <Text size="xs" c={ui.textMain}>{t('Avg Speed')}: {chartSelectionStats.avgSpeed.toFixed(1)} {me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h'}</Text>}
+                                                {chartSelectionStats.avgPower != null && <Text size="xs" c={ui.textMain}>{t('Avg Power')}: {Math.round(chartSelectionStats.avgPower)} W</Text>}
+                                                {chartSelectionStats.avgGradient != null && <Text size="xs" c={ui.textMain}>{t('Avg Gradient')}: {chartSelectionStats.avgGradient.toFixed(1)}%</Text>}
+                                                {chartSelectionStats.elevGain != null && chartSelectionStats.elevGain > 0 && <Text size="xs" c={ui.textMain}>{t('Elev Gain')}: {Math.round(chartSelectionStats.elevGain)} m</Text>}
+                                            </Stack>
+                                        </Paper>
+                                    </Box>
+                                )}
                             </Box>
                             {/* Bottom toolbar: map metric selector */}
                             <Box style={{ flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}` }} px="xs" py={4}>
@@ -3905,19 +3881,17 @@ export const ActivityDetailPage = () => {
                             </Box>
                             {/* Multi-metric chart — drag to select segment */}
                             {chartRenderData.length > 0 && (
-                                <Box
-                                    style={{ height: 140, flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}`, cursor: 'crosshair', userSelect: 'none' }}
-                                    px="xs"
-                                    onMouseDown={() => {
-                                        isFsDraggingRef.current = true;
-                                        fsDragStartIdxRef.current = fsMapIndex;
-                                        setChartSelection(null);
-                                    }}
-                                    onMouseUp={() => { isFsDraggingRef.current = false; fsDragStartIdxRef.current = null; }}
-                                    onMouseLeave={handleFsChartLeave}
-                                >
-                                    <ResponsiveContainer width="100%" height={140}>
-                                        <LineChart data={chartRenderData} onMouseMove={handleFsChartMove} onMouseLeave={handleFsChartLeave} margin={{ top: 6, right: 8, bottom: 0, left: 8 }}>
+                                <Box style={{ flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}` }}>
+                                    <ResponsiveContainer width="100%" height={120}>
+                                        <LineChart
+                                            data={chartRenderData}
+                                            onMouseMove={handleFsChartMove}
+                                            onMouseDown={(e: any) => { const idx = e?.activeTooltipIndex; if (typeof idx === 'number') { fsDragStartIdxRef.current = idx; isFsDraggingRef.current = true; } }}
+                                            onMouseUp={() => { isFsDraggingRef.current = false; }}
+                                            onMouseLeave={handleFsChartLeave}
+                                            style={{ cursor: 'crosshair', userSelect: 'none' }}
+                                            margin={{ top: 4, right: 8, left: 8, bottom: 4 }}
+                                        >
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
                                             <XAxis dataKey="distance" hide tickFormatter={(v: number) => `${(v / 1000).toFixed(1)} km`} />
                                             <YAxis yAxisId="alt" hide domain={['dataMin - 10', 'dataMax + 10']} />

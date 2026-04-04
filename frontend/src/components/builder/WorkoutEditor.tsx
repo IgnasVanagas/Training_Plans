@@ -23,6 +23,7 @@ import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities';
 import { ConcreteStep, StepCategory, TargetConfig, WorkoutNode } from '../../types/workout';
 import { createDefaultBlock, createDefaultRepeat, createStarterPreset, createZoneBlock, durationTypeOptions, edgeColorFromZone, estimateTotals, flattenBlocks, formatHms, formatPace, formatSecondsHm, hrZoneRanges, hrZoneRows, inferIntensityZone, intensityPercentForStep, intensityTypeOptions, metricMeta, metricOptions, normalizePaceSeconds, paceZoneRows, parseHms, parsePaceInput, powerZoneRanges, powerZoneRows, randomId, sectionAccentColor, sectionHeaderText, type IntensityMetric, type ZoneRow } from './workoutEditorUtils';
+import { useI18n } from '../../i18n/I18nProvider';
 
 import type { Modifier } from '@dnd-kit/core';
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({ ...transform, x: 0 });
@@ -137,6 +138,7 @@ export const WorkoutEditor = ({
 	athleteName,
 	athleteProfile
 }: WorkoutEditorProps) => {
+	const { t } = useI18n();
 	const isDark = useComputedColorScheme('light') === 'dark';
 	const panelBg = isDark ? 'rgba(8, 18, 38, 0.72)' : 'rgba(255, 255, 255, 0.9)';
 	const cardBg = isDark ? 'rgba(22, 34, 58, 0.62)' : 'rgba(255, 255, 255, 0.92)';
@@ -336,6 +338,116 @@ export const WorkoutEditor = ({
 		return null;
 	};
 
+	const formatRange = (low: number | null | undefined, high: number | null | undefined, formatter: (value: number) => string) => {
+		const safeLow = typeof low === 'number' && Number.isFinite(low) ? low : null;
+		const safeHigh = typeof high === 'number' && Number.isFinite(high) ? high : null;
+		if (safeLow != null && safeHigh != null) return `${formatter(safeLow)} - ${formatter(safeHigh)}`;
+		if (safeHigh != null) return `< ${formatter(safeHigh)}`;
+		if (safeLow != null) return `> ${formatter(safeLow)}`;
+		return null;
+	};
+
+	const formatPercentRange = (low: number | null | undefined, high: number | null | undefined, suffix = '%') => {
+		return formatRange(low, high, (value) => `${Math.round(value)}${suffix}`);
+	};
+
+	const resolveTargetDisplay = (target: TargetConfig, mode: 'power' | 'heart_rate_zone' | 'pace') => {
+		const metric = (target.metric as IntensityMetric | undefined)
+			|| (mode === 'power' ? 'percent_ftp' : mode === 'pace' ? 'percent_threshold_pace' : 'hr_zone');
+		const value = typeof target.value === 'number' && Number.isFinite(target.value) ? target.value : null;
+		const min = typeof target.min === 'number' && Number.isFinite(target.min) ? target.min : null;
+		const max = typeof target.max === 'number' && Number.isFinite(target.max) ? target.max : null;
+
+		if (metric === 'hr_zone') {
+			if (target.zone) return hZones.find((row) => row.zone === target.zone)?.label || `Z${target.zone}`;
+			return formatPercentRange(min, max);
+		}
+		if (metric === 'percent_max_hr' || metric === 'percent_lthr') {
+			if (athleteProfile?.max_hr) {
+				return formatRange(
+					min != null ? (athleteProfile.max_hr * min) / 100 : null,
+					max != null ? (athleteProfile.max_hr * max) / 100 : (value != null ? (athleteProfile.max_hr * value) / 100 : null),
+					(resolved) => `${Math.round(resolved)} bpm`
+				);
+			}
+			return formatPercentRange(min, max) || (value != null ? `${Math.round(value)}%` : null);
+		}
+		if (metric === 'percent_ftp') {
+			if (athleteProfile?.ftp) {
+				return formatRange(
+					min != null ? (athleteProfile.ftp * min) / 100 : null,
+					max != null ? (athleteProfile.ftp * max) / 100 : (value != null ? (athleteProfile.ftp * value) / 100 : null),
+					(resolved) => `${Math.round(resolved)} W`
+				);
+			}
+			return formatPercentRange(min, max) || (value != null ? `${Math.round(value)}%` : null);
+		}
+		if (metric === 'percent_threshold_pace') {
+			const thresholdSeconds = normalizePaceSeconds(athleteProfile?.lt2);
+			if (thresholdSeconds) {
+				return formatRange(
+					min != null ? (thresholdSeconds * min) / 100 : null,
+					max != null ? (thresholdSeconds * max) / 100 : (value != null ? (thresholdSeconds * value) / 100 : null),
+					(resolved) => formatPace(Math.round(resolved))
+				);
+			}
+			return formatPercentRange(min, max) || (value != null ? `${Math.round(value)}%` : null);
+		}
+		if (metric === 'pace_min_km' || metric === 'goal_race_pace') {
+			if (min != null || max != null) {
+				return formatRange(min, max != null ? max : value, (resolved) => formatPace(Math.round(resolved)));
+			}
+			return value != null ? formatPace(Math.round(value)) : null;
+		}
+		if (metric === 'watts' || metric === 'np') {
+			return formatRange(min, max != null ? max : value, (resolved) => `${Math.round(resolved)} W`) || (value != null ? `${Math.round(value)} W` : null);
+		}
+		if (metric === 'wkg') {
+			return formatRange(min, max != null ? max : value, (resolved) => `${resolved.toFixed(1)} W/kg`) || (value != null ? `${value.toFixed(1)} W/kg` : null);
+		}
+		if (metric === 'rpe_scale') {
+			return value != null ? `${Math.round(value)}/10` : null;
+		}
+		if (value == null) return null;
+		const suffix = typeof target.unit === 'string' ? target.unit : '';
+		return `${Math.round(value)}${suffix}`;
+	};
+
+	const resolvePreviewTargetItems = (step: ConcreteStep) => {
+		const items: Array<{ label: string; value: string }> = [];
+		if (step.target.zone) {
+			items.push({ label: t('Zone') || 'Zone', value: `Z${step.target.zone}` });
+			const hrRow = hZones.find((row) => row.zone === step.target.zone);
+			if (hrRow?.label) items.push({ label: t('Heart Rate') || 'Heart Rate', value: hrRow.label });
+			if (normalizedSport === 'running') {
+				const paceRow = paceZones.find((row) => row.zone === step.target.zone);
+				if (paceRow?.label) items.push({ label: t('Pace') || 'Pace', value: paceRow.label });
+			} else {
+				const powerRow = pZones.find((row) => row.zone === step.target.zone);
+				if (powerRow?.label) items.push({ label: t('Power') || 'Power', value: powerRow.label });
+			}
+			return items;
+		}
+
+		if (step.target.type === 'heart_rate_zone') {
+			const value = resolveTargetDisplay(step.target, 'heart_rate_zone');
+			if (value) items.push({ label: t('Heart Rate') || 'Heart Rate', value });
+		}
+		if (step.target.type === 'pace') {
+			const value = resolveTargetDisplay(step.target, 'pace');
+			if (value) items.push({ label: t('Pace') || 'Pace', value });
+		}
+		if (step.target.type === 'power') {
+			const value = resolveTargetDisplay(step.target, 'power');
+			if (value) items.push({ label: t('Power') || 'Power', value });
+		}
+		if (step.target.type === 'rpe') {
+			const value = resolveTargetDisplay(step.target, 'heart_rate_zone');
+			if (value) items.push({ label: t('RPE') || 'RPE', value });
+		}
+		return items;
+	};
+
 	const applyZoneToCurrentStep = (row: ZoneRow) => {
 		if (!activeStepId) return;
 		const metric: IntensityMetric = effectiveZoneView === 'power' ? 'percent_ftp' : effectiveZoneView === 'pace' ? 'percent_threshold_pace' : 'hr_zone';
@@ -357,7 +469,7 @@ export const WorkoutEditor = ({
 	};
 
 	const profileBars = useMemo(() => {
-		if (!blocks.length) return [] as Array<{ width: number; height: number; color: string; x: number; tooltip: string }>;
+		if (!blocks.length) return [] as Array<{ width: number; height: number; color: string; x: number; title: string; details: Array<{ label: string; value: string }> }>;
 		const durations = blocks.map((step) => (step.duration.type === 'time' ? Math.max(60, step.duration.value || 0) : 300));
 		const total = durations.reduce((acc, item) => acc + item, 0);
 		let cursor = 0;
@@ -367,14 +479,13 @@ export const WorkoutEditor = ({
 			const barHeight = Math.max(0.2, Math.min(1, level / 140)) * 110;
 			const zone = inferIntensityZone(step);
 			const durationText = step.duration.type === 'time' ? formatHms(step.duration.value) : step.duration.type === 'distance' ? `${step.duration.value || 0}m` : 'lap';
-			const metric = (step.target.metric as IntensityMetric | undefined) || 'percent_ftp';
-			const intensityText = metric === 'hr_zone' ? `Z${step.target.zone || '?'}` : `${step.target.value || step.target.max || '-'}${metricMeta[metric].defaultUnit}`;
-			const tooltip = `${sectionHeaderText[step.category]} · ${durationText} · ${intensityText}`;
-			const out = { width, height: barHeight, color: edgeColorFromZone(zone), x: cursor, tooltip };
+			const title = `${t(sectionHeaderText[step.category]) || sectionHeaderText[step.category]} · ${durationText}`;
+			const details = resolvePreviewTargetItems(step);
+			const out = { width, height: barHeight, color: edgeColorFromZone(zone), x: cursor, title, details };
 			cursor += width;
 			return out;
 		});
-	}, [blocks]);
+	}, [athleteProfile, blocks, hZones, normalizedSport, pZones, paceZones, t]);
 
 	const renderMetricInput = (step: ConcreteStep, update: (next: ConcreteStep) => void) => {
 		const metric = (step.target.metric as IntensityMetric | undefined) || 'percent_ftp';
@@ -759,8 +870,8 @@ export const WorkoutEditor = ({
 														bottom: `calc(${100 - pctTop}% + 8px)`,
 														left: '50%',
 														transform: 'translateX(-50%)',
-														whiteSpace: 'nowrap',
-														padding: '5px 12px',
+														minWidth: 180,
+														padding: '8px 12px',
 														borderRadius: 8,
 														fontSize: 12,
 														fontWeight: 600,
@@ -775,7 +886,15 @@ export const WorkoutEditor = ({
 														boxShadow: isDark ? '0 4px 14px rgba(0,0,0,0.45)' : '0 4px 14px rgba(15,23,42,0.12)',
 													}}
 												>
-													{bar.tooltip}
+														<Box style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+															<Text size="xs" fw={700} c={isDark ? '#F8FAFC' : '#0F172A'}>{bar.title}</Text>
+															{bar.details.map((detail) => (
+																<Group key={`${detail.label}-${detail.value}`} gap={6} justify="space-between" wrap="nowrap">
+																	<Text size="xs" c={textDim}>{detail.label}</Text>
+																	<Text size="xs" fw={600} c={isDark ? '#E2E8F0' : '#0F172A'} style={{ textAlign: 'right' }}>{detail.value}</Text>
+																</Group>
+															))}
+														</Box>
 												</Box>
 											</Box>
 										);

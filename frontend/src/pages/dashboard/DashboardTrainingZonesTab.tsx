@@ -26,13 +26,12 @@ import {
   IconSwimming,
 } from "@tabler/icons-react";
 import { useI18n } from "../../i18n/I18nProvider";
+import { getDefaultHrZonePcts, resolveHrZoneRows } from "../../utils/hrZones";
 import type { Profile, User } from "./types";
 
 /* ─── Default zone definitions (% of threshold) ─── */
 
-const RUNNING_HR_ZONES: Array<[number, number]> = [
-  [65, 84], [85, 89], [90, 94], [95, 99], [100, 106],
-];
+const RUNNING_HR_ZONES: Array<[number, number]> = getDefaultHrZonePcts("running");
 // Pace zones based on %LT2 speed: higher speed% = lower pace (faster) = harder zone.
 // Zones are represented as % of LT2 pace time (inverse of speed %)
 const RUNNING_PACE_ZONES: Array<[number, number]> = [
@@ -42,15 +41,11 @@ const RUNNING_PACE_ZONES: Array<[number, number]> = [
   [95, 105],  // Z4 Threshold (90-100% LT2 speed)
   [83, 95],   // Z5 VO2max    (100%+ LT2 speed; fastest/hardest)
 ];
-const CYCLING_HR_ZONES: Array<[number, number]> = [
-  [65, 81], [82, 89], [90, 93], [94, 99], [100, 102], [103, 106], [107, 120],
-];
+const CYCLING_HR_ZONES: Array<[number, number]> = getDefaultHrZonePcts("cycling");
 const CYCLING_POWER_ZONES: Array<[number, number]> = [
   [50, 55], [56, 75], [76, 90], [91, 105], [106, 120], [121, 150], [151, 200],
 ];
-const SWIMMING_HR_ZONES: Array<[number, number]> = [
-  [65, 84], [85, 89], [90, 94], [95, 99], [100, 106],
-];
+const SWIMMING_HR_ZONES: Array<[number, number]> = getDefaultHrZonePcts("swimming");
 const SWIMMING_PACE_ZONES: Array<[number, number]> = [
   [150, 180], // Z1 Recovery  (slowest)
   [120, 150], // Z2 Aerobic
@@ -135,41 +130,13 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
 
   // Build initial column states from profile or defaults
   const buildInitialHR = useCallback((): ColumnState => {
-    const sportCfg = storedZones?.[sport as "running" | "cycling"];
-    const hrCfg = sportCfg?.hr;
-    if (hrCfg?.upper_bounds?.length) {
-      const bounds: number[] = hrCfg.upper_bounds;
-      const lt2 = hrCfg.lt2 ?? null;
-      // upper_bounds are stored as absolute bpm — convert back to %LTHR
-      if (lt2 && lt2 > 0) {
-        // Detect corrupt data: if bounds look like raw percentage values (max bound
-        // well below threshold), they were saved without a threshold and should be
-        // treated as percentages directly instead of dividing by lt2 again.
-        const maxBound = Math.max(...bounds);
-        const looksLikePercentages = maxBound <= lt2 * 0.75 && maxBound <= 200;
-
-        const zones: ZoneRow[] = [];
-        const defaultLow = defaults.hr[0]?.[0] ?? 65;
-        for (let i = 0; i < bounds.length; i++) {
-          const highPct = looksLikePercentages ? Math.round(bounds[i]) : Math.round((bounds[i] / lt2) * 100);
-          const prevPct = i === 0 ? defaultLow : (looksLikePercentages ? Math.round(bounds[i - 1]) : Math.round((bounds[i - 1] / lt2) * 100));
-          zones.push({ low: prevPct, high: highPct });
-        }
-        // Validate: all zones must have low < high; if not, fall back to defaults
-        const valid = zones.every(z => z.low < z.high);
-        if (valid) {
-          return { editing: false, threshold: lt2, zones };
-        }
-        // Stored bounds are inconsistent with threshold — use default zone percentages
-        return {
-          editing: false,
-          threshold: lt2,
-          zones: defaults.hr.map(([lo, hi]) => ({ low: lo, high: hi })),
-        };
-      }
-    }
-    return defaultColumnState(defaults.hr);
-  }, [sport, storedZones, defaults.hr]);
+    const { threshold, rows } = resolveHrZoneRows(user.profile, sport, user.profile?.max_hr ?? null);
+    return {
+      editing: false,
+      threshold,
+      zones: rows.map((row) => ({ low: row.lowPct, high: row.highPct })),
+    };
+  }, [sport, user.profile]);
 
   const buildInitialPace = useCallback((): ColumnState => {
     const metric = sport === "cycling" ? "power" : "pace";

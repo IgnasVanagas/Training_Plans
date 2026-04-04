@@ -13,6 +13,7 @@ import { CalendarEvent, WorkoutRecurrenceRule } from './types';
 import { formatMinutesHm, parseDate } from './dateUtils';
 import { DayEventItem } from './TrainingCalendarEventRenderers';
 import { useI18n } from '../../i18n/I18nProvider';
+import { formatHrZoneLabel } from '../../utils/hrZones';
 import { getDayNotes, upsertDayNote, deleteDayNote, DayNote } from '../../api/dayNotes';
 import { parseWorkoutText, isParseError } from './parseWorkoutText';
 
@@ -1225,24 +1226,17 @@ const formatZoneTargetLabel = (
   metric: 'hr' | 'pace' | 'power',
   zone: number,
 ): string | null => {
+  if (metric === 'hr') {
+    return formatHrZoneLabel(profile, sport, zone, Number(profile?.max_hr || 0));
+  }
+
   const zoneCfg = profile?.zone_settings?.[sport]?.[metric];
   const range = resolveZoneRange(zoneCfg?.upper_bounds, zone);
-  const fallbackRange = (() => {
+  const fallbackRange: { low: number | null; high: number | null } | null = (() => {
     if (metric === 'power') {
       const threshold = Number(zoneCfg?.lt2 || profile?.ftp || 0);
       if (threshold <= 0) return null;
       const pctRanges: Array<[number, number]> = [[50, 55], [56, 75], [76, 90], [91, 105], [106, 120], [121, 150], [151, 200]];
-      const idx = Math.max(1, Math.min(pctRanges.length, zone)) - 1;
-      const [lowPct, highPct] = pctRanges[idx];
-      return {
-        low: Math.round((threshold * lowPct) / 100),
-        high: Math.round((threshold * highPct) / 100),
-      };
-    }
-    if (metric === 'hr') {
-      const threshold = Number(zoneCfg?.lt2 || profile?.max_hr || 0);
-      if (threshold <= 0) return null;
-      const pctRanges: Array<[number, number]> = [[50, 60], [61, 70], [71, 80], [81, 90], [91, 100], [101, 105], [106, 110]];
       const idx = Math.max(1, Math.min(pctRanges.length, zone)) - 1;
       const [lowPct, highPct] = pctRanges[idx];
       return {
@@ -1261,15 +1255,8 @@ const formatZoneTargetLabel = (
     };
   })();
 
-  const effectiveRange = range || fallbackRange;
+  const effectiveRange: { low: number | null; high: number | null } | null = range || fallbackRange;
   if (!effectiveRange) return null;
-
-  if (metric === 'hr') {
-    const lowLabel = effectiveRange.low != null ? `${Math.round(effectiveRange.low)} bpm` : null;
-    const highLabel = effectiveRange.high != null ? `${Math.round(effectiveRange.high)} bpm` : null;
-    if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
-    return highLabel ? `< ${highLabel}` : (lowLabel ? `> ${lowLabel}` : null);
-  }
 
   if (metric === 'power') {
     const lowLabel = effectiveRange.low != null ? `${Math.round(effectiveRange.low)} W` : null;
