@@ -4,7 +4,7 @@ import ShareToChatModal from "../components/ShareToChatModal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useMediaQuery } from "@mantine/hooks";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, ReferenceLine, ReferenceArea } from 'recharts';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
@@ -264,9 +264,9 @@ export const ActivityDetailPage = () => {
         heart_rate: true,
         power: true,
         pace: true,
-        speed: Boolean(isDesktopViewport),
-        cadence: Boolean(isDesktopViewport),
-        altitude: Boolean(isDesktopViewport)
+        speed: false,
+        cadence: false,
+        altitude: false,
     });
     const [powerChartMode, setPowerChartMode] = useState<'raw' | 'avg5s'>('raw');
     const [activityRpe, setActivityRpe] = useState<number | null>(null);
@@ -311,9 +311,6 @@ export const ActivityDetailPage = () => {
             heart_rate: true,
             power: true,
             pace: true,
-            speed: true,
-            cadence: true,
-            altitude: true,
         }));
 
         desktopDefaultsAppliedRef.current = true;
@@ -733,23 +730,26 @@ export const ActivityDetailPage = () => {
             }
         }
 
-        // Sort by start index
-        allFound.sort((a, b) => a.startIndex - b.startIndex);
-
-        // Overlap resolution: if a lower-priority effort overlaps >50% with a higher-priority one, discard it
+        // Overlap resolution: process highest-intensity category first; discard any effort
+        // that overlaps >50% with an already-kept effort (regardless of which came first in time)
         const catPriority: Record<HardEffortCategory, number> = { sprint: 0, threshold_plus: 1, near_threshold: 2 };
+        allFound.sort((a, b) => {
+            const pd = catPriority[a.category] - catPriority[b.category];
+            return pd !== 0 ? pd : a.startIndex - b.startIndex;
+        });
         const kept: HardEffort[] = [];
         for (const effort of allFound) {
-            const overlapWithHigher = kept.some(existing => {
-                if (catPriority[existing.category] >= catPriority[effort.category]) return false;
+            const overlaps = kept.some(existing => {
                 const overlapStart = Math.max(existing.startIndex, effort.startIndex);
                 const overlapEnd = Math.min(existing.endIndex, effort.endIndex);
                 if (overlapEnd < overlapStart) return false;
                 const overlapLen = overlapEnd - overlapStart + 1;
-                return overlapLen > effort.durationSeconds * 0.5;
+                return overlapLen > Math.min(effort.durationSeconds, existing.durationSeconds) * 0.5;
             });
-            if (!overlapWithHigher) kept.push(effort);
+            if (!overlaps) kept.push(effort);
         }
+        // Re-sort by start time for display
+        kept.sort((a, b) => a.startIndex - b.startIndex);
 
         return kept;
     }, [activity, streamPoints, zoneProfile]);
@@ -923,6 +923,44 @@ export const ActivityDetailPage = () => {
         return visibleChartData[hoveredPointIndex] || null;
     }, [visibleChartData, hoveredPointIndex]);
 
+    // Drag-to-select on chart
+    const [chartSelection, setChartSelection] = useState<{ startIdx: number; endIdx: number } | null>(null);
+    const isDraggingChartRef = useRef(false);
+    const dragStartIdxRef = useRef<number | null>(null);
+    useEffect(() => { setChartSelection(null); }, [activity?.id]);
+
+    const chartSelectionStats = useMemo(() => {
+        if (!chartSelection) return null;
+        const { startIdx, endIdx } = chartSelection;
+        const slice = chartRenderData.slice(startIdx, endIdx + 1);
+        if (slice.length < 2) return null;
+
+        const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
+        const maximum = (arr: number[]) => arr.length > 0 ? Math.max(...arr) : null;
+
+        const powers = slice.map((p: any) => Number(p.power_raw)).filter((v: number) => v > 0 && Number.isFinite(v));
+        const hrs = slice.map((p: any) => Number(p.heart_rate)).filter((v: number) => v > 0 && Number.isFinite(v));
+        const paces = slice.map((p: any) => Number(p.pace)).filter((v: number) => v > 0 && Number.isFinite(v));
+        const speeds = slice.map((p: any) => Number(p.speed_display)).filter((v: number) => v > 0 && Number.isFinite(v));
+        const cadences = slice.map((p: any) => Number(p.cadence)).filter((v: number) => v > 0 && Number.isFinite(v));
+        const altitudes = slice.map((p: any) => Number(p.altitude)).filter((v: number) => Number.isFinite(v));
+
+        const wap = powers.length > 0
+            ? Math.pow(powers.map((p: number) => Math.pow(p, 4)).reduce((s: number, v: number) => s + v, 0) / powers.length, 0.25)
+            : null;
+
+        const elevGain = altitudes.length > 1
+            ? altitudes.slice(1).reduce((sum: number, alt: number, i: number) => {
+                const diff = alt - altitudes[i];
+                return diff > 0 ? sum + diff : sum;
+            }, 0)
+            : null;
+
+        const durationMin = (slice[slice.length - 1]?.time_min ?? 0) - (slice[0]?.time_min ?? 0);
+
+        return { durationMin, avgPower: avg(powers), maxPower: maximum(powers), wap, avgHr: avg(hrs), maxHr: maximum(hrs), avgPace: avg(paces), avgSpeed: avg(speeds), avgCadence: avg(cadences), elevGain };
+    }, [chartSelection, chartRenderData]);
+
     /* Fullscreen map: only points with GPS coords, for elevation graph + marker */
     const gpsChartData = useMemo(() => {
         if (!activity) return [];
@@ -1038,6 +1076,22 @@ export const ActivityDetailPage = () => {
         }
     }, [bestEffortMetaByKey, hardEffortMetaByKey, gpsChartData, streamPoints]);
 
+    const selectedEffortElevBounds = useMemo<{ x1: number; x2: number } | null>(() => {
+        if (!selectedEffortKey) return null;
+        const meta = bestEffortMetaByKey[selectedEffortKey] ?? hardEffortMetaByKey[selectedEffortKey];
+        if (!meta) return null;
+        let x1: number | null = null;
+        let x2: number | null = null;
+        for (const pt of gpsChartData) {
+            if (pt.stream_index >= meta.startIndex && pt.stream_index <= meta.endIndex) {
+                if (x1 === null) x1 = pt.timeMin;
+                x2 = pt.timeMin;
+            }
+        }
+        if (x1 === null || x2 === null) return null;
+        return { x1, x2 };
+    }, [selectedEffortKey, bestEffortMetaByKey, hardEffortMetaByKey, gpsChartData]);
+
     const fsMapPoint = useMemo(() => {
         if (fsMapIndex === null || !gpsChartData[fsMapIndex]) return null;
         return gpsChartData[fsMapIndex];
@@ -1062,10 +1116,19 @@ export const ActivityDetailPage = () => {
     const handleSharedChartMouseMove = (state: any) => {
         const idx = state?.activeTooltipIndex;
         if (typeof idx !== 'number' || !Number.isFinite(idx)) return;
+
+        // Handle drag selection
+        if (isDraggingChartRef.current && dragStartIdxRef.current !== null) {
+            const startIdx = Math.min(dragStartIdxRef.current, idx);
+            const endIdx = Math.max(dragStartIdxRef.current, idx);
+            if (endIdx - startIdx >= 3) {
+                setChartSelection({ startIdx, endIdx });
+            }
+            return; // suppress hover tooltip while dragging
+        }
+
         if (idx === hoveredPointIndexRef.current || idx === pendingHoveredPointIndexRef.current) return;
-
         pendingHoveredPointIndexRef.current = idx;
-
         if (hoveredPointRafRef.current !== null) return;
         hoveredPointRafRef.current = window.requestAnimationFrame(() => {
             hoveredPointRafRef.current = null;
@@ -2329,9 +2392,19 @@ export const ActivityDetailPage = () => {
                                 </Group>
                                 {chartData.length > 0 ? (
                                     <Stack gap="xs">
-                                        <Box h={360}>
+                                        <Box
+                                            h={360}
+                                            style={{ cursor: 'crosshair', userSelect: 'none' }}
+                                            onMouseDown={() => {
+                                                isDraggingChartRef.current = true;
+                                                dragStartIdxRef.current = hoveredPointIndexRef.current;
+                                                setChartSelection(null);
+                                            }}
+                                            onMouseUp={() => { isDraggingChartRef.current = false; dragStartIdxRef.current = null; }}
+                                            onMouseLeave={() => { isDraggingChartRef.current = false; dragStartIdxRef.current = null; }}
+                                        >
                                             <ResponsiveContainer>
-                                                <LineChart data={chartRenderData}>
+                                                <LineChart data={chartRenderData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
                                                     <XAxis dataKey="time_min" hide />
                                                     <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
@@ -2343,6 +2416,7 @@ export const ActivityDetailPage = () => {
                                                     <Tooltip
                                                         {...sharedTooltipProps}
                                                         content={({ active, payload }: any) => {
+                                                            if (isDraggingChartRef.current) return null;
                                                             const point = active && payload?.[0]?.payload ? payload[0].payload : null;
                                                             if (!point) return null;
                                                             const speedUnit = me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h';
@@ -2370,9 +2444,51 @@ export const ActivityDetailPage = () => {
                                                     {focusSeries.speed && <Line yAxisId="speed" type="monotone" dataKey="speed_display" stroke="#12b886" strokeWidth={1.4} dot={false} name="Speed" isAnimationActive={false} connectNulls />}
                                                     {focusSeries.cadence && <Line yAxisId="cadence" type="monotone" dataKey="cadence" stroke="#40c057" strokeWidth={1.2} dot={false} name="Cadence" isAnimationActive={false} connectNulls />}
                                                     {focusSeries.altitude && <Line yAxisId="altitude" type="monotone" dataKey="altitude" stroke="#868e96" strokeWidth={1.2} dot={false} name="Altitude" isAnimationActive={false} connectNulls />}
+                                                    {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
+                                                        <ReferenceArea
+                                                            yAxisId="hr"
+                                                            x1={chartRenderData[chartSelection.startIdx].time_min}
+                                                            x2={chartRenderData[chartSelection.endIdx].time_min}
+                                                            fill={ui.accent}
+                                                            fillOpacity={0.13}
+                                                            stroke={ui.accent}
+                                                            strokeOpacity={0.5}
+                                                            strokeWidth={1}
+                                                        />
+                                                    )}
                                                 </LineChart>
                                             </ResponsiveContainer>
                                         </Box>
+                                        {chartSelectionStats && (() => {
+                                            const s = chartSelectionStats;
+                                            const isImperial = me?.profile?.preferred_units === 'imperial';
+                                            const paceUnit = isImperial ? '/mi' : '/km';
+                                            const speedUnit = isImperial ? 'mph' : 'km/h';
+                                            const fmtPace = (v: number | null) => {
+                                                if (!v || !Number.isFinite(v)) return null;
+                                                const m = Math.floor(v); const sec = Math.round((v - m) * 60);
+                                                return `${m}:${sec.toString().padStart(2, '0')}${paceUnit}`;
+                                            };
+                                            return (
+                                                <Paper withBorder px="md" py="xs" radius="md" bg={isDark ? 'rgba(233,90,18,0.08)' : 'rgba(233,90,18,0.06)'} style={{ borderColor: 'rgba(233,90,18,0.3)' }}>
+                                                    <Group justify="space-between" mb={6}>
+                                                        <Text size="xs" fw={700} c={ui.accent}>Selection — {formatElapsedFromMinutes(s.durationMin)}</Text>
+                                                        <Button size="compact-xs" variant="subtle" c={ui.textDim} onClick={() => setChartSelection(null)}>Clear</Button>
+                                                    </Group>
+                                                    <Group gap="xl" wrap="wrap">
+                                                        {s.avgPower != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Power</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgPower)} W</Text></Stack>}
+                                                        {s.wap != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>WAP</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.wap)} W</Text></Stack>}
+                                                        {s.maxPower != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Max Power</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.maxPower)} W</Text></Stack>}
+                                                        {s.avgHr != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg HR</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgHr)} bpm</Text></Stack>}
+                                                        {s.maxHr != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Max HR</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.maxHr)} bpm</Text></Stack>}
+                                                        {visibleSeries.pace && s.avgPace != null && fmtPace(s.avgPace) && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Pace</Text><Text size="sm" fw={600} c={ui.textMain}>{fmtPace(s.avgPace)}</Text></Stack>}
+                                                        {visibleSeries.speed && s.avgSpeed != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Speed</Text><Text size="sm" fw={600} c={ui.textMain}>{s.avgSpeed.toFixed(1)} {speedUnit}</Text></Stack>}
+                                                        {visibleSeries.cadence && s.avgCadence != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Cadence</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgCadence)} rpm</Text></Stack>}
+                                                        {visibleSeries.altitude && s.elevGain != null && s.elevGain > 0 && <Stack gap={0}><Text size="xs" c={ui.textDim}>Elev Gain</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.elevGain)} m</Text></Stack>}
+                                                    </Group>
+                                                </Paper>
+                                            );
+                                        })()}
                                         <Box px="xs">
                                             <Group justify="space-between" mb={4}>
                                                 <Text size="xs" c={ui.textDim}>{rangeLabel[0]}</Text>
@@ -3342,6 +3458,9 @@ export const ActivityDetailPage = () => {
                                                 cursor={{ stroke: ui.accent, strokeWidth: 1 }}
                                             />
                                             <Area type="monotone" dataKey="altitude" stroke={isDark ? '#60A5FA' : '#3B82F6'} strokeWidth={1.5} fill="url(#fsElevGrad)" isAnimationActive={false} dot={false} connectNulls />
+                                            {selectedEffortElevBounds && (
+                                                <ReferenceArea x1={selectedEffortElevBounds.x1} x2={selectedEffortElevBounds.x2} fill={ui.accent} fillOpacity={0.25} stroke={ui.accent} strokeOpacity={0.6} strokeWidth={1} />
+                                            )}
                                         </AreaChart>
                                     </ResponsiveContainer>
                                 </Box>
