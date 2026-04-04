@@ -1,5 +1,5 @@
 import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, RangeSlider, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput, Tooltip as MantineTooltip } from "@mantine/core";
-import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink, IconShare } from "@tabler/icons-react";
+import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink, IconShare, IconFlame, IconMinus } from "@tabler/icons-react";
 import ShareToChatModal from "../components/ShareToChatModal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
@@ -145,6 +145,26 @@ type EffortSegmentMeta = {
     avgPower: number | null;
     avgHr: number | null;
     speedKmh: number | null;
+};
+
+type HardEffortCategory = 'sprint' | 'threshold_plus' | 'near_threshold';
+type HardEffort = {
+    key: string;
+    category: HardEffortCategory;
+    startIndex: number;
+    endIndex: number;
+    centerIndex: number;
+    durationSeconds: number;
+    avgPower: number | null;
+    avgHr: number | null;
+    avgSpeedKmh: number | null;
+    pctRef: number | null;
+};
+type HardEffortRest = {
+    durationSeconds: number;
+    avgHr: number | null;
+    avgPower: number | null;
+    avgSpeedKmh: number | null;
 };
 
 /* ── Fullscreen map helpers ── */
@@ -584,6 +604,205 @@ export const ActivityDetailPage = () => {
         return metaByKey;
     }, [activity?.best_efforts, streamPoints]);
 
+    const hardEfforts = useMemo((): HardEffort[] => {
+        if (!activity || streamPoints.length < 2) return [];
+        const sport = (activity.sport || '').toLowerCase();
+        const isCycling = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride');
+        const isRunning = sport.includes('run');
+
+        let refValue: number | null = null;
+        let getMetric: (p: any) => number | null;
+        let isHrFallback = false;
+
+        if (isCycling) {
+            const ftp = Number(activity.ftp_at_time ?? (zoneProfile as any)?.ftp ?? 0);
+            if (ftp > 0) {
+                refValue = ftp;
+                getMetric = (p: any) => { const v = Number(p?.power ?? p?.watts ?? 0); return v > 0 ? v : null; };
+            }
+        } else if (isRunning) {
+            const lt2Raw = Number((zoneProfile as any)?.zone_settings?.running?.pace?.lt2 ?? (zoneProfile as any)?.lt2 ?? 0);
+            if (lt2Raw > 0) {
+                refValue = 1000 / (lt2Raw * 60); // m/s
+                getMetric = (p: any) => { const v = Number(p?.speed ?? 0); return v > 0.1 ? v : null; };
+            } else {
+                // fallback: use LTHR
+                const lthr = Number((zoneProfile as any)?.zone_settings?.running?.hr?.lt2 ?? 0);
+                if (lthr > 0) {
+                    refValue = lthr;
+                    isHrFallback = true;
+                    getMetric = (p: any) => { const v = Number(p?.heart_rate ?? 0); return v > 0 ? v : null; };
+                }
+            }
+        }
+
+        if (!refValue) return [];
+
+        // Build smoothed metric array (3-second rolling average)
+        const smoothed: (number | null)[] = streamPoints.map((_: any, i: number) => {
+            const lo = Math.max(0, i - 1);
+            const hi = Math.min(streamPoints.length - 1, i + 1);
+            let sum = 0, cnt = 0;
+            for (let j = lo; j <= hi; j++) {
+                const v = getMetric(streamPoints[j]);
+                if (v != null) { sum += v; cnt++; }
+            }
+            return cnt > 0 ? sum / cnt : null;
+        });
+
+        const categoryDefs: { id: HardEffortCategory; minPct: number; minDuration: number }[] = [
+            { id: 'sprint', minPct: 2.0, minDuration: 1 },
+            { id: 'threshold_plus', minPct: 1.0, minDuration: 30 },
+            { id: 'near_threshold', minPct: 0.85, minDuration: 60 },
+        ];
+
+        // Prefix sums for avg calculations
+        const pPow: number[] = [0];
+        const pHr: number[] = [0];
+        const pSpd: number[] = [0];
+        for (let i = 0; i < streamPoints.length; i++) {
+            const p = streamPoints[i];
+            pPow.push(pPow[i] + (Number(p?.power ?? p?.watts ?? 0) || 0));
+            pHr.push(pHr[i] + (Number(p?.heart_rate ?? 0) || 0));
+            pSpd.push(pSpd[i] + (Number(p?.speed ?? 0) || 0));
+        }
+
+        const calcSegmentStats = (start: number, end: number) => {
+            const n = end - start + 1;
+            const sumPow = pPow[end + 1] - pPow[start];
+            const sumHr = pHr[end + 1] - pHr[start];
+            const sumSpd = pSpd[end + 1] - pSpd[start];
+            const hrCnt = streamPoints.slice(start, end + 1).filter((p: any) => Number(p?.heart_rate ?? 0) > 0).length;
+            const spdCnt = streamPoints.slice(start, end + 1).filter((p: any) => Number(p?.speed ?? 0) > 0.1).length;
+            return {
+                avgPower: sumPow > 0 ? sumPow / n : null,
+                avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
+                avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
+            };
+        };
+
+        const allFound: HardEffort[] = [];
+
+        for (const cat of categoryDefs) {
+            const threshold = refValue * cat.minPct;
+            const maxGap = 5; // seconds of dip allowed within an effort
+            const segments: { start: number; end: number }[] = [];
+
+            let segStart = -1;
+            let gapStart = -1;
+
+            for (let i = 0; i <= smoothed.length; i++) {
+                const v = i < smoothed.length ? smoothed[i] : null;
+                const above = v != null && v >= threshold;
+
+                if (above) {
+                    if (segStart === -1) segStart = i;
+                    gapStart = -1; // reset gap
+                } else {
+                    if (segStart !== -1) {
+                        if (gapStart === -1) gapStart = i;
+                        // if gap is too long, close the segment
+                        if (i - gapStart >= maxGap || i === smoothed.length) {
+                            const segEnd = gapStart - 1;
+                            if (segEnd >= segStart && (segEnd - segStart + 1) >= cat.minDuration) {
+                                segments.push({ start: segStart, end: segEnd });
+                            }
+                            segStart = -1;
+                            gapStart = -1;
+                        }
+                    }
+                }
+            }
+
+            for (const seg of segments) {
+                const stats = calcSegmentStats(seg.start, seg.end);
+                const refForPct = isHrFallback ? stats.avgHr : (isCycling ? stats.avgPower : (stats.avgSpeedKmh != null ? stats.avgSpeedKmh / 3.6 : null));
+                const pctRef = refForPct != null ? (refForPct / refValue) * 100 : null;
+                allFound.push({
+                    key: `hard_${cat.id}_${seg.start}`,
+                    category: cat.id,
+                    startIndex: seg.start,
+                    endIndex: seg.end,
+                    centerIndex: Math.round((seg.start + seg.end) / 2),
+                    durationSeconds: seg.end - seg.start + 1,
+                    avgPower: stats.avgPower,
+                    avgHr: stats.avgHr,
+                    avgSpeedKmh: stats.avgSpeedKmh,
+                    pctRef,
+                });
+            }
+        }
+
+        // Sort by start index
+        allFound.sort((a, b) => a.startIndex - b.startIndex);
+
+        // Overlap resolution: if a lower-priority effort overlaps >50% with a higher-priority one, discard it
+        const catPriority: Record<HardEffortCategory, number> = { sprint: 0, threshold_plus: 1, near_threshold: 2 };
+        const kept: HardEffort[] = [];
+        for (const effort of allFound) {
+            const overlapWithHigher = kept.some(existing => {
+                if (catPriority[existing.category] >= catPriority[effort.category]) return false;
+                const overlapStart = Math.max(existing.startIndex, effort.startIndex);
+                const overlapEnd = Math.min(existing.endIndex, effort.endIndex);
+                if (overlapEnd < overlapStart) return false;
+                const overlapLen = overlapEnd - overlapStart + 1;
+                return overlapLen > effort.durationSeconds * 0.5;
+            });
+            if (!overlapWithHigher) kept.push(effort);
+        }
+
+        return kept;
+    }, [activity, streamPoints, zoneProfile]);
+
+    const hardEffortMetaByKey = useMemo((): Record<string, EffortSegmentMeta> => {
+        const result: Record<string, EffortSegmentMeta> = {};
+        for (const e of hardEfforts) {
+            result[e.key] = {
+                startIndex: e.startIndex,
+                endIndex: e.endIndex,
+                centerIndex: e.centerIndex,
+                seconds: e.durationSeconds,
+                meters: e.avgSpeedKmh != null ? (e.avgSpeedKmh / 3.6) * e.durationSeconds : null,
+                avgPower: e.avgPower,
+                avgHr: e.avgHr,
+                speedKmh: e.avgSpeedKmh,
+            };
+        }
+        return result;
+    }, [hardEfforts]);
+
+    const hardEffortRests = useMemo((): HardEffortRest[] => {
+        if (hardEfforts.length < 2) return [];
+        const rests: HardEffortRest[] = [];
+        for (let i = 0; i < hardEfforts.length - 1; i++) {
+            const restStart = hardEfforts[i].endIndex + 1;
+            const restEnd = hardEfforts[i + 1].startIndex - 1;
+            if (restEnd < restStart) {
+                rests.push({ durationSeconds: 0, avgHr: null, avgPower: null, avgSpeedKmh: null });
+                continue;
+            }
+            const n = restEnd - restStart + 1;
+            let sumPow = 0, sumHr = 0, sumSpd = 0, hrCnt = 0, spdCnt = 0;
+            for (let j = restStart; j <= restEnd; j++) {
+                const p = streamPoints[j];
+                if (!p) continue;
+                const pow = Number(p?.power ?? p?.watts ?? 0);
+                const hr = Number(p?.heart_rate ?? 0);
+                const spd = Number(p?.speed ?? 0);
+                sumPow += pow;
+                if (hr > 0) { sumHr += hr; hrCnt++; }
+                if (spd > 0.1) { sumSpd += spd; spdCnt++; }
+            }
+            rests.push({
+                durationSeconds: n,
+                avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
+                avgPower: sumPow > 0 ? sumPow / n : null,
+                avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
+            });
+        }
+        return rests;
+    }, [hardEfforts, streamPoints]);
+
     const routePositions = useMemo(() => {
         return streamPoints
             .filter((p: any) => p.lat && p.lon)
@@ -767,7 +986,7 @@ export const ActivityDetailPage = () => {
 
     const selectedEffortRoutePositions = useMemo<[number, number][]>(() => {
         if (!selectedEffortKey) return [];
-        const meta = bestEffortMetaByKey[selectedEffortKey];
+        const meta = bestEffortMetaByKey[selectedEffortKey] ?? hardEffortMetaByKey[selectedEffortKey];
         if (!meta) return [];
 
         const points: [number, number][] = [];
@@ -778,10 +997,10 @@ export const ActivityDetailPage = () => {
             }
         }
         return points;
-    }, [selectedEffortKey, bestEffortMetaByKey, streamPoints]);
+    }, [selectedEffortKey, bestEffortMetaByKey, hardEffortMetaByKey, streamPoints]);
 
     const focusEffortByKey = useCallback((effortKey: string, openFullscreenMap = true) => {
-        const meta = bestEffortMetaByKey[effortKey];
+        const meta = bestEffortMetaByKey[effortKey] ?? hardEffortMetaByKey[effortKey];
         if (!meta) return;
         setSelectedEffortKey(effortKey);
         setSelectedEffortStreamIndex(meta.centerIndex);
@@ -817,7 +1036,7 @@ export const ActivityDetailPage = () => {
                 setFsMapIndex(nearestIdx >= 0 ? nearestIdx : null);
             }
         }
-    }, [bestEffortMetaByKey, gpsChartData, streamPoints]);
+    }, [bestEffortMetaByKey, hardEffortMetaByKey, gpsChartData, streamPoints]);
 
     const fsMapPoint = useMemo(() => {
         if (fsMapIndex === null || !gpsChartData[fsMapIndex]) return null;
@@ -1814,6 +2033,7 @@ export const ActivityDetailPage = () => {
                             {isRunningActivity ? <Tabs.Tab value="pace_zones" disabled={runningPaceZoneData.every((z) => z.seconds <= 0)}>Pace Zones</Tabs.Tab> : null}
                             {isCyclingActivity ? <Tabs.Tab value="power_zones" disabled={cyclingPowerZoneData.every((z) => z.seconds <= 0)}>Power Zones</Tabs.Tab> : null}
                             {(activity.splits_metric?.length || activity.laps?.length) ? <Tabs.Tab value="laps">Laps</Tabs.Tab> : null}
+                            {hardEfforts.length > 0 ? <Tabs.Tab value="hard_efforts">Hard Efforts</Tabs.Tab> : null}
                             {activity.best_efforts?.length ? <Tabs.Tab value="best_efforts">Best Efforts</Tabs.Tab> : null}
                             {activity.planned_comparison ? <Tabs.Tab value="comparison">Comparison</Tabs.Tab> : null}
                         </Tabs.List>
@@ -2370,6 +2590,82 @@ export const ActivityDetailPage = () => {
                                 </Box>
                             </Paper>
                         </Tabs.Panel>
+
+                        {/* HARD EFFORTS TAB */}
+                        {hardEfforts.length > 0 ? (
+                        <Tabs.Panel value="hard_efforts">
+                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                                <Group justify="space-between" mb="xs">
+                                    <Title order={5} c={ui.textMain}>{t("Hard Efforts")}</Title>
+                                </Group>
+                                <Group gap="md" mb="md" wrap="wrap">
+                                    <Group gap={4}><Badge size="xs" color="red" variant="filled">Sprint</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥200% FTP' : '≥200% threshold'}</Text></Group>
+                                    <Group gap={4}><Badge size="xs" color="orange" variant="filled">Threshold+</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥100% FTP, ≥30s' : '≥100% threshold, ≥30s'}</Text></Group>
+                                    <Group gap={4}><Badge size="xs" color="yellow" variant="filled">Near Threshold</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥85% FTP, ≥1min' : '≥85% threshold, ≥1min'}</Text></Group>
+                                </Group>
+                                <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                                <Table striped highlightOnHover withTableBorder withColumnBorders style={{ whiteSpace: 'nowrap' }}>
+                                    <Table.Thead>
+                                        <Table.Tr>
+                                            <Table.Th></Table.Th>
+                                            <Table.Th>{t('Category')}</Table.Th>
+                                            <Table.Th>{t('Duration')}</Table.Th>
+                                            {isCyclingActivity && <Table.Th>{t('Avg Power')}</Table.Th>}
+                                            {isCyclingActivity && <Table.Th>% FTP</Table.Th>}
+                                            {isRunningActivity && <Table.Th>{t('Avg Pace')}</Table.Th>}
+                                            {isRunningActivity && <Table.Th>% Threshold</Table.Th>}
+                                            <Table.Th>{t('Heart Rate')}</Table.Th>
+                                        </Table.Tr>
+                                    </Table.Thead>
+                                    <Table.Tbody>
+                                        {hardEfforts.map((effort, idx) => {
+                                            const catColor = effort.category === 'sprint' ? 'red' : effort.category === 'threshold_plus' ? 'orange' : 'yellow';
+                                            const catLabel = effort.category === 'sprint' ? 'Sprint' : effort.category === 'threshold_plus' ? 'Threshold+' : 'Near Threshold';
+                                            const isSelected = selectedEffortKey === effort.key;
+                                            const paceDisplay = effort.avgSpeedKmh && effort.avgSpeedKmh > 0
+                                                ? (() => { const paceMinKm = 60 / effort.avgSpeedKmh; const mins = Math.floor(paceMinKm); const secs = Math.round((paceMinKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
+                                                : null;
+                                            const rest = idx < hardEffortRests.length ? hardEffortRests[idx] : null;
+                                            return [
+                                                <Table.Tr
+                                                    key={effort.key}
+                                                    style={{
+                                                        cursor: 'pointer',
+                                                        backgroundColor: isSelected ? (isDark ? 'rgba(233,90,18,0.16)' : 'rgba(233,90,18,0.10)') : undefined,
+                                                    }}
+                                                    onClick={() => focusEffortByKey(effort.key, true)}
+                                                >
+                                                    <Table.Td w={36} style={{ textAlign: 'center' }}>
+                                                        <IconFlame size={14} color={catColor === 'red' ? '#ef4444' : catColor === 'orange' ? '#f97316' : '#eab308'} />
+                                                    </Table.Td>
+                                                    <Table.Td><Badge size="sm" color={catColor} variant="light">{catLabel}</Badge></Table.Td>
+                                                    <Table.Td fw={600}>{formatDuration(effort.durationSeconds)}</Table.Td>
+                                                    {isCyclingActivity && <Table.Td>{effort.avgPower != null ? `${Math.round(effort.avgPower)} W` : '-'}</Table.Td>}
+                                                    {isCyclingActivity && <Table.Td>{effort.pctRef != null ? `${Math.round(effort.pctRef)}%` : '-'}</Table.Td>}
+                                                    {isRunningActivity && <Table.Td>{paceDisplay ?? '-'}</Table.Td>}
+                                                    {isRunningActivity && <Table.Td>{effort.pctRef != null ? `${Math.round(effort.pctRef)}%` : '-'}</Table.Td>}
+                                                    <Table.Td>{effort.avgHr != null ? `${Math.round(effort.avgHr)} bpm` : '-'}</Table.Td>
+                                                </Table.Tr>,
+                                                rest && rest.durationSeconds > 0 ? (
+                                                    <Table.Tr key={`rest_${idx}`} style={{ opacity: 0.55 }}>
+                                                        <Table.Td style={{ textAlign: 'center' }}><IconMinus size={12} /></Table.Td>
+                                                        <Table.Td><Text size="xs" c="dimmed" fs="italic">Rest</Text></Table.Td>
+                                                        <Table.Td><Text size="xs" c="dimmed">{formatDuration(rest.durationSeconds)}</Text></Table.Td>
+                                                        {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgPower != null ? `${Math.round(rest.avgPower)} W` : '-'}</Text></Table.Td>}
+                                                        {isCyclingActivity && <Table.Td>-</Table.Td>}
+                                                        {isRunningActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgSpeedKmh && rest.avgSpeedKmh > 0 ? (() => { const p = 60 / rest.avgSpeedKmh!; const m = Math.floor(p); const s = Math.round((p - m) * 60); return `${m}:${s.toString().padStart(2, '0')} /km`; })() : '-'}</Text></Table.Td>}
+                                                        {isRunningActivity && <Table.Td>-</Table.Td>}
+                                                        <Table.Td><Text size="xs" c="dimmed">{rest.avgHr != null ? `${Math.round(rest.avgHr)} bpm` : '-'}</Text></Table.Td>
+                                                    </Table.Tr>
+                                                ) : null,
+                                            ];
+                                        })}
+                                    </Table.Tbody>
+                                </Table>
+                                </Box>
+                            </Paper>
+                        </Tabs.Panel>
+                        ) : null}
 
                         {/* LAPS TAB */}
                         {(activity.splits_metric?.length || activity.laps?.length) ? (
