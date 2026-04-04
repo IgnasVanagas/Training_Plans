@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useMediaQuery } from "@mantine/hooks";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, ReferenceLine, ReferenceArea } from 'recharts';
-import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
 import { notifications } from "@mantine/notifications";
@@ -196,6 +196,114 @@ const MapPanTo = ({ position }: { position: [number, number] | null }) => {
     return null;
 };
 
+type RouteInteractivePoint = {
+    chartIndex: number;
+    lat: number;
+    lon: number;
+};
+
+const toDistanceLabel = (kmValue: unknown) => {
+    const km = Number(kmValue);
+    if (!Number.isFinite(km) || km < 0) return '-';
+    return `${km.toFixed(2)} km`;
+};
+
+const findNearestRoutePoint = (latlng: L.LatLng, points: RouteInteractivePoint[]) => {
+    if (!points.length) return null;
+    const targetLat = latlng.lat;
+    const targetLon = latlng.lng;
+    let nearest: RouteInteractivePoint | null = null;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (const point of points) {
+        const dLat = point.lat - targetLat;
+        const dLon = point.lon - targetLon;
+        const distSq = dLat * dLat + dLon * dLon;
+        if (distSq < bestDist) {
+            bestDist = distSq;
+            nearest = point;
+        }
+    }
+    return nearest;
+};
+
+const getHeatColor = (value: number, min: number, max: number) => {
+    if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        return '#3b82f6';
+    }
+    const ratio = Math.max(0, Math.min(1, (value - min) / (max - min)));
+    if (ratio < 0.2) return '#1d4ed8';
+    if (ratio < 0.4) return '#0ea5e9';
+    if (ratio < 0.6) return '#22c55e';
+    if (ratio < 0.8) return '#f59e0b';
+    return '#dc2626';
+};
+
+const MapRouteInteractionLayer = ({
+    points,
+    onHover,
+    onDragStart,
+    onDrag,
+    onDragEnd,
+}: {
+    points: RouteInteractivePoint[];
+    onHover: (chartIndex: number | null) => void;
+    onDragStart: (chartIndex: number) => void;
+    onDrag: (chartIndex: number) => void;
+    onDragEnd: () => void;
+}) => {
+    const draggingRef = useRef(false);
+
+    useMapEvents({
+        mouseup: () => {
+            if (!draggingRef.current) return;
+            draggingRef.current = false;
+            onDragEnd();
+        },
+    });
+
+    if (points.length < 2) return null;
+
+    const positions = points.map((point) => [point.lat, point.lon] as [number, number]);
+
+    const resolvePoint = (e: L.LeafletMouseEvent) => {
+        return findNearestRoutePoint(e.latlng, points);
+    };
+
+    return (
+        <Polyline
+            positions={positions}
+            pathOptions={{ color: '#000', opacity: 0.001, weight: 18 }}
+            eventHandlers={{
+                mousedown: (e) => {
+                    const nearest = resolvePoint(e);
+                    if (!nearest) return;
+                    draggingRef.current = true;
+                    onDragStart(nearest.chartIndex);
+                },
+                mousemove: (e) => {
+                    const nearest = resolvePoint(e);
+                    if (!nearest) return;
+                    if (draggingRef.current) {
+                        onDrag(nearest.chartIndex);
+                    } else {
+                        onHover(nearest.chartIndex);
+                    }
+                },
+                mouseup: () => {
+                    if (!draggingRef.current) return;
+                    draggingRef.current = false;
+                    onDragEnd();
+                },
+                mouseout: () => {
+                    if (!draggingRef.current) {
+                        onHover(null);
+                    }
+                },
+            }}
+        />
+    );
+};
+
 export const ActivityDetailPage = () => {
     const { t } = useI18n();
     const { id } = useParams();
@@ -259,6 +367,8 @@ export const ActivityDetailPage = () => {
         avg_watts: true,
         max_watts: true,
         normalized_power: true,
+        avg_gradient: true,
+        max_gradient: true,
     });
     const [visibleSeries, setVisibleSeries] = useState({
         heart_rate: true,
@@ -287,6 +397,10 @@ export const ActivityDetailPage = () => {
     const [executionInfoOpen, setExecutionInfoOpen] = useState(false);
     const [selectedEffortKey, setSelectedEffortKey] = useState<string | null>(null);
     const [selectedEffortStreamIndex, setSelectedEffortStreamIndex] = useState<number | null>(null);
+    const [mapHeatMetric, setMapHeatMetric] = useState<'none' | 'speed' | 'heart_rate' | 'power' | 'gradient'>('none');
+    const [mapHoveredChartIndex, setMapHoveredChartIndex] = useState<number | null>(null);
+    const mapDragStartChartIndexRef = useRef<number | null>(null);
+    const isDraggingMapRef = useRef(false);
     const desktopDefaultsAppliedRef = useRef(false);
 
     useEffect(() => {
@@ -304,6 +418,8 @@ export const ActivityDetailPage = () => {
             avg_watts: true,
             max_watts: true,
             normalized_power: true,
+            avg_gradient: true,
+            max_gradient: true,
         }));
 
         setVisibleSeries((prev) => ({
@@ -839,8 +955,30 @@ export const ActivityDetailPage = () => {
                 }
             }
 
+            const prev = index > 0 ? streamPoints[index - 1] : null;
+            const prevDistance = Number(prev?.distance);
+            const currDistance = Number(s?.distance);
+            const prevAltitude = Number(prev?.altitude);
+            const currAltitude = Number(s?.altitude);
+            let gradientPct: number | null = null;
+            if (
+                Number.isFinite(prevDistance)
+                && Number.isFinite(currDistance)
+                && Number.isFinite(prevAltitude)
+                && Number.isFinite(currAltitude)
+            ) {
+                const distanceDeltaM = currDistance - prevDistance;
+                if (distanceDeltaM >= 2) {
+                    gradientPct = ((currAltitude - prevAltitude) / distanceDeltaM) * 100;
+                    if (Number.isFinite(gradientPct)) {
+                        gradientPct = Math.max(-35, Math.min(35, gradientPct));
+                    }
+                }
+            }
+
             return {
                 ...s, 
+                stream_index: index,
                 // Keep numbers for Charting
                 distance_km: s.distance 
                     ? (me?.profile?.preferred_units === 'imperial' ? s.distance * 0.000621371 : s.distance / 1000)
@@ -857,7 +995,8 @@ export const ActivityDetailPage = () => {
                 // However, user reports "wrong in graph" implying it might be halved (showing ~85-90 instead of ~170-180).
                 // Let's multiply by 2 if sport is running and cadence seems low (e.g., < 120 avg).
                 // Actually safer to check sport:
-                cadence: (activity.sport === 'running' && s.cadence) ? Number(s.cadence) * 2 : Number(s.cadence)
+                cadence: (activity.sport === 'running' && s.cadence) ? Number(s.cadence) * 2 : Number(s.cadence),
+                gradient_pct: gradientPct,
             };
         });
 
@@ -920,8 +1059,8 @@ export const ActivityDetailPage = () => {
 
     const hoveredPoint = useMemo(() => {
         if (hoveredPointIndex === null) return null;
-        return visibleChartData[hoveredPointIndex] || null;
-    }, [visibleChartData, hoveredPointIndex]);
+        return chartRenderData[hoveredPointIndex] || null;
+    }, [chartRenderData, hoveredPointIndex]);
 
     // Drag-to-select on chart
     const [chartSelection, setChartSelection] = useState<{ startIdx: number; endIdx: number } | null>(null);
@@ -929,6 +1068,8 @@ export const ActivityDetailPage = () => {
     const dragStartIdxRef = useRef<number | null>(null);
     useEffect(() => { setChartSelection(null); }, [activity?.id]);
     useEffect(() => { setChartSelection(null); }, [chartRange]);
+    useEffect(() => { setMapHoveredChartIndex(null); }, [activity?.id]);
+    useEffect(() => { setMapHoveredChartIndex(null); }, [chartRange]);
 
     const chartSelectionStats = useMemo(() => {
         if (!chartSelection) return null;
@@ -945,6 +1086,7 @@ export const ActivityDetailPage = () => {
         const speeds = slice.map((p: any) => Number(p.speed_display)).filter((v: number) => v > 0 && Number.isFinite(v));
         const cadences = slice.map((p: any) => Number(p.cadence)).filter((v: number) => v > 0 && Number.isFinite(v));
         const altitudes = slice.map((p: any) => Number(p.altitude)).filter((v: number) => Number.isFinite(v));
+        const gradients = slice.map((p: any) => Number(p.gradient_pct)).filter((v: number) => Number.isFinite(v));
 
         const wap = powers.length > 0
             ? Math.pow(powers.map((p: number) => Math.pow(p, 4)).reduce((s: number, v: number) => s + v, 0) / powers.length, 0.25)
@@ -959,36 +1101,123 @@ export const ActivityDetailPage = () => {
 
         const durationMin = (slice[slice.length - 1]?.time_min ?? 0) - (slice[0]?.time_min ?? 0);
 
-        return { durationMin, avgPower: avg(powers), maxPower: maximum(powers), wap, avgHr: avg(hrs), maxHr: maximum(hrs), avgPace: avg(paces), avgSpeed: avg(speeds), avgCadence: avg(cadences), elevGain };
+        const avgGradient = avg(gradients);
+        const maxGradient = maximum(gradients);
+
+        return {
+            durationMin,
+            avgPower: avg(powers),
+            maxPower: maximum(powers),
+            wap,
+            avgHr: avg(hrs),
+            maxHr: maximum(hrs),
+            avgPace: avg(paces),
+            avgSpeed: avg(speeds),
+            avgCadence: avg(cadences),
+            elevGain,
+            avgGradient,
+            maxGradient,
+        };
     }, [chartSelection, chartRenderData]);
+
+    const interactiveMapRoutePoints = useMemo<RouteInteractivePoint[]>(() => {
+        return chartRenderData
+            .map((point: any, chartIndex: number) => ({
+                chartIndex,
+                lat: Number(point?.lat),
+                lon: Number(point?.lon),
+            }))
+            .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon));
+    }, [chartRenderData]);
+
+    const selectedChartRoutePositions = useMemo<[number, number][]>(() => {
+        if (!chartSelection) return [];
+        const points: [number, number][] = [];
+        for (let i = chartSelection.startIdx; i <= chartSelection.endIdx; i += 1) {
+            const sample = chartRenderData[i];
+            if (Number.isFinite(Number(sample?.lat)) && Number.isFinite(Number(sample?.lon))) {
+                points.push([Number(sample.lat), Number(sample.lon)]);
+            }
+        }
+        return points;
+    }, [chartSelection, chartRenderData]);
+
+    const mapHeatRange = useMemo(() => {
+        if (mapHeatMetric === 'none') return null;
+        const values = chartData
+            .map((point: any) => Number(point?.[mapHeatMetric === 'gradient' ? 'gradient_pct' : mapHeatMetric]))
+            .filter((value: number) => Number.isFinite(value));
+        if (values.length === 0) return null;
+        const sorted = [...values].sort((a, b) => a - b);
+        const min = sorted[Math.floor((sorted.length - 1) * 0.05)];
+        const max = sorted[Math.floor((sorted.length - 1) * 0.95)];
+        return { min, max };
+    }, [chartData, mapHeatMetric]);
+
+    const mapHeatSegments = useMemo(() => {
+        if (mapHeatMetric === 'none' || !mapHeatRange) return [] as Array<{ positions: [number, number][]; color: string }>;
+        const segments: Array<{ positions: [number, number][]; color: string }> = [];
+        for (let i = 1; i < chartData.length; i += 1) {
+            const left = chartData[i - 1];
+            const right = chartData[i];
+            const leftLat = Number(left?.lat);
+            const leftLon = Number(left?.lon);
+            const rightLat = Number(right?.lat);
+            const rightLon = Number(right?.lon);
+            if (!Number.isFinite(leftLat) || !Number.isFinite(leftLon) || !Number.isFinite(rightLat) || !Number.isFinite(rightLon)) continue;
+            const rawValue = Number(right?.[mapHeatMetric === 'gradient' ? 'gradient_pct' : mapHeatMetric]);
+            if (!Number.isFinite(rawValue)) continue;
+            segments.push({
+                positions: [[leftLat, leftLon], [rightLat, rightLon]],
+                color: getHeatColor(rawValue, mapHeatRange.min, mapHeatRange.max),
+            });
+        }
+        return segments;
+    }, [chartData, mapHeatMetric, mapHeatRange]);
+
+    const mapHoveredPoint = useMemo(() => {
+        if (mapHoveredChartIndex == null) return null;
+        return chartRenderData[mapHoveredChartIndex] || null;
+    }, [mapHoveredChartIndex, chartRenderData]);
+
+    const handleMapHover = useCallback((chartIndex: number | null) => {
+        setMapHoveredChartIndex(chartIndex);
+        if (isDraggingMapRef.current) return;
+        if (chartIndex === null) {
+            hoveredPointIndexRef.current = null;
+            setHoveredPointIndex(null);
+            return;
+        }
+        hoveredPointIndexRef.current = chartIndex;
+        setHoveredPointIndex(chartIndex);
+    }, []);
+
+    const handleMapDragStart = useCallback((chartIndex: number) => {
+        isDraggingMapRef.current = true;
+        mapDragStartChartIndexRef.current = chartIndex;
+        setChartSelection({ startIdx: chartIndex, endIdx: chartIndex });
+    }, []);
+
+    const handleMapDrag = useCallback((chartIndex: number) => {
+        const startIndex = mapDragStartChartIndexRef.current;
+        if (startIndex == null) return;
+        const startIdx = Math.min(startIndex, chartIndex);
+        const endIdx = Math.max(startIndex, chartIndex);
+        if (endIdx - startIdx < 1) return;
+        setChartSelection({ startIdx, endIdx });
+    }, []);
+
+    const handleMapDragEnd = useCallback(() => {
+        isDraggingMapRef.current = false;
+        mapDragStartChartIndexRef.current = null;
+    }, []);
 
     /* Fullscreen map: only points with GPS coords, for elevation graph + marker */
     const gpsChartData = useMemo(() => {
         if (!activity) return [];
-        const startTs = streamPoints[0]?.timestamp ? new Date(streamPoints[0].timestamp).getTime() : 0;
-        const isRunning = (activity.sport || '').toLowerCase().includes('run');
-        return streamPoints
-            .map((p: any, idx: number) => ({ ...p, stream_index: idx }))
+        return chartData
             .filter((p: any) => p.lat && p.lon)
             .map((p: any) => {
-                let timeMin = 0;
-                if (p.timestamp && startTs) {
-                    timeMin = (new Date(p.timestamp).getTime() - startTs) / 60000;
-                }
-                let paceDisplay: string | null = null;
-                let speedKmh: number | null = null;
-                if (p.speed && p.speed > 0.1) {
-                    speedKmh = p.speed * 3.6;
-                    if (isRunning) {
-                        const mpm = p.speed * 60;
-                        const paceVal = 1000 / mpm;
-                        if (paceVal <= 20) {
-                            const pm = Math.floor(paceVal);
-                            const ps = Math.round((paceVal - pm) * 60);
-                            paceDisplay = `${pm}:${ps.toString().padStart(2, '0')}/km`;
-                        }
-                    }
-                }
                 return {
                     stream_index: p.stream_index,
                     lat: p.lat,
@@ -996,13 +1225,16 @@ export const ActivityDetailPage = () => {
                     altitude: p.altitude ?? null,
                     heart_rate: p.heart_rate ?? null,
                     power: p.power ?? null,
-                    speedKmh,
-                    paceDisplay,
-                    timeMin,
+                    speedKmh: Number.isFinite(Number(p.speed)) ? Number(p.speed) * 3.6 : null,
+                    paceDisplay: Number.isFinite(Number(p.pace))
+                        ? `${Math.floor(Number(p.pace))}:${Math.floor((Number(p.pace) - Math.floor(Number(p.pace))) * 60).toString().padStart(2, '0')}/km`
+                        : null,
+                    gradient_pct: Number.isFinite(Number(p.gradient_pct)) ? Number(p.gradient_pct) : null,
+                    timeMin: Number(p.time_min || 0),
                     distance_km: p.distance ? p.distance / 1000 : 0,
                 };
             });
-    }, [activity, streamPoints]);
+    }, [activity, chartData]);
 
     const focusedEffortMarkerPos = useMemo<[number, number] | null>(() => {
         if (selectedEffortStreamIndex == null || streamPoints.length === 0) return null;
@@ -1037,6 +1269,29 @@ export const ActivityDetailPage = () => {
         }
         return points;
     }, [selectedEffortKey, bestEffortMetaByKey, hardEffortMetaByKey, streamPoints]);
+
+    const activeMapMarkerPoint = useMemo(() => {
+        if (mapHoveredPoint) return mapHoveredPoint;
+        if (!focusedEffortMarkerPos) return null;
+        return {
+            lat: focusedEffortMarkerPos[0],
+            lon: focusedEffortMarkerPos[1],
+            time_min: null,
+            distance_km: null,
+            heart_rate: null,
+            speed_display: null,
+            pace: null,
+            power: null,
+            altitude: null,
+            gradient_pct: null,
+        };
+    }, [mapHoveredPoint, focusedEffortMarkerPos]);
+
+    const activeMapMarkerPos = useMemo<[number, number] | null>(() => {
+        if (!activeMapMarkerPoint) return null;
+        if (!Number.isFinite(Number(activeMapMarkerPoint?.lat)) || !Number.isFinite(Number(activeMapMarkerPoint?.lon))) return null;
+        return [Number(activeMapMarkerPoint.lat), Number(activeMapMarkerPoint.lon)];
+    }, [activeMapMarkerPoint]);
 
     const focusEffortByKey = useCallback((effortKey: string, openFullscreenMap = true) => {
         const meta = bestEffortMetaByKey[effortKey] ?? hardEffortMetaByKey[effortKey];
@@ -1085,8 +1340,8 @@ export const ActivityDetailPage = () => {
         let x2: number | null = null;
         for (const pt of gpsChartData) {
             if (pt.stream_index >= meta.startIndex && pt.stream_index <= meta.endIndex) {
-                if (x1 === null) x1 = pt.timeMin;
-                x2 = pt.timeMin;
+                if (x1 === null) x1 = pt.distance_km;
+                x2 = pt.distance_km;
             }
         }
         if (x1 === null || x2 === null) return null;
@@ -1098,10 +1353,32 @@ export const ActivityDetailPage = () => {
         return gpsChartData[fsMapIndex];
     }, [fsMapIndex, gpsChartData]);
 
-    const fsMapMarkerPos = useMemo<[number, number] | null>(() => {
-        if (!fsMapPoint) return null;
-        return [fsMapPoint.lat, fsMapPoint.lon];
-    }, [fsMapPoint]);
+    const fullscreenMarkerPoint = useMemo(() => {
+        if (mapHoveredPoint) {
+            return {
+                timeMin: Number(mapHoveredPoint.time_min || 0),
+                heart_rate: mapHoveredPoint.heart_rate ?? null,
+                paceDisplay: Number.isFinite(Number(mapHoveredPoint.pace))
+                    ? `${Math.floor(Number(mapHoveredPoint.pace))}:${Math.floor((Number(mapHoveredPoint.pace) - Math.floor(Number(mapHoveredPoint.pace))) * 60).toString().padStart(2, '0')}/km`
+                    : null,
+                speedKmh: Number.isFinite(Number(mapHoveredPoint.speed_display))
+                    ? (me?.profile?.preferred_units === 'imperial' ? Number(mapHoveredPoint.speed_display) * 1.60934 : Number(mapHoveredPoint.speed_display))
+                    : null,
+                power: mapHoveredPoint.power ?? null,
+                altitude: mapHoveredPoint.altitude ?? null,
+                gradient_pct: mapHoveredPoint.gradient_pct ?? null,
+                lat: mapHoveredPoint.lat,
+                lon: mapHoveredPoint.lon,
+            };
+        }
+        return fsMapPoint;
+    }, [mapHoveredPoint, fsMapPoint, me?.profile?.preferred_units]);
+
+    const fullscreenMarkerPos = useMemo<[number, number] | null>(() => {
+        if (!fullscreenMarkerPoint) return null;
+        if (!Number.isFinite(Number(fullscreenMarkerPoint.lat)) || !Number.isFinite(Number(fullscreenMarkerPoint.lon))) return null;
+        return [Number(fullscreenMarkerPoint.lat), Number(fullscreenMarkerPoint.lon)];
+    }, [fullscreenMarkerPoint]);
 
     const handleFsElevationMove = useCallback((state: any) => {
         const idx = state?.activeTooltipIndex;
@@ -1691,7 +1968,6 @@ export const ActivityDetailPage = () => {
         if (!activity) return [];
         const sportName = (activity.sport || '').toLowerCase();
         const isCyclingLike = sportName.includes('cycl') || sportName.includes('bike') || sportName.includes('ride') || sportName.includes('virtualride');
-        if (!isCyclingLike) return splitsToDisplay;
 
         let cumulativeDistance = 0;
 
@@ -1739,11 +2015,43 @@ export const ActivityDetailPage = () => {
                 normalizedPower = avgWatts;
             }
 
+            const gradients: number[] = [];
+            for (let pointIndex = 1; pointIndex < segmentPoints.length; pointIndex += 1) {
+                const prevPoint = segmentPoints[pointIndex - 1];
+                const currPoint = segmentPoints[pointIndex];
+                const prevDistance = Number(prevPoint?.distance);
+                const currDistance = Number(currPoint?.distance);
+                const prevAltitude = Number(prevPoint?.altitude);
+                const currAltitude = Number(currPoint?.altitude);
+                if (
+                    Number.isFinite(prevDistance)
+                    && Number.isFinite(currDistance)
+                    && Number.isFinite(prevAltitude)
+                    && Number.isFinite(currAltitude)
+                ) {
+                    const deltaDistance = currDistance - prevDistance;
+                    if (deltaDistance >= 2) {
+                        const gradient = ((currAltitude - prevAltitude) / deltaDistance) * 100;
+                        if (Number.isFinite(gradient)) {
+                            gradients.push(Math.max(-35, Math.min(35, gradient)));
+                        }
+                    }
+                }
+            }
+            const avgGradient = gradients.length
+                ? gradients.reduce((sum: number, value: number) => sum + value, 0) / gradients.length
+                : null;
+            const maxGradient = gradients.length
+                ? Math.max(...gradients)
+                : null;
+
             return {
                 ...split,
-                avg_watts: avgWatts,
-                max_watts: maxWatts,
-                normalized_power: normalizedPower,
+                avg_watts: isCyclingLike ? avgWatts : split?.avg_watts,
+                max_watts: isCyclingLike ? maxWatts : split?.max_watts,
+                normalized_power: isCyclingLike ? normalizedPower : split?.normalized_power,
+                avg_gradient: Number.isFinite(Number(split?.avg_gradient)) ? Number(split.avg_gradient) : avgGradient,
+                max_gradient: Number.isFinite(Number(split?.max_gradient)) ? Number(split.max_gradient) : maxGradient,
             };
         });
     }, [activity, splitsToDisplay, streamPoints]);
@@ -2319,20 +2627,61 @@ export const ActivityDetailPage = () => {
                                             initialActivity={activity}
                                             canEdit={me?.id === activity.athlete_id}
                                         />
+                                        <SegmentedControl
+                                            size="xs"
+                                            value={mapHeatMetric}
+                                            onChange={(value) => setMapHeatMetric(value as typeof mapHeatMetric)}
+                                            data={[
+                                                { label: t('Map metric: None'), value: 'none' },
+                                                { label: t('Speed'), value: 'speed' },
+                                                { label: t('Heart Rate'), value: 'heart_rate' },
+                                                { label: t('Power'), value: 'power' },
+                                                { label: t('Gradient'), value: 'gradient' },
+                                            ]}
+                                        />
                                         {routePositions.length > 0 && !mapFullscreen ? (
                                             <Box style={{ position: 'relative' }}>
                                                 <Paper withBorder radius="lg" style={{ overflow: "hidden", borderColor: ui.border }} h={350}>
                                                     <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
                                                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
-                                                        <Polyline positions={routePositions} color="blue" weight={4} />
+                                                        {mapHeatSegments.length > 0 ? (
+                                                            mapHeatSegments.map((segment, index) => (
+                                                                <Polyline key={`overview-heat-${index}`} positions={segment.positions} color={segment.color} weight={5} opacity={0.92} />
+                                                            ))
+                                                        ) : (
+                                                            <Polyline positions={routePositions} color="blue" weight={4} />
+                                                        )}
                                                         {selectedEffortRoutePositions.length > 1 && (
                                                             <Polyline positions={selectedEffortRoutePositions} color={ui.accent} weight={7} opacity={0.95} />
                                                         )}
-                                                        {focusedEffortMarkerPos && <MapPanTo position={focusedEffortMarkerPos} />}
-                                                        {focusedEffortMarkerPos && (
-                                                            <CircleMarker center={focusedEffortMarkerPos} radius={7} pathOptions={{ color: '#fff', fillColor: ui.accent, fillOpacity: 1, weight: 2 }}>
+                                                        {selectedChartRoutePositions.length > 1 && (
+                                                            <Polyline positions={selectedChartRoutePositions} color={ui.accent} weight={7} opacity={0.95} />
+                                                        )}
+                                                        <MapRouteInteractionLayer
+                                                            points={interactiveMapRoutePoints}
+                                                            onHover={handleMapHover}
+                                                            onDragStart={handleMapDragStart}
+                                                            onDrag={handleMapDrag}
+                                                            onDragEnd={handleMapDragEnd}
+                                                        />
+                                                        {activeMapMarkerPos && <MapPanTo position={activeMapMarkerPos} />}
+                                                        {activeMapMarkerPos && (
+                                                            <CircleMarker center={activeMapMarkerPos} radius={7} pathOptions={{ color: '#fff', fillColor: ui.accent, fillOpacity: 1, weight: 2 }}>
                                                                 <LeafletTooltip direction="top" offset={[0, -8]}>
-                                                                    {t('Selected effort')}
+                                                                    <Stack gap={2}>
+                                                                        {activeMapMarkerPoint?.time_min != null && (
+                                                                            <Text size="xs">{formatElapsedFromMinutes(activeMapMarkerPoint.time_min)} elapsed</Text>
+                                                                        )}
+                                                                        {activeMapMarkerPoint?.distance_km != null && (
+                                                                            <Text size="xs">{toDistanceLabel(activeMapMarkerPoint.distance_km)}</Text>
+                                                                        )}
+                                                                        {activeMapMarkerPoint?.heart_rate != null && <Text size="xs">HR: {Math.round(Number(activeMapMarkerPoint.heart_rate))} bpm</Text>}
+                                                                        {activeMapMarkerPoint?.speed_display != null && <Text size="xs">{t('Speed')}: {Number(activeMapMarkerPoint.speed_display).toFixed(1)} {me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h'}</Text>}
+                                                                        {activeMapMarkerPoint?.power != null && Number(activeMapMarkerPoint.power) > 0 && <Text size="xs">{t('Power')}: {Math.round(Number(activeMapMarkerPoint.power))} W</Text>}
+                                                                        {activeMapMarkerPoint?.altitude != null && <Text size="xs">{t('Elev')}: {Math.round(Number(activeMapMarkerPoint.altitude))} m</Text>}
+                                                                        {activeMapMarkerPoint?.gradient_pct != null && <Text size="xs">{t('Gradient')}: {Number(activeMapMarkerPoint.gradient_pct).toFixed(1)}%</Text>}
+                                                                        {!mapHoveredPoint && <Text size="xs">{t('Selected effort')}</Text>}
+                                                                    </Stack>
                                                                 </LeafletTooltip>
                                                             </CircleMarker>
                                                         )}
@@ -2355,6 +2704,21 @@ export const ActivityDetailPage = () => {
                                                     <IconMap size={40} color="gray" />
                                                     <Text c={ui.textDim}>No map data available (Virtual Ride or Indoor)</Text>
                                                 </Stack>
+                                            </Paper>
+                                        )}
+                                        {chartSelectionStats && (
+                                            <Paper withBorder p="sm" radius="md" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
+                                                <Group justify="space-between" mb={4}>
+                                                    <Text size="xs" fw={700} c={ui.textDim}>{t('Selected segment')}</Text>
+                                                    <Button size="compact-xs" variant="subtle" c={ui.textDim} onClick={() => setChartSelection(null)}>{t('Clear')}</Button>
+                                                </Group>
+                                                <Group gap="md" wrap="wrap">
+                                                    {chartSelectionStats.avgHr != null && <Text size="xs" c={ui.textMain}>{t('Avg HR')}: {Math.round(chartSelectionStats.avgHr)} bpm</Text>}
+                                                    {chartSelectionStats.avgSpeed != null && <Text size="xs" c={ui.textMain}>{t('Avg Speed')}: {chartSelectionStats.avgSpeed.toFixed(1)} {me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h'}</Text>}
+                                                    {chartSelectionStats.avgPower != null && <Text size="xs" c={ui.textMain}>{t('Avg Power')}: {Math.round(chartSelectionStats.avgPower)} W</Text>}
+                                                    {chartSelectionStats.avgGradient != null && <Text size="xs" c={ui.textMain}>{t('Avg Gradient')}: {chartSelectionStats.avgGradient.toFixed(1)}%</Text>}
+                                                    {chartSelectionStats.maxGradient != null && <Text size="xs" c={ui.textMain}>{t('Max Gradient')}: {chartSelectionStats.maxGradient.toFixed(1)}%</Text>}
+                                                </Group>
                                             </Paper>
                                         )}
                                     </Stack>
@@ -2501,6 +2865,8 @@ export const ActivityDetailPage = () => {
                                                         {visibleSeries.speed && s.avgSpeed != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Speed</Text><Text size="sm" fw={600} c={ui.textMain}>{s.avgSpeed.toFixed(1)} {speedUnit}</Text></Stack>}
                                                         {visibleSeries.cadence && s.avgCadence != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Cadence</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgCadence)} rpm</Text></Stack>}
                                                         {visibleSeries.altitude && s.elevGain != null && s.elevGain > 0 && <Stack gap={0}><Text size="xs" c={ui.textDim}>Elev Gain</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.elevGain)} m</Text></Stack>}
+                                                        {visibleSeries.altitude && s.avgGradient != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>{t('Avg Gradient')}</Text><Text size="sm" fw={600} c={ui.textMain}>{s.avgGradient.toFixed(1)}%</Text></Stack>}
+                                                        {visibleSeries.altitude && s.maxGradient != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>{t('Max Gradient')}</Text><Text size="sm" fw={600} c={ui.textMain}>{s.maxGradient.toFixed(1)}%</Text></Stack>}
                                                     </Group>
                                                 </Paper>
                                             );
@@ -2829,6 +3195,8 @@ export const ActivityDetailPage = () => {
                                     <Chip size="xs" checked={visibleSplitStats.pace_or_speed} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, pace_or_speed: checked }))} variant="light">{isRunningActivity ? t('Pace') : t('Speed')}</Chip>
                                     <Chip size="xs" checked={visibleSplitStats.avg_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_hr: checked }))} variant="light">{t("Avg HR")}</Chip>
                                     <Chip size="xs" checked={visibleSplitStats.max_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_hr: checked }))} variant="light">{t("Max HR")}</Chip>
+                                    <Chip size="xs" checked={visibleSplitStats.avg_gradient} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_gradient: checked }))} variant="light">{t("Avg Gradient")}</Chip>
+                                    <Chip size="xs" checked={visibleSplitStats.max_gradient} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_gradient: checked }))} variant="light">{t("Max Gradient")}</Chip>
                                     {isCyclingActivity && (
                                         <>
                                             <Chip size="xs" checked={visibleSplitStats.avg_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_watts: checked }))} variant="light">{t("Avg W")}</Chip>
@@ -2849,6 +3217,8 @@ export const ActivityDetailPage = () => {
                                             {visibleSplitStats.pace_or_speed && <Table.Th>{isRunningActivity ? t('Pace') : t('Avg Speed')}</Table.Th>}
                                             {visibleSplitStats.avg_hr && <Table.Th>{t("Avg HR")}</Table.Th>}
                                             {visibleSplitStats.max_hr && <Table.Th>{t("Max HR")}</Table.Th>}
+                                            {visibleSplitStats.avg_gradient && <Table.Th>{t("Avg Gradient")}</Table.Th>}
+                                            {visibleSplitStats.max_gradient && <Table.Th>{t("Max Gradient")}</Table.Th>}
                                             {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Th>{t("Avg W")}</Table.Th>}
                                             {isCyclingActivity && visibleSplitStats.max_watts && <Table.Th>{t("Max W")}</Table.Th>}
                                             {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>NP</Table.Th>}
@@ -2894,6 +3264,8 @@ export const ActivityDetailPage = () => {
                                                 )}
                                                 {visibleSplitStats.avg_hr && <Table.Td>{split.avg_hr?.toFixed(0) || '-'}</Table.Td>}
                                                 {visibleSplitStats.max_hr && <Table.Td>{split.max_hr?.toFixed(0) || '-'}</Table.Td>}
+                                                {visibleSplitStats.avg_gradient && <Table.Td>{Number.isFinite(Number(split.avg_gradient)) ? `${Number(split.avg_gradient).toFixed(1)}%` : '-'}</Table.Td>}
+                                                {visibleSplitStats.max_gradient && <Table.Td>{Number.isFinite(Number(split.max_gradient)) ? `${Number(split.max_gradient).toFixed(1)}%` : '-'}</Table.Td>}
                                                 {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Td>{split.avg_watts ? `${split.avg_watts.toFixed(0)} W` : '-'}</Table.Td>}
                                                 {isCyclingActivity && visibleSplitStats.max_watts && <Table.Td>{split.max_watts ? `${split.max_watts.toFixed(0)} W` : '-'}</Table.Td>}
                                                 {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Td>{split.normalized_power ? `${split.normalized_power.toFixed(0)} W` : '-'}</Table.Td>}
@@ -3410,36 +3782,55 @@ export const ActivityDetailPage = () => {
                             <Box style={{ flex: 1, minHeight: 0, position: 'relative' }}>
                                 <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
                                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
-                                    <Polyline positions={routePositions} color="blue" weight={4} opacity={0.6} />
+                                    {mapHeatSegments.length > 0 ? (
+                                        mapHeatSegments.map((segment, index) => (
+                                            <Polyline key={`fs-heat-${index}`} positions={segment.positions} color={segment.color} weight={5} opacity={0.92} />
+                                        ))
+                                    ) : (
+                                        <Polyline positions={routePositions} color="blue" weight={4} opacity={0.6} />
+                                    )}
                                     {selectedEffortRoutePositions.length > 1 && (
                                         <Polyline positions={selectedEffortRoutePositions} color={ui.accent} weight={8} opacity={0.95} />
                                     )}
+                                    {selectedChartRoutePositions.length > 1 && (
+                                        <Polyline positions={selectedChartRoutePositions} color={ui.accent} weight={8} opacity={0.95} />
+                                    )}
+                                    <MapRouteInteractionLayer
+                                        points={interactiveMapRoutePoints}
+                                        onHover={handleMapHover}
+                                        onDragStart={handleMapDragStart}
+                                        onDrag={handleMapDrag}
+                                        onDragEnd={handleMapDragEnd}
+                                    />
                                     <MapFitBounds positions={routePositions} />
-                                    {fsMapMarkerPos && <MapPanTo position={fsMapMarkerPos} />}
-                                    {fsMapMarkerPos && (
-                                        <CircleMarker center={fsMapMarkerPos} radius={8} pathOptions={{ color: '#fff', fillColor: '#E95A12', fillOpacity: 1, weight: 3 }}>
-                                            {fsMapPoint && (
+                                    {fullscreenMarkerPos && <MapPanTo position={fullscreenMarkerPos} />}
+                                    {fullscreenMarkerPos && (
+                                        <CircleMarker center={fullscreenMarkerPos} radius={8} pathOptions={{ color: '#fff', fillColor: '#E95A12', fillOpacity: 1, weight: 3 }}>
+                                            {fullscreenMarkerPoint && (
                                                 <LeafletTooltip permanent direction="top" offset={[0, -12]}>
-                                                    <div style={{ fontSize: 12, lineHeight: 1.5, minWidth: 110 }}>
-                                                        <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                                                            {Math.floor(fsMapPoint.timeMin)}:{Math.round((fsMapPoint.timeMin % 1) * 60).toString().padStart(2, '0')} elapsed
-                                                        </div>
-                                                        {fsMapPoint.heart_rate != null && (
-                                                            <div>HR: {fsMapPoint.heart_rate} bpm</div>
+                                                    <Stack gap={2}>
+                                                        <Text size="xs" fw={600}>
+                                                            {Math.floor(fullscreenMarkerPoint.timeMin)}:{Math.round((fullscreenMarkerPoint.timeMin % 1) * 60).toString().padStart(2, '0')} elapsed
+                                                        </Text>
+                                                        {fullscreenMarkerPoint.heart_rate != null && (
+                                                            <Text size="xs">HR: {fullscreenMarkerPoint.heart_rate} bpm</Text>
                                                         )}
-                                                        {fsMapPoint.paceDisplay != null && (
-                                                            <div>Pace: {fsMapPoint.paceDisplay}</div>
+                                                        {fullscreenMarkerPoint.paceDisplay != null && (
+                                                            <Text size="xs">Pace: {fullscreenMarkerPoint.paceDisplay}</Text>
                                                         )}
-                                                        {fsMapPoint.paceDisplay == null && fsMapPoint.speedKmh != null && (
-                                                            <div>Speed: {fsMapPoint.speedKmh.toFixed(1)} km/h</div>
+                                                        {fullscreenMarkerPoint.paceDisplay == null && fullscreenMarkerPoint.speedKmh != null && (
+                                                            <Text size="xs">Speed: {fullscreenMarkerPoint.speedKmh.toFixed(1)} km/h</Text>
                                                         )}
-                                                        {fsMapPoint.power != null && fsMapPoint.power > 0 && (
-                                                            <div>Power: {Math.round(fsMapPoint.power)} W</div>
+                                                        {fullscreenMarkerPoint.power != null && fullscreenMarkerPoint.power > 0 && (
+                                                            <Text size="xs">Power: {Math.round(fullscreenMarkerPoint.power)} W</Text>
                                                         )}
-                                                        {fsMapPoint.altitude != null && (
-                                                            <div>Elev: {Math.round(fsMapPoint.altitude)} m</div>
+                                                        {fullscreenMarkerPoint.altitude != null && (
+                                                            <Text size="xs">Elev: {Math.round(fullscreenMarkerPoint.altitude)} m</Text>
                                                         )}
-                                                    </div>
+                                                        {fullscreenMarkerPoint.gradient_pct != null && (
+                                                            <Text size="xs">{t('Gradient')}: {Number(fullscreenMarkerPoint.gradient_pct).toFixed(1)}%</Text>
+                                                        )}
+                                                    </Stack>
                                                 </LeafletTooltip>
                                             )}
                                         </CircleMarker>
@@ -3457,7 +3848,7 @@ export const ActivityDetailPage = () => {
                                                     <stop offset="100%" stopColor={isDark ? '#60A5FA' : '#3B82F6'} stopOpacity={0.05} />
                                                 </linearGradient>
                                             </defs>
-                                            <XAxis dataKey="timeMin" tick={{ fontSize: 10, fill: ui.textDim }} tickFormatter={(v: number) => formatElapsedFromMinutes(v)} axisLine={false} tickLine={false} />
+                                            <XAxis dataKey="distance_km" tick={{ fontSize: 10, fill: ui.textDim }} tickFormatter={(v: number) => `${v.toFixed(1)} km`} axisLine={false} tickLine={false} />
                                             <YAxis tick={{ fontSize: 10, fill: ui.textDim }} axisLine={false} tickLine={false} width={35} domain={['dataMin - 10', 'dataMax + 10']} tickFormatter={(v: number) => `${Math.round(v)}m`} />
                                             <Tooltip
                                                 content={({ active, payload }) => {
@@ -3465,7 +3856,7 @@ export const ActivityDetailPage = () => {
                                                     const d = payload[0].payload;
                                                     return (
                                                         <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt} style={{ fontSize: 11 }}>
-                                                            <Text size="xs" fw={600} c={ui.textDim}>Time: {formatElapsedFromMinutes(d.timeMin)}</Text>
+                                                            <Text size="xs" fw={600} c={ui.textDim}>{t('Distance')}: {toDistanceLabel(d.distance_km)}</Text>
                                                             <Text size="xs" c={ui.textMain}>Elevation: {Math.round(d.altitude ?? 0)} m</Text>
                                                         </Paper>
                                                     );
