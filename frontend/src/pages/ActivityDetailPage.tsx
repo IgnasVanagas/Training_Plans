@@ -1,17 +1,19 @@
-import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, RangeSlider, Select, SimpleGrid, Stack, Switch, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, NumberInput, Modal, TextInput, Tooltip as MantineTooltip } from "@mantine/core";
-import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink, IconShare, IconFlame, IconMinus, IconX } from "@tabler/icons-react";
+import { ActionIcon, Anchor, AppShell, Box, Button, Card, Container, Grid, Group, Paper, SimpleGrid, Stack, Tabs, Text, Title, Badge, SegmentedControl, Chip, Table, ThemeIcon, useComputedColorScheme, Modal, TextInput, Tooltip as MantineTooltip } from "@mantine/core";
+import { IconArrowLeft, IconBolt, IconHeart, IconMap, IconClock, IconActivity, IconHelpCircle, IconTrophy, IconArrowsMaximize, IconExternalLink, IconShare } from "@tabler/icons-react";
 import ShareToChatModal from "../components/ShareToChatModal";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { useMediaQuery } from "@mantine/hooks";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar, Cell, ReferenceLine, ReferenceArea } from 'recharts';
-import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip, useMap, useMapEvents } from 'react-leaflet';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, ReferenceLine } from 'recharts';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip as LeafletTooltip } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from "../api/client";
 import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from 'leaflet';
 import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
+import { ActivityDetail, EffortSegmentMeta, HardEffort, HardEffortCategory, HardEffortRest, RouteInteractivePoint } from "../types/activityDetail";
+import { MapFitBounds, MapPanTo, MapRouteInteractionLayer, toDistanceLabel, getHeatColor } from "../components/activityDetail/mapHelpers";
 import { ActivityDetailSkeleton } from "../components/common/SkeletonScreens";
 import SupportContactButton from "../components/common/SupportContactButton";
 import { formatHrZoneLabel, getHrZoneClassifierBounds } from "../utils/hrZones";
@@ -19,6 +21,12 @@ import { useI18n } from "../i18n/I18nProvider";
 import { readSnapshot, writeSnapshot } from "../utils/localSnapshot";
 import { CommentsPanel } from "../components/activityDetail/CommentsPanel";
 import { SessionFeedbackPanel } from "../components/activityDetail/SessionFeedbackPanel";
+import { ComparisonPanel } from "../components/activityDetail/ComparisonPanel";
+import { SplitsTable } from "../components/activityDetail/SplitsTable";
+import { ChartsPanel } from "../components/activityDetail/ChartsPanel";
+import { HardEffortsPanel } from "../components/activityDetail/HardEffortsPanel";
+import { BestEffortsPanel } from "../components/activityDetail/BestEffortsPanel";
+import { FullscreenMapModal } from "../components/activityDetail/FullscreenMapModal";
 import { getPersonalRecords } from "../api/activities";
 
 // Fix Leaflet icon issue
@@ -29,276 +37,6 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
 });
-
-type ActivityDetail = {
-  id: number;
-  athlete_id: number;
-  filename: string;
-  created_at: string;
-  sport: string;
-  distance: number;
-  duration: number;
-  moving_time?: number | null;
-  avg_speed: number;
-  average_hr: number;
-  average_watts: number;
-    streams: any;
-  power_curve: Record<string, number> | null;
-  hr_zones: Record<string, number> | null;
-  best_efforts: Array<{
-    window?: string; seconds?: number; power?: number;
-    distance?: string; meters?: number; time_seconds?: number;
-    avg_hr?: number | null; elevation?: number;
-  }> | null;
-  personal_records: Record<string, number> | null;
-  laps: any[] | null;
-  splits_metric: any[] | null;
-  max_hr?: number;
-  max_speed?: number;
-  max_watts?: number;
-  max_cadence?: number;
-  avg_cadence?: number;
-  total_elevation_gain?: number;
-  total_calories?: number;
-    is_deleted?: boolean;
-    aerobic_load?: number;
-    anaerobic_load?: number;
-    total_load_impact?: number;
-    rpe?: number | null;
-    lactate_mmol_l?: number | null;
-    notes?: string | null;
-    ftp_at_time?: number | null;
-    weight_at_time?: number | null;
-    strava_activity_url?: string | null;
-    planned_comparison?: {
-        workout_id: number;
-        workout_title: string;
-        summary?: {
-            has_planned_distance?: boolean | null;
-            duration_delta_min?: number | null;
-            distance_delta_km?: number | null;
-            duration_match_pct?: number | null;
-            distance_match_pct?: number | null;
-            intensity_match_pct?: number | null;
-            intensity_status?: 'green' | 'yellow' | 'red' | string | null;
-            execution_score_pct?: number | null;
-            execution_status?: 'great' | 'good' | 'ok' | 'fair' | 'subpar' | 'poor' | 'incomplete' | string | null;
-            execution_components?: Record<string, number> | null;
-            execution_trace?: {
-                model_version?: string | null;
-                scoring_basis?: string | null;
-                used_weight_pct?: number | null;
-                weighted_total_points?: number | null;
-                normalization_divisor?: number | null;
-                components?: Array<{
-                    key?: string | null;
-                    label?: string | null;
-                    available?: boolean | null;
-                    weight_fraction?: number | null;
-                    weight_pct?: number | null;
-                    component_score_pct?: number | null;
-                    weighted_points?: number | null;
-                    normalized_contribution_pct?: number | null;
-                    note?: string | null;
-                }>;
-                status_thresholds?: Array<{
-                    status?: string | null;
-                    min_score_pct?: number | null;
-                }>;
-            } | null;
-            split_importance?: 'high' | 'low' | string | null;
-            split_note?: string | null;
-        };
-        intensity?: {
-            note?: string | null;
-        } | null;
-        splits?: Array<{
-            split: number;
-            planned?: {
-                planned_duration_s?: number | null;
-                category?: string | null;
-                target?: {
-                    type?: string | null;
-                    value?: number | null;
-                    min?: number | null;
-                    max?: number | null;
-                    zone?: number | null;
-                } | null;
-            } | null;
-            actual?: {
-                actual_duration_s?: number | null;
-                avg_hr?: number | null;
-                avg_power?: number | null;
-                avg_speed?: number | null;
-            } | null;
-            delta_duration_s?: number | null;
-            delta_duration_pct?: number | null;
-        }>;
-    } | null;
-};
-
-type EffortSegmentMeta = {
-    startIndex: number;
-    endIndex: number;
-    centerIndex: number;
-    seconds: number | null;
-    meters: number | null;
-    avgPower: number | null;
-    avgHr: number | null;
-    speedKmh: number | null;
-};
-
-type HardEffortCategory = 'sprint' | 'threshold_plus' | 'near_threshold';
-type HardEffort = {
-    key: string;
-    category: HardEffortCategory;
-    startIndex: number;
-    endIndex: number;
-    centerIndex: number;
-    durationSeconds: number;
-    avgPower: number | null;
-    avgHr: number | null;
-    avgSpeedKmh: number | null;
-    pctRef: number | null;
-};
-type HardEffortRest = {
-    durationSeconds: number;
-    avgHr: number | null;
-    avgPower: number | null;
-    avgSpeedKmh: number | null;
-};
-
-/* ── Fullscreen map helpers ── */
-
-const MapFitBounds = ({ positions }: { positions: [number, number][] }) => {
-    const map = useMap();
-    useEffect(() => {
-        if (positions.length > 1) {
-            map.fitBounds(L.latLngBounds(positions.map(p => L.latLng(p[0], p[1]))), { padding: [30, 30] });
-        }
-    }, [map, positions]);
-    return null;
-};
-
-const MapPanTo = ({ position }: { position: [number, number] | null }) => {
-    const map = useMap();
-    const lastPan = useRef<string | null>(null);
-    useEffect(() => {
-        if (!position) return;
-        const key = `${position[0].toFixed(5)},${position[1].toFixed(5)}`;
-        if (lastPan.current !== key) {
-            lastPan.current = key;
-            // Don't pan on every hover — only if marker is outside visible bounds
-            if (!map.getBounds().contains(L.latLng(position[0], position[1]))) {
-                map.panTo(L.latLng(position[0], position[1]), { animate: true, duration: 0.3 });
-            }
-        }
-    }, [map, position]);
-    return null;
-};
-
-type RouteInteractivePoint = {
-    chartIndex: number;
-    lat: number;
-    lon: number;
-};
-
-const toDistanceLabel = (kmValue: unknown) => {
-    const km = Number(kmValue);
-    if (!Number.isFinite(km) || km < 0) return '-';
-    return `${km.toFixed(2)} km`;
-};
-
-const findNearestRoutePoint = (latlng: L.LatLng, points: RouteInteractivePoint[]) => {
-    if (!points.length) return null;
-    const targetLat = latlng.lat;
-    const targetLon = latlng.lng;
-    let nearest: RouteInteractivePoint | null = null;
-    let bestDist = Number.POSITIVE_INFINITY;
-    for (const point of points) {
-        const dLat = point.lat - targetLat;
-        const dLon = point.lon - targetLon;
-        const distSq = dLat * dLat + dLon * dLon;
-        if (distSq < bestDist) {
-            bestDist = distSq;
-            nearest = point;
-        }
-    }
-    return nearest;
-};
-
-const getHeatColor = (value: number, min: number, max: number) => {
-    if (!Number.isFinite(value) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-        return '#3b82f6';
-    }
-    const ratio = Math.max(0, Math.min(1, (value - min) / (max - min)));
-    if (ratio < 0.2) return '#1d4ed8';
-    if (ratio < 0.4) return '#0ea5e9';
-    if (ratio < 0.6) return '#22c55e';
-    if (ratio < 0.8) return '#f59e0b';
-    return '#dc2626';
-};
-
-// Threshold in degrees² for snapping hover to nearest route point (~400m radius)
-const MAP_HOVER_SNAP_SQ = 0.0036 * 0.0036;
-
-const MapRouteInteractionLayer = ({
-    points,
-    onHover,
-    onDragStart,
-    onDrag,
-    onDragEnd,
-}: {
-    points: RouteInteractivePoint[];
-    onHover: (chartIndex: number | null) => void;
-    onDragStart?: (chartIndex: number) => void;
-    onDrag?: (chartIndex: number) => void;
-    onDragEnd?: () => void;
-}) => {
-    const draggingRef = useRef(false);
-
-    useMapEvents({
-        mousemove: (e) => {
-            const nearest = findNearestRoutePoint(e.latlng, points);
-            if (!nearest) {
-                if (!draggingRef.current) onHover(null);
-                return;
-            }
-            const dLat = nearest.lat - e.latlng.lat;
-            const dLon = nearest.lon - e.latlng.lng;
-            if (dLat * dLat + dLon * dLon > MAP_HOVER_SNAP_SQ) {
-                if (!draggingRef.current) onHover(null);
-                return;
-            }
-            if (draggingRef.current && onDrag) {
-                onDrag(nearest.chartIndex);
-            } else {
-                onHover(nearest.chartIndex);
-            }
-        },
-        mouseout: () => {
-            if (!draggingRef.current) onHover(null);
-        },
-        mousedown: (e) => {
-            if (!onDragStart) return;
-            const nearest = findNearestRoutePoint(e.latlng, points);
-            if (!nearest) return;
-            const dLat = nearest.lat - e.latlng.lat;
-            const dLon = nearest.lon - e.latlng.lng;
-            if (dLat * dLat + dLon * dLon > MAP_HOVER_SNAP_SQ) return;
-            draggingRef.current = true;
-            onDragStart(nearest.chartIndex);
-        },
-        mouseup: () => {
-            if (!draggingRef.current) return;
-            draggingRef.current = false;
-            onDragEnd?.();
-        },
-    });
-
-    if (points.length < 2) return null;
-    return null;
-};
 
 export const ActivityDetailPage = () => {
     const { t } = useI18n();
@@ -2718,175 +2456,38 @@ export const ActivityDetailPage = () => {
 
                         {/* CHARTS TAB */}
                         <Tabs.Panel value="charts">
-                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                <Group justify="space-between" mb="md" wrap="wrap" gap="sm">
-                                    <Group gap="xs" wrap="wrap">
-                                        <Text size="xs" fw={700} c={ui.textDim}>Show:</Text>
-                                        <Chip size="xs" checked={visibleSeries.heart_rate} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, heart_rate: checked }))} variant="light">Heart Rate</Chip>
-                                        {supportsPaceSeries && <Chip size="xs" checked={visibleSeries.pace} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, pace: checked }))} variant="light">Pace</Chip>}
-                                        {supportsSpeedSeries && <Chip size="xs" checked={visibleSeries.speed} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, speed: checked }))} variant="light">Speed</Chip>}
-                                        <Chip size="xs" checked={visibleSeries.power} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, power: checked }))} variant="light">Power</Chip>
-                                        <Chip size="xs" checked={visibleSeries.cadence} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, cadence: checked }))} variant="light">Cadence</Chip>
-                                        <Chip size="xs" checked={visibleSeries.altitude} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, altitude: checked }))} variant="light">Altitude</Chip>
-                                    </Group>
-                                    <Group gap="xs">
-                                        <SegmentedControl
-                                            size="xs"
-                                            value={powerChartMode}
-                                            onChange={(v) => setPowerChartMode(v as 'raw' | 'avg5s')}
-                                            data={[
-                                                { label: 'Power', value: 'raw' },
-                                                { label: '5s Power avg', value: 'avg5s' },
-                                            ]}
-                                        />
-                                        {focusMode && (
-                                            <Select
-                                                size="xs"
-                                                value={focusObjective}
-                                                onChange={(v) => v && setFocusObjective(v as typeof focusObjective)}
-                                                data={[
-                                                    { value: 'pacing', label: 'Pacing' },
-                                                    { value: 'cardio', label: 'Cardio' },
-                                                    { value: 'efficiency', label: 'Efficiency' },
-                                                ]}
-                                                w={120}
-                                            />
-                                        )}
-                                        <Switch
-                                            size="xs"
-                                            label="Focus mode"
-                                            checked={focusMode}
-                                            onChange={(e) => setFocusMode(e.currentTarget.checked)}
-                                        />
-                                    </Group>
-                                </Group>
-                                {chartData.length > 0 ? (
-                                    <Stack gap="xs">
-                                        <Box
-                                            h={360}
-                                            style={{ cursor: 'crosshair', userSelect: 'none' }}
-                                            onMouseDown={() => {
-                                                isDraggingChartRef.current = true;
-                                                dragStartIdxRef.current = hoveredPointIndexRef.current;
-                                                setChartSelection(null);
-                                            }}
-                                            onMouseUp={() => { isDraggingChartRef.current = false; dragStartIdxRef.current = null; }}
-                                            onMouseLeave={() => { isDraggingChartRef.current = false; dragStartIdxRef.current = null; }}
-                                        >
-                                            <ResponsiveContainer>
-                                                <LineChart data={chartRenderData} onMouseMove={handleSharedChartMouseMove} onMouseLeave={handleSharedChartMouseLeave}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                                    <XAxis dataKey="time_min" hide />
-                                                    <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
-                                                    <YAxis yAxisId="power" hide domain={[0, 'auto']} />
-                                                    <YAxis yAxisId="pace" hide reversed domain={['auto', 'auto']} />
-                                                    <YAxis yAxisId="speed" hide domain={[0, 'auto']} />
-                                                    <YAxis yAxisId="cadence" hide domain={[0, 'auto']} />
-                                                    <YAxis yAxisId="altitude" hide domain={['auto', 'auto']} />
-                                                    <Tooltip
-                                                        {...sharedTooltipProps}
-                                                        content={({ active, payload }: any) => {
-                                                            if (isDraggingChartRef.current) return null;
-                                                            const point = active && payload?.[0]?.payload ? payload[0].payload : null;
-                                                            if (!point) return null;
-                                                            const speedUnit = me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h';
-                                                            const paceValue = Number(point.pace);
-                                                            const paceText = Number.isFinite(paceValue)
-                                                                ? `${Math.floor(paceValue)}:${Math.floor((paceValue - Math.floor(paceValue)) * 60).toString().padStart(2, '0')}${me?.profile?.preferred_units === 'imperial' ? '/mi' : '/km'}`
-                                                                : '-';
-                                                            const powerValue = powerChartMode === 'avg5s' ? Number(point.power_5s) : Number(point.power_raw);
-                                                            return (
-                                                                <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt}>
-                                                                    <Text size="xs" c={ui.textDim} fw={600} mb={4}>Time: {formatElapsedFromMinutes(point.time_min)}</Text>
-                                                                    {focusSeries.heart_rate && <Text size="xs" c={ui.textMain}>HR: {Number.isFinite(Number(point.heart_rate)) ? `${Math.round(Number(point.heart_rate))} bpm` : '-'}</Text>}
-                                                                    {focusSeries.power && <Text size="xs" c={ui.textMain}>Power: {Number.isFinite(powerValue) ? `${Math.round(powerValue)} W` : '-'}</Text>}
-                                                                    {focusSeries.pace && <Text size="xs" c={ui.textMain}>Pace: {paceText}</Text>}
-                                                                    {focusSeries.speed && <Text size="xs" c={ui.textMain}>Speed: {Number.isFinite(Number(point.speed_display)) ? `${Number(point.speed_display).toFixed(1)} ${speedUnit}` : '-'}</Text>}
-                                                                    {focusSeries.cadence && <Text size="xs" c={ui.textMain}>Cadence: {Number.isFinite(Number(point.cadence)) ? `${Math.round(Number(point.cadence))} rpm` : '-'}</Text>}
-                                                                    {focusSeries.altitude && <Text size="xs" c={ui.textMain}>Elev: {Number.isFinite(Number(point.altitude)) ? `${Math.round(Number(point.altitude))} m` : '-'}</Text>}
-                                                                </Paper>
-                                                            );
-                                                        }}
-                                                    />
-                                                    {focusSeries.heart_rate && <Line yAxisId="hr" type="monotone" dataKey="heart_rate" stroke="#fa5252" strokeWidth={1.5} dot={false} name="HR" isAnimationActive={false} connectNulls />}
-                                                    {focusSeries.power && <Line yAxisId="power" type="monotone" dataKey={powerChartMode === 'avg5s' ? 'power_5s' : 'power_raw'} stroke="#fd7e14" strokeWidth={1.5} dot={false} name="Power" isAnimationActive={false} connectNulls />}
-                                                    {focusSeries.pace && <Line yAxisId="pace" type="monotone" dataKey="pace" stroke="#228be6" strokeWidth={1.5} dot={false} name="Pace" isAnimationActive={false} connectNulls={false} />}
-                                                    {focusSeries.speed && <Line yAxisId="speed" type="monotone" dataKey="speed_display" stroke="#12b886" strokeWidth={1.4} dot={false} name="Speed" isAnimationActive={false} connectNulls />}
-                                                    {focusSeries.cadence && <Line yAxisId="cadence" type="monotone" dataKey="cadence" stroke="#40c057" strokeWidth={1.2} dot={false} name="Cadence" isAnimationActive={false} connectNulls />}
-                                                    {focusSeries.altitude && <Line yAxisId="altitude" type="monotone" dataKey="altitude" stroke="#868e96" strokeWidth={1.2} dot={false} name="Altitude" isAnimationActive={false} connectNulls />}
-                                                    {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
-                                                        <ReferenceArea
-                                                            yAxisId="hr"
-                                                            x1={chartRenderData[chartSelection.startIdx].time_min}
-                                                            x2={chartRenderData[chartSelection.endIdx].time_min}
-                                                            fill={ui.accent}
-                                                            fillOpacity={0.13}
-                                                            stroke={ui.accent}
-                                                            strokeOpacity={0.5}
-                                                            strokeWidth={1}
-                                                        />
-                                                    )}
-                                                </LineChart>
-                                            </ResponsiveContainer>
-                                        </Box>
-                                        {chartSelectionStats && (() => {
-                                            const s = chartSelectionStats;
-                                            const isImperial = me?.profile?.preferred_units === 'imperial';
-                                            const paceUnit = isImperial ? '/mi' : '/km';
-                                            const speedUnit = isImperial ? 'mph' : 'km/h';
-                                            const fmtPace = (v: number | null) => {
-                                                if (!v || !Number.isFinite(v)) return null;
-                                                const m = Math.floor(v); const sec = Math.round((v - m) * 60);
-                                                return `${m}:${sec.toString().padStart(2, '0')}${paceUnit}`;
-                                            };
-                                            return (
-                                                <Paper withBorder px="md" py="xs" radius="md" bg={isDark ? 'rgba(233,90,18,0.08)' : 'rgba(233,90,18,0.06)'} style={{ borderColor: 'rgba(233,90,18,0.3)' }}>
-                                                    <Group justify="space-between" mb={6}>
-                                                        <Text size="xs" fw={700} c={ui.accent}>Selection — {formatElapsedFromMinutes(s.durationMin)}</Text>
-                                                        <Button size="compact-xs" variant="subtle" c={ui.textDim} onClick={() => setChartSelection(null)}>Clear</Button>
-                                                    </Group>
-                                                    <Group gap="xl" wrap="wrap">
-                                                        {s.avgPower != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Power</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgPower)} W</Text></Stack>}
-                                                        {s.wap != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>WAP</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.wap)} W</Text></Stack>}
-                                                        {s.maxPower != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Max Power</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.maxPower)} W</Text></Stack>}
-                                                        {s.avgHr != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg HR</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgHr)} bpm</Text></Stack>}
-                                                        {s.maxHr != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Max HR</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.maxHr)} bpm</Text></Stack>}
-                                                        {visibleSeries.pace && s.avgPace != null && fmtPace(s.avgPace) && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Pace</Text><Text size="sm" fw={600} c={ui.textMain}>{fmtPace(s.avgPace)}</Text></Stack>}
-                                                        {visibleSeries.speed && s.avgSpeed != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Speed</Text><Text size="sm" fw={600} c={ui.textMain}>{s.avgSpeed.toFixed(1)} {speedUnit}</Text></Stack>}
-                                                        {visibleSeries.cadence && s.avgCadence != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Cadence</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgCadence)} rpm</Text></Stack>}
-                                                        {visibleSeries.altitude && s.elevGain != null && s.elevGain > 0 && <Stack gap={0}><Text size="xs" c={ui.textDim}>Elev Gain</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.elevGain)} m</Text></Stack>}
-                                                        {visibleSeries.altitude && s.avgGradient != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>{t('Avg Gradient')}</Text><Text size="sm" fw={600} c={ui.textMain}>{s.avgGradient.toFixed(1)}%</Text></Stack>}
-                                                        {visibleSeries.altitude && s.maxGradient != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>{t('Max Gradient')}</Text><Text size="sm" fw={600} c={ui.textMain}>{s.maxGradient.toFixed(1)}%</Text></Stack>}
-                                                    </Group>
-                                                </Paper>
-                                            );
-                                        })()}
-                                        <Box px="xs">
-                                            <Group justify="space-between" mb={4}>
-                                                <Text size="xs" c={ui.textDim}>{rangeLabel[0]}</Text>
-                                                <Text size="xs" c={ui.textDim}>{rangeLabel[1]}</Text>
-                                            </Group>
-                                            <RangeSlider
-                                                min={0}
-                                                max={100}
-                                                step={0.5}
-                                                value={chartRange}
-                                                onChange={setChartRange}
-                                                size="sm"
-                                                thumbSize={16}
-                                                minRange={1}
-                                                label={null}
-                                                styles={{ thumb: { borderWidth: 2 }, track: { height: 6 } }}
-                                            />
-                                        </Box>
-                                    </Stack>
-                                ) : (
-                                    <Stack align="center" justify="center" h={200}>
-                                        <IconActivity size={40} color="gray" />
-                                        <Text c={ui.textDim}>No stream data available for this activity</Text>
-                                    </Stack>
-                                )}
-                            </Paper>
+                            <ChartsPanel
+                                me={me}
+                                visibleSeries={visibleSeries}
+                                setVisibleSeries={setVisibleSeries}
+                                powerChartMode={powerChartMode}
+                                setPowerChartMode={setPowerChartMode}
+                                focusMode={focusMode}
+                                setFocusMode={setFocusMode}
+                                focusObjective={focusObjective}
+                                setFocusObjective={setFocusObjective}
+                                focusSeries={focusSeries}
+                                supportsPaceSeries={supportsPaceSeries}
+                                supportsSpeedSeries={supportsSpeedSeries}
+                                chartDataLength={chartData.length}
+                                chartRenderData={chartRenderData}
+                                chartRange={chartRange}
+                                setChartRange={setChartRange}
+                                rangeLabel={rangeLabel}
+                                chartSelection={chartSelection}
+                                setChartSelection={setChartSelection}
+                                chartSelectionStats={chartSelectionStats}
+                                isDraggingChartRef={isDraggingChartRef}
+                                dragStartIdxRef={dragStartIdxRef}
+                                hoveredPointIndexRef={hoveredPointIndexRef}
+                                onMouseMove={handleSharedChartMouseMove}
+                                onMouseLeave={handleSharedChartMouseLeave}
+                                sharedTooltipProps={sharedTooltipProps}
+                                formatElapsedFromMinutes={formatElapsedFromMinutes}
+                                isDark={isDark}
+                                ui={ui}
+                                t={t}
+                            />
                         </Tabs.Panel>
 
                         {/* ANALYSIS TABS */}
@@ -3082,576 +2683,86 @@ export const ActivityDetailPage = () => {
                         {/* HARD EFFORTS TAB */}
                         {hardEfforts.length > 0 ? (
                         <Tabs.Panel value="hard_efforts">
-                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                <Group justify="space-between" mb="xs">
-                                    <Title order={5} c={ui.textMain}>{t("Hard Efforts")}</Title>
-                                </Group>
-                                <Group gap="md" mb="md" wrap="wrap">
-                                    <Group gap={4}><Badge size="xs" color="red" variant="filled">Sprint</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥200% FTP' : '≥200% threshold'}</Text></Group>
-                                    <Group gap={4}><Badge size="xs" color="orange" variant="filled">Threshold+</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥100% FTP, ≥30s' : '≥100% threshold, ≥30s'}</Text></Group>
-                                    <Group gap={4}><Badge size="xs" color="yellow" variant="filled">Near Threshold</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥85% FTP, ≥1min' : '≥85% threshold, ≥1min'}</Text></Group>
-                                </Group>
-                                <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                                <Table striped highlightOnHover withTableBorder withColumnBorders style={{ whiteSpace: 'nowrap' }}>
-                                    <Table.Thead>
-                                        <Table.Tr>
-                                            <Table.Th></Table.Th>
-                                            <Table.Th>{t('Category')}</Table.Th>
-                                            <Table.Th>{t('Duration')}</Table.Th>
-                                            {isCyclingActivity && <Table.Th>{t('Avg Power')}</Table.Th>}
-                                            {isCyclingActivity && <Table.Th>% FTP</Table.Th>}
-                                            {isRunningActivity && <Table.Th>{t('Avg Pace')}</Table.Th>}
-                                            {isRunningActivity && <Table.Th>% Threshold</Table.Th>}
-                                            <Table.Th>{t('Heart Rate')}</Table.Th>
-                                        </Table.Tr>
-                                    </Table.Thead>
-                                    <Table.Tbody>
-                                        {hardEfforts.map((effort, idx) => {
-                                            const catColor = effort.category === 'sprint' ? 'red' : effort.category === 'threshold_plus' ? 'orange' : 'yellow';
-                                            const catLabel = effort.category === 'sprint' ? 'Sprint' : effort.category === 'threshold_plus' ? 'Threshold+' : 'Near Threshold';
-                                            const isSelected = selectedEffortKey === effort.key;
-                                            const paceDisplay = effort.avgSpeedKmh && effort.avgSpeedKmh > 0
-                                                ? (() => { const paceMinKm = 60 / effort.avgSpeedKmh; const mins = Math.floor(paceMinKm); const secs = Math.round((paceMinKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
-                                                : null;
-                                            const rest = idx < hardEffortRests.length ? hardEffortRests[idx] : null;
-                                            return [
-                                                <Table.Tr
-                                                    key={effort.key}
-                                                    style={{
-                                                        cursor: 'pointer',
-                                                        backgroundColor: isSelected ? (isDark ? 'rgba(233,90,18,0.16)' : 'rgba(233,90,18,0.10)') : undefined,
-                                                    }}
-                                                    onClick={() => focusEffortByKey(effort.key, true)}
-                                                >
-                                                    <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                                        <IconFlame size={14} color={catColor === 'red' ? '#ef4444' : catColor === 'orange' ? '#f97316' : '#eab308'} />
-                                                    </Table.Td>
-                                                    <Table.Td><Badge size="sm" color={catColor} variant="light">{catLabel}</Badge></Table.Td>
-                                                    <Table.Td fw={600}>{formatDuration(effort.durationSeconds)}</Table.Td>
-                                                    {isCyclingActivity && <Table.Td>{effort.avgPower != null ? `${Math.round(effort.avgPower)} W` : '-'}</Table.Td>}
-                                                    {isCyclingActivity && <Table.Td>{effort.pctRef != null ? `${Math.round(effort.pctRef)}%` : '-'}</Table.Td>}
-                                                    {isRunningActivity && <Table.Td>{paceDisplay ?? '-'}</Table.Td>}
-                                                    {isRunningActivity && <Table.Td>{effort.pctRef != null ? `${Math.round(effort.pctRef)}%` : '-'}</Table.Td>}
-                                                    <Table.Td>{effort.avgHr != null ? `${Math.round(effort.avgHr)} bpm` : '-'}</Table.Td>
-                                                </Table.Tr>,
-                                                rest && rest.durationSeconds > 0 ? (
-                                                    <Table.Tr key={`rest_${idx}`} style={{ opacity: 0.55 }}>
-                                                        <Table.Td style={{ textAlign: 'center' }}><IconMinus size={12} /></Table.Td>
-                                                        <Table.Td><Text size="xs" c="dimmed" fs="italic">Rest</Text></Table.Td>
-                                                        <Table.Td><Text size="xs" c="dimmed">{formatDuration(rest.durationSeconds)}</Text></Table.Td>
-                                                        {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgPower != null ? `${Math.round(rest.avgPower)} W` : '-'}</Text></Table.Td>}
-                                                        {isCyclingActivity && <Table.Td>-</Table.Td>}
-                                                        {isRunningActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgSpeedKmh && rest.avgSpeedKmh > 0 ? (() => { const p = 60 / rest.avgSpeedKmh!; const m = Math.floor(p); const s = Math.round((p - m) * 60); return `${m}:${s.toString().padStart(2, '0')} /km`; })() : '-'}</Text></Table.Td>}
-                                                        {isRunningActivity && <Table.Td>-</Table.Td>}
-                                                        <Table.Td><Text size="xs" c="dimmed">{rest.avgHr != null ? `${Math.round(rest.avgHr)} bpm` : '-'}</Text></Table.Td>
-                                                    </Table.Tr>
-                                                ) : null,
-                                            ];
-                                        })}
-                                    </Table.Tbody>
-                                </Table>
-                                </Box>
-                            </Paper>
+                            <HardEffortsPanel
+                                hardEfforts={hardEfforts}
+                                hardEffortRests={hardEffortRests}
+                                selectedEffortKey={selectedEffortKey}
+                                onSelectEffort={(key) => focusEffortByKey(key, true)}
+                                isCyclingActivity={isCyclingActivity}
+                                isRunningActivity={isRunningActivity}
+                                isDark={isDark}
+                                ui={ui}
+                                t={t}
+                            />
                         </Tabs.Panel>
                         ) : null}
 
                         {/* LAPS TAB */}
                         {(activity.splits_metric?.length || activity.laps?.length) ? (
                         <Tabs.Panel value="laps">
-                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                <Group justify="space-between" mb="md">
-                                    <Title order={5} c={ui.textMain}>{t("Splits")}</Title>
-                                    <Group>
-                                        <SegmentedControl
-                                            radius="md"
-                                            value={splitMode}
-                                            onChange={(v: any) => setSplitMode(v)}
-                                            data={[
-                                                { label: isRunningActivity ? '1 km' : 'Auto', value: 'metric', disabled: !activity.splits_metric?.length },
-                                                { label: isCyclingActivity ? 'Manual' : 'Laps', value: 'laps', disabled: !activity.laps?.length },
-                                            ]}
-                                        />
-                                        <Button size="xs" variant={splitAnnotationsVisible ? "filled" : "light"} onClick={() => setSplitAnnotationsVisible((v) => !v)}>
-                                            {splitAnnotationsVisible ? t("Hide Annotations") : t("Annotate")}
-                                        </Button>
-                                    </Group>
-                                </Group>
-                                <Group gap="xs" mb="sm" wrap="wrap">
-                                    <Text size="xs" c={ui.textDim} fw={700}>{t("Visible stats")}:</Text>
-                                    <Chip size="xs" checked={visibleSplitStats.distance} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, distance: checked }))} variant="light">{t("Distance")}</Chip>
-                                    <Chip size="xs" checked={visibleSplitStats.duration} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, duration: checked }))} variant="light">{t("Time")}</Chip>
-                                    <Chip size="xs" checked={visibleSplitStats.total_distance} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, total_distance: checked }))} variant="light">{t("Total distance")}</Chip>
-                                    <Chip size="xs" checked={visibleSplitStats.total_time} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, total_time: checked }))} variant="light">{t("Total time")}</Chip>
-                                    <Chip size="xs" checked={visibleSplitStats.pace_or_speed} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, pace_or_speed: checked }))} variant="light">{isRunningActivity ? t('Pace') : t('Speed')}</Chip>
-                                    <Chip size="xs" checked={visibleSplitStats.avg_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_hr: checked }))} variant="light">{t("Avg HR")}</Chip>
-                                    <Chip size="xs" checked={visibleSplitStats.max_hr} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_hr: checked }))} variant="light">{t("Max HR")}</Chip>
-                                    <Chip size="xs" checked={visibleSplitStats.avg_gradient} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_gradient: checked }))} variant="light">{t("Avg Gradient")}</Chip>
-                                    <Chip size="xs" checked={visibleSplitStats.max_gradient} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_gradient: checked }))} variant="light">{t("Max Gradient")}</Chip>
-                                    {isCyclingActivity && (
-                                        <>
-                                            <Chip size="xs" checked={visibleSplitStats.avg_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_watts: checked }))} variant="light">{t("Avg W")}</Chip>
-                                            <Chip size="xs" checked={visibleSplitStats.max_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_watts: checked }))} variant="light">{t("Max W")}</Chip>
-                                            <Chip size="xs" checked={visibleSplitStats.normalized_power} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, normalized_power: checked }))} variant="light">NP</Chip>
-                                        </>
-                                    )}
-                                </Group>
-                                <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                                <Table style={{ whiteSpace: 'nowrap' }}>
-                                    <Table.Thead>
-                                        <Table.Tr>
-                                            <Table.Th>{t("Split")}</Table.Th>
-                                            {visibleSplitStats.distance && <Table.Th>{t("Distance")}</Table.Th>}
-                                            {visibleSplitStats.duration && <Table.Th>{t("Time")}</Table.Th>}
-                                            {visibleSplitStats.total_distance && <Table.Th>{t("Total distance")}</Table.Th>}
-                                            {visibleSplitStats.total_time && <Table.Th>{t("Total time")}</Table.Th>}
-                                            {visibleSplitStats.pace_or_speed && <Table.Th>{isRunningActivity ? t('Pace') : t('Avg Speed')}</Table.Th>}
-                                            {visibleSplitStats.avg_hr && <Table.Th>{t("Avg HR")}</Table.Th>}
-                                            {visibleSplitStats.max_hr && <Table.Th>{t("Max HR")}</Table.Th>}
-                                            {visibleSplitStats.avg_gradient && <Table.Th>{t("Avg Gradient")}</Table.Th>}
-                                            {visibleSplitStats.max_gradient && <Table.Th>{t("Max Gradient")}</Table.Th>}
-                                            {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Th>{t("Avg W")}</Table.Th>}
-                                            {isCyclingActivity && visibleSplitStats.max_watts && <Table.Th>{t("Max W")}</Table.Th>}
-                                            {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>NP</Table.Th>}
-                                            {splitAnnotationsVisible && <Table.Th>RPE</Table.Th>}
-                                            {splitAnnotationsVisible && <Table.Th>{t("Lactate")}</Table.Th>}
-                                            {splitAnnotationsVisible && <Table.Th>{t("Note")}</Table.Th>}
-                                        </Table.Tr>
-                                    </Table.Thead>
-                                    <Table.Tbody>
-                                        {splitsWithCumulativeTotals.map((split: any, idx: number) => (
-                                            <Table.Tr key={split.split}>
-                                                <Table.Td>{split.split}</Table.Td>
-                                                {visibleSplitStats.distance && (
-                                                    <Table.Td>
-                                                        {me?.profile?.preferred_units === 'imperial'
-                                                            ? `${((split.distance || 0) * 0.000621371).toFixed(2)} mi`
-                                                            : `${((split.distance || 0) / 1000).toFixed(2)} km`}
-                                                    </Table.Td>
-                                                )}
-                                                {visibleSplitStats.duration && <Table.Td>{formatDuration(split.duration, true)}</Table.Td>}
-                                                {visibleSplitStats.total_distance && (
-                                                    <Table.Td>
-                                                        {me?.profile?.preferred_units === 'imperial'
-                                                            ? `${((split.cumulative_distance || 0) * 0.000621371).toFixed(2)} mi`
-                                                            : `${((split.cumulative_distance || 0) / 1000).toFixed(2)} km`}
-                                                    </Table.Td>
-                                                )}
-                                                {visibleSplitStats.total_time && <Table.Td>{formatDuration(split.cumulative_duration, true)}</Table.Td>}
-                                                {visibleSplitStats.pace_or_speed && (
-                                                    <Table.Td>
-                                                        {isRunningActivity
-                                                            ? (split.avg_speed
-                                                                ? (me?.profile?.preferred_units === 'imperial'
-                                                                    ? (() => { const pace = 1609.34 / (split.avg_speed * 60); const m = Math.floor(pace); const s = Math.floor((pace - m) * 60); return `${m}:${s.toString().padStart(2, '0')}/mi`; })()
-                                                                    : formatPace(split.avg_speed))
-                                                                : '-')
-                                                            : (split.avg_speed
-                                                                ? (me?.profile?.preferred_units === 'imperial'
-                                                                    ? `${(split.avg_speed * 2.23694).toFixed(1)} mph`
-                                                                    : `${(split.avg_speed * 3.6).toFixed(1)} km/h`)
-                                                                : '-')}
-                                                    </Table.Td>
-                                                )}
-                                                {visibleSplitStats.avg_hr && <Table.Td>{split.avg_hr?.toFixed(0) || '-'}</Table.Td>}
-                                                {visibleSplitStats.max_hr && <Table.Td>{split.max_hr?.toFixed(0) || '-'}</Table.Td>}
-                                                {visibleSplitStats.avg_gradient && <Table.Td>{Number.isFinite(Number(split.avg_gradient)) ? `${Number(split.avg_gradient).toFixed(1)}%` : '-'}</Table.Td>}
-                                                {visibleSplitStats.max_gradient && <Table.Td>{Number.isFinite(Number(split.max_gradient)) ? `${Number(split.max_gradient).toFixed(1)}%` : '-'}</Table.Td>}
-                                                {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Td>{split.avg_watts ? `${split.avg_watts.toFixed(0)} W` : '-'}</Table.Td>}
-                                                {isCyclingActivity && visibleSplitStats.max_watts && <Table.Td>{split.max_watts ? `${split.max_watts.toFixed(0)} W` : '-'}</Table.Td>}
-                                                {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Td>{split.normalized_power ? `${split.normalized_power.toFixed(0)} W` : '-'}</Table.Td>}
-                                                {splitAnnotationsVisible && (
-                                                    <Table.Td>
-                                                        <NumberInput size="xs" w={60} min={1} max={10} allowDecimal={false}
-                                                            value={splitAnnotations[idx]?.rpe ?? ''}
-                                                            onChange={(value) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: typeof value === 'number' ? value : null, lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null, note: prev[idx]?.note ?? '' } })); }}
-                                                        />
-                                                    </Table.Td>
-                                                )}
-                                                {splitAnnotationsVisible && (
-                                                    <Table.Td>
-                                                        <NumberInput size="xs" w={70} min={0} max={40} decimalScale={1}
-                                                            value={splitAnnotations[idx]?.lactate_mmol_l ?? ''}
-                                                            onChange={(value) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: prev[idx]?.rpe ?? null, lactate_mmol_l: typeof value === 'number' ? value : null, note: prev[idx]?.note ?? '' } })); }}
-                                                        />
-                                                    </Table.Td>
-                                                )}
-                                                {splitAnnotationsVisible && (
-                                                    <Table.Td>
-                                                        <TextInput size="xs" w={120} maxLength={220}
-                                                            value={splitAnnotations[idx]?.note ?? ''}
-                                                            onChange={(e) => { setSplitAnnotationsDirty(true); setSplitAnnotations((prev) => ({ ...prev, [idx]: { rpe: prev[idx]?.rpe ?? null, lactate_mmol_l: prev[idx]?.lactate_mmol_l ?? null, note: e.currentTarget.value } })); }}
-                                                        />
-                                                    </Table.Td>
-                                                )}
-                                            </Table.Tr>
-                                        ))}
-                                    </Table.Tbody>
-                                </Table>
-                                </Box>
-                                {splitAnnotationsVisible && splitAnnotationsDirty && (
-                                    <Group justify="flex-end" mt="xs">
-                                        <Button size="xs" loading={updateActivityMutation.isPending}
-                                            onClick={() => {
-                                                const splitType = splitMode === 'metric' ? 'metric' : 'laps';
-                                                const split_annotations = Object.entries(splitAnnotations).map(([index, value]) => ({
-                                                    split_type: splitType as 'metric' | 'laps',
-                                                    split_index: Number(index),
-                                                    rpe: value.rpe,
-                                                    lactate_mmol_l: value.lactate_mmol_l,
-                                                    note: value.note?.trim() ? value.note.trim() : null,
-                                                }));
-                                                updateActivityMutation.mutate({ split_annotations }, {
-                                                    onSuccess: () => setSplitAnnotationsDirty(false)
-                                                });
-                                            }}
-                                        >
-                                            {t("Save Annotations")}
-                                        </Button>
-                                    </Group>
-                                )}
-                            </Paper>
+                            <SplitsTable
+                                activity={activity}
+                                me={me}
+                                splitMode={splitMode}
+                                setSplitMode={setSplitMode}
+                                visibleSplitStats={visibleSplitStats}
+                                setVisibleSplitStats={setVisibleSplitStats}
+                                splitsWithCumulativeTotals={splitsWithCumulativeTotals}
+                                splitAnnotations={splitAnnotations}
+                                setSplitAnnotations={setSplitAnnotations}
+                                splitAnnotationsVisible={splitAnnotationsVisible}
+                                setSplitAnnotationsVisible={setSplitAnnotationsVisible}
+                                splitAnnotationsDirty={splitAnnotationsDirty}
+                                setSplitAnnotationsDirty={setSplitAnnotationsDirty}
+                                onSaveAnnotations={(payload) => {
+                                    updateActivityMutation.mutate({ split_annotations: payload }, {
+                                        onSuccess: () => setSplitAnnotationsDirty(false)
+                                    });
+                                }}
+                                isSaving={updateActivityMutation.isPending}
+                                formatPace={formatPace}
+                                isRunningActivity={isRunningActivity}
+                                isCyclingActivity={isCyclingActivity}
+                                ui={ui}
+                                t={t}
+                            />
                         </Tabs.Panel>
                         ) : null}
 
                         {/* BEST EFFORTS TAB */}
                         {activity.best_efforts?.length ? (
                         <Tabs.Panel value="best_efforts">
-                            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                <Group justify="space-between" mb="md">
-                                    <Title order={5} c={ui.textMain}>{t("Best Efforts")}</Title>
-                                    {hasHiddenBestEfforts && (
-                                        <Button size="xs" variant="subtle" onClick={() => setShowAllBestEfforts(!showAllBestEfforts)}>
-                                            {showAllBestEfforts ? t('Show PRs only') : t('Show all efforts')}
-                                        </Button>
-                                    )}
-                                </Group>
-                                <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                                {(() => {
-                                    const hasCyclingDistEfforts = isCyclingActivity && displayedBestEfforts.some(e => e.distance);
-                                    return (
-                                <Table striped highlightOnHover withTableBorder withColumnBorders style={{ whiteSpace: 'nowrap' }}>
-                                    <Table.Thead>
-                                        <Table.Tr>
-                                            <Table.Th></Table.Th>
-                                            <Table.Th>{t('Effort')}</Table.Th>
-                                            {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
-                                            {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
-                                            {(isRunningActivity || isCyclingActivity || hasCyclingDistEfforts) && <Table.Th>{t('Time')}</Table.Th>}
-                                            {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
-                                            {isCyclingActivity && <Table.Th>{t('Speed')}</Table.Th>}
-                                            <Table.Th>{t('Heart Rate')}</Table.Th>
-                                        </Table.Tr>
-                                    </Table.Thead>
-                                    <Table.Tbody>
-                                        {displayedBestEfforts.map((effort, idx) => {
-                                            const key = effort.window || effort.distance || String(idx);
-                                            const prRank = activity.personal_records?.[key];
-                                            const weight = me?.profile?.weight;
-                                            const meta = bestEffortMetaByKey[key];
-                                            const displayPower = effort.power ?? (meta?.avgPower != null ? Math.round(meta.avgPower) : null);
-                                            const displaySeconds = effort.time_seconds ?? meta?.seconds ?? null;
-                                            const displayMeters = effort.meters ?? meta?.meters ?? null;
-                                            const displayHr = effort.avg_hr ?? (meta?.avgHr != null ? Math.round(meta.avgHr) : null);
-                                            const displaySpeedKmh = displayMeters != null && displaySeconds != null && displaySeconds > 0
-                                                ? (displayMeters / 1000) / (displaySeconds / 3600)
-                                                : (meta?.speedKmh ?? null);
-                                            const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
-                                            const rankLabel = prRank === 1 ? 'PR' : prRank === 2 ? '2nd' : prRank === 3 ? '3rd' : undefined;
-                                            return (
-                                                <Table.Tr
-                                                    key={key}
-                                                    style={{
-                                                        cursor: meta ? 'pointer' : 'default',
-                                                        backgroundColor: selectedEffortKey === key ? (isDark ? 'rgba(233,90,18,0.16)' : 'rgba(233,90,18,0.10)') : undefined,
-                                                    }}
-                                                    onClick={() => meta && focusEffortByKey(key, true)}
-                                                >
-                                                    <Table.Td w={60} style={{ textAlign: 'center' }}>
-                                                        {medalColor && (
-                                                            <Group gap={2} wrap="nowrap" justify="center">
-                                                                <IconTrophy size={14} color={medalColor} />
-                                                                <Text size="10px" fw={700} c={medalColor}>{rankLabel}</Text>
-                                                            </Group>
-                                                        )}
-                                                    </Table.Td>
-                                                    <Table.Td fw={600}>{effort.window || effort.distance}</Table.Td>
-                                                    {isCyclingActivity && <Table.Td>{displayPower != null ? `${displayPower} W` : '-'}</Table.Td>}
-                                                    {isCyclingActivity && weight && <Table.Td>{displayPower != null ? `${(displayPower / weight).toFixed(2)} W/kg` : '-'}</Table.Td>}
-                                                    {(isRunningActivity || isCyclingActivity || hasCyclingDistEfforts) && <Table.Td>{displaySeconds != null ? formatDuration(displaySeconds) : '-'}</Table.Td>}
-                                                    {isRunningActivity && (
-                                                        <Table.Td>
-                                                            {displaySeconds != null && displayMeters
-                                                                ? (() => { const paceMinPerKm = (displaySeconds / displayMeters) * (1000 / 60); const mins = Math.floor(paceMinPerKm); const secs = Math.round((paceMinPerKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
-                                                                : '-'}
-                                                        </Table.Td>
-                                                    )}
-                                                    {isCyclingActivity && (
-                                                        <Table.Td>
-                                                            {displaySpeedKmh != null
-                                                                ? `${displaySpeedKmh.toFixed(1)} km/h`
-                                                                : '-'}
-                                                        </Table.Td>
-                                                    )}
-                                                    <Table.Td>{displayHr != null ? `${displayHr} bpm` : '-'}</Table.Td>
-                                                </Table.Tr>
-                                            );
-                                        })}
-                                    </Table.Tbody>
-                                </Table>
-                                    );
-                                })()}
-                                </Box>
-                                <Group gap="md" mt="sm">
-                                    <Group gap={4}><IconTrophy size={12} color="#f0a500" /><Text size="xs" c="dimmed">{t('PR')}</Text></Group>
-                                    <Group gap={4}><IconTrophy size={12} color="#a0a0a0" /><Text size="xs" c="dimmed">{t('2nd')}</Text></Group>
-                                    <Group gap={4}><IconTrophy size={12} color="#cd7f32" /><Text size="xs" c="dimmed">{t('3rd')}</Text></Group>
-                                </Group>
-                            </Paper>
+                            <BestEffortsPanel
+                                activity={activity}
+                                me={me}
+                                displayedBestEfforts={displayedBestEfforts}
+                                bestEffortMetaByKey={bestEffortMetaByKey}
+                                selectedEffortKey={selectedEffortKey}
+                                showAllBestEfforts={showAllBestEfforts}
+                                hasHiddenBestEfforts={hasHiddenBestEfforts}
+                                onToggleShowAll={() => setShowAllBestEfforts(!showAllBestEfforts)}
+                                onSelectEffort={(key) => focusEffortByKey(key, true)}
+                                isCyclingActivity={isCyclingActivity}
+                                isRunningActivity={isRunningActivity}
+                                isDark={isDark}
+                                ui={ui}
+                                t={t}
+                            />
                         </Tabs.Panel>
                         ) : null}
 
                         {/* COMPARISON TAB */}
                         {activity.planned_comparison ? (
                         <Tabs.Panel value="comparison">
-                            <Paper withBorder p="md" radius="lg" mb="sm" bg={ui.surface} style={{ borderColor: ui.border }}>
-                                <Group justify="space-between" mb="xs">
-                                    <Title order={5} c={ui.textMain}>Planned vs Actual</Title>
-                                    <Text size="xs" c={ui.textDim}>{activity.planned_comparison.workout_title}</Text>
-                                </Group>
-                            <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }} spacing="xs" mb="sm">
-                                {activity.planned_comparison.summary?.has_planned_distance && (
-                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
-                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Duration Delta</Text>
-                                    <Text fw={700}>{(activity.planned_comparison.summary?.duration_delta_min || 0).toFixed(1)} min</Text>
-                                </Card>
-                                )}
-                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
-                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Duration Match</Text>
-                                    <Text fw={700}>{Math.round(activity.planned_comparison.summary?.duration_match_pct || 0)}%</Text>
-                                </Card>
-                                {activity.planned_comparison.summary?.has_planned_distance && (
-                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
-                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Distance Delta</Text>
-                                    <Text fw={700}>{(activity.planned_comparison.summary?.distance_delta_km || 0).toFixed(2)} km</Text>
-                                </Card>
-                                )}
-                                {activity.planned_comparison.summary?.has_planned_distance && (
-                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
-                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Distance Match</Text>
-                                    <Text fw={700}>{Math.round(activity.planned_comparison.summary?.distance_match_pct || 0)}%</Text>
-                                </Card>
-                                )}
-                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
-                                    <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Intensity Match</Text>
-                                    <Text fw={700}>{Math.round(activity.planned_comparison.summary?.intensity_match_pct || 0)}%</Text>
-                                </Card>
-                                <Card withBorder radius="md" p="xs" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
-                                    <Group justify="space-between" align="center" gap={6}>
-                                        <Text size="10px" c="dimmed" tt="uppercase" fw={700}>Workout Execution Status</Text>
-                                        <ActionIcon variant="subtle" size="xs" onClick={() => setExecutionInfoOpen(true)} aria-label="Execution status info">
-                                            <IconHelpCircle size={14} />
-                                        </ActionIcon>
-                                    </Group>
-                                    <Text fw={700} c={
-                                        activity.planned_comparison.summary?.execution_status === 'great' || activity.planned_comparison.summary?.execution_status === 'good'
-                                            ? 'green.6'
-                                            : activity.planned_comparison.summary?.execution_status === 'ok' || activity.planned_comparison.summary?.execution_status === 'fair' || activity.planned_comparison.summary?.execution_status === 'subpar'
-                                                ? 'yellow.6'
-                                                : activity.planned_comparison.summary?.execution_status === 'poor' || activity.planned_comparison.summary?.execution_status === 'incomplete'
-                                                    ? 'red.6'
-                                                    : ui.textMain
-                                    }>
-                                        {(activity.planned_comparison.summary?.execution_status || '-').toString().toUpperCase()}
-                                    </Text>
-                                </Card>
-                            </SimpleGrid>
-                            {activity.planned_comparison.summary?.split_importance === 'low' && (
-                                <Text size="xs" c={ui.textDim} mb="xs">
-                                    {activity.planned_comparison.summary?.split_note || activity.planned_comparison.intensity?.note}
-                                </Text>
-                            )}
-                            {!!executionTraceRows.length && (
-                                <Paper withBorder radius="md" p="sm" mb="sm" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
-                                    <Group justify="space-between" mb={6}>
-                                        <Text size="sm" fw={700} c={ui.textMain}>Execution Explainability</Text>
-                                        <Badge variant="light">Traceable weights</Badge>
-                                    </Group>
-                                    <Text size="xs" c={ui.textDim} mb="xs">
-                                        Score formula: Σ(component score × weight) / Σ(used weights).
-                                    </Text>
-                                    <Table striped highlightOnHover withTableBorder withColumnBorders>
-                                        <Table.Thead>
-                                            <Table.Tr>
-                                                <Table.Th>Component</Table.Th>
-                                                <Table.Th>Score</Table.Th>
-                                                <Table.Th>Weight</Table.Th>
-                                                <Table.Th>Weighted Pts</Table.Th>
-                                                <Table.Th>Contribution</Table.Th>
-                                                <Table.Th>Trace</Table.Th>
-                                            </Table.Tr>
-                                        </Table.Thead>
-                                        <Table.Tbody>
-                                            {executionTraceRows.map((row) => (
-                                                <Table.Tr key={`exec-trace-${row.key}`}>
-                                                    <Table.Td>{row.label}</Table.Td>
-                                                    <Table.Td>{row.componentScorePct != null ? `${row.componentScorePct.toFixed(1)}%` : '-'}</Table.Td>
-                                                    <Table.Td>{row.weightPct.toFixed(1)}%</Table.Td>
-                                                    <Table.Td>{row.weightedPoints != null ? row.weightedPoints.toFixed(2) : '-'}</Table.Td>
-                                                    <Table.Td>{row.normalizedContributionPct != null ? `${row.normalizedContributionPct.toFixed(1)}%` : '-'}</Table.Td>
-                                                    <Table.Td>{row.available ? 'Included' : (row.note || 'Excluded')}</Table.Td>
-                                                </Table.Tr>
-                                            ))}
-                                        </Table.Tbody>
-                                    </Table>
-                                    <Group mt="xs" gap="md">
-                                        <Text size="xs" c={ui.textDim}>Used weight: {executionTraceMeta.usedWeightPct.toFixed(1)}%</Text>
-                                        <Text size="xs" c={ui.textDim}>Weighted total: {executionTraceMeta.weightedTotalPoints.toFixed(2)}</Text>
-                                        <Text size="xs" c={ui.textDim}>Normalizer: {executionTraceMeta.normalizationDivisor.toFixed(3)}</Text>
-                                        <Text size="xs" c={ui.textDim}>Rebuilt score: {executionTraceMeta.reconstructedScorePct != null ? `${executionTraceMeta.reconstructedScorePct.toFixed(1)}%` : '-'}</Text>
-                                    </Group>
-                                </Paper>
-                            )}
-                            {!!activity.planned_comparison.splits?.length && (
-                                <Table striped highlightOnHover withTableBorder withColumnBorders>
-                                    <Table.Thead>
-                                        <Table.Tr>
-                                            <Table.Th>Split</Table.Th>
-                                            <Table.Th>Planned</Table.Th>
-                                            <Table.Th>Actual</Table.Th>
-                                            <Table.Th>Planned Intensity</Table.Th>
-                                            <Table.Th>Actual Intensity</Table.Th>
-                                        </Table.Tr>
-                                    </Table.Thead>
-                                    <Table.Tbody>
-                                        {activity.planned_comparison.splits.slice(0, 20).map((row) => (
-                                            <Table.Tr key={`cmp-split-${row.split}`}>
-                                                <Table.Td>{row.split}</Table.Td>
-                                                <Table.Td>{row.planned?.planned_duration_s ? formatDuration(row.planned.planned_duration_s, true) : '-'}</Table.Td>
-                                                <Table.Td>{row.actual?.actual_duration_s ? formatDuration(row.actual.actual_duration_s, true) : '-'}</Table.Td>
-                                                <Table.Td>
-                                                    {(() => {
-                                                        const p = row.planned;
-                                                        if (!p?.target) return '-';
-                                                        const t = p.target;
-                                                        
-                                                        // Prioritize exact value
-                                                        if (t.value != null) {
-                                                            const val = Number(t.value);
-                                                            if (val > 0) {
-                                                                if (t.type === 'heart_rate') return `${Math.round(val)} bpm`;
-                                                                if (t.type === 'power') return `${Math.round(val)} W`;
-                                                                if (t.type === 'pace') {
-                                                                    // Helper to format s/km
-                                                                    const formatSecondsPerKm = (seconds: number) => {
-                                                                        const m = Math.floor(seconds / 60);
-                                                                        const s = Math.round(seconds % 60);
-                                                                        return `${m}:${s.toString().padStart(2, '0')}/km`;
-                                                                    };
-                                                                    // Heuristic: values > 20 differ from m/s (usually < 10)
-                                                                    if (val > 20) return formatSecondsPerKm(val);
-                                                                    return formatPace(val);
-                                                                }
-                                                                return `${Math.round(val)}`;
-                                                            }
-                                                        }
-
-                                                        // Range fallback
-                                                        if (t.min && t.max) {
-                                                            if (t.type === 'heart_rate') return `${t.min}-${t.max} bpm`;
-                                                            if (t.type === 'power') return `${t.min}-${t.max} W`;
-                                                            if (t.type === 'pace') return `${formatPace(Number(t.min))} - ${formatPace(Number(t.max))}`;
-                                                        }
-                                                        
-                                                        // Zone fallback
-                                                        if (t.zone) return `Zone ${t.zone}`;
-                                                        
-                                                        return '-';
-                                                    })()}
-                                                </Table.Td>
-                                                <Table.Td>
-                                                     {(() => {
-                                                        const actual = row.actual;
-                                                        if (!actual) return '-';
-                                                        const type = row.planned?.target?.type;
-                                                        if (type === 'heart_rate') return actual.avg_hr ? `${Math.round(actual.avg_hr)} bpm` : '-';
-                                                        if (type === 'power') return actual.avg_power ? `${Math.round(actual.avg_power)} W` : '-';
-                                                        // Pace target often used in running
-                                                        if (type === 'pace' && actual.avg_speed) return formatPace(actual.avg_speed);
-                                                        
-                                                        // Fallback priority
-                                                        if (activity.sport === 'running' && actual.avg_speed) return formatPace(actual.avg_speed);
-                                                        if (actual.avg_power) return `${Math.round(actual.avg_power)} W`;
-                                                        if (actual.avg_hr) return `${Math.round(actual.avg_hr)} bpm`;
-                                                        return '-';
-                                                     })()}
-                                                </Table.Td>
-                                            </Table.Tr>
-                                        ))}
-                                    </Table.Tbody>
-                                </Table>
-                            )}
-                        </Paper>
-                            <Modal
-                                opened={executionInfoOpen}
-                                onClose={() => setExecutionInfoOpen(false)}
-                                title="Workout Execution Status"
-                                size="md"
-                                centered
-                            >
-                                <Stack gap="xs">
-                                    <Text size="sm" c={ui.textDim}>
-                                        Execution status is a weighted workout-quality score built from available metrics:
-                                        duration match, distance match (when planned), intensity match, and split adherence (when splits are relevant).
-                                    </Text>
-                                    <Text size="sm" c={ui.textDim}>
-                                        If a workout is steady-state (for example a regular Z2 ride), intensity quality is prioritized over auto-split count.
-                                    </Text>
-                                    <Text size="sm" fw={700}>Status levels (best to worst):</Text>
-                                    <Text size="sm">Great, Good, Ok, Fair, Subpar, Poor, Incomplete.</Text>
-                                    <Text size="sm" c={ui.textDim}>
-                                        Incomplete is used when key execution data is missing or the session is not sufficiently complete for reliable scoring.
-                                    </Text>
-                                    {!!executionTraceRows.length && (
-                                        <>
-                                            <Text size="sm" fw={700}>Traceability breakdown</Text>
-                                            <Table striped highlightOnHover withTableBorder withColumnBorders>
-                                                <Table.Thead>
-                                                    <Table.Tr>
-                                                        <Table.Th>Component</Table.Th>
-                                                        <Table.Th>Score</Table.Th>
-                                                        <Table.Th>Weight</Table.Th>
-                                                        <Table.Th>Weighted</Table.Th>
-                                                        <Table.Th>In Score</Table.Th>
-                                                    </Table.Tr>
-                                                </Table.Thead>
-                                                <Table.Tbody>
-                                                    {executionTraceRows.map((row) => (
-                                                    <Table.Tr key={`exec-modal-${row.key}`}>
-                                                        <Table.Td>{row.label}</Table.Td>
-                                                        <Table.Td>{row.componentScorePct != null ? `${row.componentScorePct.toFixed(1)}%` : '-'}</Table.Td>
-                                                        <Table.Td>{row.weightPct.toFixed(1)}%</Table.Td>
-                                                        <Table.Td>{row.weightedPoints != null ? row.weightedPoints.toFixed(2) : '-'}</Table.Td>
-                                                        <Table.Td>{row.available ? 'Yes' : 'No'}</Table.Td>
-                                                    </Table.Tr>
-                                                ))}
-                                            </Table.Tbody>
-                                        </Table>
-                                        <Text size="sm" c={ui.textDim}>
-                                            Reconstructed execution score: {executionTraceMeta.reconstructedScorePct != null ? `${executionTraceMeta.reconstructedScorePct.toFixed(1)}%` : '-'}
-                                            {' '}from weighted total {executionTraceMeta.weightedTotalPoints.toFixed(2)} and normalizer {executionTraceMeta.normalizationDivisor.toFixed(3)}.
-                                        </Text>
-                                        <Text size="sm" fw={700}>Thresholds</Text>
-                                        <Group gap="xs" wrap="wrap">
-                                            {executionTraceMeta.thresholds.map((row) => (
-                                                <Badge key={`exec-threshold-${row.status}`} variant="light">
-                                                    {row.status.toUpperCase()} ≥ {row.minScorePct.toFixed(0)}%
-                                                </Badge>
-                                            ))}
-                                        </Group>
-                                    </>
-                                )}
-                                </Stack>
-                            </Modal>
+                            <ComparisonPanel
+                                activity={activity}
+                                executionTraceRows={executionTraceRows}
+                                executionTraceMeta={executionTraceMeta}
+                                executionInfoOpen={executionInfoOpen}
+                                setExecutionInfoOpen={setExecutionInfoOpen}
+                                formatPace={formatPace}
+                                ui={ui}
+                            />
                         </Tabs.Panel>
                         ) : null}
 
@@ -3757,191 +2868,38 @@ export const ActivityDetailPage = () => {
                     <Text size="sm">{zoneInfoBody}</Text>
                 </Modal>
 
-                <Modal
+                <FullscreenMapModal
                     opened={mapFullscreen}
                     onClose={() => { setMapFullscreen(false); setFsMapIndex(null); }}
-                    size="100%"
-                    padding={0}
-                    withCloseButton={false}
-                    styles={{ body: { height: '100vh', padding: 0, display: 'flex', flexDirection: 'column' }, content: { height: '100vh', maxHeight: '100vh', borderRadius: 0 }, inner: { padding: 0 } }}
-                >
-                    {routePositions.length > 0 && (
-                        <Box style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-                            {/* Map */}
-                            <Box style={{ flex: 1, minHeight: 0, position: 'relative' }}>
-                                <MapContainer center={centerPos} zoom={13} style={{ height: '100%', width: '100%' }}>
-                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
-                                    {mapHeatSegments.length > 0 ? (
-                                        mapHeatSegments.map((segment, index) => (
-                                            <Polyline key={`fs-heat-${index}`} positions={segment.positions} color={segment.color} weight={5} opacity={0.92} />
-                                        ))
-                                    ) : (
-                                        <Polyline positions={routePositions} color="blue" weight={4} opacity={0.6} />
-                                    )}
-                                    {selectedEffortRoutePositions.length > 1 && (
-                                        <Polyline positions={selectedEffortRoutePositions} color={ui.accent} weight={8} opacity={0.95} />
-                                    )}
-                                    {selectedChartRoutePositions.length > 1 && (
-                                        <Polyline positions={selectedChartRoutePositions} color={ui.accent} weight={8} opacity={0.95} />
-                                    )}
-                                    <MapRouteInteractionLayer
-                                        points={interactiveMapRoutePoints}
-                                        onHover={handleMapHover}
-                                    />
-                                    <MapFitBounds positions={routePositions} />
-                                    {fullscreenMarkerPos && <MapPanTo position={fullscreenMarkerPos} />}
-                                    {fullscreenMarkerPos && (
-                                        <CircleMarker center={fullscreenMarkerPos} radius={8} pathOptions={{ color: '#fff', fillColor: '#E95A12', fillOpacity: 1, weight: 3 }}>
-                                            {fullscreenMarkerPoint && (
-                                                <LeafletTooltip permanent direction="top" offset={[0, -12]}>
-                                                    <Stack gap={2}>
-                                                        <Text size="xs" fw={600}>
-                                                            {Math.floor(fullscreenMarkerPoint.timeMin)}:{Math.round((fullscreenMarkerPoint.timeMin % 1) * 60).toString().padStart(2, '0')} elapsed
-                                                        </Text>
-                                                        {fullscreenMarkerPoint.heart_rate != null && (
-                                                            <Text size="xs">HR: {fullscreenMarkerPoint.heart_rate} bpm</Text>
-                                                        )}
-                                                        {fullscreenMarkerPoint.paceDisplay != null && (
-                                                            <Text size="xs">Pace: {fullscreenMarkerPoint.paceDisplay}</Text>
-                                                        )}
-                                                        {fullscreenMarkerPoint.paceDisplay == null && fullscreenMarkerPoint.speedKmh != null && (
-                                                            <Text size="xs">Speed: {fullscreenMarkerPoint.speedKmh.toFixed(1)} km/h</Text>
-                                                        )}
-                                                        {fullscreenMarkerPoint.power != null && fullscreenMarkerPoint.power > 0 && (
-                                                            <Text size="xs">Power: {Math.round(fullscreenMarkerPoint.power)} W</Text>
-                                                        )}
-                                                        {fullscreenMarkerPoint.altitude != null && (
-                                                            <Text size="xs">Elev: {Math.round(fullscreenMarkerPoint.altitude)} m</Text>
-                                                        )}
-                                                        {fullscreenMarkerPoint.gradient_pct != null && (
-                                                            <Text size="xs">{t('Gradient')}: {Number(fullscreenMarkerPoint.gradient_pct).toFixed(1)}%</Text>
-                                                        )}
-                                                    </Stack>
-                                                </LeafletTooltip>
-                                            )}
-                                        </CircleMarker>
-                                    )}
-                                </MapContainer>
-                                {/* Floating close button */}
-                                <ActionIcon
-                                    variant="white"
-                                    size="md"
-                                    radius="sm"
-                                    style={{ position: 'absolute', top: 10, right: 10, zIndex: 1001, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
-                                    onClick={() => { setMapFullscreen(false); setFsMapIndex(null); }}
-                                    aria-label="Close fullscreen"
-                                >
-                                    <IconX size={16} />
-                                </ActionIcon>
-                                {/* Segment stats overlay */}
-                                {chartSelectionStats && (
-                                    <Box style={{ position: 'absolute', top: 10, left: 10, zIndex: 1000, pointerEvents: 'auto' }}>
-                                        <Paper withBorder p="sm" radius="md" bg={ui.surfaceAlt} style={{ borderColor: ui.border, minWidth: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
-                                            <Group justify="space-between" mb={4} align="center">
-                                                <Text size="xs" fw={700} c={ui.textDim}>{t('Selected segment')}</Text>
-                                                <Button size="compact-xs" variant="subtle" c={ui.textDim} onClick={() => setChartSelection(null)}>{t('Clear')}</Button>
-                                            </Group>
-                                            <Stack gap={2}>
-                                                {chartSelectionStats.durationMin != null && chartSelectionStats.durationMin > 0 && <Text size="xs" c={ui.textMain}>{t('Duration')}: {formatElapsedFromMinutes(chartSelectionStats.durationMin)}</Text>}
-                                                {chartSelectionStats.avgHr != null && <Text size="xs" c={ui.textMain}>{t('Avg HR')}: {Math.round(chartSelectionStats.avgHr)} bpm</Text>}
-                                                {chartSelectionStats.avgPace != null && supportsPaceSeries && (() => { const p = chartSelectionStats.avgPace!; return <Text size="xs" c={ui.textMain}>{t('Avg Pace')}: {Math.floor(p)}:{Math.round((p % 1) * 60).toString().padStart(2, '0')}/km</Text>; })()}
-                                                {chartSelectionStats.avgSpeed != null && !supportsPaceSeries && <Text size="xs" c={ui.textMain}>{t('Avg Speed')}: {chartSelectionStats.avgSpeed.toFixed(1)} {me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h'}</Text>}
-                                                {chartSelectionStats.avgPower != null && <Text size="xs" c={ui.textMain}>{t('Avg Power')}: {Math.round(chartSelectionStats.avgPower)} W</Text>}
-                                                {chartSelectionStats.avgGradient != null && <Text size="xs" c={ui.textMain}>{t('Avg Gradient')}: {chartSelectionStats.avgGradient.toFixed(1)}%</Text>}
-                                                {chartSelectionStats.elevGain != null && chartSelectionStats.elevGain > 0 && <Text size="xs" c={ui.textMain}>{t('Elev Gain')}: {Math.round(chartSelectionStats.elevGain)} m</Text>}
-                                            </Stack>
-                                        </Paper>
-                                    </Box>
-                                )}
-                            </Box>
-                            {/* Bottom toolbar: map metric selector */}
-                            <Box style={{ flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}` }} px="xs" py={4}>
-                                <Group justify="space-between" align="center" wrap="wrap" gap="xs">
-                                    <SegmentedControl
-                                        size="xs"
-                                        value={mapHeatMetric}
-                                        onChange={(value) => setMapHeatMetric(value as typeof mapHeatMetric)}
-                                        data={[
-                                            { label: t('Map metric: None'), value: 'none' },
-                                            { label: t('Speed'), value: 'speed' },
-                                            { label: t('Heart Rate'), value: 'heart_rate' },
-                                            { label: t('Power'), value: 'power' },
-                                            { label: t('Gradient'), value: 'gradient' },
-                                        ]}
-                                    />
-                                    <Group gap={4} wrap="wrap">
-                                        <Text size="xs" c={ui.textDim} fw={600}>{t('Show')}:</Text>
-                                        <Chip size="xs" checked={fsVisibleMetrics.altitude} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, altitude: checked }))} variant="light">Elevation</Chip>
-                                        <Chip size="xs" checked={fsVisibleMetrics.heart_rate} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, heart_rate: checked }))} variant="light">Heart Rate</Chip>
-                                        {supportsPaceSeries && <Chip size="xs" checked={fsVisibleMetrics.pace} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, pace: checked }))} variant="light">Pace</Chip>}
-                                        {supportsSpeedSeries && <Chip size="xs" checked={fsVisibleMetrics.cadence} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, cadence: checked }))} variant="light">Cadence</Chip>}
-                                        <Chip size="xs" checked={fsVisibleMetrics.power} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, power: checked }))} variant="light">Power</Chip>
-                                    </Group>
-                                </Group>
-                            </Box>
-                            {/* Multi-metric chart — drag to select segment */}
-                            {chartRenderData.length > 0 && (
-                                <Box style={{ flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}` }}>
-                                    <ResponsiveContainer width="100%" height={120}>
-                                        <LineChart
-                                            data={chartRenderData}
-                                            onMouseMove={handleFsChartMove}
-                                            onMouseDown={(e: any) => { const idx = e?.activeTooltipIndex; if (typeof idx === 'number') { fsDragStartIdxRef.current = idx; isFsDraggingRef.current = true; } }}
-                                            onMouseUp={() => { isFsDraggingRef.current = false; }}
-                                            onMouseLeave={handleFsChartLeave}
-                                            style={{ cursor: 'crosshair', userSelect: 'none' }}
-                                            margin={{ top: 4, right: 8, left: 8, bottom: 4 }}
-                                        >
-                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                            <XAxis dataKey="distance" hide tickFormatter={(v: number) => `${(v / 1000).toFixed(1)} km`} />
-                                            <YAxis yAxisId="alt" hide domain={['dataMin - 10', 'dataMax + 10']} />
-                                            <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
-                                            <YAxis yAxisId="power" hide domain={[0, 'auto']} />
-                                            <YAxis yAxisId="pace" hide reversed domain={['auto', 'auto']} />
-                                            <YAxis yAxisId="cad" hide domain={[0, 'auto']} />
-                                            <Tooltip
-                                                isAnimationActive={false}
-                                                cursor={{ stroke: ui.accent, strokeWidth: 1 }}
-                                                content={({ active, payload }: any) => {
-                                                    if (isFsDraggingRef.current || !active || !payload?.[0]) return null;
-                                                    const d = payload[0].payload;
-                                                    const distKm = d.distance ? (d.distance / 1000).toFixed(2) : null;
-                                                    return (
-                                                        <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt} style={{ fontSize: 11 }}>
-                                                            {distKm && <Text size="xs" fw={600} c={ui.textDim}>{t('Distance')}: {distKm} km</Text>}
-                                                            {fsVisibleMetrics.altitude && d.altitude != null && <Text size="xs" c={ui.textMain}>Elev: {Math.round(d.altitude)} m</Text>}
-                                                            {fsVisibleMetrics.heart_rate && d.heart_rate != null && <Text size="xs" c="#fa5252">HR: {Math.round(Number(d.heart_rate))} bpm</Text>}
-                                                            {fsVisibleMetrics.power && d.power_raw != null && <Text size="xs" c="#fd7e14">Power: {Math.round(Number(d.power_raw))} W</Text>}
-                                                            {fsVisibleMetrics.pace && d.pace != null && Number.isFinite(Number(d.pace)) && <Text size="xs" c="#228be6">Pace: {Math.floor(Number(d.pace))}:{Math.floor((Number(d.pace) % 1) * 60).toString().padStart(2, '0')}/km</Text>}
-                                                            {fsVisibleMetrics.cadence && d.cadence != null && <Text size="xs" c="#40c057">Cad: {Math.round(Number(d.cadence))} rpm</Text>}
-                                                        </Paper>
-                                                    );
-                                                }}
-                                            />
-                                            {fsVisibleMetrics.altitude && <Line yAxisId="alt" type="monotone" dataKey="altitude" stroke={isDark ? '#60A5FA' : '#3B82F6'} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
-                                            {fsVisibleMetrics.heart_rate && <Line yAxisId="hr" type="monotone" dataKey="heart_rate" stroke="#fa5252" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
-                                            {fsVisibleMetrics.power && <Line yAxisId="power" type="monotone" dataKey="power_raw" stroke="#fd7e14" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
-                                            {fsVisibleMetrics.pace && <Line yAxisId="pace" type="monotone" dataKey="pace" stroke="#228be6" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={false} />}
-                                            {fsVisibleMetrics.cadence && <Line yAxisId="cad" type="monotone" dataKey="cadence" stroke="#40c057" strokeWidth={1.2} dot={false} isAnimationActive={false} connectNulls />}
-                                            {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
-                                                <ReferenceArea
-                                                    yAxisId="alt"
-                                                    x1={chartRenderData[chartSelection.startIdx].distance}
-                                                    x2={chartRenderData[chartSelection.endIdx].distance}
-                                                    fill={ui.accent}
-                                                    fillOpacity={0.13}
-                                                    stroke={ui.accent}
-                                                    strokeOpacity={0.5}
-                                                    strokeWidth={1}
-                                                />
-                                            )}
-                                        </LineChart>
-                                    </ResponsiveContainer>
-                                </Box>
-                            )}
-                        </Box>
-                    )}
-                </Modal>
+                    routePositions={routePositions}
+                    centerPos={centerPos}
+                    mapHeatSegments={mapHeatSegments}
+                    selectedEffortRoutePositions={selectedEffortRoutePositions}
+                    selectedChartRoutePositions={selectedChartRoutePositions}
+                    interactiveMapRoutePoints={interactiveMapRoutePoints}
+                    onMapHover={handleMapHover}
+                    fullscreenMarkerPos={fullscreenMarkerPos}
+                    fullscreenMarkerPoint={fullscreenMarkerPoint}
+                    chartSelectionStats={chartSelectionStats}
+                    onClearSelection={() => setChartSelection(null)}
+                    mapHeatMetric={mapHeatMetric}
+                    setMapHeatMetric={setMapHeatMetric}
+                    fsVisibleMetrics={fsVisibleMetrics}
+                    setFsVisibleMetrics={setFsVisibleMetrics}
+                    supportsPaceSeries={supportsPaceSeries}
+                    supportsSpeedSeries={supportsSpeedSeries}
+                    chartRenderData={chartRenderData}
+                    chartSelection={chartSelection}
+                    onFsChartMove={handleFsChartMove}
+                    onFsChartLeave={handleFsChartLeave}
+                    isFsDraggingRef={isFsDraggingRef}
+                    fsDragStartIdxRef={fsDragStartIdxRef}
+                    me={me}
+                    formatElapsedFromMinutes={formatElapsedFromMinutes}
+                    isDark={isDark}
+                    ui={ui}
+                    t={t}
+                />
             </AppShell.Main>
         </AppShell>
     );
