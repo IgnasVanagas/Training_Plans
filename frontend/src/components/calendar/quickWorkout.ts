@@ -31,8 +31,8 @@ const formatZoneRange = (
   const lowLabel = bounds.low != null ? formatter(bounds.low) : null;
   const highLabel = bounds.high != null ? formatter(bounds.high) : null;
   if (lowLabel && highLabel) return `${lowLabel}-${highLabel}`;
-  if (highLabel) return `<= ${highLabel}`;
-  return lowLabel ? `>= ${lowLabel}` : "";
+  if (highLabel) return `< ${highLabel}`;
+  return lowLabel ? `> ${lowLabel}` : "";
 };
 
 export const buildQuickWorkoutZoneDetails = (sportType: string, zone: number, profile: any) => {

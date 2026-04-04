@@ -329,6 +329,8 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
     onLowChange,
     onHighChange,
     color,
+    isFirst,
+    isLast,
   }: {
     zoneNum: number;
     lowAbs: string;
@@ -340,6 +342,8 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
     onLowChange?: (v: number) => void;
     onHighChange?: (v: number) => void;
     color?: string;
+    isFirst?: boolean;
+    isLast?: boolean;
   }) => (
     <Paper
       withBorder
@@ -355,7 +359,12 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
       </Text>
       <Group gap={4} align="center" wrap="nowrap">
         <Text size="sm" fw={700}>
-          {lowAbs} {t("to")} {highAbs} {unit}
+          {isFirst
+            ? <>{t("less than")} {highAbs} {unit}</>
+            : isLast
+              ? <>{t("more than")} {lowAbs} {unit}</>
+              : <>{lowAbs} {t("to")} {highAbs} {unit}</>
+          }
         </Text>
       </Group>
       {editing && (
@@ -486,6 +495,8 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
                   highPct={zone.high}
                   onLowChange={(v) => updateHrZone(idx, "low", v)}
                   onHighChange={(v) => updateHrZone(idx, "high", v)}
+                  isFirst={idx === 0}
+                  isLast={idx === hrCol.zones.length - 1}
                 />
               );
             })}
@@ -626,6 +637,8 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
                   onLowChange={(v) => updatePaceZone(idx, "low", v)}
                   onHighChange={(v) => updatePaceZone(idx, "high", v)}
                   color="blue"
+                  isFirst={idx === 0}
+                  isLast={idx === paceCol.zones.length - 1}
                 />
               );
             })}

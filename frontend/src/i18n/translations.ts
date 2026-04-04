@@ -878,6 +878,8 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Reset to defaults": "Atkurti numatytuosius"
     ,"Threshold": "Slenkstis"
     ,"to": "iki"
+    ,"less than": "mažiau nei"
+    ,"more than": "daugiau nei"
   }
 };
 

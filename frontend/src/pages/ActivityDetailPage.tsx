@@ -1716,11 +1716,11 @@ export const ActivityDetailPage = () => {
             const low = idx === 0 ? null : (effectiveBounds[idx - 1] + 1);
             const high = idx < effectiveBounds.length ? effectiveBounds[idx] : null;
             const range = low == null && high != null
-                ? `<= ${Math.round(high)} bpm`
+                ? `< ${Math.round(high)} bpm`
                 : low != null && high != null
                     ? `${Math.round(low)}-${Math.round(high)} bpm`
                     : low != null
-                        ? `>= ${Math.round(low)} bpm`
+                        ? `> ${Math.round(low)} bpm`
                         : '-';
             return { zone, seconds: zoneSeconds[zone] || 0, range };
         });

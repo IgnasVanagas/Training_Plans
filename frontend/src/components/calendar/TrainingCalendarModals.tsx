@@ -1268,20 +1268,20 @@ const formatZoneTargetLabel = (
     const lowLabel = effectiveRange.low != null ? `${Math.round(effectiveRange.low)} bpm` : null;
     const highLabel = effectiveRange.high != null ? `${Math.round(effectiveRange.high)} bpm` : null;
     if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
-    return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
+    return highLabel ? `< ${highLabel}` : (lowLabel ? `> ${lowLabel}` : null);
   }
 
   if (metric === 'power') {
     const lowLabel = effectiveRange.low != null ? `${Math.round(effectiveRange.low)} W` : null;
     const highLabel = effectiveRange.high != null ? `${Math.round(effectiveRange.high)} W` : null;
     if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
-    return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
+    return highLabel ? `< ${highLabel}` : (lowLabel ? `> ${lowLabel}` : null);
   }
 
   const lowLabel = effectiveRange.low != null ? formatPaceRange(effectiveRange.low) : null;
   const highLabel = effectiveRange.high != null ? formatPaceRange(effectiveRange.high) : null;
   if (lowLabel && highLabel) return `${lowLabel} - ${highLabel}`;
-  return highLabel ? `<= ${highLabel}` : (lowLabel ? `>= ${lowLabel}` : null);
+  return highLabel ? `< ${highLabel}` : (lowLabel ? `> ${lowLabel}` : null);
 };
 
 export const WorkoutEditModal = ({
