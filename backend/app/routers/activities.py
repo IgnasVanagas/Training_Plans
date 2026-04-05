@@ -2650,9 +2650,10 @@ async def get_activities(
     offset: int = 0,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    response: Response,
+    response: Response = None,
 ):
-    response.headers["Cache-Control"] = "private, max-age=60"
+    if response is not None:
+        response.headers["Cache-Control"] = "private, max-age=60"
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
 
@@ -2934,9 +2935,10 @@ async def get_activity(
     include_streams: bool = Query(True),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    response: Response,
+    response: Response = None,
 ):
-    response.headers["Cache-Control"] = "private, max-age=300"
+    if response is not None:
+        response.headers["Cache-Control"] = "private, max-age=300"
     result = await db.execute(select(Activity).where(Activity.id == activity_id))
     activity = result.scalars().first()
 
