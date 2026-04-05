@@ -1,7 +1,7 @@
 import { Badge, Group, List, Modal, Paper, SimpleGrid, Card, Stack, Text, Title, Box, Button, Tooltip, useComputedColorScheme } from '@mantine/core';
 import { IconCopy, IconStar } from '@tabler/icons-react';
 import { DatePickerInput } from '@mantine/dates';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
@@ -82,6 +82,8 @@ export function ActivitiesView({
         } as const;
 
   const isCoach = currentUserRole === 'coach';
+  const queryClient = useQueryClient();
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data: me } = useQuery({
       queryKey: ["me"],
@@ -245,10 +247,27 @@ export function ActivitiesView({
                         e.currentTarget.style.boxShadow = isDark
                             ? '0 8px 20px rgba(2, 6, 23, 0.35)'
                             : '0 10px 22px rgba(15, 23, 42, 0.08)';
+                        if (!isOptimistic) {
+                            prefetchTimerRef.current = setTimeout(() => {
+                                void queryClient.prefetchQuery({
+                                    queryKey: ['activity', act.id],
+                                    queryFn: async () => {
+                                        const res = await api.get(`/activities/${act.id}`);
+                                        writeSnapshot(`activity:${act.id}`, res.data);
+                                        return res.data;
+                                    },
+                                    staleTime: 1000 * 60 * 5,
+                                });
+                            }, 150);
+                        }
                     }}
                     onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'translateY(0)';
                         e.currentTarget.style.boxShadow = 'none';
+                        if (prefetchTimerRef.current) {
+                            clearTimeout(prefetchTimerRef.current);
+                            prefetchTimerRef.current = null;
+                        }
                     }}
                 >
                     <Group justify="space-between" mb="xs">

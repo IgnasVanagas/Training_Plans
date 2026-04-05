@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, case
 from sqlalchemy.orm import defer
@@ -27,10 +27,37 @@ import math
 import os
 import uuid
 import logging
+import time
 
 router = APIRouter(prefix="/activities", tags=["activities"])
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Simple in-process TTL cache for expensive read-only aggregations.
+# Maps cache_key -> (stored_at_monotonic, result).  Invalidated by athlete_id
+# when activities are mutated (upload / delete / reparse).
+# ---------------------------------------------------------------------------
+_PERF_TREND_CACHE: dict[str, tuple[float, Any]] = {}
+_ZONE_SUMMARY_CACHE: dict[str, tuple[float, Any]] = {}
+_PERF_TREND_TTL = 3600.0   # 1 hour
+_ZONE_SUMMARY_TTL = 1800.0  # 30 minutes
+
+def _cache_get(store: dict, key: str, ttl: float) -> Any:
+    entry = store.get(key)
+    if entry and (time.monotonic() - entry[0]) < ttl:
+        return entry[1]
+    return None
+
+def _cache_set(store: dict, key: str, value: Any) -> None:
+    store[key] = (time.monotonic(), value)
+
+def _invalidate_athlete_caches(athlete_id: int) -> None:
+    prefix = f"{athlete_id}:"
+    for store in (_PERF_TREND_CACHE, _ZONE_SUMMARY_CACHE):
+        stale = [k for k in store if k.startswith(prefix)]
+        for k in stale:
+            del store[k]
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -1652,6 +1679,11 @@ async def get_zone_summary(
             "athletes": []
         }
 
+    _zs_cache_key = f"{','.join(str(u) for u in sorted(target_user_ids))}:{ref_date.isoformat()}:{week_start_day}:{all_athletes}"
+    _zs_cached = _cache_get(_ZONE_SUMMARY_CACHE, _zs_cache_key, _ZONE_SUMMARY_TTL)
+    if _zs_cached is not None:
+        return _zs_cached
+
     profiles_stmt = select(Profile).where(Profile.user_id.in_(target_user_ids))
     profiles_res = await db.execute(profiles_stmt)
     profiles = {p.user_id: p for p in profiles_res.scalars().all()}
@@ -1768,7 +1800,7 @@ async def get_zone_summary(
         summary["weekly"] = _round_bucket(summary["weekly"])
         summary["monthly"] = _round_bucket(summary["monthly"])
 
-    return {
+    _zs_result = {
         "reference_date": ref_date,
         "week": {
             "start_date": week_start,
@@ -1780,6 +1812,8 @@ async def get_zone_summary(
         },
         "athletes": list(summaries.values())
     }
+    _cache_set(_ZONE_SUMMARY_CACHE, _zs_cache_key, _zs_result)
+    return _zs_result
 
 @router.post("/{activity_id}/reparse")
 async def reparse_activity(
@@ -1924,6 +1958,7 @@ async def create_manual_activity(
     new_activity.anaerobic_load = anaerobic_load
     db.add(new_activity)
     await db.commit()
+    _invalidate_athlete_caches(current_user.id)
 
     return ActivityDetail(
         id=new_activity.id,
@@ -2140,7 +2175,8 @@ async def upload_activity(
     new_activity.anaerobic_load = anaerobic_load
     db.add(new_activity)
     await db.commit()
-    
+    _invalidate_athlete_caches(current_user.id)
+
     return ActivityDetail(
         id=new_activity.id,
         athlete_id=new_activity.athlete_id,
@@ -2460,6 +2496,11 @@ async def get_performance_trend(
     elif athlete_id is not None:
         target_athlete_id = athlete_id
 
+    _pt_cache_key = f"{target_athlete_id}:{days}:{date.today().isoformat()}"
+    _pt_cached = _cache_get(_PERF_TREND_CACHE, _pt_cache_key, _PERF_TREND_TTL)
+    if _pt_cached is not None:
+        return _pt_cached
+
     profile = await db.scalar(select(Profile).where(Profile.user_id == target_athlete_id))
     _profile_ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
     max_hr = _safe_number(getattr(profile, "max_hr", None), default=190.0)
@@ -2554,7 +2595,9 @@ async def get_performance_trend(
             ))
         day_cursor += timedelta(days=1)
 
-    return PerformanceTrendResponse(data=result_points)
+    _pt_result = PerformanceTrendResponse(data=result_points)
+    _cache_set(_PERF_TREND_CACHE, _pt_cache_key, _pt_result)
+    return _pt_result
 
 
 @router.get("/personal-records")
@@ -2606,8 +2649,10 @@ async def get_activities(
     limit: int = 120,
     offset: int = 0,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    response: Response,
 ):
+    response.headers["Cache-Control"] = "private, max-age=60"
     limit = max(1, min(limit, 500))
     offset = max(0, offset)
 
@@ -2888,11 +2933,13 @@ async def get_activity(
     activity_id: int,
     include_streams: bool = Query(True),
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    response: Response,
 ):
+    response.headers["Cache-Control"] = "private, max-age=300"
     result = await db.execute(select(Activity).where(Activity.id == activity_id))
     activity = result.scalars().first()
-    
+
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
@@ -3324,5 +3371,6 @@ async def delete_activity(
     await db.commit()
 
     await match_and_score(db, athlete_id, activity_date)
+    _invalidate_athlete_caches(athlete_id)
 
     return {"status": "success", "is_deleted": True}

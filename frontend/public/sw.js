@@ -1,4 +1,4 @@
-const CACHE_NAME = "origami-plans-v1";
+const CACHE_NAME = "origami-plans-v2";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -19,6 +19,38 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// StaleWhileRevalidate: return cached response immediately, update cache in background
+function staleWhileRevalidate(event) {
+  const { request } = event;
+  const cachePromise = caches.open(CACHE_NAME);
+  const fetchPromise = fetch(request).then((response) => {
+    if (response && response.ok) {
+      cachePromise.then((cache) => cache.put(request, response.clone())).catch(() => undefined);
+    }
+    return response;
+  }).catch(() => null);
+
+  event.respondWith(
+    cachePromise.then((cache) =>
+      cache.match(request).then((cached) => {
+        if (cached) {
+          // Serve from cache immediately, revalidate in background
+          event.waitUntil(fetchPromise);
+          return cached;
+        }
+        // No cache — wait for network
+        return fetchPromise.then((response) => {
+          if (response) return response;
+          return new Response(JSON.stringify({ detail: "offline" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json" }
+          });
+        });
+      })
+    )
+  );
+}
+
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -29,7 +61,11 @@ self.addEventListener("fetch", (event) => {
   const isSameOrigin = url.origin === self.location.origin;
 
   const isHtmlNavigation = request.mode === "navigate";
-  const isApiRequest = url.pathname.startsWith("/calendar") || url.pathname.startsWith("/activities") || url.pathname.startsWith("/communications") || url.pathname.startsWith("/users/me");
+  const isApiRequest =
+    url.pathname.startsWith("/calendar") ||
+    url.pathname.startsWith("/activities") ||
+    url.pathname.startsWith("/communications") ||
+    url.pathname.startsWith("/users/me");
 
   if (isHtmlNavigation) {
     event.respondWith(
@@ -50,24 +86,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isApiRequest) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response && response.ok) {
-            const responseClone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone)).catch(() => undefined);
-          }
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          if (cached) return cached;
-          return new Response(JSON.stringify({ detail: "offline" }), {
-            status: 503,
-            headers: { "Content-Type": "application/json" }
-          });
-        })
-    );
+    staleWhileRevalidate(event);
     return;
   }
 

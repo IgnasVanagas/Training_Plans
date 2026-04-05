@@ -791,7 +791,7 @@ export const ActivityDetailPage = () => {
             const t = chartData[idx]?.time_min;
             return t != null ? formatElapsedFromMinutes(t) : '';
         };
-        return [fmt(startIdx), fmt(endIdx)];
+        return [fmt(startIdx), fmt(endIdx)] as [string, string];
     }, [chartData, chartRange]);
 
     const hoveredPoint = useMemo(() => {

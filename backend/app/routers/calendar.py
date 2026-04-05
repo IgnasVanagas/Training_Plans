@@ -468,8 +468,11 @@ async def get_calendar_events(
     athlete_id: Optional[int] = None,
     all_athletes: bool = False,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    response: Response = None,
 ):
+    if response is not None:
+        response.headers["Cache-Control"] = "private, max-age=60"
     workouts = []
     activities = []
     

@@ -1,12 +1,15 @@
 import { Badge, Box, Button, Group, Paper, Text } from '@mantine/core';
 import { Download, MessageSquareText } from 'lucide-react';
 import { format } from 'date-fns';
-import { useCallback } from 'react';
+import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import SportIcon from './SportIcon';
 import { CalendarEvent } from './types';
 import { formatMinutesHm } from './dateUtils';
 import { resolveActivityAccentColor } from './activityStyling';
+import api from '../../api/client';
+import { writeSnapshot } from '../../utils/localSnapshot';
 
 type Palette = {
   cardBg: string;
@@ -29,6 +32,8 @@ export const CalendarEventCard = ({
   preferredUnits?: string | null;
 }) => {
   const r = event.resource as CalendarEvent;
+  const queryClient = useQueryClient();
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (r.is_more_indicator) {
     return (
@@ -121,11 +126,28 @@ export const CalendarEventCard = ({
           ? `0 16px 34px -20px ${accentColor}EE`
           : '0 22px 52px -20px rgba(15, 23, 42, 0.40)';
         e.currentTarget.style.borderLeftColor = accentColor;
+        if (!isPlanned && r.id) {
+          prefetchTimerRef.current = setTimeout(() => {
+            void queryClient.prefetchQuery({
+              queryKey: ['activity', r.id],
+              queryFn: async () => {
+                const res = await api.get(`/activities/${r.id}`);
+                writeSnapshot(`activity:${r.id}`, res.data);
+                return res.data;
+              },
+              staleTime: 1000 * 60 * 5,
+            });
+          }, 150);
+        }
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'none';
         e.currentTarget.style.boxShadow = cardShadow;
         e.currentTarget.style.borderLeftColor = accentColor;
+        if (prefetchTimerRef.current) {
+          clearTimeout(prefetchTimerRef.current);
+          prefetchTimerRef.current = null;
+        }
       }}
     >
       <Group gap={5} wrap="nowrap" align="center" pl={1}>
