@@ -784,7 +784,7 @@ export const ActivityDetailPage = () => {
     // Reset range when activity changes
     useEffect(() => { setChartRange([0, 100]); }, [activity?.id]);
     const rangeLabel = useMemo(() => {
-        if (chartData.length === 0) return ['0', '0'];
+        if (chartData.length === 0) return ['0', '0'] as [string, string];
         const startIdx = Math.round((chartRange[0] / 100) * (chartData.length - 1));
         const endIdx = Math.round((chartRange[1] / 100) * (chartData.length - 1));
         const fmt = (idx: number) => {
