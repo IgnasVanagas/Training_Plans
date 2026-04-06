@@ -186,6 +186,7 @@ export const FullscreenMapModal = ({
                                         {chartSelectionStats.avgPower != null && <Text size="xs" c={ui.textMain}>{t('Avg Power')}: {Math.round(chartSelectionStats.avgPower)} W</Text>}
                                         {chartSelectionStats.maxPower != null && <Text size="xs" c={ui.textMain}>{t('Max Power')}: {Math.round(chartSelectionStats.maxPower)} W</Text>}
                                         {chartSelectionStats.avgGradient != null && <Text size="xs" c={ui.textMain}>{t('Avg Gradient')}: {chartSelectionStats.avgGradient.toFixed(1)}%</Text>}
+                                        {chartSelectionStats.maxGradient != null && <Text size="xs" c={ui.textMain}>{t('Max Gradient')}: {chartSelectionStats.maxGradient.toFixed(1)}%</Text>}
                                         {chartSelectionStats.elevGain != null && chartSelectionStats.elevGain > 0 && <Text size="xs" c={ui.textMain}>{t('Elev Gain')}: {Math.round(chartSelectionStats.elevGain)} m</Text>}
                                     </Stack>
                                 </Paper>

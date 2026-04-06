@@ -637,17 +637,48 @@ export const ActivityDetailPage = () => {
         return points;
     }, [chartSelection, chartRenderData]);
 
+    const getMapHeatMetricValue = useCallback((point: any): number | null => {
+        if (mapHeatMetric === 'none') return null;
+
+        if (mapHeatMetric === 'speed') {
+            const speedDisplay = Number(point?.speed_display);
+            if (Number.isFinite(speedDisplay) && speedDisplay > 0) return speedDisplay;
+            const speedRaw = Number(point?.speed);
+            if (Number.isFinite(speedRaw) && speedRaw > 0) return speedRaw;
+            return null;
+        }
+
+        if (mapHeatMetric === 'heart_rate') {
+            const hr = Number(point?.heart_rate);
+            return Number.isFinite(hr) && hr > 0 ? hr : null;
+        }
+
+        if (mapHeatMetric === 'power') {
+            const powerRaw = Number(point?.power_raw);
+            if (Number.isFinite(powerRaw) && powerRaw > 0) return powerRaw;
+            const power = Number(point?.power);
+            return Number.isFinite(power) && power > 0 ? power : null;
+        }
+
+        const gradient = Number(point?.gradient_pct);
+        return Number.isFinite(gradient) ? gradient : null;
+    }, [mapHeatMetric]);
+
     const mapHeatRange = useMemo(() => {
         if (mapHeatMetric === 'none') return null;
         const values = chartData
-            .map((point: any) => Number(point?.[mapHeatMetric === 'gradient' ? 'gradient_pct' : mapHeatMetric]))
-            .filter((value: number) => Number.isFinite(value));
+            .map((point: any) => getMapHeatMetricValue(point))
+            .filter((value: number | null): value is number => value != null);
         if (values.length === 0) return null;
         const sorted = [...values].sort((a, b) => a - b);
-        const min = sorted[Math.floor((sorted.length - 1) * 0.05)];
-        const max = sorted[Math.floor((sorted.length - 1) * 0.95)];
+        let min = sorted[Math.floor((sorted.length - 1) * 0.05)];
+        let max = sorted[Math.floor((sorted.length - 1) * 0.95)];
+        if (!(max > min)) {
+            min = sorted[0];
+            max = sorted[sorted.length - 1];
+        }
         return { min, max };
-    }, [chartData, mapHeatMetric]);
+    }, [chartData, mapHeatMetric, getMapHeatMetricValue]);
 
     const mapHeatSegments = useMemo(() => {
         if (mapHeatMetric === 'none' || !mapHeatRange) return [] as Array<{ positions: [number, number][]; color: string }>;
@@ -664,8 +695,8 @@ export const ActivityDetailPage = () => {
             const rightLat = Number(right?.lat);
             const rightLon = Number(right?.lon);
             if (!Number.isFinite(leftLat) || !Number.isFinite(leftLon) || !Number.isFinite(rightLat) || !Number.isFinite(rightLon)) { flush(); continue; }
-            const rawValue = Number(right?.[mapHeatMetric === 'gradient' ? 'gradient_pct' : mapHeatMetric]);
-            if (!Number.isFinite(rawValue)) { flush(); continue; }
+            const rawValue = getMapHeatMetricValue(right);
+            if (rawValue == null) { flush(); continue; }
             const color = getHeatColor(rawValue, mapHeatRange.min, mapHeatRange.max);
             if (color === currentColor) {
                 currentPositions.push([rightLat, rightLon]);
@@ -677,7 +708,7 @@ export const ActivityDetailPage = () => {
         }
         flush();
         return segments;
-    }, [chartData, mapHeatMetric, mapHeatRange]);
+    }, [chartData, mapHeatMetric, mapHeatRange, getMapHeatMetricValue]);
 
     const mapHoveredPoint = useMemo(() => {
         if (mapHoveredChartIndex == null) return null;
