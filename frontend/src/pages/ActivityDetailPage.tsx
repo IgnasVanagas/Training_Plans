@@ -11,8 +11,8 @@ import api from "../api/client";
 import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from 'leaflet';
-import { formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
-import { ActivityDetail, EffortSegmentMeta, HardEffort, HardEffortCategory, HardEffortRest, RouteInteractivePoint } from "../types/activityDetail";
+import { calculateNormalizedPower, formatDuration, formatZoneDuration } from "../components/activityDetail/formatters";
+import { ActivityDetail, EffortSegmentMeta, RouteInteractivePoint } from "../types/activityDetail";
 import { MapFitBounds, MapPanTo, MapRouteInteractionLayer, toDistanceLabel, getHeatColor } from "../components/activityDetail/mapHelpers";
 import { ActivityDetailSkeleton } from "../components/common/SkeletonScreens";
 import SupportContactButton from "../components/common/SupportContactButton";
@@ -85,25 +85,10 @@ export const ActivityDetailPage = () => {
     const hoveredPointIndexRef = useRef<number | null>(null);
     const pendingHoveredPointIndexRef = useRef<number | null>(null);
     const hoveredPointRafRef = useRef<number | null>(null);
-    const [splitMode, setSplitMode] = useState<'metric' | 'laps'>('metric');
     const [effortsSplitsView, setEffortsSplitsView] = useState<'efforts' | 'splits'>('efforts');
     const [focusMode, setFocusMode] = useState(false);
     const [focusObjective, setFocusObjective] = useState<'pacing' | 'cardio' | 'efficiency'>('pacing');
     const [completionPulse, setCompletionPulse] = useState(false);
-    const [visibleSplitStats, setVisibleSplitStats] = useState({
-        distance: true,
-        duration: true,
-        total_distance: Boolean(isDesktopViewport),
-        total_time: Boolean(isDesktopViewport),
-        pace_or_speed: true,
-        avg_hr: true,
-        max_hr: true,
-        avg_watts: true,
-        max_watts: true,
-        normalized_power: true,
-        avg_gradient: true,
-        max_gradient: true,
-    });
     const [visibleSeries, setVisibleSeries] = useState({
         heart_rate: true,
         power: true,
@@ -115,10 +100,6 @@ export const ActivityDetailPage = () => {
     const [powerChartMode, setPowerChartMode] = useState<'raw' | 'avg5s'>('raw');
     const [activityRpe, setActivityRpe] = useState<number | null>(null);
     const [activityNotes, setActivityNotes] = useState('');
-    const [splitAnnotationsVisible, setSplitAnnotationsVisible] = useState(false);
-    const [splitAnnotationsDirty, setSplitAnnotationsDirty] = useState(false);
-    const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }>>({});
-    const [showAllBestEfforts, setShowAllBestEfforts] = useState(true);
     const [mapFullscreen, setMapFullscreen] = useState(false);
     const [fsMapIndex, setFsMapIndex] = useState<number | null>(null);
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -142,22 +123,6 @@ export const ActivityDetailPage = () => {
 
     useEffect(() => {
         if (!isDesktopViewport || desktopDefaultsAppliedRef.current) return;
-
-        setVisibleSplitStats((prev) => ({
-            ...prev,
-            distance: true,
-            duration: true,
-            total_distance: true,
-            total_time: true,
-            pace_or_speed: true,
-            avg_hr: true,
-            max_hr: true,
-            avg_watts: true,
-            max_watts: true,
-            normalized_power: true,
-            avg_gradient: true,
-            max_gradient: true,
-        }));
 
         setVisibleSeries((prev) => ({
             ...prev,
@@ -331,17 +296,6 @@ export const ActivityDetailPage = () => {
         });
     }, [activity?.best_efforts, activity?.personal_records]);
 
-    const displayedBestEfforts = useMemo(() => {
-        if (!activity?.best_efforts?.length) return [];
-        if (showAllBestEfforts || rankedBestEfforts.length === 0) return activity.best_efforts;
-        return rankedBestEfforts;
-    }, [activity?.best_efforts, rankedBestEfforts, showAllBestEfforts]);
-
-    const hasHiddenBestEfforts = useMemo(() => {
-        const total = activity?.best_efforts?.length ?? 0;
-        return total > displayedBestEfforts.length;
-    }, [activity?.best_efforts?.length, displayedBestEfforts.length]);
-
     const bestEffortMetaByKey = useMemo(() => {
         const empty: Record<string, EffortSegmentMeta> = {};
         const efforts = activity?.best_efforts;
@@ -454,207 +408,9 @@ export const ActivityDetailPage = () => {
         return metaByKey;
     }, [activity?.best_efforts, streamPoints]);
 
-    const hardEfforts = useMemo((): HardEffort[] => {
-        if (!activity || streamPoints.length < 2) return [];
-        const sport = (activity.sport || '').toLowerCase();
-        const isCycling = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride');
-        const isRunning = sport.includes('run');
+    // Populated by HardEffortsPanel via onMetaChange — used for chart/map effort focusing
+    const hardEffortMetaRef = useRef<Record<string, EffortSegmentMeta>>({});
 
-        let refValue: number | null = null;
-        let getMetric: (p: any) => number | null;
-        let isHrFallback = false;
-
-        if (isCycling) {
-            const ftp = Number(activity.ftp_at_time ?? (zoneProfile as any)?.ftp ?? 0);
-            if (ftp > 0) {
-                refValue = ftp;
-                getMetric = (p: any) => { const v = Number(p?.power ?? p?.watts ?? 0); return v > 0 ? v : null; };
-            }
-        } else if (isRunning) {
-            const lt2Raw = Number((zoneProfile as any)?.zone_settings?.running?.pace?.lt2 ?? (zoneProfile as any)?.lt2 ?? 0);
-            if (lt2Raw > 0) {
-                refValue = 1000 / (lt2Raw * 60); // m/s
-                getMetric = (p: any) => { const v = Number(p?.speed ?? 0); return v > 0.1 ? v : null; };
-            } else {
-                // fallback: use LTHR
-                const lthr = Number((zoneProfile as any)?.zone_settings?.running?.hr?.lt2 ?? 0);
-                if (lthr > 0) {
-                    refValue = lthr;
-                    isHrFallback = true;
-                    getMetric = (p: any) => { const v = Number(p?.heart_rate ?? 0); return v > 0 ? v : null; };
-                }
-            }
-        }
-
-        if (!refValue) return [];
-
-        // Build smoothed metric array (3-second rolling average)
-        const smoothed: (number | null)[] = streamPoints.map((_: any, i: number) => {
-            const lo = Math.max(0, i - 1);
-            const hi = Math.min(streamPoints.length - 1, i + 1);
-            let sum = 0, cnt = 0;
-            for (let j = lo; j <= hi; j++) {
-                const v = getMetric(streamPoints[j]);
-                if (v != null) { sum += v; cnt++; }
-            }
-            return cnt > 0 ? sum / cnt : null;
-        });
-
-        const categoryDefs: { id: HardEffortCategory; minPct: number; minDuration: number }[] = [
-            { id: 'sprint', minPct: 2.0, minDuration: 1 },
-            { id: 'threshold_plus', minPct: 1.0, minDuration: 30 },
-            { id: 'near_threshold', minPct: 0.85, minDuration: 60 },
-        ];
-
-        // Prefix sums for avg calculations
-        const pPow: number[] = [0];
-        const pHr: number[] = [0];
-        const pSpd: number[] = [0];
-        for (let i = 0; i < streamPoints.length; i++) {
-            const p = streamPoints[i];
-            pPow.push(pPow[i] + (Number(p?.power ?? p?.watts ?? 0) || 0));
-            pHr.push(pHr[i] + (Number(p?.heart_rate ?? 0) || 0));
-            pSpd.push(pSpd[i] + (Number(p?.speed ?? 0) || 0));
-        }
-
-        const calcSegmentStats = (start: number, end: number) => {
-            const n = end - start + 1;
-            const sumPow = pPow[end + 1] - pPow[start];
-            const sumHr = pHr[end + 1] - pHr[start];
-            const sumSpd = pSpd[end + 1] - pSpd[start];
-            const hrCnt = streamPoints.slice(start, end + 1).filter((p: any) => Number(p?.heart_rate ?? 0) > 0).length;
-            const spdCnt = streamPoints.slice(start, end + 1).filter((p: any) => Number(p?.speed ?? 0) > 0.1).length;
-            return {
-                avgPower: sumPow > 0 ? sumPow / n : null,
-                avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
-                avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
-            };
-        };
-
-        const allFound: HardEffort[] = [];
-
-        for (const cat of categoryDefs) {
-            const threshold = refValue * cat.minPct;
-            const maxGap = 5; // seconds of dip allowed within an effort
-            const segments: { start: number; end: number }[] = [];
-
-            let segStart = -1;
-            let gapStart = -1;
-
-            for (let i = 0; i <= smoothed.length; i++) {
-                const v = i < smoothed.length ? smoothed[i] : null;
-                const above = v != null && v >= threshold;
-
-                if (above) {
-                    if (segStart === -1) segStart = i;
-                    gapStart = -1; // reset gap
-                } else {
-                    if (segStart !== -1) {
-                        if (gapStart === -1) gapStart = i;
-                        // if gap is too long, close the segment
-                        if (i - gapStart >= maxGap || i === smoothed.length) {
-                            const segEnd = gapStart - 1;
-                            if (segEnd >= segStart && (segEnd - segStart + 1) >= cat.minDuration) {
-                                segments.push({ start: segStart, end: segEnd });
-                            }
-                            segStart = -1;
-                            gapStart = -1;
-                        }
-                    }
-                }
-            }
-
-            for (const seg of segments) {
-                const stats = calcSegmentStats(seg.start, seg.end);
-                const refForPct = isHrFallback ? stats.avgHr : (isCycling ? stats.avgPower : (stats.avgSpeedKmh != null ? stats.avgSpeedKmh / 3.6 : null));
-                const pctRef = refForPct != null ? (refForPct / refValue) * 100 : null;
-                allFound.push({
-                    key: `hard_${cat.id}_${seg.start}`,
-                    category: cat.id,
-                    startIndex: seg.start,
-                    endIndex: seg.end,
-                    centerIndex: Math.round((seg.start + seg.end) / 2),
-                    durationSeconds: seg.end - seg.start + 1,
-                    avgPower: stats.avgPower,
-                    avgHr: stats.avgHr,
-                    avgSpeedKmh: stats.avgSpeedKmh,
-                    pctRef,
-                });
-            }
-        }
-
-        // Overlap resolution: process highest-intensity category first; discard any effort
-        // that overlaps >50% with an already-kept effort (regardless of which came first in time)
-        const catPriority: Record<HardEffortCategory, number> = { sprint: 0, threshold_plus: 1, near_threshold: 2 };
-        allFound.sort((a, b) => {
-            const pd = catPriority[a.category] - catPriority[b.category];
-            return pd !== 0 ? pd : a.startIndex - b.startIndex;
-        });
-        const kept: HardEffort[] = [];
-        for (const effort of allFound) {
-            const overlaps = kept.some(existing => {
-                const overlapStart = Math.max(existing.startIndex, effort.startIndex);
-                const overlapEnd = Math.min(existing.endIndex, effort.endIndex);
-                if (overlapEnd < overlapStart) return false;
-                const overlapLen = overlapEnd - overlapStart + 1;
-                return overlapLen > Math.min(effort.durationSeconds, existing.durationSeconds) * 0.5;
-            });
-            if (!overlaps) kept.push(effort);
-        }
-        // Re-sort by start time for display
-        kept.sort((a, b) => a.startIndex - b.startIndex);
-
-        return kept;
-    }, [activity, streamPoints, zoneProfile]);
-
-    const hardEffortMetaByKey = useMemo((): Record<string, EffortSegmentMeta> => {
-        const result: Record<string, EffortSegmentMeta> = {};
-        for (const e of hardEfforts) {
-            result[e.key] = {
-                startIndex: e.startIndex,
-                endIndex: e.endIndex,
-                centerIndex: e.centerIndex,
-                seconds: e.durationSeconds,
-                meters: e.avgSpeedKmh != null ? (e.avgSpeedKmh / 3.6) * e.durationSeconds : null,
-                avgPower: e.avgPower,
-                avgHr: e.avgHr,
-                speedKmh: e.avgSpeedKmh,
-            };
-        }
-        return result;
-    }, [hardEfforts]);
-
-    const hardEffortRests = useMemo((): HardEffortRest[] => {
-        if (hardEfforts.length < 2) return [];
-        const rests: HardEffortRest[] = [];
-        for (let i = 0; i < hardEfforts.length - 1; i++) {
-            const restStart = hardEfforts[i].endIndex + 1;
-            const restEnd = hardEfforts[i + 1].startIndex - 1;
-            if (restEnd < restStart) {
-                rests.push({ durationSeconds: 0, avgHr: null, avgPower: null, avgSpeedKmh: null });
-                continue;
-            }
-            const n = restEnd - restStart + 1;
-            let sumPow = 0, sumHr = 0, sumSpd = 0, hrCnt = 0, spdCnt = 0;
-            for (let j = restStart; j <= restEnd; j++) {
-                const p = streamPoints[j];
-                if (!p) continue;
-                const pow = Number(p?.power ?? p?.watts ?? 0);
-                const hr = Number(p?.heart_rate ?? 0);
-                const spd = Number(p?.speed ?? 0);
-                sumPow += pow;
-                if (hr > 0) { sumHr += hr; hrCnt++; }
-                if (spd > 0.1) { sumSpd += spd; spdCnt++; }
-            }
-            rests.push({
-                durationSeconds: n,
-                avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
-                avgPower: sumPow > 0 ? sumPow / n : null,
-                avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
-            });
-        }
-        return rests;
-    }, [hardEfforts, streamPoints]);
 
     const routePositions = useMemo(() => {
         return streamPoints
@@ -1003,7 +759,7 @@ export const ActivityDetailPage = () => {
 
     const selectedEffortRoutePositions = useMemo<[number, number][]>(() => {
         if (!selectedEffortKey) return [];
-        const meta = bestEffortMetaByKey[selectedEffortKey] ?? hardEffortMetaByKey[selectedEffortKey];
+        const meta = bestEffortMetaByKey[selectedEffortKey] ?? hardEffortMetaRef.current[selectedEffortKey];
         if (!meta) return [];
 
         const points: [number, number][] = [];
@@ -1014,7 +770,7 @@ export const ActivityDetailPage = () => {
             }
         }
         return points;
-    }, [selectedEffortKey, bestEffortMetaByKey, hardEffortMetaByKey, streamPoints]);
+    }, [selectedEffortKey, bestEffortMetaByKey, streamPoints]);
 
     const activeMapMarkerPoint = useMemo(() => {
         if (mapHoveredPoint) return mapHoveredPoint;
@@ -1040,7 +796,7 @@ export const ActivityDetailPage = () => {
     }, [activeMapMarkerPoint]);
 
     const focusEffortByKey = useCallback((effortKey: string, openFullscreenMap = true) => {
-        const meta = bestEffortMetaByKey[effortKey] ?? hardEffortMetaByKey[effortKey];
+        const meta = bestEffortMetaByKey[effortKey] ?? hardEffortMetaRef.current[effortKey];
         if (!meta) return;
         setSelectedEffortKey(effortKey);
         setSelectedEffortStreamIndex(meta.centerIndex);
@@ -1076,11 +832,11 @@ export const ActivityDetailPage = () => {
                 setFsMapIndex(nearestIdx >= 0 ? nearestIdx : null);
             }
         }
-    }, [bestEffortMetaByKey, hardEffortMetaByKey, gpsChartData, streamPoints]);
+    }, [bestEffortMetaByKey, gpsChartData, streamPoints]);
 
     const selectedEffortElevBounds = useMemo<{ x1: number; x2: number } | null>(() => {
         if (!selectedEffortKey) return null;
-        const meta = bestEffortMetaByKey[selectedEffortKey] ?? hardEffortMetaByKey[selectedEffortKey];
+        const meta = bestEffortMetaByKey[selectedEffortKey] ?? hardEffortMetaRef.current[selectedEffortKey];
         if (!meta) return null;
         let x1: number | null = null;
         let x2: number | null = null;
@@ -1092,7 +848,7 @@ export const ActivityDetailPage = () => {
         }
         if (x1 === null || x2 === null) return null;
         return { x1, x2 };
-    }, [selectedEffortKey, bestEffortMetaByKey, hardEffortMetaByKey, gpsChartData]);
+    }, [selectedEffortKey, bestEffortMetaByKey, gpsChartData]);
 
     const fsMapPoint = useMemo(() => {
         if (fsMapIndex === null || !chartRenderData[fsMapIndex]) return null;
@@ -1631,40 +1387,6 @@ export const ActivityDetailPage = () => {
         return `${m}:${s.toString().padStart(2, '0')}/km`;
     };
 
-    const toTimestampMs = (value: any) => {
-        if (!value) return NaN;
-        if (typeof value === 'number') return value;
-        if (value instanceof Date) return value.getTime();
-        if (typeof value === 'string') {
-            const hasTimezone = /([zZ]|[+\-]\d{2}:\d{2})$/.test(value);
-            const normalized = hasTimezone ? value : `${value}Z`;
-            const ms = Date.parse(normalized);
-            return Number.isFinite(ms) ? ms : NaN;
-        }
-        return NaN;
-    };
-
-    const calculateNormalizedPower = (powerSamples: number[]) => {
-        if (!powerSamples.length) return null;
-        const windowSize = Math.min(30, powerSamples.length);
-        let rollingSum = 0;
-        const rollingAverages: number[] = [];
-
-        powerSamples.forEach((sample, index) => {
-            rollingSum += sample;
-            if (index >= windowSize) {
-                rollingSum -= powerSamples[index - windowSize];
-            }
-            if (index >= windowSize - 1) {
-                rollingAverages.push(rollingSum / windowSize);
-            }
-        });
-
-        const source = rollingAverages.length ? rollingAverages : powerSamples;
-        const meanFourth = source.reduce((sum, value) => sum + Math.pow(value, 4), 0) / source.length;
-        return Math.pow(meanFourth, 0.25);
-    };
-
     const overallNormalizedPower = useMemo(() => {
         const powerSamples = streamPoints
             .map((sample: any) => Number(sample?.power ?? -1))
@@ -1688,156 +1410,11 @@ export const ActivityDetailPage = () => {
         return { intensityFactor, tss, vi };
     }, [activity, overallNormalizedPower, me?.profile?.ftp]);
 
-    const splitsToDisplay = useMemo(() => {
-        if (!activity) return [];
-        if (splitMode === 'metric') return activity.splits_metric || [];
-        // Filter out empty laps if necessary
-        return (activity.laps || []).filter(l => l.distance > 0);
-    }, [activity, splitMode]);
-
-    const splitsToDisplayWithPower = useMemo(() => {
-        if (!activity) return [];
-        const sportName = (activity.sport || '').toLowerCase();
-        const isCyclingLike = sportName.includes('cycl') || sportName.includes('bike') || sportName.includes('ride') || sportName.includes('virtualride');
-
-        let cumulativeDistance = 0;
-
-        return splitsToDisplay.map((split: any, index: number) => {
-            const splitDistance = Number(split?.distance || 0);
-            const startDistance = cumulativeDistance;
-            const endDistance = cumulativeDistance + splitDistance;
-            cumulativeDistance = endDistance;
-
-            let segmentPoints: any[] = [];
-            const startTime = toTimestampMs(split?.start_time);
-            const durationSeconds = Number(split?.duration || 0);
-
-            if (Number.isFinite(startTime) && durationSeconds > 0) {
-                const endTime = startTime + durationSeconds * 1000;
-                segmentPoints = streamPoints.filter((point: any) => {
-                    const ts = toTimestampMs(point?.timestamp);
-                    return Number.isFinite(ts) && ts >= startTime && ts < endTime;
-                });
-            }
-
-            if (!segmentPoints.length && splitDistance > 0) {
-                segmentPoints = streamPoints.filter((point: any) => {
-                    const distance = Number(point?.distance);
-                    if (!Number.isFinite(distance)) return false;
-                    if (index === splitsToDisplay.length - 1) return distance >= startDistance && distance <= endDistance;
-                    return distance >= startDistance && distance < endDistance;
-                });
-            }
-
-            const allPowerSamples = segmentPoints
-                .map((point: any) => Number(point?.power ?? -1))
-                .filter((value: number) => Number.isFinite(value) && value >= 0);
-            const positivePowerSamples = allPowerSamples.filter((value) => value > 0);
-
-            const avgFromSegment = positivePowerSamples.length
-                ? positivePowerSamples.reduce((sum: number, value: number) => sum + value, 0) / positivePowerSamples.length
-                : null;
-            const avgFromSplit = Number(split?.avg_power);
-            const avgWatts = Number.isFinite(avgFromSplit) && avgFromSplit > 0 ? avgFromSplit : avgFromSegment;
-
-            const maxWatts = positivePowerSamples.length ? Math.max(...positivePowerSamples) : null;
-            let normalizedPower = calculateNormalizedPower(allPowerSamples);
-            if (normalizedPower != null && avgWatts != null && normalizedPower < avgWatts) {
-                normalizedPower = avgWatts;
-            }
-
-            const gradients: number[] = [];
-            for (let pointIndex = 1; pointIndex < segmentPoints.length; pointIndex += 1) {
-                const prevPoint = segmentPoints[pointIndex - 1];
-                const currPoint = segmentPoints[pointIndex];
-                const prevDistance = Number(prevPoint?.distance);
-                const currDistance = Number(currPoint?.distance);
-                const prevAltitude = Number(prevPoint?.altitude);
-                const currAltitude = Number(currPoint?.altitude);
-                if (
-                    Number.isFinite(prevDistance)
-                    && Number.isFinite(currDistance)
-                    && Number.isFinite(prevAltitude)
-                    && Number.isFinite(currAltitude)
-                ) {
-                    const deltaDistance = currDistance - prevDistance;
-                    if (deltaDistance >= 2) {
-                        const gradient = ((currAltitude - prevAltitude) / deltaDistance) * 100;
-                        if (Number.isFinite(gradient)) {
-                            gradients.push(Math.max(-35, Math.min(35, gradient)));
-                        }
-                    }
-                }
-            }
-            const avgGradient = gradients.length
-                ? gradients.reduce((sum: number, value: number) => sum + value, 0) / gradients.length
-                : null;
-            const maxGradient = gradients.length
-                ? Math.max(...gradients)
-                : null;
-
-            return {
-                ...split,
-                avg_watts: isCyclingLike ? avgWatts : split?.avg_watts,
-                max_watts: isCyclingLike ? maxWatts : split?.max_watts,
-                normalized_power: isCyclingLike ? normalizedPower : split?.normalized_power,
-                avg_gradient: Number.isFinite(Number(split?.avg_gradient)) ? Number(split.avg_gradient) : avgGradient,
-                max_gradient: Number.isFinite(Number(split?.max_gradient)) ? Number(split.max_gradient) : maxGradient,
-            };
-        });
-    }, [activity, splitsToDisplay, streamPoints]);
-
-    const splitsWithCumulativeTotals = useMemo(() => {
-        let cumulativeDistance = 0;
-        let cumulativeDuration = 0;
-
-        return splitsToDisplayWithPower.map((split: any) => {
-            const splitDistance = Number(split?.distance || 0);
-            const splitDuration = Number(split?.duration || 0);
-
-            cumulativeDistance += Number.isFinite(splitDistance) ? splitDistance : 0;
-            cumulativeDuration += Number.isFinite(splitDuration) ? splitDuration : 0;
-
-            return {
-                ...split,
-                cumulative_distance: cumulativeDistance,
-                cumulative_duration: cumulativeDuration,
-            };
-        });
-    }, [splitsToDisplayWithPower]);
-
     useEffect(() => {
         if (!activity) return;
         setActivityRpe(activity.rpe ?? null);
         setActivityNotes(activity.notes || '');
     }, [activity?.id, activity?.rpe, activity?.notes]);
-
-    useEffect(() => {
-        const initial: Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }> = {};
-        splitsToDisplayWithPower.forEach((split: any, idx: number) => {
-            initial[idx] = {
-                rpe: typeof split?.rpe === 'number' ? split.rpe : null,
-                lactate_mmol_l: typeof split?.lactate_mmol_l === 'number' ? split.lactate_mmol_l : null,
-                note: typeof split?.note === 'string' ? split.note : ''
-            };
-        });
-        setSplitAnnotations(initial);
-    }, [activity?.id, splitMode, splitsToDisplayWithPower.length]);
-
-    useEffect(() => {
-        if (!activity) return;
-        const sportName = (activity.sport || '').toLowerCase();
-        const isCycling = sportName.includes('cycl') || sportName.includes('bike') || sportName.includes('ride') || sportName.includes('virtualride');
-        const hasMetricSplits = Boolean(activity.splits_metric?.length);
-        const hasLapSplits = Boolean(activity.laps?.length);
-
-        if ((isCycling || !hasMetricSplits) && hasLapSplits) {
-            setSplitMode('laps');
-            return;
-        }
-
-        setSplitMode('metric');
-    }, [activity]);
 
     // Auto-select efforts vs splits view based on available data
     useEffect(() => {
@@ -1850,10 +1427,6 @@ export const ActivityDetailPage = () => {
             setEffortsSplitsView('splits');
         }
     }, [activity]);
-
-    useEffect(() => {
-        setShowAllBestEfforts(true);
-    }, [activity?.id]);
 
     useEffect(() => {
         const key = returnState.focusEffort?.key;
@@ -2151,7 +1724,7 @@ export const ActivityDetailPage = () => {
                             {isRunningActivity ? <Tabs.Tab value="pace_zones" disabled={runningPaceZoneData.every((z) => z.seconds <= 0)}>Pace Zones</Tabs.Tab> : null}
                             {isCyclingActivity ? <Tabs.Tab value="power_zones" disabled={cyclingPowerZoneData.every((z) => z.seconds <= 0)}>Power Zones</Tabs.Tab> : null}
                             {(activity.splits_metric?.length || activity.laps?.length) ? <Tabs.Tab value="laps">Laps</Tabs.Tab> : null}
-                            {hardEfforts.length > 0 ? <Tabs.Tab value="hard_efforts">Hard Efforts</Tabs.Tab> : null}
+                            {(isCyclingActivity || isRunningActivity) && streamPoints.length > 2 ? <Tabs.Tab value="hard_efforts">Hard Efforts</Tabs.Tab> : null}
                             {activity.best_efforts?.length ? <Tabs.Tab value="best_efforts">Best Efforts</Tabs.Tab> : null}
                             {activity.planned_comparison ? <Tabs.Tab value="comparison">Comparison</Tabs.Tab> : null}
                         </Tabs.List>
@@ -2681,15 +2254,15 @@ export const ActivityDetailPage = () => {
                         </Tabs.Panel>
 
                         {/* HARD EFFORTS TAB */}
-                        {hardEfforts.length > 0 ? (
+                        {(isCyclingActivity || isRunningActivity) && streamPoints.length > 2 ? (
                         <Tabs.Panel value="hard_efforts">
                             <HardEffortsPanel
-                                hardEfforts={hardEfforts}
-                                hardEffortRests={hardEffortRests}
+                                activity={activity}
+                                streamPoints={streamPoints}
+                                zoneProfile={zoneProfile}
                                 selectedEffortKey={selectedEffortKey}
                                 onSelectEffort={(key) => focusEffortByKey(key, true)}
-                                isCyclingActivity={isCyclingActivity}
-                                isRunningActivity={isRunningActivity}
+                                onMetaChange={(meta) => { hardEffortMetaRef.current = meta; }}
                                 isDark={isDark}
                                 ui={ui}
                                 t={t}
@@ -2703,21 +2276,10 @@ export const ActivityDetailPage = () => {
                             <SplitsTable
                                 activity={activity}
                                 me={me}
-                                splitMode={splitMode}
-                                setSplitMode={setSplitMode}
-                                visibleSplitStats={visibleSplitStats}
-                                setVisibleSplitStats={setVisibleSplitStats}
-                                splitsWithCumulativeTotals={splitsWithCumulativeTotals}
-                                splitAnnotations={splitAnnotations}
-                                setSplitAnnotations={setSplitAnnotations}
-                                splitAnnotationsVisible={splitAnnotationsVisible}
-                                setSplitAnnotationsVisible={setSplitAnnotationsVisible}
-                                splitAnnotationsDirty={splitAnnotationsDirty}
-                                setSplitAnnotationsDirty={setSplitAnnotationsDirty}
+                                streamPoints={streamPoints}
+                                isDesktopViewport={isDesktopViewport}
                                 onSaveAnnotations={(payload) => {
-                                    updateActivityMutation.mutate({ split_annotations: payload }, {
-                                        onSuccess: () => setSplitAnnotationsDirty(false)
-                                    });
+                                    updateActivityMutation.mutate({ split_annotations: payload });
                                 }}
                                 isSaving={updateActivityMutation.isPending}
                                 formatPace={formatPace}
@@ -2735,12 +2297,9 @@ export const ActivityDetailPage = () => {
                             <BestEffortsPanel
                                 activity={activity}
                                 me={me}
-                                displayedBestEfforts={displayedBestEfforts}
+                                rankedBestEfforts={rankedBestEfforts}
                                 bestEffortMetaByKey={bestEffortMetaByKey}
                                 selectedEffortKey={selectedEffortKey}
-                                showAllBestEfforts={showAllBestEfforts}
-                                hasHiddenBestEfforts={hasHiddenBestEfforts}
-                                onToggleShowAll={() => setShowAllBestEfforts(!showAllBestEfforts)}
                                 onSelectEffort={(key) => focusEffortByKey(key, true)}
                                 isCyclingActivity={isCyclingActivity}
                                 isRunningActivity={isRunningActivity}

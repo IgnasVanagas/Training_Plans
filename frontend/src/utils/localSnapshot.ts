@@ -22,7 +22,7 @@ export const readSnapshot = <T>(key: string): T | undefined => {
 const evictOldSnapshots = (keepKey: string): void => {
   try {
     const ls = window.localStorage;
-    // Collect all snapshot keys with their timestamps
+    // Collect only snapshot keys (must have v + ts fields) with their timestamps
     const entries: { key: string; ts: number }[] = [];
     for (let i = 0; i < ls.length; i++) {
       const k = ls.key(i);
@@ -31,12 +31,13 @@ const evictOldSnapshots = (keepKey: string): void => {
         const raw = ls.getItem(k);
         if (!raw) continue;
         const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed.ts === "number") {
+        // Only evict entries that are valid snapshot envelopes — skip auth tokens
+        // and any other non-snapshot keys that live in localStorage.
+        if (parsed && typeof parsed.v === "number" && typeof parsed.ts === "number") {
           entries.push({ key: k, ts: parsed.ts });
         }
       } catch {
-        // unparseable — evict it too
-        entries.push({ key: k, ts: 0 });
+        // unparseable — not a snapshot, leave it alone
       }
     }
     // Remove oldest entries first (up to half)

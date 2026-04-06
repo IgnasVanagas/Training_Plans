@@ -32,12 +32,19 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     pool_pre_ping=True,
-    pool_recycle=max(0, _env_int("DB_POOL_RECYCLE_SECONDS", 900)),
+    # Recycle connections every 5 min — well below Render's ~10 min idle timeout
+    pool_recycle=max(0, _env_int("DB_POOL_RECYCLE_SECONDS", 300)),
     pool_size=max(1, _env_int("DB_POOL_SIZE", 5)),
     max_overflow=max(0, _env_int("DB_MAX_OVERFLOW", 10)),
     pool_timeout=max(1, _env_int("DB_POOL_TIMEOUT_SECONDS", 30)),
     pool_use_lifo=True,
-    connect_args={"timeout": 10, "command_timeout": 30},
+    connect_args={
+        "timeout": 10,
+        "command_timeout": 30,
+        # Send TCP keepalives every 60s to prevent the connection being silently
+        # dropped by the cloud provider's idle-connection killer
+        "server_settings": {"keepalives_idle": "60"},
+    },
 )
 AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False

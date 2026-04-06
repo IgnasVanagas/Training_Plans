@@ -1,6 +1,6 @@
 import { Box, Button, Chip, Group, NumberInput, Paper, SegmentedControl, Table, Text, TextInput, Title } from "@mantine/core";
-import { Dispatch, SetStateAction } from "react";
-import { formatDuration } from "./formatters";
+import { useEffect, useMemo, useState } from "react";
+import { calculateNormalizedPower, formatDuration, toTimestampMs } from "./formatters";
 import { ActivityDetail } from "../../types/activityDetail";
 
 type UiTokens = {
@@ -9,27 +9,6 @@ type UiTokens = {
     border: string;
     textMain: string;
     textDim: string;
-};
-
-type SplitAnnotation = {
-    rpe: number | null;
-    lactate_mmol_l: number | null;
-    note: string;
-};
-
-type VisibleSplitStats = {
-    distance: boolean;
-    duration: boolean;
-    total_distance: boolean;
-    total_time: boolean;
-    pace_or_speed: boolean;
-    avg_hr: boolean;
-    max_hr: boolean;
-    avg_gradient: boolean;
-    max_gradient: boolean;
-    avg_watts: boolean;
-    max_watts: boolean;
-    normalized_power: boolean;
 };
 
 type SaveAnnotationPayload = Array<{
@@ -43,17 +22,8 @@ type SaveAnnotationPayload = Array<{
 interface SplitsTableProps {
     activity: ActivityDetail;
     me: any;
-    splitMode: 'metric' | 'laps';
-    setSplitMode: (mode: 'metric' | 'laps') => void;
-    visibleSplitStats: VisibleSplitStats;
-    setVisibleSplitStats: Dispatch<SetStateAction<VisibleSplitStats>>;
-    splitsWithCumulativeTotals: any[];
-    splitAnnotations: Record<number, SplitAnnotation>;
-    setSplitAnnotations: Dispatch<SetStateAction<Record<number, SplitAnnotation>>>;
-    splitAnnotationsVisible: boolean;
-    setSplitAnnotationsVisible: (v: boolean | ((prev: boolean) => boolean)) => void;
-    splitAnnotationsDirty: boolean;
-    setSplitAnnotationsDirty: (v: boolean) => void;
+    streamPoints: any[];
+    isDesktopViewport: boolean;
     onSaveAnnotations: (payload: SaveAnnotationPayload) => void;
     isSaving: boolean;
     formatPace: (speed: number) => string;
@@ -66,17 +36,8 @@ interface SplitsTableProps {
 export const SplitsTable = ({
     activity,
     me,
-    splitMode,
-    setSplitMode,
-    visibleSplitStats,
-    setVisibleSplitStats,
-    splitsWithCumulativeTotals,
-    splitAnnotations,
-    setSplitAnnotations,
-    splitAnnotationsVisible,
-    setSplitAnnotationsVisible,
-    splitAnnotationsDirty,
-    setSplitAnnotationsDirty,
+    streamPoints,
+    isDesktopViewport,
     onSaveAnnotations,
     isSaving,
     formatPace,
@@ -85,6 +46,148 @@ export const SplitsTable = ({
     ui,
     t,
 }: SplitsTableProps) => {
+    const [splitMode, setSplitMode] = useState<'metric' | 'laps'>('metric');
+    const [splitAnnotationsVisible, setSplitAnnotationsVisible] = useState(false);
+    const [splitAnnotationsDirty, setSplitAnnotationsDirty] = useState(false);
+    const [splitAnnotations, setSplitAnnotations] = useState<Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }>>({});
+    const [visibleSplitStats, setVisibleSplitStats] = useState({
+        distance: true,
+        duration: true,
+        total_distance: isDesktopViewport,
+        total_time: isDesktopViewport,
+        pace_or_speed: true,
+        avg_hr: true,
+        max_hr: true,
+        avg_watts: true,
+        max_watts: true,
+        normalized_power: true,
+        avg_gradient: true,
+        max_gradient: true,
+    });
+
+    // Auto-select split mode based on activity type
+    useEffect(() => {
+        if (!activity) return;
+        const sportName = (activity.sport || '').toLowerCase();
+        const isCycling = sportName.includes('cycl') || sportName.includes('bike') || sportName.includes('ride') || sportName.includes('virtualride');
+        const hasMetricSplits = Boolean(activity.splits_metric?.length);
+        const hasLapSplits = Boolean(activity.laps?.length);
+        if ((isCycling || !hasMetricSplits) && hasLapSplits) {
+            setSplitMode('laps');
+        } else {
+            setSplitMode('metric');
+        }
+    }, [activity]);
+
+    // Expand visible stats for desktop
+    useEffect(() => {
+        if (!isDesktopViewport) return;
+        setVisibleSplitStats(prev => ({
+            ...prev,
+            total_distance: true,
+            total_time: true,
+        }));
+    }, [isDesktopViewport]);
+
+    const splitsToDisplay = useMemo(() => {
+        if (!activity) return [];
+        if (splitMode === 'metric') return activity.splits_metric || [];
+        return (activity.laps || []).filter((l: any) => l.distance > 0);
+    }, [activity, splitMode]);
+
+    const splitsToDisplayWithPower = useMemo(() => {
+        if (!activity) return [];
+        const sportName = (activity.sport || '').toLowerCase();
+        const isCyclingLike = sportName.includes('cycl') || sportName.includes('bike') || sportName.includes('ride') || sportName.includes('virtualride');
+        let cumulativeDistance = 0;
+
+        return splitsToDisplay.map((split: any, index: number) => {
+            const splitDistance = Number(split?.distance || 0);
+            const startDistance = cumulativeDistance;
+            const endDistance = cumulativeDistance + splitDistance;
+            cumulativeDistance = endDistance;
+
+            let segmentPoints: any[] = [];
+            const startTime = toTimestampMs(split?.start_time);
+            const durationSeconds = Number(split?.duration || 0);
+
+            if (Number.isFinite(startTime) && durationSeconds > 0) {
+                const endTime = startTime + durationSeconds * 1000;
+                segmentPoints = streamPoints.filter((point: any) => {
+                    const ts = toTimestampMs(point?.timestamp);
+                    return Number.isFinite(ts) && ts >= startTime && ts < endTime;
+                });
+            }
+
+            if (!segmentPoints.length && splitDistance > 0) {
+                segmentPoints = streamPoints.filter((point: any) => {
+                    const distance = Number(point?.distance);
+                    if (!Number.isFinite(distance)) return false;
+                    if (index === splitsToDisplay.length - 1) return distance >= startDistance && distance <= endDistance;
+                    return distance >= startDistance && distance < endDistance;
+                });
+            }
+
+            const allPowerSamples = segmentPoints
+                .map((point: any) => Number(point?.power ?? -1))
+                .filter((value: number) => Number.isFinite(value) && value >= 0);
+            const positivePowerSamples = allPowerSamples.filter((v) => v > 0);
+
+            const avgFromSegment = positivePowerSamples.length
+                ? positivePowerSamples.reduce((sum: number, v: number) => sum + v, 0) / positivePowerSamples.length
+                : null;
+            const avgFromSplit = Number(split?.avg_power);
+            const avgWatts = Number.isFinite(avgFromSplit) && avgFromSplit > 0 ? avgFromSplit : avgFromSegment;
+            const maxWatts = positivePowerSamples.length ? Math.max(...positivePowerSamples) : null;
+            let normalizedPower = calculateNormalizedPower(allPowerSamples);
+            if (normalizedPower != null && avgWatts != null && normalizedPower < avgWatts) normalizedPower = avgWatts;
+
+            const gradients: number[] = [];
+            for (let i = 1; i < segmentPoints.length; i++) {
+                const prev = segmentPoints[i - 1], curr = segmentPoints[i];
+                const pd = Number(prev?.distance), cd = Number(curr?.distance);
+                const pa = Number(prev?.altitude), ca = Number(curr?.altitude);
+                if (Number.isFinite(pd) && Number.isFinite(cd) && Number.isFinite(pa) && Number.isFinite(ca) && cd - pd >= 2) {
+                    const g = ((ca - pa) / (cd - pd)) * 100;
+                    if (Number.isFinite(g)) gradients.push(Math.max(-35, Math.min(35, g)));
+                }
+            }
+            const avgGradient = gradients.length ? gradients.reduce((s, v) => s + v, 0) / gradients.length : null;
+            const maxGradient = gradients.length ? Math.max(...gradients) : null;
+
+            return {
+                ...split,
+                avg_watts: isCyclingLike ? avgWatts : split?.avg_watts,
+                max_watts: isCyclingLike ? maxWatts : split?.max_watts,
+                normalized_power: isCyclingLike ? normalizedPower : split?.normalized_power,
+                avg_gradient: Number.isFinite(Number(split?.avg_gradient)) ? Number(split.avg_gradient) : avgGradient,
+                max_gradient: Number.isFinite(Number(split?.max_gradient)) ? Number(split.max_gradient) : maxGradient,
+            };
+        });
+    }, [activity, splitsToDisplay, streamPoints]);
+
+    const splitsWithCumulativeTotals = useMemo(() => {
+        let cumDist = 0, cumDur = 0;
+        return splitsToDisplayWithPower.map((split: any) => {
+            cumDist += Number.isFinite(Number(split?.distance)) ? Number(split.distance) : 0;
+            cumDur += Number.isFinite(Number(split?.duration)) ? Number(split.duration) : 0;
+            return { ...split, cumulative_distance: cumDist, cumulative_duration: cumDur };
+        });
+    }, [splitsToDisplayWithPower]);
+
+    // Initialise annotations from activity data whenever activity/splitMode changes
+    useEffect(() => {
+        const initial: Record<number, { rpe: number | null; lactate_mmol_l: number | null; note: string }> = {};
+        splitsToDisplayWithPower.forEach((split: any, idx: number) => {
+            initial[idx] = {
+                rpe: typeof split?.rpe === 'number' ? split.rpe : null,
+                lactate_mmol_l: typeof split?.lactate_mmol_l === 'number' ? split.lactate_mmol_l : null,
+                note: typeof split?.note === 'string' ? split.note : '',
+            };
+        });
+        setSplitAnnotations(initial);
+    }, [activity?.id, splitMode, splitsToDisplayWithPower.length]);
+
     return (
         <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
             <Group justify="space-between" mb="md">

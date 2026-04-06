@@ -88,13 +88,27 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
+      const attemptRefresh = async (attemptsLeft: number): Promise<string> => {
+        try {
+          const { data } = await axios.post(
+            `${api.defaults.baseURL}/auth/refresh`,
+            {},
+            { withCredentials: true },
+          );
+          return data.access_token;
+        } catch (refreshError: any) {
+          // Retry once on network errors or 5xx (e.g. DB hiccup) but not on 401/403
+          const status = refreshError?.response?.status;
+          if (attemptsLeft > 0 && (!status || status >= 500)) {
+            await new Promise((res) => setTimeout(res, 1500));
+            return attemptRefresh(attemptsLeft - 1);
+          }
+          throw refreshError;
+        }
+      };
+
       try {
-        const { data } = await axios.post(
-          `${api.defaults.baseURL}/auth/refresh`,
-          {},
-          { withCredentials: true },
-        );
-        const newToken = data.access_token;
+        const newToken = await attemptRefresh(1);
         markAuthSessionActive(newToken);
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         onTokenRefreshed(newToken);

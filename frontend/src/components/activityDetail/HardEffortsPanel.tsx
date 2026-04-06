@@ -1,7 +1,8 @@
 import { Badge, Box, Group, Paper, Table, Text, Title } from "@mantine/core";
 import { IconFlame, IconMinus } from "@tabler/icons-react";
+import { useEffect, useMemo } from "react";
 import { formatDuration } from "./formatters";
-import { HardEffort, HardEffortRest } from "../../types/activityDetail";
+import { ActivityDetail, EffortSegmentMeta, HardEffort, HardEffortRest } from "../../types/activityDetail";
 
 type UiTokens = {
     surface: string;
@@ -12,44 +13,261 @@ type UiTokens = {
 };
 
 interface HardEffortsPanelProps {
-    hardEfforts: HardEffort[];
-    hardEffortRests: HardEffortRest[];
+    activity: ActivityDetail;
+    streamPoints: any[];
+    zoneProfile: any;
     selectedEffortKey: string | null;
     onSelectEffort: (key: string) => void;
-    isCyclingActivity: boolean;
-    isRunningActivity: boolean;
+    onMetaChange?: (meta: Record<string, EffortSegmentMeta>) => void;
     isDark: boolean;
     ui: UiTokens;
     t: (key: string) => string;
 }
 
+const ZONE_COLORS = ['gray', 'blue', 'teal', 'yellow', 'orange', 'red', 'violet'] as const;
+const ZONE_BOUNDS_DESC = ['<55%', '55-75%', '75-90%', '90-105%', '105-120%', '120-150%', '>150%'];
+
 export const HardEffortsPanel = ({
-    hardEfforts,
-    hardEffortRests,
+    activity,
+    streamPoints,
+    zoneProfile,
     selectedEffortKey,
     onSelectEffort,
-    isCyclingActivity,
-    isRunningActivity,
+    onMetaChange,
     isDark,
     ui,
     t,
 }: HardEffortsPanelProps) => {
+    const sport = (activity.sport || '').toLowerCase();
+    const isCyclingActivity = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride');
+    const isRunningActivity = sport.includes('run');
+
+    const hardEfforts = useMemo((): HardEffort[] => {
+        if (!activity || streamPoints.length < 2) return [];
+
+        let refValue: number | null = null;
+        let getMetric: (p: any) => number | null;
+        let isHrFallback = false;
+
+        if (isCyclingActivity) {
+            const ftp = Number(activity.ftp_at_time ?? (zoneProfile as any)?.ftp ?? 0);
+            if (ftp > 0) {
+                refValue = ftp;
+                getMetric = (p: any) => { const v = Number(p?.power ?? p?.watts ?? 0); return v > 0 ? v : null; };
+            }
+        } else if (isRunningActivity) {
+            const lt2Raw = Number((zoneProfile as any)?.zone_settings?.running?.pace?.lt2 ?? (zoneProfile as any)?.lt2 ?? 0);
+            if (lt2Raw > 0) {
+                refValue = 1000 / (lt2Raw * 60);
+                getMetric = (p: any) => { const v = Number(p?.speed ?? 0); return v > 0.1 ? v : null; };
+            } else {
+                const lthr = Number((zoneProfile as any)?.zone_settings?.running?.hr?.lt2 ?? 0);
+                if (lthr > 0) {
+                    refValue = lthr;
+                    isHrFallback = true;
+                    getMetric = (p: any) => { const v = Number(p?.heart_rate ?? 0); return v > 0 ? v : null; };
+                }
+            }
+        }
+
+        if (!refValue) return [];
+        const ref = refValue;
+
+        const zoneBounds = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50];
+        const getZone = (ratio: number): number => {
+            for (let z = 0; z < zoneBounds.length; z++) if (ratio < zoneBounds[z]) return z + 1;
+            return 7;
+        };
+
+        // ~30-second rolling average (±15 points)
+        const smoothed: (number | null)[] = streamPoints.map((_: any, i: number) => {
+            const lo = Math.max(0, i - 15);
+            const hi = Math.min(streamPoints.length - 1, i + 15);
+            let sum = 0, cnt = 0;
+            for (let j = lo; j <= hi; j++) {
+                const v = getMetric(streamPoints[j]);
+                if (v != null) { sum += v; cnt++; }
+            }
+            return cnt > 0 ? sum / cnt : null;
+        });
+
+        // Prefix sums
+        const pPow: number[] = [0];
+        const pHr: number[] = [0];
+        const pSpd: number[] = [0];
+        for (let i = 0; i < streamPoints.length; i++) {
+            const p = streamPoints[i];
+            pPow.push(pPow[i] + (Number(p?.power ?? p?.watts ?? 0) || 0));
+            pHr.push(pHr[i] + (Number(p?.heart_rate ?? 0) || 0));
+            pSpd.push(pSpd[i] + (Number(p?.speed ?? 0) || 0));
+        }
+
+        const calcSegmentStats = (start: number, end: number) => {
+            const n = end - start + 1;
+            const sumPow = pPow[end + 1] - pPow[start];
+            const sumHr = pHr[end + 1] - pHr[start];
+            const sumSpd = pSpd[end + 1] - pSpd[start];
+            const hrCnt = streamPoints.slice(start, end + 1).filter((p: any) => Number(p?.heart_rate ?? 0) > 0).length;
+            const spdCnt = streamPoints.slice(start, end + 1).filter((p: any) => Number(p?.speed ?? 0) > 0.1).length;
+            return {
+                avgPower: sumPow > 0 ? sumPow / n : null,
+                avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
+                avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
+            };
+        };
+
+        // Detect intervals: Z4+ (≥90% of reference), 4-minute merge gap, min 1 minute
+        const threshold = ref * 0.90;
+        const maxGap = 240;
+        const minDuration = 60;
+        const segments: { start: number; end: number }[] = [];
+        let segStart = -1, gapStart = -1;
+
+        for (let i = 0; i <= smoothed.length; i++) {
+            const v = i < smoothed.length ? smoothed[i] : null;
+            const above = v != null && v >= threshold;
+            if (above) {
+                if (segStart === -1) segStart = i;
+                gapStart = -1;
+            } else {
+                if (segStart !== -1) {
+                    if (gapStart === -1) gapStart = i;
+                    if (i - gapStart >= maxGap || i === smoothed.length) {
+                        const segEnd = gapStart - 1;
+                        if (segEnd >= segStart && (segEnd - segStart + 1) >= minDuration)
+                            segments.push({ start: segStart, end: segEnd });
+                        segStart = -1; gapStart = -1;
+                    }
+                }
+            }
+        }
+
+        const kept: HardEffort[] = segments.map((seg, idx) => {
+            const stats = calcSegmentStats(seg.start, seg.end);
+            const refForPct = isHrFallback ? stats.avgHr : (isCyclingActivity ? stats.avgPower : (stats.avgSpeedKmh != null ? stats.avgSpeedKmh / 3.6 : null));
+            const ratio = refForPct != null ? refForPct / ref : 0;
+            return {
+                key: `effort_${idx}`,
+                zone: getZone(ratio),
+                startIndex: seg.start,
+                endIndex: seg.end,
+                centerIndex: Math.round((seg.start + seg.end) / 2),
+                durationSeconds: seg.end - seg.start + 1,
+                ...stats,
+                pctRef: ratio * 100,
+            };
+        });
+
+        // Pre-interval warmup row
+        if (kept.length > 0 && kept[0].startIndex > 30) {
+            const wEnd = kept[0].startIndex - 1;
+            const wStats = calcSegmentStats(0, wEnd);
+            const wRefForPct = isHrFallback ? wStats.avgHr : (isCyclingActivity ? wStats.avgPower : (wStats.avgSpeedKmh != null ? wStats.avgSpeedKmh / 3.6 : null));
+            const wRatio = wRefForPct != null ? wRefForPct / ref : 0;
+            kept.unshift({
+                key: 'warmup',
+                zone: getZone(wRatio),
+                isWarmup: true,
+                startIndex: 0,
+                endIndex: wEnd,
+                centerIndex: Math.floor(wEnd / 2),
+                durationSeconds: kept[0].startIndex,
+                ...wStats,
+                pctRef: wRatio * 100,
+            });
+        }
+
+        return kept;
+    }, [activity, streamPoints, zoneProfile, isCyclingActivity, isRunningActivity]);
+
+    const hardEffortRests = useMemo((): HardEffortRest[] => {
+        if (hardEfforts.length < 2) return [];
+        const ftp = isCyclingActivity ? Number(activity?.ftp_at_time ?? (zoneProfile as any)?.ftp ?? 0) : 0;
+        const zoneBounds = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50];
+        const getZone = (ratio: number): number => {
+            for (let z = 0; z < zoneBounds.length; z++) if (ratio < zoneBounds[z]) return z + 1;
+            return 7;
+        };
+        const rests: HardEffortRest[] = [];
+        for (let i = 0; i < hardEfforts.length - 1; i++) {
+            const restStart = hardEfforts[i].endIndex + 1;
+            const restEnd = hardEfforts[i + 1].startIndex - 1;
+            if (restEnd < restStart) {
+                rests.push({ durationSeconds: 0, avgHr: null, avgPower: null, avgSpeedKmh: null, zone: 1 });
+                continue;
+            }
+            const n = restEnd - restStart + 1;
+            let sumPow = 0, sumHr = 0, sumSpd = 0, hrCnt = 0, spdCnt = 0;
+            for (let j = restStart; j <= restEnd; j++) {
+                const p = streamPoints[j];
+                if (!p) continue;
+                sumPow += Number(p?.power ?? p?.watts ?? 0);
+                const hr = Number(p?.heart_rate ?? 0);
+                const spd = Number(p?.speed ?? 0);
+                if (hr > 0) { sumHr += hr; hrCnt++; }
+                if (spd > 0.1) { sumSpd += spd; spdCnt++; }
+            }
+            const avgPower = sumPow > 0 ? sumPow / n : null;
+            const ratio = (ftp > 0 && avgPower != null) ? avgPower / ftp : 0;
+            rests.push({
+                durationSeconds: n,
+                avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
+                avgPower,
+                avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
+                zone: getZone(ratio),
+            });
+        }
+        return rests;
+    }, [hardEfforts, streamPoints, activity, zoneProfile, isCyclingActivity]);
+
+    const hardEffortMetaByKey = useMemo((): Record<string, EffortSegmentMeta> => {
+        const result: Record<string, EffortSegmentMeta> = {};
+        for (const e of hardEfforts) {
+            result[e.key] = {
+                startIndex: e.startIndex,
+                endIndex: e.endIndex,
+                centerIndex: e.centerIndex,
+                seconds: e.durationSeconds,
+                meters: e.avgSpeedKmh != null ? (e.avgSpeedKmh / 3.6) * e.durationSeconds : null,
+                avgPower: e.avgPower,
+                avgHr: e.avgHr,
+                speedKmh: e.avgSpeedKmh,
+            };
+        }
+        return result;
+    }, [hardEfforts]);
+
+    useEffect(() => {
+        onMetaChange?.(hardEffortMetaByKey);
+    }, [hardEffortMetaByKey, onMetaChange]);
+
+    if (hardEfforts.length === 0) {
+        return (
+            <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
+                <Text c={ui.textDim} size="sm">{t('No significant efforts detected.')}</Text>
+            </Paper>
+        );
+    }
+
     return (
         <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
             <Group justify="space-between" mb="xs">
                 <Title order={5} c={ui.textMain}>{t("Hard Efforts")}</Title>
             </Group>
             <Group gap="md" mb="md" wrap="wrap">
-                <Group gap={4}><Badge size="xs" color="red" variant="filled">Sprint</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥200% FTP' : '≥200% threshold'}</Text></Group>
-                <Group gap={4}><Badge size="xs" color="orange" variant="filled">Threshold+</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥100% FTP, ≥30s' : '≥100% threshold, ≥30s'}</Text></Group>
-                <Group gap={4}><Badge size="xs" color="yellow" variant="filled">Near Threshold</Badge><Text size="xs" c="dimmed">{isCyclingActivity ? '≥85% FTP, ≥1min' : '≥85% threshold, ≥1min'}</Text></Group>
+                {[1,2,3,4,5,6,7].map(z => (
+                    <Group key={z} gap={4}>
+                        <Badge size="xs" color={ZONE_COLORS[z-1]} variant="filled">Z{z}</Badge>
+                        <Text size="xs" c="dimmed">{ZONE_BOUNDS_DESC[z-1]} FTP</Text>
+                    </Group>
+                ))}
             </Group>
             <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <Table striped highlightOnHover withTableBorder withColumnBorders style={{ whiteSpace: 'nowrap' }}>
                 <Table.Thead>
                     <Table.Tr>
                         <Table.Th></Table.Th>
-                        <Table.Th>{t('Category')}</Table.Th>
+                        <Table.Th>{t('Zone')}</Table.Th>
                         <Table.Th>{t('Duration')}</Table.Th>
                         {isCyclingActivity && <Table.Th>{t('Avg Power')}</Table.Th>}
                         {isCyclingActivity && <Table.Th>% FTP</Table.Th>}
@@ -60,27 +278,38 @@ export const HardEffortsPanel = ({
                 </Table.Thead>
                 <Table.Tbody>
                     {hardEfforts.map((effort, idx) => {
-                        const catColor = effort.category === 'sprint' ? 'red' : effort.category === 'threshold_plus' ? 'orange' : 'yellow';
-                        const catLabel = effort.category === 'sprint' ? 'Sprint' : effort.category === 'threshold_plus' ? 'Threshold+' : 'Near Threshold';
+                        const zoneColor = ZONE_COLORS[Math.max(0, Math.min(6, effort.zone - 1))];
                         const isSelected = selectedEffortKey === effort.key;
                         const paceDisplay = effort.avgSpeedKmh && effort.avgSpeedKmh > 0
-                            ? (() => { const paceMinKm = 60 / effort.avgSpeedKmh; const mins = Math.floor(paceMinKm); const secs = Math.round((paceMinKm - mins) * 60); return `${mins}:${secs.toString().padStart(2, '0')} /km`; })()
+                            ? (() => { const p = 60 / effort.avgSpeedKmh; const m = Math.floor(p); const s = Math.round((p - m) * 60); return `${m}:${s.toString().padStart(2, '0')} /km`; })()
                             : null;
                         const rest = idx < hardEffortRests.length ? hardEffortRests[idx] : null;
                         return [
                             <Table.Tr
                                 key={effort.key}
                                 style={{
-                                    cursor: 'pointer',
+                                    cursor: effort.isWarmup ? 'default' : 'pointer',
                                     backgroundColor: isSelected ? (isDark ? 'rgba(233,90,18,0.16)' : 'rgba(233,90,18,0.10)') : undefined,
+                                    fontStyle: effort.isWarmup ? 'italic' : undefined,
                                 }}
-                                onClick={() => onSelectEffort(effort.key)}
+                                onClick={() => !effort.isWarmup && onSelectEffort(effort.key)}
                             >
                                 <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                    <IconFlame size={14} color={catColor === 'red' ? '#ef4444' : catColor === 'orange' ? '#f97316' : '#eab308'} />
+                                    <IconFlame size={14} color={
+                                        zoneColor === 'red' ? '#ef4444' :
+                                        zoneColor === 'orange' ? '#f97316' :
+                                        zoneColor === 'yellow' ? '#eab308' :
+                                        zoneColor === 'violet' ? '#8b5cf6' :
+                                        zoneColor === 'teal' ? '#14b8a6' :
+                                        zoneColor === 'blue' ? '#3b82f6' : '#9ca3af'
+                                    } />
                                 </Table.Td>
-                                <Table.Td><Badge size="sm" color={catColor} variant="light">{catLabel}</Badge></Table.Td>
-                                <Table.Td fw={600}>{formatDuration(effort.durationSeconds)}</Table.Td>
+                                <Table.Td>
+                                    <Badge size="sm" color={zoneColor} variant={effort.isWarmup ? 'outline' : 'light'}>
+                                        Z{effort.zone}{effort.isWarmup ? ' warmup' : ''}
+                                    </Badge>
+                                </Table.Td>
+                                <Table.Td fw={effort.isWarmup ? 400 : 600}>{formatDuration(effort.durationSeconds)}</Table.Td>
                                 {isCyclingActivity && <Table.Td>{effort.avgPower != null ? `${Math.round(effort.avgPower)} W` : '-'}</Table.Td>}
                                 {isCyclingActivity && <Table.Td>{effort.pctRef != null ? `${Math.round(effort.pctRef)}%` : '-'}</Table.Td>}
                                 {isRunningActivity && <Table.Td>{paceDisplay ?? '-'}</Table.Td>}
@@ -90,7 +319,12 @@ export const HardEffortsPanel = ({
                             rest && rest.durationSeconds > 0 ? (
                                 <Table.Tr key={`rest_${idx}`} style={{ opacity: 0.55 }}>
                                     <Table.Td style={{ textAlign: 'center' }}><IconMinus size={12} /></Table.Td>
-                                    <Table.Td><Text size="xs" c="dimmed" fs="italic">Rest</Text></Table.Td>
+                                    <Table.Td>
+                                        <Group gap={4}>
+                                            <Badge size="xs" color={ZONE_COLORS[Math.max(0, Math.min(6, (rest.zone ?? 1) - 1))]} variant="light">Z{rest.zone ?? 1}</Badge>
+                                            <Text size="xs" c="dimmed" fs="italic">recovery</Text>
+                                        </Group>
+                                    </Table.Td>
                                     <Table.Td><Text size="xs" c="dimmed">{formatDuration(rest.durationSeconds)}</Text></Table.Td>
                                     {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgPower != null ? `${Math.round(rest.avgPower)} W` : '-'}</Text></Table.Td>}
                                     {isCyclingActivity && <Table.Td>-</Table.Td>}

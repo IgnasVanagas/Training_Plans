@@ -1,5 +1,6 @@
 import { Box, Button, Group, Paper, Table, Text, Title } from "@mantine/core";
 import { IconTrophy } from "@tabler/icons-react";
+import { useMemo, useState } from "react";
 import { formatDuration } from "./formatters";
 import { ActivityDetail, EffortSegmentMeta } from "../../types/activityDetail";
 
@@ -14,12 +15,9 @@ type UiTokens = {
 interface BestEffortsPanelProps {
     activity: ActivityDetail;
     me: any;
-    displayedBestEfforts: NonNullable<ActivityDetail['best_efforts']>;
+    rankedBestEfforts: NonNullable<ActivityDetail['best_efforts']>;
     bestEffortMetaByKey: Record<string, EffortSegmentMeta>;
     selectedEffortKey: string | null;
-    showAllBestEfforts: boolean;
-    hasHiddenBestEfforts: boolean;
-    onToggleShowAll: () => void;
     onSelectEffort: (key: string) => void;
     isCyclingActivity: boolean;
     isRunningActivity: boolean;
@@ -31,12 +29,9 @@ interface BestEffortsPanelProps {
 export const BestEffortsPanel = ({
     activity,
     me,
-    displayedBestEfforts,
+    rankedBestEfforts,
     bestEffortMetaByKey,
     selectedEffortKey,
-    showAllBestEfforts,
-    hasHiddenBestEfforts,
-    onToggleShowAll,
     onSelectEffort,
     isCyclingActivity,
     isRunningActivity,
@@ -44,6 +39,19 @@ export const BestEffortsPanel = ({
     ui,
     t,
 }: BestEffortsPanelProps) => {
+    const [showAllBestEfforts, setShowAllBestEfforts] = useState(true);
+
+    const displayedBestEfforts = useMemo(() => {
+        if (!activity?.best_efforts?.length) return [];
+        if (showAllBestEfforts || rankedBestEfforts.length === 0) return activity.best_efforts;
+        return rankedBestEfforts;
+    }, [activity?.best_efforts, rankedBestEfforts, showAllBestEfforts]);
+
+    const hasHiddenBestEfforts = useMemo(() => {
+        const total = activity?.best_efforts?.length ?? 0;
+        return total > displayedBestEfforts.length;
+    }, [activity?.best_efforts?.length, displayedBestEfforts.length]);
+
     const hasCyclingDistEfforts = isCyclingActivity && displayedBestEfforts.some(e => e.distance);
 
     return (
@@ -51,7 +59,7 @@ export const BestEffortsPanel = ({
             <Group justify="space-between" mb="md">
                 <Title order={5} c={ui.textMain}>{t("Best Efforts")}</Title>
                 {hasHiddenBestEfforts && (
-                    <Button size="xs" variant="subtle" onClick={onToggleShowAll}>
+                    <Button size="xs" variant="subtle" onClick={() => setShowAllBestEfforts(v => !v)}>
                         {showAllBestEfforts ? t('Show PRs only') : t('Show all efforts')}
                     </Button>
                 )}
@@ -115,9 +123,7 @@ export const BestEffortsPanel = ({
                                 )}
                                 {isCyclingActivity && (
                                     <Table.Td>
-                                        {displaySpeedKmh != null
-                                            ? `${displaySpeedKmh.toFixed(1)} km/h`
-                                            : '-'}
+                                        {displaySpeedKmh != null ? `${displaySpeedKmh.toFixed(1)} km/h` : '-'}
                                     </Table.Td>
                                 )}
                                 <Table.Td>{displayHr != null ? `${displayHr} bpm` : '-'}</Table.Td>

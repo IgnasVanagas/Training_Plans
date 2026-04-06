@@ -116,10 +116,10 @@ export type EffortSegmentMeta = {
     speedKmh: number | null;
 };
 
-export type HardEffortCategory = 'sprint' | 'threshold_plus' | 'near_threshold';
 export type HardEffort = {
     key: string;
-    category: HardEffortCategory;
+    zone: number;           // 1–7
+    isWarmup?: boolean;
     startIndex: number;
     endIndex: number;
     centerIndex: number;
@@ -134,6 +134,7 @@ export type HardEffortRest = {
     avgHr: number | null;
     avgPower: number | null;
     avgSpeedKmh: number | null;
+    zone: number;           // 1–7
 };
 
 export type RouteInteractivePoint = {

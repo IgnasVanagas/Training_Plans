@@ -726,7 +726,6 @@ export const TrainingCalendar = ({
                     message: t('Workout change has been sent for coach approval.') || 'Workout change has been sent for coach approval.',
                 });
             }
-            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['recent-coach-workouts'] });
         },
@@ -766,7 +765,6 @@ export const TrainingCalendar = ({
                     message: t('Workout change has been sent for coach approval.') || 'Workout change has been sent for coach approval.',
                 });
             }
-            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
         },
         onError: (error: any, _vars, context) => {
@@ -800,7 +798,6 @@ export const TrainingCalendar = ({
                     message: t('Workout deletion has been sent for coach approval.') || 'Workout deletion has been sent for coach approval.',
                 });
             }
-            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
         },
         onError: (error: any, id, context) => {
