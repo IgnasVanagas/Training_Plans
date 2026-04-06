@@ -2277,7 +2277,7 @@ export const ActivityDetailPage = () => {
                                 activity={activity}
                                 me={me}
                                 streamPoints={streamPoints}
-                                isDesktopViewport={isDesktopViewport}
+                                isDesktopViewport={Boolean(isDesktopViewport)}
                                 onSaveAnnotations={(payload) => {
                                     updateActivityMutation.mutate({ split_annotations: payload });
                                 }}
