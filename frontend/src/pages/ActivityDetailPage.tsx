@@ -605,7 +605,9 @@ export const ActivityDetailPage = () => {
             avgHr: avg(hrs),
             maxHr: maximum(hrs),
             avgPace: avg(paces),
+            minPace: paces.length > 0 ? Math.min(...paces) : null,
             avgSpeed: avg(speeds),
+            maxSpeed: maximum(speeds),
             avgCadence: avg(cadences),
             elevGain,
             avgGradient,
@@ -717,6 +719,8 @@ export const ActivityDetailPage = () => {
     /* Fullscreen map: only points with GPS coords, for elevation graph + marker */
     const gpsChartData = useMemo(() => {
         if (!activity) return [];
+        const sport = (activity.sport || '').toLowerCase();
+        const isCycling = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride');
         return chartData
             .filter((p: any) => p.lat && p.lon)
             .map((p: any) => {
@@ -728,7 +732,7 @@ export const ActivityDetailPage = () => {
                     heart_rate: p.heart_rate ?? null,
                     power: p.power ?? null,
                     speedKmh: Number.isFinite(Number(p.speed)) ? Number(p.speed) * 3.6 : null,
-                    paceDisplay: Number.isFinite(Number(p.pace))
+                    paceDisplay: !isCycling && Number.isFinite(Number(p.pace))
                         ? `${Math.floor(Number(p.pace))}:${Math.floor((Number(p.pace) - Math.floor(Number(p.pace))) * 60).toString().padStart(2, '0')}/km`
                         : null,
                     gradient_pct: Number.isFinite(Number(p.gradient_pct)) ? Number(p.gradient_pct) : null,
@@ -854,10 +858,12 @@ export const ActivityDetailPage = () => {
         if (fsMapIndex === null || !chartRenderData[fsMapIndex]) return null;
         const p = chartRenderData[fsMapIndex];
         const isImperial = me?.profile?.preferred_units === 'imperial';
+        const sport = (activity?.sport || '').toLowerCase();
+        const isCycling = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride');
         return {
             timeMin: Number(p.time_min || 0),
             heart_rate: p.heart_rate ?? null,
-            paceDisplay: Number.isFinite(Number(p.pace))
+            paceDisplay: !isCycling && Number.isFinite(Number(p.pace))
                 ? `${Math.floor(Number(p.pace))}:${Math.floor((Number(p.pace) - Math.floor(Number(p.pace))) * 60).toString().padStart(2, '0')}${isImperial ? '/mi' : '/km'}`
                 : null,
             speedKmh: Number.isFinite(Number(p.speed_display))
@@ -869,14 +875,16 @@ export const ActivityDetailPage = () => {
             lat: p.lat,
             lon: p.lon,
         };
-    }, [fsMapIndex, chartRenderData, me?.profile?.preferred_units]);
+    }, [fsMapIndex, chartRenderData, me?.profile?.preferred_units, activity?.sport]);
 
     const fullscreenMarkerPoint = useMemo(() => {
         if (mapHoveredPoint) {
+            const sport = (activity?.sport || '').toLowerCase();
+            const isCycling = sport.includes('cycl') || sport.includes('bike') || sport.includes('ride');
             return {
                 timeMin: Number(mapHoveredPoint.time_min || 0),
                 heart_rate: mapHoveredPoint.heart_rate ?? null,
-                paceDisplay: Number.isFinite(Number(mapHoveredPoint.pace))
+                paceDisplay: !isCycling && Number.isFinite(Number(mapHoveredPoint.pace))
                     ? `${Math.floor(Number(mapHoveredPoint.pace))}:${Math.floor((Number(mapHoveredPoint.pace) - Math.floor(Number(mapHoveredPoint.pace))) * 60).toString().padStart(2, '0')}/km`
                     : null,
                 speedKmh: Number.isFinite(Number(mapHoveredPoint.speed_display))
@@ -890,7 +898,7 @@ export const ActivityDetailPage = () => {
             };
         }
         return fsMapPoint;
-    }, [mapHoveredPoint, fsMapPoint, me?.profile?.preferred_units]);
+    }, [mapHoveredPoint, fsMapPoint, me?.profile?.preferred_units, activity?.sport]);
 
     const fullscreenMarkerPos = useMemo<[number, number] | null>(() => {
         if (!fullscreenMarkerPoint) return null;

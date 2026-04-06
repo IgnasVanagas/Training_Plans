@@ -185,8 +185,18 @@ export const HardEffortsPanel = ({
             else merged.push({ ...seg });
         }
 
-        // Step 3: filter by minimum 60-second duration
-        const mainEfforts = merged.filter(s => s.end - s.start + 1 >= 60);
+        // Step 3: trim each merged segment's boundaries using the tighter 7-pt smoothed signal.
+        // The 31-pt window halos ~15s into low-power sections on each side; the 7-pt window
+        // tracks power more closely and gives accurate start/end boundaries.
+        // Step 4: filter by minimum 60-second duration.
+        const mainEfforts = merged
+            .map(seg => {
+                let { start, end } = seg;
+                while (start < end && (smoothed7[start] == null || (smoothed7[start] as number) < effortThreshold)) start++;
+                while (end > start && (smoothed7[end] == null || (smoothed7[end] as number) < effortThreshold)) end--;
+                return { start, end };
+            })
+            .filter(s => s.end - s.start + 1 >= 60);
 
         // === SPRINT DETECTION (Z6+ = ≥120% FTP, brief) ===
         // Use shorter (7-pt) smoothing so brief power spikes aren't washed out.
@@ -241,26 +251,36 @@ export const HardEffortsPanel = ({
             };
         });
 
+        // Drop sprints below Z5 (105% FTP). The 7-pt window halos extend segments into
+        // surrounding coasting samples, diluting the average down to Z4/Z1 even when the
+        // actual spike was genuine. A "sprint" at Z4 or below is not meaningful.
+        const validKept = kept.filter(e => !e.isSprint || e.zone >= 5);
+
+        // Re-key after filtering so indices stay contiguous
+        validKept.forEach((e, i) => { if (!e.isWarmup) e.key = `effort_${i}`; });
+
+        const kept2 = validKept;
+
         // Pre-interval warmup row
-        if (kept.length > 0 && kept[0].startIndex > 30) {
-            const wEnd = kept[0].startIndex - 1;
+        if (kept2.length > 0 && kept2[0].startIndex > 30) {
+            const wEnd = kept2[0].startIndex - 1;
             const wStats = calcSegmentStats(0, wEnd);
             const wRefForPct = isHrFallback ? wStats.avgHr : (isCyclingActivity ? wStats.avgPower : (wStats.avgSpeedKmh != null ? wStats.avgSpeedKmh / 3.6 : null));
             const wRatio = wRefForPct != null ? wRefForPct / ref : 0;
-            kept.unshift({
+            kept2.unshift({
                 key: 'warmup',
                 zone: getZone(wRatio),
                 isWarmup: true,
                 startIndex: 0,
                 endIndex: wEnd,
                 centerIndex: Math.floor(wEnd / 2),
-                durationSeconds: kept[0].startIndex,
+                durationSeconds: kept2[0].startIndex,
                 ...wStats,
                 pctRef: wRatio * 100,
             });
         }
 
-        return kept;
+        return kept2;
     }, [activity, streamPoints, zoneProfile, isCyclingActivity, isRunningActivity]);
 
     const hardEffortRests = useMemo((): HardEffortRest[] => {
