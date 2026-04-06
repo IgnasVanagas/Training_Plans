@@ -105,9 +105,12 @@ if _frontend_url and _frontend_url not in allowed_origins:
 for _ro in ("https://training-plans-1.onrender.com", "https://training-plans.onrender.com"):
     if _ro not in allowed_origins:
         allowed_origins.append(_ro)
+# Regex covers all *.onrender.com subdomains and private LAN addresses — this is the
+# primary guard so even if ALLOWED_ORIGINS env var is misconfigured, the correct
+# origins are still permitted.
 allowed_origin_regex = os.getenv(
     "ALLOWED_ORIGIN_REGEX",
-    r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|^https://[a-zA-Z0-9-]+\.onrender\.com$",
+    r"^https?://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$|^https://[a-zA-Z0-9][a-zA-Z0-9-]*\.onrender\.com$",
 )
 
 logger.info("CORS allow_origins: %s", allowed_origins)
