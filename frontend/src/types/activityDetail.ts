@@ -120,6 +120,7 @@ export type HardEffort = {
     key: string;
     zone: number;           // 1–7
     isWarmup?: boolean;
+    isSprint?: boolean;
     startIndex: number;
     endIndex: number;
     centerIndex: number;

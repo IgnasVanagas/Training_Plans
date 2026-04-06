@@ -1,5 +1,5 @@
 import { Badge, Box, Group, Paper, Table, Text, Title } from "@mantine/core";
-import { IconFlame, IconMinus } from "@tabler/icons-react";
+import { IconBolt, IconFlame, IconMinus } from "@tabler/icons-react";
 import { useEffect, useMemo } from "react";
 import { formatDuration } from "./formatters";
 import { ActivityDetail, EffortSegmentMeta, HardEffort, HardEffortRest } from "../../types/activityDetail";
@@ -79,10 +79,20 @@ export const HardEffortsPanel = ({
             return 7;
         };
 
-        // ~30-second rolling average (±15 points)
-        const smoothed: (number | null)[] = streamPoints.map((_: any, i: number) => {
-            const lo = Math.max(0, i - 15);
-            const hi = Math.min(streamPoints.length - 1, i + 15);
+        // 31-point rolling average (±15 samples, ~30s) — main effort detection
+        const smoothed31: (number | null)[] = streamPoints.map((_: any, i: number) => {
+            const lo = Math.max(0, i - 15), hi = Math.min(streamPoints.length - 1, i + 15);
+            let sum = 0, cnt = 0;
+            for (let j = lo; j <= hi; j++) {
+                const v = getMetric(streamPoints[j]);
+                if (v != null) { sum += v; cnt++; }
+            }
+            return cnt > 0 ? sum / cnt : null;
+        });
+
+        // 7-point rolling average (±3 samples, ~6s) — sprint detection only
+        const smoothed7: (number | null)[] = streamPoints.map((_: any, i: number) => {
+            const lo = Math.max(0, i - 3), hi = Math.min(streamPoints.length - 1, i + 3);
             let sum = 0, cnt = 0;
             for (let j = lo; j <= hi; j++) {
                 const v = getMetric(streamPoints[j]);
@@ -116,39 +126,100 @@ export const HardEffortsPanel = ({
             };
         };
 
-        // Detect intervals: Z4+ (≥90% of reference), 4-minute merge gap, min 1 minute
-        const threshold = ref * 0.90;
-        const maxGap = 240;
-        const minDuration = 60;
-        const segments: { start: number; end: number }[] = [];
-        let segStart = -1, gapStart = -1;
+        // Avg raw metric in index range (for gap quality check)
+        const avgMetricInRange = (start: number, end: number): number => {
+            let sum = 0, cnt = 0;
+            for (let j = start; j <= end; j++) {
+                const v = getMetric(streamPoints[j]);
+                if (v != null) { sum += v; cnt++; }
+            }
+            return cnt > 0 ? sum / cnt : 0;
+        };
 
-        for (let i = 0; i <= smoothed.length; i++) {
-            const v = i < smoothed.length ? smoothed[i] : null;
-            const above = v != null && v >= threshold;
-            if (above) {
-                if (segStart === -1) segStart = i;
-                gapStart = -1;
-            } else {
-                if (segStart !== -1) {
-                    if (gapStart === -1) gapStart = i;
-                    if (i - gapStart >= maxGap || i === smoothed.length) {
-                        const segEnd = gapStart - 1;
-                        if (segEnd >= segStart && (segEnd - segStart + 1) >= minDuration)
-                            segments.push({ start: segStart, end: segEnd });
-                        segStart = -1; gapStart = -1;
-                    }
+        // === MAIN EFFORT DETECTION (Z4+, ≥60s) ===
+        // Step 1: raw above-threshold streaks using 31-pt smoothing
+        const effortThreshold = ref * 0.90;
+        const rawSegs: { start: number; end: number }[] = [];
+        {
+            let segStart = -1;
+            for (let i = 0; i <= smoothed31.length; i++) {
+                const v = i < smoothed31.length ? smoothed31[i] : null;
+                const above = v != null && v >= effortThreshold;
+                if (above && segStart === -1) segStart = i;
+                else if (!above && segStart !== -1) {
+                    rawSegs.push({ start: segStart, end: i - 1 });
+                    segStart = -1;
                 }
             }
         }
 
-        const kept: HardEffort[] = segments.map((seg, idx) => {
+        // Step 2: Adaptive-gap merge.
+        // Gap avg metric >= 75% FTP (Z3): active rest → bridge up to 240s.
+        // Gap avg metric <  75% FTP (Z2-): easy section → bridge only 25s (smoothing artifact).
+        // This prevents brief spikes every few minutes from accumulating into phantom Z2 "efforts"
+        // while still bridging legitimate intra-interval rests at 87-93% FTP.
+        const activeRestThreshold = ref * 0.75;
+        const mergeGapActive = 240;
+        const mergeGapEasy = 25;
+        const merged: { start: number; end: number }[] = [];
+        for (const seg of rawSegs) {
+            if (merged.length === 0) { merged.push({ ...seg }); continue; }
+            const last = merged[merged.length - 1];
+            const gapS = last.end + 1;
+            const gapE = seg.start - 1;
+            if (gapS > gapE) { last.end = seg.end; continue; } // adjacent
+            const gapLen = gapE - gapS + 1;
+            const gapAvg = avgMetricInRange(gapS, gapE);
+            const maxGap = gapAvg >= activeRestThreshold ? mergeGapActive : mergeGapEasy;
+            if (gapLen <= maxGap) last.end = seg.end;
+            else merged.push({ ...seg });
+        }
+
+        // Step 3: filter by minimum 60-second duration
+        const mainEfforts = merged.filter(s => s.end - s.start + 1 >= 60);
+
+        // === SPRINT DETECTION (Z6+ = ≥120% FTP, brief) ===
+        // Use shorter (7-pt) smoothing so brief power spikes aren't washed out.
+        const sprintThreshold = ref * 1.20;
+        const minSprintDuration = 8; // seconds
+        const sprintSegs: { start: number; end: number }[] = [];
+        {
+            let segStart = -1;
+            for (let i = 0; i <= smoothed7.length; i++) {
+                const v = i < smoothed7.length ? smoothed7[i] : null;
+                const above = v != null && v >= sprintThreshold;
+                if (above && segStart === -1) segStart = i;
+                else if (!above && segStart !== -1) {
+                    if (i - segStart >= minSprintDuration) sprintSegs.push({ start: segStart, end: i - 1 });
+                    segStart = -1;
+                }
+            }
+        }
+        // Remove sprints already substantially inside a main effort
+        const standaloneSprints = sprintSegs.filter(sp =>
+            !mainEfforts.some(s => {
+                const overlapStart = Math.max(sp.start, s.start);
+                const overlapEnd = Math.min(sp.end, s.end);
+                const overlapLen = Math.max(0, overlapEnd - overlapStart + 1);
+                return overlapLen / (sp.end - sp.start + 1) > 0.5;
+            })
+        );
+
+        // Combine and sort chronologically
+        type RawEntry = { start: number; end: number; isSprint: boolean };
+        const allSegs: RawEntry[] = [
+            ...mainEfforts.map(s => ({ ...s, isSprint: false })),
+            ...standaloneSprints.map(s => ({ ...s, isSprint: true })),
+        ].sort((a, b) => a.start - b.start);
+
+        const kept: HardEffort[] = allSegs.map((seg, idx) => {
             const stats = calcSegmentStats(seg.start, seg.end);
             const refForPct = isHrFallback ? stats.avgHr : (isCyclingActivity ? stats.avgPower : (stats.avgSpeedKmh != null ? stats.avgSpeedKmh / 3.6 : null));
             const ratio = refForPct != null ? refForPct / ref : 0;
             return {
                 key: `effort_${idx}`,
                 zone: getZone(ratio),
+                isSprint: seg.isSprint,
                 startIndex: seg.start,
                 endIndex: seg.end,
                 centerIndex: Math.round((seg.start + seg.end) / 2),
@@ -284,30 +355,35 @@ export const HardEffortsPanel = ({
                             ? (() => { const p = 60 / effort.avgSpeedKmh; const m = Math.floor(p); const s = Math.round((p - m) * 60); return `${m}:${s.toString().padStart(2, '0')} /km`; })()
                             : null;
                         const rest = idx < hardEffortRests.length ? hardEffortRests[idx] : null;
+                        const iconColor = zoneColor === 'red' ? '#ef4444' :
+                            zoneColor === 'orange' ? '#f97316' :
+                            zoneColor === 'yellow' ? '#eab308' :
+                            zoneColor === 'violet' ? '#8b5cf6' :
+                            zoneColor === 'teal' ? '#14b8a6' :
+                            zoneColor === 'blue' ? '#3b82f6' : '#9ca3af';
                         return [
                             <Table.Tr
                                 key={effort.key}
                                 style={{
-                                    cursor: effort.isWarmup ? 'default' : 'pointer',
+                                    cursor: (effort.isWarmup || effort.isSprint) ? 'default' : 'pointer',
                                     backgroundColor: isSelected ? (isDark ? 'rgba(233,90,18,0.16)' : 'rgba(233,90,18,0.10)') : undefined,
                                     fontStyle: effort.isWarmup ? 'italic' : undefined,
                                 }}
-                                onClick={() => !effort.isWarmup && onSelectEffort(effort.key)}
+                                onClick={() => !effort.isWarmup && !effort.isSprint && onSelectEffort(effort.key)}
                             >
                                 <Table.Td w={36} style={{ textAlign: 'center' }}>
-                                    <IconFlame size={14} color={
-                                        zoneColor === 'red' ? '#ef4444' :
-                                        zoneColor === 'orange' ? '#f97316' :
-                                        zoneColor === 'yellow' ? '#eab308' :
-                                        zoneColor === 'violet' ? '#8b5cf6' :
-                                        zoneColor === 'teal' ? '#14b8a6' :
-                                        zoneColor === 'blue' ? '#3b82f6' : '#9ca3af'
-                                    } />
+                                    {effort.isSprint
+                                        ? <IconBolt size={14} color={iconColor} />
+                                        : <IconFlame size={14} color={iconColor} />
+                                    }
                                 </Table.Td>
                                 <Table.Td>
-                                    <Badge size="sm" color={zoneColor} variant={effort.isWarmup ? 'outline' : 'light'}>
-                                        Z{effort.zone}{effort.isWarmup ? ' warmup' : ''}
-                                    </Badge>
+                                    <Group gap={4}>
+                                        <Badge size="sm" color={zoneColor} variant={effort.isWarmup ? 'outline' : 'light'}>
+                                            Z{effort.zone}{effort.isWarmup ? ' warmup' : ''}
+                                        </Badge>
+                                        {effort.isSprint && <Text size="xs" c="dimmed" fs="italic">sprint</Text>}
+                                    </Group>
                                 </Table.Td>
                                 <Table.Td fw={effort.isWarmup ? 400 : 600}>{formatDuration(effort.durationSeconds)}</Table.Td>
                                 {isCyclingActivity && <Table.Td>{effort.avgPower != null ? `${Math.round(effort.avgPower)} W` : '-'}</Table.Td>}
