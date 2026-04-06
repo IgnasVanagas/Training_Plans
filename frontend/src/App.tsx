@@ -15,9 +15,6 @@ const WorkoutBuilderPage = lazy(() =>
 const ActivityDetailPage = lazy(() =>
   import("./pages/ActivityDetailPage").then((module) => ({ default: module.ActivityDetailPage }))
 );
-const ComparisonPage = lazy(() =>
-  import("./pages/ComparisonPage").then((module) => ({ default: module.ComparisonPage }))
-);
 const PublicCalendarPage = lazy(() => import("./pages/PublicCalendarPage"));
 
 const JoinRedirect = () => {
@@ -89,7 +86,7 @@ const App = () => {
             path="/dashboard/compare"
             element={
               <ProtectedRoute>
-                <ComparisonPage />
+                <Navigate to="/dashboard?tab=comparison" replace />
               </ProtectedRoute>
             }
           />

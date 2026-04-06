@@ -4,6 +4,7 @@ import {
   Badge,
   Box,
   Button,
+  Chip,
   Divider,
   Group,
   Paper,
@@ -24,8 +25,9 @@ import {
   useComputedColorScheme,
 } from '@mantine/core';
 import { DatePicker } from '@mantine/dates';
+import { useMediaQuery } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
-import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconChartLine, IconInfoCircle, IconAdjustmentsHorizontal } from '@tabler/icons-react';
+import { IconArrowsDiff, IconCalendarStats, IconChartBar, IconChartLine, IconInfoCircle, IconAdjustmentsHorizontal, IconAlertTriangle } from '@tabler/icons-react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartTooltip, Legend, ResponsiveContainer,
@@ -97,7 +99,7 @@ type ActivityDetail = ActivityListItem & {
   } | null;
 };
 
-const COMPARISON_ACTIVITY_FETCH_LIMIT = 180;
+const COMPARISON_ACTIVITY_FETCH_LIMIT = 500;
 
 type AnalysisMode = 'workouts' | 'weeks' | 'months';
 
@@ -144,6 +146,14 @@ type SplitRow = {
   note: string | null;
 };
 
+type SplitMetricVisibility = {
+  distance: boolean;
+  intensity: boolean;
+  hr: boolean;
+  feedback: boolean;
+  delta: boolean;
+};
+
 const weekdayKeys = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const emptyRunningZones = () => Object.fromEntries(Array.from({ length: 5 }, (_, idx) => [`Z${idx + 1}`, 0])) as Record<string, number>;
@@ -152,11 +162,41 @@ const emptyWeekdayMinutes = () => Object.fromEntries(weekdayKeys.map((key) => [k
 
 const formatDistanceKm = (value: number) => `${value.toFixed(1)} km`;
 
+const DEFAULT_SPLIT_METRICS_DESKTOP: SplitMetricVisibility = {
+  distance: true,
+  intensity: true,
+  hr: true,
+  feedback: true,
+  delta: true,
+};
+
+const DEFAULT_SPLIT_METRICS_MOBILE: SplitMetricVisibility = {
+  distance: false,
+  intensity: true,
+  hr: true,
+  feedback: false,
+  delta: true,
+};
+
+const isSplitMetricVisibility = (value: unknown): value is SplitMetricVisibility => {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return ['distance', 'intensity', 'hr', 'feedback', 'delta'].every((key) => typeof candidate[key] === 'boolean');
+};
+
 const formatDeltaPct = (left: number, right: number) => {
   if (!Number.isFinite(left) || left <= 0 || !Number.isFinite(right)) return '-';
   const delta = ((right - left) / left) * 100;
   const sign = delta > 0 ? '+' : '';
   return `${sign}${delta.toFixed(1)}%`;
+};
+
+const getComparisonDirection = (left: number | null, right: number | null, lowerBetter = false) => {
+  if (left == null || right == null || !Number.isFinite(left) || !Number.isFinite(right)) return 'neutral' as const;
+  const delta = right - left;
+  if (Math.abs(delta) < 0.0001) return 'neutral' as const;
+  const better = lowerBetter ? delta < 0 : delta > 0;
+  return better ? 'better' as const : 'worse' as const;
 };
 
 const extractBestCurveValue = (curve: Record<string, number> | null | undefined, keys: string[]) => {
@@ -769,6 +809,7 @@ const ActivityCalendarPicker = ({
 export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: AthleteLike[]; me: AthleteLike; isAthlete?: boolean }) => {
   const { t } = useI18n();
   const isDark = useComputedColorScheme('light') === 'dark';
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [mode, setMode] = useState<AnalysisMode>('workouts');
   const [leftWorkoutId, setLeftWorkoutId] = useState<string | null>(null);
   const [rightWorkoutId, setRightWorkoutId] = useState<string | null>(null);
@@ -778,6 +819,33 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const [rightPeriodKey, setRightPeriodKey] = useState<string | null>(null);
   const [streamOffset, setStreamOffset] = useState(0);
   const [streamMetric, setStreamMetric] = useState<'hr' | 'power' | 'cadence'>('hr');
+  const [splitMetricVisibility, setSplitMetricVisibility] = useState<SplitMetricVisibility | null>(null);
+
+  const defaultSplitMetricVisibility = useMemo(
+    () => (isMobile ? DEFAULT_SPLIT_METRICS_MOBILE : DEFAULT_SPLIT_METRICS_DESKTOP),
+    [isMobile],
+  );
+
+  const effectiveSplitMetricVisibility = splitMetricVisibility ?? defaultSplitMetricVisibility;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem('comparison-split-metrics-v1');
+      if (!raw) return;
+      const parsed: unknown = JSON.parse(raw);
+      if (isSplitMetricVisibility(parsed)) {
+        setSplitMetricVisibility(parsed);
+      }
+    } catch {
+      // Ignore malformed local preferences and fall back to defaults.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !splitMetricVisibility) return;
+    window.localStorage.setItem('comparison-split-metrics-v1', JSON.stringify(splitMetricVisibility));
+  }, [splitMetricVisibility]);
 
   const allAthletes = useMemo(() => {
     const existing = new Map<number, AthleteLike>();
@@ -788,7 +856,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
 
   const athleteMap = useMemo(() => new Map(allAthletes.map((athlete) => [athlete.id, athlete])), [allAthletes]);
 
-  const { data: activities = [] } = useQuery({
+  const { data: activities = [], isLoading: activitiesLoading, error: activitiesError } = useQuery({
     queryKey: ['coach-comparison-activities-v2'],
     queryFn: async () => {
       const res = await api.get<ActivityListItem[]>('/activities/', {
@@ -821,6 +889,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
         activities
           .filter((activity) => activity.athlete_id === athlete.id)
           .map((activity) => toWeekKey(activity.created_at))
+          .filter((value): value is string => Boolean(value))
       )).sort((left, right) => (left < right ? 1 : -1));
       out.set(String(athlete.id), unique.map((value) => ({ value, label: parseWeekLabel(value) })));
     });
@@ -834,6 +903,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
         activities
           .filter((activity) => activity.athlete_id === athlete.id)
           .map((activity) => toMonthKey(activity.created_at))
+          .filter((value): value is string => Boolean(value))
       )).sort((left, right) => (left < right ? 1 : -1));
       out.set(String(athlete.id), unique.map((value) => ({ value, label: parseMonthLabel(value) })));
     });
@@ -865,11 +935,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   useEffect(() => {
     if (mode === 'workouts' || !leftAthleteId) return;
     const options = activePeriodOptions.get(leftAthleteId) || [];
-    if (!options.length) {
-      setLeftPeriodKey(null);
-      return;
-    }
-    if (!leftPeriodKey || !options.some((option) => option.value === leftPeriodKey)) {
+    if (options.length > 0 && (!leftPeriodKey || !options.some((option) => option.value === leftPeriodKey))) {
       setLeftPeriodKey(options[0].value);
     }
   }, [mode, leftAthleteId, leftPeriodKey, activePeriodOptions]);
@@ -877,11 +943,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   useEffect(() => {
     if (mode === 'workouts' || !rightAthleteId) return;
     const options = activePeriodOptions.get(rightAthleteId) || [];
-    if (!options.length) {
-      setRightPeriodKey(null);
-      return;
-    }
-    if (!rightPeriodKey || !options.some((option) => option.value === rightPeriodKey)) {
+    if (options.length > 0 && (!rightPeriodKey || !options.some((option) => option.value === rightPeriodKey))) {
       setRightPeriodKey(options[0].value);
     }
   }, [mode, rightAthleteId, rightPeriodKey, activePeriodOptions]);
@@ -907,13 +969,20 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const idsToLoad = useMemo(() => Array.from(new Set([...leftIds, ...rightIds])), [leftIds, rightIds]);
 
   const { data: detailsById = new Map<number, ActivityDetail>(), isLoading: detailsLoading } = useQuery({
-    queryKey: ['coach-comparison-details-v2', [...idsToLoad].sort((a, b) => a - b).join(',')],
+    queryKey: ['coach-comparison-details-v2', mode, [...idsToLoad].sort((a, b) => a - b).join(',')],
     queryFn: async () => {
-      const rows = await Promise.all(idsToLoad.map(async (id) => {
-        const res = await api.get<ActivityDetail>(`/activities/${id}`);
+      const params = mode !== 'workouts' ? { include_streams: false } : {};
+      const results = await Promise.allSettled(idsToLoad.map(async (id) => {
+        const res = await api.get<ActivityDetail>(`/activities/${id}`, { params });
         return [id, res.data] as const;
       }));
-      return new Map<number, ActivityDetail>(rows);
+      const map = new Map<number, ActivityDetail>();
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          map.set(result.value[0], result.value[1]);
+        }
+      });
+      return map;
     },
     enabled: idsToLoad.length > 0,
     staleTime: 1000 * 60,
@@ -943,6 +1012,9 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
       right: rightSplits[index] || null,
     }));
   }, [leftSplits, rightSplits]);
+
+  const detailFailureCount = Math.max(0, idsToLoad.length - detailsById.size);
+  const hasLoadedDetails = leftDetails.length > 0 || rightDetails.length > 0;
 
   const splitChartData = useMemo(() => {
     if (mode !== 'workouts') return [];
@@ -1101,6 +1173,13 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     ? !leftWorkoutId || !rightWorkoutId
     : !leftAthleteId || !rightAthleteId || !leftPeriodKey || !rightPeriodKey;
 
+  const toggleSplitMetric = useCallback((key: keyof SplitMetricVisibility, checked: boolean) => {
+    setSplitMetricVisibility((prev) => ({
+      ...(prev ?? defaultSplitMetricVisibility),
+      [key]: checked,
+    }));
+  }, [defaultSplitMetricVisibility]);
+
   const sideSelector = (
     side: 'left' | 'right',
     athleteId: string | null,
@@ -1199,7 +1278,11 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           </SimpleGrid>
         )}
 
-        {detailsLoading ? (
+        {activitiesError ? (
+          <Alert icon={<IconAlertTriangle size={16} />} color="red" variant="light">
+            {t('Comparison activity list failed to load.') || 'Comparison activity list failed to load.'}
+          </Alert>
+        ) : detailsLoading || activitiesLoading ? (
           <Stack gap="sm">
             <Skeleton height={60} radius="md" />
             <Skeleton height={200} radius="md" />
@@ -1212,8 +1295,20 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           <Alert icon={<IconCalendarStats size={16} />} color="blue" variant="light">
             {t('No training data exists for the current selection.') || 'No training data exists for the current selection.'}
           </Alert>
+        ) : !hasLoadedDetails ? (
+          <Alert icon={<IconAlertTriangle size={16} />} color="orange" variant="light">
+            {t('Some selected activities could not be loaded. Try changing the selection or retrying.') || 'Some selected activities could not be loaded. Try changing the selection or retrying.'}
+          </Alert>
         ) : (
           <Stack gap="md">
+            {detailFailureCount > 0 && (
+              <Alert icon={<IconAlertTriangle size={16} />} color="orange" variant="light">
+                {t('Partial comparison data loaded.') || 'Partial comparison data loaded.'}
+                <Text size="sm" mt={4}>
+                  {t('Showing available activities only.') || 'Showing available activities only.'} {`${detailsById.size}/${idsToLoad.length}`}
+                </Text>
+              </Alert>
+            )}
             {mode === 'workouts' && leftWorkout && rightWorkout && (
               <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="xs">
                 <MetricComparison label={t('Duration') || 'Duration'} leftVal={safeNum(leftWorkout.duration) / 60} rightVal={safeNum(rightWorkout.duration) / 60} suffix=" min" lowerBetter decimals={0} />
@@ -1445,68 +1540,108 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                   </SimpleGrid>
                 )}
 
-                {splitRows.length > 0 && (
+                {splitRows.length > 0 ? (
                   <Paper withBorder p="sm" radius="md">
-                    <Text fw={600} mb="sm">{t('Split comparison') || 'Split comparison'}</Text>
+                    <Group justify="space-between" align="flex-start" mb="sm" gap="sm" wrap="wrap">
+                      <Box>
+                        <Text fw={600}>{t('Split comparison') || 'Split comparison'}</Text>
+                        <Text size="xs" c="dimmed">{t('Compare split-by-split pacing, power, and heart rate at a glance.') || 'Compare split-by-split pacing, power, and heart rate at a glance.'}</Text>
+                      </Box>
+                      <Group gap={6}>
+                        <Text size="xs" fw={600} c="dimmed">{t('Visible metrics') || 'Visible metrics'}</Text>
+                        <Chip size="xs" checked={effectiveSplitMetricVisibility.distance} onChange={(checked) => toggleSplitMetric('distance', checked)} variant="light">{t('Distance') || 'Distance'}</Chip>
+                        <Chip size="xs" checked={effectiveSplitMetricVisibility.intensity} onChange={(checked) => toggleSplitMetric('intensity', checked)} variant="light">{t('Average power / pace') || 'Average power / pace'}</Chip>
+                        <Chip size="xs" checked={effectiveSplitMetricVisibility.hr} onChange={(checked) => toggleSplitMetric('hr', checked)} variant="light">{t('HR') || 'HR'}</Chip>
+                        <Chip size="xs" checked={effectiveSplitMetricVisibility.feedback} onChange={(checked) => toggleSplitMetric('feedback', checked)} variant="light">{t('Feedback') || 'Feedback'}</Chip>
+                        <Chip size="xs" checked={effectiveSplitMetricVisibility.delta} onChange={(checked) => toggleSplitMetric('delta', checked)} variant="light">{t('Delta') || 'Delta'}</Chip>
+                      </Group>
+                    </Group>
+                    <ScrollArea mah={isMobile ? 360 : 460} offsetScrollbars>
                     <Table withTableBorder withColumnBorders>
-                      <Table.Thead>
+                      <Table.Thead style={{ position: 'sticky', top: 0, zIndex: 3 }}>
                         <Table.Tr>
-                          <Table.Th>{t('Split') || 'Split'}</Table.Th>
-                          <Table.Th>
+                          <Table.Th style={{ background: isDark ? '#0f172a' : '#ffffff', minWidth: 70 }}>{t('Split') || 'Split'}</Table.Th>
+                          <Table.Th style={{ background: isDark ? '#0f172a' : '#ffffff', minWidth: isMobile ? 200 : 280 }}>
                             <Group gap={4}>
                               <Box style={{ width: 8, height: 8, borderRadius: 2, background: chartColors.sideA, flexShrink: 0 }} />
                               <Text size="xs" fw={600}>{t('Side A') || 'Side A'}</Text>
                             </Group>
                           </Table.Th>
-                          <Table.Th>
+                          <Table.Th style={{ background: isDark ? '#0f172a' : '#ffffff', minWidth: isMobile ? 200 : 280 }}>
                             <Group gap={4}>
                               <Box style={{ width: 8, height: 8, borderRadius: 2, background: chartColors.sideB, flexShrink: 0 }} />
                               <Text size="xs" fw={600}>{t('Side B') || 'Side B'}</Text>
                             </Group>
                           </Table.Th>
-                          <Table.Th>{t('Delta') || 'Delta'}</Table.Th>
+                          <Table.Th style={{ background: isDark ? '#0f172a' : '#ffffff', minWidth: 180 }}>{t('Delta') || 'Delta'}</Table.Th>
                         </Table.Tr>
                       </Table.Thead>
                       <Table.Tbody>
                         {splitRows.map((row) => {
                           const leftDuration = row.left ? row.left.durationSec / 60 : null;
                           const rightDuration = row.right ? row.right.durationSec / 60 : null;
+                          const usesPower = row.left?.avgPower != null || row.right?.avgPower != null;
+                          const leftIntensity = row.left?.avgPower ?? (row.left?.avgSpeed ? (1000 / (row.left.avgSpeed * 60)) : null);
+                          const rightIntensity = row.right?.avgPower ?? (row.right?.avgSpeed ? (1000 / (row.right.avgSpeed * 60)) : null);
+                          const durationDirection = getComparisonDirection(leftDuration, rightDuration, true);
+                          const intensityDirection = getComparisonDirection(leftIntensity, rightIntensity, !usesPower);
+                          const rowEmphasis = durationDirection === 'better'
+                            ? (isDark ? 'rgba(16, 185, 129, 0.08)' : 'rgba(16, 185, 129, 0.06)')
+                            : durationDirection === 'worse'
+                              ? (isDark ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.06)')
+                              : 'transparent';
+                          const deltaBg = durationDirection === 'better'
+                            ? (isDark ? 'rgba(16, 185, 129, 0.14)' : 'rgba(16, 185, 129, 0.10)')
+                            : durationDirection === 'worse'
+                              ? (isDark ? 'rgba(239, 68, 68, 0.14)' : 'rgba(239, 68, 68, 0.10)')
+                              : (isDark ? 'rgba(148, 163, 184, 0.10)' : 'rgba(148, 163, 184, 0.08)');
+                          const deltaColor = durationDirection === 'better' ? '#10b981' : durationDirection === 'worse' ? '#ef4444' : (isDark ? '#cbd5e1' : '#475569');
                           return (
-                            <Table.Tr key={`split-${row.split}`}>
-                              <Table.Td>{row.split}</Table.Td>
+                            <Table.Tr key={`split-${row.split}`} style={{ background: rowEmphasis }}>
+                              <Table.Td fw={700}>{row.split}</Table.Td>
                               <Table.Td>
                                 <Stack gap={2}>
-                                  <Text size="sm">{row.left ? `${formatMinutes(leftDuration || 0)} · ${formatDistanceKm(row.left.distanceM / 1000)}` : '-'}</Text>
-                                  <Text size="xs" c="dimmed">
-                                    {row.left?.avgPower ? `${Math.round(row.left.avgPower)} W` : row.left?.avgSpeed ? formatPace(1000 / (row.left.avgSpeed * 60)) : '-'}
-                                  </Text>
-                                  <Text size="xs" c="dimmed">
-                                    {row.left?.avgHr ? `${Math.round(row.left.avgHr)} bpm` : '-'}
-                                    {row.left?.rpe ? ` · RPE ${row.left.rpe}` : ''}
-                                    {row.left?.lactate ? ` · ${row.left.lactate.toFixed(1)} mmol/L` : ''}
-                                  </Text>
+                                  <Text size="sm" fw={600}>{row.left ? formatMinutes(leftDuration || 0) : '-'}</Text>
+                                  {effectiveSplitMetricVisibility.distance && <Text size="xs" c="dimmed">{row.left ? formatDistanceKm(row.left.distanceM / 1000) : '-'}</Text>}
+                                  {effectiveSplitMetricVisibility.intensity && <Text size="xs" c="dimmed">{row.left?.avgPower ? `${Math.round(row.left.avgPower)} W` : row.left?.avgSpeed ? formatPace(1000 / (row.left.avgSpeed * 60)) : '-'}</Text>}
+                                  {effectiveSplitMetricVisibility.hr && <Text size="xs" c="dimmed">{row.left?.avgHr ? `${Math.round(row.left.avgHr)} bpm` : '-'}</Text>}
+                                  {effectiveSplitMetricVisibility.feedback && <Text size="xs" c="dimmed">{row.left?.rpe ? `RPE ${row.left.rpe}` : '-'}{row.left?.lactate ? ` · ${row.left.lactate.toFixed(1)} mmol/L` : ''}</Text>}
                                 </Stack>
                               </Table.Td>
                               <Table.Td>
                                 <Stack gap={2}>
-                                  <Text size="sm">{row.right ? `${formatMinutes(rightDuration || 0)} · ${formatDistanceKm(row.right.distanceM / 1000)}` : '-'}</Text>
-                                  <Text size="xs" c="dimmed">
-                                    {row.right?.avgPower ? `${Math.round(row.right.avgPower)} W` : row.right?.avgSpeed ? formatPace(1000 / (row.right.avgSpeed * 60)) : '-'}
-                                  </Text>
-                                  <Text size="xs" c="dimmed">
-                                    {row.right?.avgHr ? `${Math.round(row.right.avgHr)} bpm` : '-'}
-                                    {row.right?.rpe ? ` · RPE ${row.right.rpe}` : ''}
-                                    {row.right?.lactate ? ` · ${row.right.lactate.toFixed(1)} mmol/L` : ''}
-                                  </Text>
+                                  <Text size="sm" fw={600}>{row.right ? formatMinutes(rightDuration || 0) : '-'}</Text>
+                                  {effectiveSplitMetricVisibility.distance && <Text size="xs" c="dimmed">{row.right ? formatDistanceKm(row.right.distanceM / 1000) : '-'}</Text>}
+                                  {effectiveSplitMetricVisibility.intensity && <Text size="xs" c="dimmed">{row.right?.avgPower ? `${Math.round(row.right.avgPower)} W` : row.right?.avgSpeed ? formatPace(1000 / (row.right.avgSpeed * 60)) : '-'}</Text>}
+                                  {effectiveSplitMetricVisibility.hr && <Text size="xs" c="dimmed">{row.right?.avgHr ? `${Math.round(row.right.avgHr)} bpm` : '-'}</Text>}
+                                  {effectiveSplitMetricVisibility.feedback && <Text size="xs" c="dimmed">{row.right?.rpe ? `RPE ${row.right.rpe}` : '-'}{row.right?.lactate ? ` · ${row.right.lactate.toFixed(1)} mmol/L` : ''}</Text>}
                                 </Stack>
                               </Table.Td>
-                              <Table.Td>{compareValue(leftDuration, rightDuration, ' min')}</Table.Td>
+                              <Table.Td>
+                                <Stack gap={6}>
+                                  <Paper p="xs" radius="sm" style={{ background: deltaBg }}>
+                                    <Text size="10px" tt="uppercase" fw={700} c="dimmed">{t('Time') || 'Time'}</Text>
+                                    <Text size="sm" fw={700} style={{ color: deltaColor }}>{compareValue(leftDuration, rightDuration, ' min')}</Text>
+                                  </Paper>
+                                  {effectiveSplitMetricVisibility.delta && (
+                                    <Paper p="xs" radius="sm" style={{ background: intensityDirection === 'better' ? (isDark ? 'rgba(16, 185, 129, 0.10)' : 'rgba(16, 185, 129, 0.06)') : intensityDirection === 'worse' ? (isDark ? 'rgba(239, 68, 68, 0.10)' : 'rgba(239, 68, 68, 0.06)') : (isDark ? 'rgba(148, 163, 184, 0.10)' : 'rgba(148, 163, 184, 0.08)') }}>
+                                      <Text size="10px" tt="uppercase" fw={700} c="dimmed">{usesPower ? (t('Power') || 'Power') : (t('Pace') || 'Pace')}</Text>
+                                      <Text size="xs" fw={600}>{compareValue(leftIntensity, rightIntensity, usesPower ? ' W' : '')}</Text>
+                                    </Paper>
+                                  )}
+                                </Stack>
+                              </Table.Td>
                             </Table.Tr>
                           );
                         })}
                       </Table.Tbody>
                     </Table>
+                    </ScrollArea>
                   </Paper>
+                ) : (
+                  <Alert icon={<IconInfoCircle size={16} />} color="blue" variant="light">
+                    {t('No split data available for selected workouts.') || 'No split data available for selected workouts.'}
+                  </Alert>
                 )}
               </>
             ) : (

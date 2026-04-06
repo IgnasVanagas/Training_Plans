@@ -32,6 +32,7 @@ import DashboardTrainingZonesTab from "./dashboard/DashboardTrainingZonesTab";
 import DashboardActivityTrackersTab from "./dashboard/DashboardActivityTrackersTab";
 import DashboardSettingsTab from "./dashboard/DashboardSettingsTab";
 import AdminPanel from "./dashboard/AdminPanel";
+import { CoachComparisonPanel } from "../components/CoachComparisonPanel";
 import { useI18n } from "../i18n/I18nProvider";
 import {
   ActivityFeedRow,
@@ -256,11 +257,6 @@ const Dashboard = () => {
 
 
   }, [meQuery.data, queryClient, selectedAthleteId]);
-
-  useEffect(() => {
-    if (activeTab !== "comparison") return;
-    navigate("/dashboard/compare");
-  }, [activeTab, navigate]);
 
   const {
     connectingProvider,
@@ -1037,6 +1033,12 @@ const Dashboard = () => {
               athleteProfileUpdateMutation.mutate({ athleteId, updatedProfile })
             }
           />
+        ) : activeTab === "comparison" ? (
+          <CoachComparisonPanel
+            athletes={athletesQuery.data || []}
+            me={me}
+            isAthlete={me.role === "athlete"}
+          />
         ) : me.role === "coach" ? (
           <DashboardCoachHome
             me={me}
@@ -1065,7 +1067,7 @@ const Dashboard = () => {
             onOpenPlan={() => setActiveTab("plan")}
             onOpenActivities={() => setActiveTab("activities")}
             onOpenOrganizations={() => setActiveTab("organizations")}
-            onOpenComparison={() => navigate("/dashboard/compare")}
+            onOpenComparison={() => setActiveTab("comparison")}
           />
         ) : (
           <DashboardAthleteHome
