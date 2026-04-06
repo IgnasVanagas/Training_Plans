@@ -117,11 +117,22 @@ export const HardEffortsPanel = ({
             const sumPow = pPow[end + 1] - pPow[start];
             const sumHr = pHr[end + 1] - pHr[start];
             const sumSpd = pSpd[end + 1] - pSpd[start];
-            const hrCnt = streamPoints.slice(start, end + 1).filter((p: any) => Number(p?.heart_rate ?? 0) > 0).length;
-            const spdCnt = streamPoints.slice(start, end + 1).filter((p: any) => Number(p?.speed ?? 0) > 0.1).length;
+            let maxPow = 0, maxHrVal = 0, hrCnt = 0, spdCnt = 0;
+            for (let j = start; j <= end; j++) {
+                const p = streamPoints[j];
+                if (!p) continue;
+                const pow = Number(p?.power ?? p?.watts ?? 0);
+                const hr = Number(p?.heart_rate ?? 0);
+                const spd = Number(p?.speed ?? 0);
+                if (pow > maxPow) maxPow = pow;
+                if (hr > 0) { hrCnt++; if (hr > maxHrVal) maxHrVal = hr; }
+                if (spd > 0.1) spdCnt++;
+            }
             return {
                 avgPower: sumPow > 0 ? sumPow / n : null,
+                maxPower: maxPow > 0 ? maxPow : null,
                 avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
+                maxHr: maxHrVal > 0 ? maxHrVal : null,
                 avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
             };
         };
@@ -154,11 +165,10 @@ export const HardEffortsPanel = ({
         }
 
         // Step 2: Adaptive-gap merge.
-        // Gap avg metric >= 75% FTP (Z3): active rest → bridge up to 240s.
-        // Gap avg metric <  75% FTP (Z2-): easy section → bridge only 25s (smoothing artifact).
-        // This prevents brief spikes every few minutes from accumulating into phantom Z2 "efforts"
-        // while still bridging legitimate intra-interval rests at 87-93% FTP.
-        const activeRestThreshold = ref * 0.75;
+        // Gap avg metric >= 85% FTP: active rest → bridge up to 240s.
+        // Gap avg metric <  85% FTP: easy section → bridge only 25s (smoothing artifact tolerance).
+        // 85% keeps intra-interval rests at 87-93% FTP merged while transitions at <85% split cleanly.
+        const activeRestThreshold = ref * 0.85;
         const mergeGapActive = 240;
         const mergeGapEasy = 25;
         const merged: { start: number; end: number }[] = [];
@@ -190,19 +200,21 @@ export const HardEffortsPanel = ({
                 const above = v != null && v >= sprintThreshold;
                 if (above && segStart === -1) segStart = i;
                 else if (!above && segStart !== -1) {
-                    if (i - segStart >= minSprintDuration) sprintSegs.push({ start: segStart, end: i - 1 });
+                    const segLen = i - segStart;
+                    if (segLen >= minSprintDuration) {
+                        // Validate: actual raw average must be ≥110% FTP (Z5+) to be a genuine sprint.
+                        // The 7-pt smoothed window "halos" around real peaks, creating edge segments
+                        // where the segment average is much lower than the smoothed threshold.
+                        const avgRaw = avgMetricInRange(segStart, i - 1);
+                        if (avgRaw >= ref * 1.10) sprintSegs.push({ start: segStart, end: i - 1 });
+                    }
                     segStart = -1;
                 }
             }
         }
-        // Remove sprints already substantially inside a main effort
+        // Remove any sprint that overlaps at all with a main effort (edge halo removal)
         const standaloneSprints = sprintSegs.filter(sp =>
-            !mainEfforts.some(s => {
-                const overlapStart = Math.max(sp.start, s.start);
-                const overlapEnd = Math.min(sp.end, s.end);
-                const overlapLen = Math.max(0, overlapEnd - overlapStart + 1);
-                return overlapLen / (sp.end - sp.start + 1) > 0.5;
-            })
+            !mainEfforts.some(s => s.start <= sp.end && sp.start <= s.end)
         );
 
         // Combine and sort chronologically
@@ -305,6 +317,23 @@ export const HardEffortsPanel = ({
                 speedKmh: e.avgSpeedKmh,
             };
         }
+        // Recovery segments — so recovery rows can also be focused on map/chart
+        for (let i = 0; i < hardEfforts.length - 1; i++) {
+            const restStart = hardEfforts[i].endIndex + 1;
+            const restEnd = hardEfforts[i + 1].startIndex - 1;
+            if (restEnd >= restStart) {
+                result[`rest_${i}`] = {
+                    startIndex: restStart,
+                    endIndex: restEnd,
+                    centerIndex: Math.round((restStart + restEnd) / 2),
+                    seconds: restEnd - restStart + 1,
+                    meters: null,
+                    avgPower: null,
+                    avgHr: null,
+                    speedKmh: null,
+                };
+            }
+        }
         return result;
     }, [hardEfforts]);
 
@@ -340,11 +369,13 @@ export const HardEffortsPanel = ({
                         <Table.Th></Table.Th>
                         <Table.Th>{t('Zone')}</Table.Th>
                         <Table.Th>{t('Duration')}</Table.Th>
-                        {isCyclingActivity && <Table.Th>{t('Avg Power')}</Table.Th>}
+                        {isCyclingActivity && <Table.Th>Avg W</Table.Th>}
+                        {isCyclingActivity && <Table.Th>Max W</Table.Th>}
                         {isCyclingActivity && <Table.Th>% FTP</Table.Th>}
                         {isRunningActivity && <Table.Th>{t('Avg Pace')}</Table.Th>}
                         {isRunningActivity && <Table.Th>% Threshold</Table.Th>}
-                        <Table.Th>{t('Heart Rate')}</Table.Th>
+                        <Table.Th>Avg HR</Table.Th>
+                        <Table.Th>Max HR</Table.Th>
                     </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -361,15 +392,17 @@ export const HardEffortsPanel = ({
                             zoneColor === 'violet' ? '#8b5cf6' :
                             zoneColor === 'teal' ? '#14b8a6' :
                             zoneColor === 'blue' ? '#3b82f6' : '#9ca3af';
+                        const restKey = `rest_${idx}`;
+                        const isRestSelected = selectedEffortKey === restKey;
                         return [
                             <Table.Tr
                                 key={effort.key}
                                 style={{
-                                    cursor: (effort.isWarmup || effort.isSprint) ? 'default' : 'pointer',
+                                    cursor: 'pointer',
                                     backgroundColor: isSelected ? (isDark ? 'rgba(233,90,18,0.16)' : 'rgba(233,90,18,0.10)') : undefined,
                                     fontStyle: effort.isWarmup ? 'italic' : undefined,
                                 }}
-                                onClick={() => !effort.isWarmup && !effort.isSprint && onSelectEffort(effort.key)}
+                                onClick={() => onSelectEffort(effort.key)}
                             >
                                 <Table.Td w={36} style={{ textAlign: 'center' }}>
                                     {effort.isSprint
@@ -380,20 +413,30 @@ export const HardEffortsPanel = ({
                                 <Table.Td>
                                     <Group gap={4}>
                                         <Badge size="sm" color={zoneColor} variant={effort.isWarmup ? 'outline' : 'light'}>
-                                            Z{effort.zone}{effort.isWarmup ? ' warmup' : ''}
+                                            Z{effort.zone}
                                         </Badge>
                                         {effort.isSprint && <Text size="xs" c="dimmed" fs="italic">sprint</Text>}
                                     </Group>
                                 </Table.Td>
                                 <Table.Td fw={effort.isWarmup ? 400 : 600}>{formatDuration(effort.durationSeconds)}</Table.Td>
                                 {isCyclingActivity && <Table.Td>{effort.avgPower != null ? `${Math.round(effort.avgPower)} W` : '-'}</Table.Td>}
+                                {isCyclingActivity && <Table.Td>{effort.maxPower != null ? `${Math.round(effort.maxPower)} W` : '-'}</Table.Td>}
                                 {isCyclingActivity && <Table.Td>{effort.pctRef != null ? `${Math.round(effort.pctRef)}%` : '-'}</Table.Td>}
                                 {isRunningActivity && <Table.Td>{paceDisplay ?? '-'}</Table.Td>}
                                 {isRunningActivity && <Table.Td>{effort.pctRef != null ? `${Math.round(effort.pctRef)}%` : '-'}</Table.Td>}
                                 <Table.Td>{effort.avgHr != null ? `${Math.round(effort.avgHr)} bpm` : '-'}</Table.Td>
+                                <Table.Td>{effort.maxHr != null ? `${Math.round(effort.maxHr)} bpm` : '-'}</Table.Td>
                             </Table.Tr>,
                             rest && rest.durationSeconds > 0 ? (
-                                <Table.Tr key={`rest_${idx}`} style={{ opacity: 0.55 }}>
+                                <Table.Tr
+                                    key={restKey}
+                                    style={{
+                                        opacity: isRestSelected ? 1 : 0.55,
+                                        cursor: 'pointer',
+                                        backgroundColor: isRestSelected ? (isDark ? 'rgba(233,90,18,0.16)' : 'rgba(233,90,18,0.10)') : undefined,
+                                    }}
+                                    onClick={() => onSelectEffort(restKey)}
+                                >
                                     <Table.Td style={{ textAlign: 'center' }}><IconMinus size={12} /></Table.Td>
                                     <Table.Td>
                                         <Group gap={4}>
@@ -404,9 +447,11 @@ export const HardEffortsPanel = ({
                                     <Table.Td><Text size="xs" c="dimmed">{formatDuration(rest.durationSeconds)}</Text></Table.Td>
                                     {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgPower != null ? `${Math.round(rest.avgPower)} W` : '-'}</Text></Table.Td>}
                                     {isCyclingActivity && <Table.Td>-</Table.Td>}
+                                    {isCyclingActivity && <Table.Td>-</Table.Td>}
                                     {isRunningActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgSpeedKmh && rest.avgSpeedKmh > 0 ? (() => { const p = 60 / rest.avgSpeedKmh!; const m = Math.floor(p); const s = Math.round((p - m) * 60); return `${m}:${s.toString().padStart(2, '0')} /km`; })() : '-'}</Text></Table.Td>}
                                     {isRunningActivity && <Table.Td>-</Table.Td>}
                                     <Table.Td><Text size="xs" c="dimmed">{rest.avgHr != null ? `${Math.round(rest.avgHr)} bpm` : '-'}</Text></Table.Td>
+                                    <Table.Td>-</Table.Td>
                                 </Table.Tr>
                             ) : null,
                         ];
