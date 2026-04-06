@@ -41,9 +41,6 @@ engine = create_async_engine(
     connect_args={
         "timeout": 10,
         "command_timeout": 30,
-        # Send TCP keepalives every 60s to prevent the connection being silently
-        # dropped by the cloud provider's idle-connection killer
-        "server_settings": {"keepalives_idle": "60"},
     },
 )
 AsyncSessionLocal = async_sessionmaker(
