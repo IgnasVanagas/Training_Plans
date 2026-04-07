@@ -117,19 +117,24 @@ export const HardEffortsPanel = ({
             const sumPow = pPow[end + 1] - pPow[start];
             const sumHr = pHr[end + 1] - pHr[start];
             const sumSpd = pSpd[end + 1] - pSpd[start];
-            let maxPow = 0, maxHrVal = 0, hrCnt = 0, spdCnt = 0;
+            let sumPowFourth = 0, maxPow = 0, maxHrVal = 0, hrCnt = 0, spdCnt = 0, powCnt = 0;
             for (let j = start; j <= end; j++) {
                 const p = streamPoints[j];
                 if (!p) continue;
                 const pow = Number(p?.power ?? p?.watts ?? 0);
                 const hr = Number(p?.heart_rate ?? 0);
                 const spd = Number(p?.speed ?? 0);
-                if (pow > maxPow) maxPow = pow;
+                if (pow > 0) {
+                    powCnt++;
+                    sumPowFourth += Math.pow(pow, 4);
+                    if (pow > maxPow) maxPow = pow;
+                }
                 if (hr > 0) { hrCnt++; if (hr > maxHrVal) maxHrVal = hr; }
                 if (spd > 0.1) spdCnt++;
             }
             return {
                 avgPower: sumPow > 0 ? sumPow / n : null,
+                wap: powCnt > 0 ? Math.pow(sumPowFourth / powCnt, 0.25) : null,
                 maxPower: maxPow > 0 ? maxPow : null,
                 avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
                 maxHr: maxHrVal > 0 ? maxHrVal : null,
@@ -390,6 +395,7 @@ export const HardEffortsPanel = ({
                         <Table.Th>{t('Zone')}</Table.Th>
                         <Table.Th>{t('Duration')}</Table.Th>
                         {isCyclingActivity && <Table.Th>Avg W</Table.Th>}
+                            {isCyclingActivity && <Table.Th>WAP</Table.Th>}
                         {isCyclingActivity && <Table.Th>Max W</Table.Th>}
                         {isCyclingActivity && <Table.Th>% FTP</Table.Th>}
                         {isRunningActivity && <Table.Th>{t('Avg Pace')}</Table.Th>}
@@ -440,6 +446,7 @@ export const HardEffortsPanel = ({
                                 </Table.Td>
                                 <Table.Td fw={effort.isWarmup ? 400 : 600}>{formatDuration(effort.durationSeconds)}</Table.Td>
                                 {isCyclingActivity && <Table.Td>{effort.avgPower != null ? `${Math.round(effort.avgPower)} W` : '-'}</Table.Td>}
+                                {isCyclingActivity && <Table.Td>{effort.wap != null ? `${Math.round(effort.wap)} W` : '-'}</Table.Td>}
                                 {isCyclingActivity && <Table.Td>{effort.maxPower != null ? `${Math.round(effort.maxPower)} W` : '-'}</Table.Td>}
                                 {isCyclingActivity && <Table.Td>{effort.pctRef != null ? `${Math.round(effort.pctRef)}%` : '-'}</Table.Td>}
                                 {isRunningActivity && <Table.Td>{paceDisplay ?? '-'}</Table.Td>}
@@ -466,6 +473,7 @@ export const HardEffortsPanel = ({
                                     </Table.Td>
                                     <Table.Td><Text size="xs" c="dimmed">{formatDuration(rest.durationSeconds)}</Text></Table.Td>
                                     {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgPower != null ? `${Math.round(rest.avgPower)} W` : '-'}</Text></Table.Td>}
+                                    {isCyclingActivity && <Table.Td>-</Table.Td>}
                                     {isCyclingActivity && <Table.Td>-</Table.Td>}
                                     {isCyclingActivity && <Table.Td>-</Table.Td>}
                                     {isRunningActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgSpeedKmh && rest.avgSpeedKmh > 0 ? (() => { const p = 60 / rest.avgSpeedKmh!; const m = Math.floor(p); const s = Math.round((p - m) * 60); return `${m}:${s.toString().padStart(2, '0')} /km`; })() : '-'}</Text></Table.Td>}

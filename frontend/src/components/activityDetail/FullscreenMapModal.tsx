@@ -5,6 +5,7 @@ import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Too
 import { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { MapFitBounds, MapPanTo, MapRouteInteractionLayer } from "./mapHelpers";
 import { RouteInteractivePoint } from "../../types/activityDetail";
+import { SelectedSegmentSummary } from "./SelectedSegmentSummary";
 
 type UiTokens = {
     surface: string;
@@ -170,26 +171,17 @@ export const FullscreenMapModal = ({
                         {/* Segment stats overlay */}
                         {chartSelectionStats && (
                             <Box style={{ position: 'absolute', top: 10, left: 10, zIndex: 1000, pointerEvents: 'auto' }}>
-                                <Paper withBorder p="sm" radius="md" bg={ui.surfaceAlt} style={{ borderColor: ui.border, minWidth: 180, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
-                                    <Group justify="space-between" mb={4} align="center">
-                                        <Text size="xs" fw={700} c={ui.textDim}>{t('Selected segment')}</Text>
-                                        <Button size="compact-xs" variant="subtle" c={ui.textDim} onClick={onClearSelection}>{t('Clear')}</Button>
-                                    </Group>
-                                    <Stack gap={2}>
-                                        {chartSelectionStats.durationMin != null && chartSelectionStats.durationMin > 0 && <Text size="xs" c={ui.textMain}>{t('Duration')}: {formatElapsedFromMinutes(chartSelectionStats.durationMin)}</Text>}
-                                        {chartSelectionStats.avgHr != null && <Text size="xs" c={ui.textMain}>{t('Avg HR')}: {Math.round(chartSelectionStats.avgHr)} bpm</Text>}
-                                        {chartSelectionStats.maxHr != null && <Text size="xs" c={ui.textMain}>{t('Max HR')}: {Math.round(chartSelectionStats.maxHr)} bpm</Text>}
-                                        {chartSelectionStats.avgPace != null && supportsPaceSeries && (() => { const p = chartSelectionStats.avgPace!; return <Text size="xs" c={ui.textMain}>{t('Avg Pace')}: {Math.floor(p)}:{Math.round((p % 1) * 60).toString().padStart(2, '0')}/km</Text>; })()}
-                                        {chartSelectionStats.minPace != null && supportsPaceSeries && (() => { const p = chartSelectionStats.minPace!; return <Text size="xs" c={ui.textMain}>{t('Best Pace')}: {Math.floor(p)}:{Math.round((p % 1) * 60).toString().padStart(2, '0')}/km</Text>; })()}
-                                        {chartSelectionStats.avgSpeed != null && !supportsPaceSeries && <Text size="xs" c={ui.textMain}>{t('Avg Speed')}: {chartSelectionStats.avgSpeed.toFixed(1)} {me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h'}</Text>}
-                                        {chartSelectionStats.maxSpeed != null && !supportsPaceSeries && <Text size="xs" c={ui.textMain}>{t('Max Speed')}: {chartSelectionStats.maxSpeed.toFixed(1)} {me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h'}</Text>}
-                                        {chartSelectionStats.avgPower != null && <Text size="xs" c={ui.textMain}>{t('Avg Power')}: {Math.round(chartSelectionStats.avgPower)} W</Text>}
-                                        {chartSelectionStats.maxPower != null && <Text size="xs" c={ui.textMain}>{t('Max Power')}: {Math.round(chartSelectionStats.maxPower)} W</Text>}
-                                        {chartSelectionStats.avgGradient != null && <Text size="xs" c={ui.textMain}>{t('Avg Gradient')}: {chartSelectionStats.avgGradient.toFixed(1)}%</Text>}
-                                        {chartSelectionStats.maxGradient != null && <Text size="xs" c={ui.textMain}>{t('Max Gradient')}: {chartSelectionStats.maxGradient.toFixed(1)}%</Text>}
-                                        {chartSelectionStats.elevGain != null && chartSelectionStats.elevGain > 0 && <Text size="xs" c={ui.textMain}>{t('Elev Gain')}: {Math.round(chartSelectionStats.elevGain)} m</Text>}
-                                    </Stack>
-                                </Paper>
+                                <Box style={{ minWidth: 340, maxWidth: 520, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+                                    <SelectedSegmentSummary
+                                        stats={chartSelectionStats}
+                                        me={me}
+                                        supportsPaceSeries={supportsPaceSeries}
+                                        onClear={onClearSelection}
+                                        formatElapsedFromMinutes={formatElapsedFromMinutes}
+                                        ui={ui}
+                                        t={t}
+                                    />
+                                </Box>
                             </Box>
                         )}
                     </Box>

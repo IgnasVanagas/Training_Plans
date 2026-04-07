@@ -693,8 +693,11 @@ def build_generated_workouts(plan_payload: Any, profile: Any | None = None) -> d
     load_progression: list[dict[str, Any]] = []
     for idx, micro in enumerate(micro_cycles):
         acute_load = float(micro.get("training_load") or 0)
-        chronic_window = micro_cycles[max(0, idx - 3):idx + 1]
-        chronic_load = sum(float(w.get("training_load") or 0) for w in chronic_window) / max(1, len(chronic_window))
+        chronic_window = micro_cycles[max(0, idx - 4):idx]
+        chronic_load = (
+            sum(float(w.get("training_load") or 0) for w in chronic_window) / len(chronic_window)
+            if chronic_window else acute_load
+        )
         acwr = round(acute_load / chronic_load, 2) if chronic_load > 0 else 1.0
         load_progression.append({
             "week_index": micro["week_index"],

@@ -419,6 +419,11 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Could not save plan": "Nepavyko išsaugoti plano",
     "Could not apply plan": "Nepavyko pritaikyti plano",
     "Loading saved framework": "Įkeliama išsaugota struktūra",
+    "No races added yet. Add an A race to generate a peak and taper.": "Varžybų dar nėra. Pridėkite A varžybas, kad sugeneruotumėte piką ir taper.",
+    "No constraints yet. Add travel, injury, or unavailability windows.": "Apribojimų dar nėra. Pridėkite kelionių, traumų ar neprieigumo laikotarpius.",
+    "Acute:Chronic Workload Ratio — optimal range 0.8-1.3 (Hulin et al., 2014)": "Ūmaus ir lėtinio krūvio santykis — optimalus diapazonas 0,8–1,3 (Hulin ir kt., 2014)",
+    "d to race": "d iki varžybų",
+    "Load": "Krūvis",
     "How did this session feel? A short note helps your coach tune your next workout.": "Kaip jautėtės šioje sesijoje? Trumpa pastaba padeda treneriui pakoreguoti kitą treniruotę.",
     "RPE, mood, soreness (optional)": "RPE, nuotaika, skausmingumas (nebūtina)",
     "Loading calendar...": "Įkeliamas kalendorius...",
@@ -677,6 +682,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Side B": "Pusė B"
     ,"Loading comparison data...": "Kraunami palyginimo duomenys..."
     ,"Select both sides to compare.": "Pasirinkite abi puses palyginimui."
+    ,"No training data exists for the selected period(s). Please choose a different period.": "Pasirinktiems laikotarpiams treniruočių duomenų nėra. Pasirinkite kitą laikotarpį."
     ,"No training data exists for the current selection.": "Dabartiniam pasirinkimui treniruočių duomenų nėra."
     ,"Contrast Summary": "Skirtumų santrauka"
     ,"Duration change": "Trukmės pokytis"
@@ -709,7 +715,6 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Longest session": "Ilgiausia sesija"
     ,"Key sessions": "Pagrindinės sesijos"
     ,"No sessions in this selection": "Šiame pasirinkime sesijų nėra"
-    ,"Load": "Krūvis"
     ,"Workout": "Treniruotė"
     ,"Split comparison": "Atkarpų palyginimas"
     ,"Delta": "Pokytis"
@@ -835,6 +840,8 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Effort": "Pasiekimas"
     ,"Selected effort": "Pasirinktas pasiekimas"
     ,"Selected segment": "Pasirinkta atkarpa"
+    ,"Average": "Vidurkis"
+    ,"Max / Best": "Maks. / geriausia"
     ,"Map metric: None": "Žemėlapio metrika: nėra"
     ,"Gradient": "Nuolydis"
     ,"Avg Gradient": "Vid. nuolydis"

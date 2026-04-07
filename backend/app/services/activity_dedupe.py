@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -10,6 +11,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import Activity
 
+# ---------------------------------------------------------------------------
+# Thresholds — single source of truth for all matching tiers
+# ---------------------------------------------------------------------------
+
+_FUZZY_WINDOW_S: int = 900              # ±15 minutes
+_INDOOR_DURATION_TOLERANCE_S: int = 3600  # 60 min — treadmill/trainer drift
+_OUTDOOR_DURATION_TOLERANCE_S: int = 600  # 10 min — GPS drift
+_OUTDOOR_DISTANCE_TOLERANCE_M: int = 500  # 500 m
+
+
+# ---------------------------------------------------------------------------
+# Pure helpers
+# ---------------------------------------------------------------------------
 
 def sha256_hex(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
@@ -58,13 +72,11 @@ def extract_source_identity(parsed_data: dict[str, Any]) -> tuple[Optional[str],
         or parsed_data.get("provider")
         or parsed_data.get("source")
     )
-
     source_id = (
         parsed_data.get("source_activity_id")
         or parsed_data.get("activity_id")
         or parsed_data.get("external_activity_id")
     )
-
     source_meta = parsed_data.get("source_meta")
     if isinstance(source_meta, dict):
         provider = provider or source_meta.get("provider")
@@ -75,14 +87,134 @@ def extract_source_identity(parsed_data: dict[str, Any]) -> tuple[Optional[str],
     return provider_str, source_id_str
 
 
-def _activity_meta(activity: Activity) -> dict[str, Any]:
-    streams = activity.streams
-    if isinstance(streams, dict):
-        meta = streams.get("_meta")
-        if isinstance(meta, dict):
-            return meta
-    return {}
+# ---------------------------------------------------------------------------
+# Identity dataclass — canonical representation of dedup-relevant fields
+# ---------------------------------------------------------------------------
 
+@dataclass
+class _ActivityIdentity:
+    file_sha256: Optional[str]
+    source_provider: Optional[str]
+    source_activity_id: Optional[str]
+    fingerprint_v1: Optional[str]
+    sport: Optional[str]
+    created_at: Optional[datetime]
+    duration_s: float
+    distance_m: float
+
+
+def _meta_from_streams(streams: Any) -> dict:
+    """Extract the _meta dict from a streams value (dict, JSON string, or None)."""
+    if isinstance(streams, str):
+        try:
+            streams = json.loads(streams)
+        except Exception:
+            return {}
+    if not isinstance(streams, dict):
+        return {}
+    meta = streams.get("_meta")
+    return meta if isinstance(meta, dict) else {}
+
+
+def _identity_from_meta(meta: dict, *, sport: Any, created_at: Any, duration: Any, distance: Any) -> _ActivityIdentity:
+    sha = str(meta.get("file_sha256", "")).strip() or None
+    prov = str(meta.get("source_provider", "")).strip().lower() or None
+    sid = str(meta.get("source_activity_id", "")).strip() or None
+    fp = str(meta.get("fingerprint_v1", "")).strip() or None
+    return _ActivityIdentity(
+        file_sha256=sha,
+        source_provider=prov,
+        source_activity_id=sid,
+        fingerprint_v1=fp,
+        sport=sport,
+        created_at=created_at,
+        duration_s=float(duration or 0),
+        distance_m=float(distance or 0),
+    )
+
+
+def _identity_from_row(row: dict) -> _ActivityIdentity:
+    return _identity_from_meta(
+        _meta_from_streams(row.get("streams")),
+        sport=row.get("sport"),
+        created_at=row.get("created_at"),
+        duration=row.get("duration"),
+        distance=row.get("distance"),
+    )
+
+
+def _identity_from_activity(activity: Activity) -> _ActivityIdentity:
+    return _identity_from_meta(
+        _meta_from_streams(activity.streams),
+        sport=activity.sport,
+        created_at=activity.created_at,
+        duration=activity.duration,
+        distance=activity.distance,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Single matching function — used by both DB-backed and plain-dict paths
+# ---------------------------------------------------------------------------
+
+def _identities_match(a: _ActivityIdentity, b: _ActivityIdentity) -> bool:
+    """Four-tier duplicate check. First matching tier wins."""
+    # Tier 1: Provider + external ID (strongest signal; checked before SHA so
+    #         a resync of a previously-marked duplicate is always recognised)
+    if (
+        a.source_provider and a.source_activity_id
+        and b.source_provider and b.source_activity_id
+        and a.source_provider == b.source_provider
+        and a.source_activity_id == b.source_activity_id
+    ):
+        return True
+
+    # Tier 2: File SHA-256
+    if a.file_sha256 and b.file_sha256 and a.file_sha256 == b.file_sha256:
+        return True
+
+    # Tier 3: Fingerprint v1
+    if a.fingerprint_v1 and b.fingerprint_v1 and a.fingerprint_v1 == b.fingerprint_v1:
+        return True
+
+    # Tier 4: Fuzzy — time window + sport + duration + distance
+    if a.created_at is None or b.created_at is None:
+        return False
+    if abs((a.created_at - b.created_at).total_seconds()) > _FUZZY_WINDOW_S:
+        return False
+
+    ns_a = normalize_sport(a.sport)
+    ns_b = normalize_sport(b.sport)
+    if ns_a != "other" and ns_b != "other" and ns_a != ns_b:
+        return False
+
+    indoor_pair = a.distance_m == 0 or b.distance_m == 0
+    duration_tol = _INDOOR_DURATION_TOLERANCE_S if indoor_pair else _OUTDOOR_DURATION_TOLERANCE_S
+    if abs(a.duration_s - b.duration_s) > duration_tol:
+        return False
+    if not indoor_pair and abs(a.distance_m - b.distance_m) > _OUTDOOR_DISTANCE_TOLERANCE_M:
+        return False
+
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Public helpers
+# ---------------------------------------------------------------------------
+
+def _activity_meta(activity: Activity) -> dict[str, Any]:
+    """Extract the _meta dict from an Activity ORM instance."""
+    return _meta_from_streams(activity.streams)
+
+
+def _rows_are_duplicate(existing: dict, candidate: dict) -> bool:
+    """Return True if two activity row dicts should be considered duplicates."""
+    return _identities_match(_identity_from_row(existing), _identity_from_row(candidate))
+
+
+# ---------------------------------------------------------------------------
+# DB-backed duplicate lookup (called at ingest time)
+# ---------------------------------------------------------------------------
 
 async def find_duplicate_activity(
     db: AsyncSession,
@@ -97,143 +229,96 @@ async def find_duplicate_activity(
     duration_s: Optional[float] = None,
     distance_m: Optional[float] = None,
 ) -> Optional[Activity]:
-    # 1. Provider + source_id — search ALL activities (including ones previously marked as
-    #    duplicates) so Strava re-syncing a marked duplicate doesn't create a brand-new row.
+    """
+    Return the canonical (primary) activity that matches the given identity, or None.
+
+    The DB queries cover Tiers 1–3 using indexed JSONB paths for speed.
+    Tier 4 (fuzzy) pulls a narrow time window and matches in Python via
+    _identities_match(), keeping the matching logic in one place.
+    """
+
+    async def _resolve_primary(activity: Activity) -> Activity:
+        if activity.duplicate_of_id:
+            primary = await db.get(Activity, activity.duplicate_of_id)
+            return primary or activity
+        return activity
+
+    # Tier 1: Provider + source_id — search ALL rows (including secondaries) so
+    #         re-syncing a previously-marked duplicate doesn't create a new row.
     if source_provider and source_activity_id:
         sp = source_provider.strip().lower()
         si = source_activity_id.strip()
-        result = await db.scalar(
+        found = await db.scalar(
             select(Activity).where(
                 Activity.athlete_id == athlete_id,
-                Activity.streams['_meta']['source_provider'].astext == sp,
-                Activity.streams['_meta']['source_activity_id'].astext == si,
+                Activity.streams["_meta"]["source_provider"].astext == sp,
+                Activity.streams["_meta"]["source_activity_id"].astext == si,
             ).limit(1)
         )
-        if result:
-            # If the found activity is itself a duplicate, return its original
-            if result.duplicate_of_id:
-                orig = await db.get(Activity, result.duplicate_of_id)
-                return orig or result
-            return result
+        if found:
+            return await _resolve_primary(found)
 
-    # 2. File SHA256 (originals only)
+    # Tier 2: File SHA-256 (originals only)
     if file_sha256:
-        result = await db.scalar(
+        found = await db.scalar(
             select(Activity).where(
                 Activity.athlete_id == athlete_id,
-                Activity.streams['_meta']['file_sha256'].astext == file_sha256,
+                Activity.streams["_meta"]["file_sha256"].astext == file_sha256,
                 Activity.duplicate_of_id.is_(None),
             ).limit(1)
         )
-        if result:
-            return result
+        if found:
+            return found
 
-    # 3. Fingerprint (originals only)
+    # Tier 3: Fingerprint v1 (originals only)
     if fingerprint_v1:
-        result = await db.scalar(
+        found = await db.scalar(
             select(Activity).where(
                 Activity.athlete_id == athlete_id,
-                Activity.streams['_meta']['fingerprint_v1'].astext == fingerprint_v1,
+                Activity.streams["_meta"]["fingerprint_v1"].astext == fingerprint_v1,
                 Activity.duplicate_of_id.is_(None),
             ).limit(1)
         )
-        if result:
-            return result
+        if found:
+            return found
 
-    # 4. Fuzzy: narrow to ±15-minute window using the composite index, then check in Python
+    # Tier 4: Fuzzy — pull narrow window from DB, match in Python
     if created_at is not None:
-        ns = normalize_sport(sport)
-        window_start = created_at - timedelta(seconds=900)
-        window_end = created_at + timedelta(seconds=900)
-        rows = await db.execute(
+        window_start = created_at - timedelta(seconds=_FUZZY_WINDOW_S)
+        window_end = created_at + timedelta(seconds=_FUZZY_WINDOW_S)
+        candidates_res = await db.execute(
             select(Activity).where(
                 Activity.athlete_id == athlete_id,
                 Activity.duplicate_of_id.is_(None),
                 Activity.created_at.between(window_start, window_end),
             )
         )
-        for a in rows.scalars().all():
-            as_ = normalize_sport(a.sport)
-            if ns != "other" and as_ != "other" and as_ != ns:
-                continue
-            a_dist = float(a.distance or 0)
-            q_dist = float(distance_m or 0)
-            indoor_pair = a_dist == 0 or q_dist == 0
-            if abs(float(a.duration or 0) - float(duration_s or 0)) > (3600 if indoor_pair else 600):
-                continue
-            if not indoor_pair and abs(a_dist - q_dist) > 500:
-                continue
-            return a
+        query_identity = _ActivityIdentity(
+            file_sha256=file_sha256,
+            source_provider=source_provider,
+            source_activity_id=source_activity_id,
+            fingerprint_v1=fingerprint_v1,
+            sport=sport,
+            created_at=created_at,
+            duration_s=float(duration_s or 0),
+            distance_m=float(distance_m or 0),
+        )
+        for candidate in candidates_res.scalars():
+            if _identities_match(query_identity, _identity_from_activity(candidate)):
+                return candidate
 
     return None
 
 
 # ---------------------------------------------------------------------------
-# Startup backfill — run once per server start to mark any historic duplicates
-# that existed before the duplicate_of_id column was added.
+# Startup backfill — run once per server start to retroactively mark historic
+# duplicates that predate the duplicate_of_id column.
 # ---------------------------------------------------------------------------
-
-def _row_meta(row: dict) -> dict:
-    streams = row.get("streams") or {}
-    if isinstance(streams, str):
-        try:
-            streams = json.loads(streams)
-        except Exception:
-            streams = {}
-    m = streams.get("_meta") if isinstance(streams, dict) else None
-    return m if isinstance(m, dict) else {}
-
-
-def _rows_are_duplicate(existing: dict, candidate: dict) -> bool:
-    """Same logic as find_duplicate_activity but operates on plain dicts."""
-    em = _row_meta(existing)
-    cm = _row_meta(candidate)
-
-    eh = str(em.get("file_sha256", "")).strip()
-    ch = str(cm.get("file_sha256", "")).strip()
-    if eh and ch and eh == ch:
-        return True
-
-    ep = em.get("source_provider") or None
-    es = em.get("source_activity_id") or None
-    cp = cm.get("source_provider") or None
-    cs = cm.get("source_activity_id") or None
-    if ep and es and cp and cs and str(ep).strip().lower() == str(cp).strip().lower() and str(es).strip() == str(cs).strip():
-        return True
-
-    ef = str(em.get("fingerprint_v1", "")).strip()
-    cf = str(cm.get("fingerprint_v1", "")).strip()
-    if ef and cf and ef == cf:
-        return True
-
-    ec = existing.get("created_at")
-    cc = candidate.get("created_at")
-    if ec is None or cc is None:
-        return False
-
-    ns_e = normalize_sport(existing.get("sport"))
-    ns_c = normalize_sport(candidate.get("sport"))
-    if ns_e != "other" and ns_c != "other" and ns_e != ns_c:
-        return False
-
-    dist_e = float(existing.get("distance") or 0)
-    dist_c = float(candidate.get("distance") or 0)
-    indoor_pair = dist_e == 0 or dist_c == 0
-    if abs((ec - cc).total_seconds()) > 900:
-        return False
-    if abs(float(existing.get("duration") or 0) - float(candidate.get("duration") or 0)) > (3600 if indoor_pair else 600):
-        return False
-    if not indoor_pair and abs(dist_e - dist_c) > 500:
-        return False
-
-    return True
-
 
 async def _backfill_duplicates(engine) -> int:
     """
-    Scan all activities with duplicate_of_id IS NULL, detect duplicates using
-    the same rules as find_duplicate_activity(), and set duplicate_of_id on the
-    newer copy.  Returns the number of rows updated.
+    Scan all primary activities per athlete and set duplicate_of_id on any
+    newer copy that matches. Returns the number of rows updated.
     """
     async with engine.connect() as conn:
         result = await conn.execute(text(
@@ -246,7 +331,7 @@ async def _backfill_duplicates(engine) -> int:
     for r in rows:
         by_athlete.setdefault(r["athlete_id"], []).append(r)
 
-    to_mark: list[tuple[int, int]] = []
+    to_mark: list[tuple[int, int]] = []  # (duplicate_id, original_id)
     for activities in by_athlete.values():
         claimed: set[int] = set()
         for i, candidate in enumerate(activities):
@@ -264,9 +349,8 @@ async def _backfill_duplicates(engine) -> int:
         return 0
 
     async with engine.begin() as conn:
-        for dup_id, orig_id in to_mark:
-            await conn.execute(
-                text("UPDATE activities SET duplicate_of_id = :orig WHERE id = :dup"),
-                {"orig": orig_id, "dup": dup_id},
-            )
+        await conn.execute(
+            text("UPDATE activities SET duplicate_of_id = :orig WHERE id = :dup"),
+            [{"orig": orig_id, "dup": dup_id} for dup_id, orig_id in to_mark],
+        )
     return len(to_mark)

@@ -1007,7 +1007,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const athleteMap = useMemo(() => new Map(allAthletes.map((athlete) => [athlete.id, athlete])), [allAthletes]);
 
   const { data: activities = [], isLoading: activitiesLoading, error: activitiesError } = useQuery({
-    queryKey: ['coach-comparison-activities-v2', mode !== 'workouts'],
+    queryKey: ['coach-comparison-activities-v2', mode],
     queryFn: async () => {
       const res = await api.get<ActivityListItem[]>('/activities/', {
         params: {
@@ -1498,7 +1498,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           <Alert icon={<IconAlertTriangle size={16} />} color="red" variant="light">
             {t('Comparison activity list failed to load.') || 'Comparison activity list failed to load.'}
           </Alert>
-        ) : activitiesLoading || (mode === 'workouts' && detailsLoading) ? (
+        ) : activitiesLoading || (mode === 'workouts' && detailsLoading) || (mode !== 'workouts' && (leftTrainingHistoryLoading || rightTrainingHistoryLoading)) ? (
           <Stack gap="sm">
             <Skeleton height={60} radius="md" />
             <Skeleton height={200} radius="md" />
@@ -1507,9 +1507,13 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           <Alert icon={<IconInfoCircle size={16} />} color="yellow" variant="light">
             {t('Select both sides to compare.') || 'Select both sides to compare.'}
           </Alert>
-        ) : idsToLoad.length === 0 ? (
+        ) : mode === 'workouts' && idsToLoad.length === 0 ? (
           <Alert icon={<IconCalendarStats size={16} />} color="blue" variant="light">
             {t('No training data exists for the current selection.') || 'No training data exists for the current selection.'}
+          </Alert>
+        ) : mode !== 'workouts' && (leftPeriodActivities.length === 0 || rightPeriodActivities.length === 0) ? (
+          <Alert icon={<IconCalendarStats size={16} />} color="blue" variant="light">
+            {t('No training data exists for the selected period(s). Please choose a different period.') || 'No training data exists for the selected period(s). Please choose a different period.'}
           </Alert>
         ) : mode === 'workouts' && !hasLoadedDetails ? (
           <Alert icon={<IconAlertTriangle size={16} />} color="orange" variant="light">

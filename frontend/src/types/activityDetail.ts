@@ -126,6 +126,7 @@ export type HardEffort = {
     centerIndex: number;
     durationSeconds: number;
     avgPower: number | null;
+    wap: number | null;
     maxPower: number | null;
     avgHr: number | null;
     maxHr: number | null;

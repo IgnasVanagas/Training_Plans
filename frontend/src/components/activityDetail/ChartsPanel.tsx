@@ -1,7 +1,8 @@
-import { Box, Button, Chip, Group, Paper, RangeSlider, SegmentedControl, Select, Stack, Switch, Text } from "@mantine/core";
+import { Box, Chip, Group, Paper, RangeSlider, SegmentedControl, Select, Stack, Switch, Text } from "@mantine/core";
 import { IconActivity } from "@tabler/icons-react";
 import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Dispatch, MutableRefObject, SetStateAction } from "react";
+import { SelectedSegmentSummary } from "./SelectedSegmentSummary";
 
 type UiTokens = {
     surface: string;
@@ -185,51 +186,30 @@ export const ChartsPanel = ({
                                 {focusSeries.altitude && <Line yAxisId="altitude" type="monotone" dataKey="altitude" stroke="#868e96" strokeWidth={1.2} dot={false} name="Altitude" isAnimationActive={false} connectNulls />}
                                 {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
                                     <ReferenceArea
-                                        yAxisId="hr"
                                         x1={chartRenderData[chartSelection.startIdx].time_min}
                                         x2={chartRenderData[chartSelection.endIdx].time_min}
                                         fill={ui.accent}
                                         fillOpacity={0.13}
                                         stroke={ui.accent}
-                                        strokeOpacity={0.5}
-                                        strokeWidth={1}
+                                        strokeOpacity={0.6}
+                                        strokeWidth={1.5}
+                                        ifOverflow="extendDomain"
                                     />
                                 )}
                             </LineChart>
                         </ResponsiveContainer>
                     </Box>
-                    {chartSelectionStats && (() => {
-                        const s = chartSelectionStats;
-                        const isImperial = me?.profile?.preferred_units === 'imperial';
-                        const paceUnit = isImperial ? '/mi' : '/km';
-                        const speedUnit = isImperial ? 'mph' : 'km/h';
-                        const fmtPace = (v: number | null) => {
-                            if (!v || !Number.isFinite(v)) return null;
-                            const m = Math.floor(v); const sec = Math.round((v - m) * 60);
-                            return `${m}:${sec.toString().padStart(2, '0')}${paceUnit}`;
-                        };
-                        return (
-                            <Paper withBorder px="md" py="xs" radius="md" bg={isDark ? 'rgba(233,90,18,0.08)' : 'rgba(233,90,18,0.06)'} style={{ borderColor: 'rgba(233,90,18,0.3)' }}>
-                                <Group justify="space-between" mb={6}>
-                                    <Text size="xs" fw={700} c={ui.accent}>Selection — {formatElapsedFromMinutes(s.durationMin)}</Text>
-                                    <Button size="compact-xs" variant="subtle" c={ui.textDim} onClick={() => setChartSelection(null)}>Clear</Button>
-                                </Group>
-                                <Group gap="xl" wrap="wrap">
-                                    {s.avgPower != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Power</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgPower)} W</Text></Stack>}
-                                    {s.wap != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>WAP</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.wap)} W</Text></Stack>}
-                                    {s.maxPower != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Max Power</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.maxPower)} W</Text></Stack>}
-                                    {s.avgHr != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg HR</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgHr)} bpm</Text></Stack>}
-                                    {s.maxHr != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Max HR</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.maxHr)} bpm</Text></Stack>}
-                                    {visibleSeries.pace && s.avgPace != null && fmtPace(s.avgPace) && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Pace</Text><Text size="sm" fw={600} c={ui.textMain}>{fmtPace(s.avgPace)}</Text></Stack>}
-                                    {visibleSeries.speed && s.avgSpeed != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Speed</Text><Text size="sm" fw={600} c={ui.textMain}>{s.avgSpeed.toFixed(1)} {speedUnit}</Text></Stack>}
-                                    {visibleSeries.cadence && s.avgCadence != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>Avg Cadence</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.avgCadence)} rpm</Text></Stack>}
-                                    {visibleSeries.altitude && s.elevGain != null && s.elevGain > 0 && <Stack gap={0}><Text size="xs" c={ui.textDim}>Elev Gain</Text><Text size="sm" fw={600} c={ui.textMain}>{Math.round(s.elevGain)} m</Text></Stack>}
-                                    {visibleSeries.altitude && s.avgGradient != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>{t('Avg Gradient')}</Text><Text size="sm" fw={600} c={ui.textMain}>{s.avgGradient.toFixed(1)}%</Text></Stack>}
-                                    {visibleSeries.altitude && s.maxGradient != null && <Stack gap={0}><Text size="xs" c={ui.textDim}>{t('Max Gradient')}</Text><Text size="sm" fw={600} c={ui.textMain}>{s.maxGradient.toFixed(1)}%</Text></Stack>}
-                                </Group>
-                            </Paper>
-                        );
-                    })()}
+                    {chartSelectionStats && (
+                        <SelectedSegmentSummary
+                            stats={chartSelectionStats}
+                            me={me}
+                            supportsPaceSeries={supportsPaceSeries}
+                            onClear={() => setChartSelection(null)}
+                            formatElapsedFromMinutes={formatElapsedFromMinutes}
+                            ui={ui}
+                            t={t}
+                        />
+                    )}
                     <Box px="xs">
                         <Group justify="space-between" mb={4}>
                             <Text size="xs" c={ui.textDim}>{rangeLabel[0]}</Text>

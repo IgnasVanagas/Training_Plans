@@ -27,6 +27,7 @@ import { ChartsPanel } from "../components/activityDetail/ChartsPanel";
 import { HardEffortsPanel } from "../components/activityDetail/HardEffortsPanel";
 import { BestEffortsPanel } from "../components/activityDetail/BestEffortsPanel";
 import { FullscreenMapModal } from "../components/activityDetail/FullscreenMapModal";
+import { SelectedSegmentSummary } from "../components/activityDetail/SelectedSegmentSummary";
 import { getPersonalRecords } from "../api/activities";
 
 // Fix Leaflet icon issue
@@ -2047,19 +2048,15 @@ export const ActivityDetailPage = () => {
                                             </Paper>
                                         )}
                                         {chartSelectionStats && (
-                                            <Paper withBorder p="sm" radius="md" bg={ui.surfaceAlt} style={{ borderColor: ui.border }}>
-                                                <Group justify="space-between" mb={4}>
-                                                    <Text size="xs" fw={700} c={ui.textDim}>{t('Selected segment')}</Text>
-                                                    <Button size="compact-xs" variant="subtle" c={ui.textDim} onClick={() => setChartSelection(null)}>{t('Clear')}</Button>
-                                                </Group>
-                                                <Group gap="md" wrap="wrap">
-                                                    {chartSelectionStats.avgHr != null && <Text size="xs" c={ui.textMain}>{t('Avg HR')}: {Math.round(chartSelectionStats.avgHr)} bpm</Text>}
-                                                    {chartSelectionStats.avgSpeed != null && <Text size="xs" c={ui.textMain}>{t('Avg Speed')}: {chartSelectionStats.avgSpeed.toFixed(1)} {me?.profile?.preferred_units === 'imperial' ? 'mph' : 'km/h'}</Text>}
-                                                    {chartSelectionStats.avgPower != null && <Text size="xs" c={ui.textMain}>{t('Avg Power')}: {Math.round(chartSelectionStats.avgPower)} W</Text>}
-                                                    {chartSelectionStats.avgGradient != null && <Text size="xs" c={ui.textMain}>{t('Avg Gradient')}: {chartSelectionStats.avgGradient.toFixed(1)}%</Text>}
-                                                    {chartSelectionStats.maxGradient != null && <Text size="xs" c={ui.textMain}>{t('Max Gradient')}: {chartSelectionStats.maxGradient.toFixed(1)}%</Text>}
-                                                </Group>
-                                            </Paper>
+                                            <SelectedSegmentSummary
+                                                stats={chartSelectionStats}
+                                                me={me}
+                                                supportsPaceSeries={supportsPaceSeries}
+                                                onClear={() => setChartSelection(null)}
+                                                formatElapsedFromMinutes={formatElapsedFromMinutes}
+                                                ui={ui}
+                                                t={t}
+                                            />
                                         )}
                                     </Stack>
                                 </Grid.Col>

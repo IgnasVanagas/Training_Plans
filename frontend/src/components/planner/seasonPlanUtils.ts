@@ -6,6 +6,7 @@ import {
   SeasonPlan,
   SeasonPlanPayload,
 } from "../../api/planning";
+
 import { User } from "../../pages/dashboard/types";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -95,3 +96,102 @@ export const normalizePlan = (plan: SeasonPlan | null, sportType: string, athlet
     periodization: plan.periodization || defaultPeriodization(),
   };
 };
+
+// ── Immutable plan mutation helpers ──────────────────────────────────────────
+// Pure functions returning a new SeasonPlanPayload. Use with setPlan().
+
+export const setPlanField = <K extends keyof SeasonPlanPayload>(
+  plan: SeasonPlanPayload,
+  field: K,
+  value: SeasonPlanPayload[K],
+): SeasonPlanPayload => ({ ...plan, [field]: value });
+
+export const setPeriodizationField = <K extends keyof PeriodizationConfig>(
+  plan: SeasonPlanPayload,
+  field: K,
+  value: PeriodizationConfig[K],
+): SeasonPlanPayload => ({ ...plan, periodization: { ...plan.periodization, [field]: value } });
+
+export const setMetricField = (
+  plan: SeasonPlanPayload,
+  index: number,
+  field: keyof PlannerTargetMetric,
+  value: string,
+): SeasonPlanPayload => ({
+  ...plan,
+  target_metrics: plan.target_metrics.map((row, i) =>
+    i === index ? { ...row, [field]: value } : row,
+  ),
+});
+
+export const removeMetric = (plan: SeasonPlanPayload, index: number): SeasonPlanPayload => {
+  const filtered = plan.target_metrics.filter((_, i) => i !== index);
+  return { ...plan, target_metrics: filtered.length ? filtered : [emptyMetric()] };
+};
+
+export const setRaceField = (
+  plan: SeasonPlanPayload,
+  raceIndex: number,
+  field: keyof PlannerGoalRace,
+  value: PlannerGoalRace[keyof PlannerGoalRace],
+): SeasonPlanPayload => ({
+  ...plan,
+  goal_races: plan.goal_races.map((row, i) =>
+    i === raceIndex ? { ...row, [field]: value } : row,
+  ),
+});
+
+export const removeRace = (plan: SeasonPlanPayload, raceIndex: number): SeasonPlanPayload => ({
+  ...plan,
+  goal_races: plan.goal_races.filter((_, i) => i !== raceIndex),
+});
+
+export const setRaceMetricField = (
+  plan: SeasonPlanPayload,
+  raceIndex: number,
+  metricIndex: number,
+  field: keyof PlannerTargetMetric,
+  value: string,
+): SeasonPlanPayload => ({
+  ...plan,
+  goal_races: plan.goal_races.map((row, i) =>
+    i === raceIndex
+      ? {
+          ...row,
+          target_metrics: row.target_metrics.map((m, j) =>
+            j === metricIndex ? { ...m, [field]: value } : m,
+          ),
+        }
+      : row,
+  ),
+});
+
+export const removeRaceMetric = (
+  plan: SeasonPlanPayload,
+  raceIndex: number,
+  metricIndex: number,
+): SeasonPlanPayload => ({
+  ...plan,
+  goal_races: plan.goal_races.map((row, i) =>
+    i === raceIndex
+      ? { ...row, target_metrics: row.target_metrics.filter((_, j) => j !== metricIndex) }
+      : row,
+  ),
+});
+
+export const setConstraintField = (
+  plan: SeasonPlanPayload,
+  index: number,
+  field: keyof PlannerConstraint,
+  value: PlannerConstraint[keyof PlannerConstraint],
+): SeasonPlanPayload => ({
+  ...plan,
+  constraints: plan.constraints.map((row, i) =>
+    i === index ? { ...row, [field]: value } : row,
+  ),
+});
+
+export const removeConstraint = (plan: SeasonPlanPayload, index: number): SeasonPlanPayload => ({
+  ...plan,
+  constraints: plan.constraints.filter((_, i) => i !== index),
+});

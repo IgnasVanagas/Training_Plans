@@ -2929,6 +2929,150 @@ async def make_activity_primary(
     await db.commit()
 
 
+@router.post("/{activity_id1}/check-duplicate-with/{activity_id2}")
+async def check_duplicate_diagnostic(
+    activity_id1: int,
+    activity_id2: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Diagnostic endpoint to check if two activities should be detected as duplicates.
+    Returns detailed information about why they matched or didn't match.
+    This helps diagnose duplicate detection issues.
+    """
+    act1 = await db.scalar(select(Activity).where(Activity.id == activity_id1))
+    act2 = await db.scalar(select(Activity).where(Activity.id == activity_id2))
+    
+    if not act1:
+        raise HTTPException(status_code=404, detail=f"Activity {activity_id1} not found")
+    if not act2:
+        raise HTTPException(status_code=404, detail=f"Activity {activity_id2} not found")
+    
+    if act1.athlete_id != current_user.id and current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if act2.athlete_id != current_user.id and current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    from ..services.activity_dedupe import _rows_are_duplicate, normalize_sport, build_fingerprint
+
+    result = _rows_are_duplicate(
+        {
+            "id": act1.id,
+            "athlete_id": act1.athlete_id,
+            "sport": act1.sport,
+            "created_at": act1.created_at,
+            "duration": act1.duration,
+            "distance": act1.distance,
+            "streams": act1.streams,
+        },
+        {
+            "id": act2.id,
+            "athlete_id": act2.athlete_id,
+            "sport": act2.sport,
+            "created_at": act2.created_at,
+            "duration": act2.duration,
+            "distance": act2.distance,
+            "streams": act2.streams,
+        },
+    )
+    
+    # Build diagnostic info
+    meta1 = act1.streams.get("_meta") if isinstance(act1.streams, dict) else {}
+    meta2 = act2.streams.get("_meta") if isinstance(act2.streams, dict) else {}
+    
+    fp1 = build_fingerprint(sport=act1.sport, created_at=act1.created_at, duration_s=act1.duration, distance_m=act1.distance)
+    fp2 = build_fingerprint(sport=act2.sport, created_at=act2.created_at, duration_s=act2.duration, distance_m=act2.distance)
+    
+    time_delta_seconds = abs((act1.created_at - act2.created_at).total_seconds()) if act1.created_at and act2.created_at else None
+    duration_delta = abs((act1.duration or 0) - (act2.duration or 0))
+    distance_delta = abs((act1.distance or 0) - (act2.distance or 0))
+    
+    is_indoor_pair = (act1.distance or 0) == 0 or (act2.distance or 0) == 0
+    
+    return {
+        "are_duplicates": result,
+        "activity_1": {
+            "id": act1.id,
+            "sport": act1.sport,
+            "created_at": act1.created_at.isoformat() if act1.created_at else None,
+            "duration": act1.duration,
+            "distance": act1.distance,
+            "fingerprint_v1": fp1,
+            "meta_has_fingerprint": bool(meta1.get("fingerprint_v1")),
+            "meta_has_file_sha256": bool(meta1.get("file_sha256")),
+        },
+        "activity_2": {
+            "id": act2.id,
+            "sport": act2.sport,
+            "created_at": act2.created_at.isoformat() if act2.created_at else None,
+            "duration": act2.duration,
+            "distance": act2.distance,
+            "fingerprint_v1": fp2,
+            "meta_has_fingerprint": bool(meta2.get("fingerprint_v1")),
+            "meta_has_file_sha256": bool(meta2.get("file_sha256")),
+        },
+        "comparison": {
+            "time_delta_seconds": time_delta_seconds,
+            "time_within_15min_window": time_delta_seconds is not None and time_delta_seconds <= 900,
+            "duration_delta_seconds": duration_delta,
+            "duration_threshold": 3600 if is_indoor_pair else 600,
+            "duration_acceptable": duration_delta <= (3600 if is_indoor_pair else 600),
+            "distance_delta_meters": distance_delta,
+            "distance_threshold": float('inf') if is_indoor_pair else 500,
+            "distance_acceptable": is_indoor_pair or distance_delta <= 500,
+            "normalized_sports_match": normalize_sport(act1.sport) == normalize_sport(act2.sport),
+            "is_indoor_pair": is_indoor_pair,
+            "fingerprints_match": fp1 == fp2,
+        },
+    }
+
+
+@router.post("/{activity_id1}/mark-as-duplicate-of/{activity_id2}", status_code=204)
+async def mark_as_duplicate(
+    activity_id1: int,
+    activity_id2: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Manually mark one activity as a duplicate of another.
+    activity_id1 will be marked as duplicate_of activity_id2.
+    Use this if automatic duplicate detection fails.
+    """
+    act1 = await db.scalar(select(Activity).where(Activity.id == activity_id1))
+    act2 = await db.scalar(select(Activity).where(Activity.id == activity_id2))
+    
+    if not act1:
+        raise HTTPException(status_code=404, detail=f"Activity {activity_id1} not found")
+    if not act2:
+        raise HTTPException(status_code=404, detail=f"Activity {activity_id2} not found")
+    
+    if act1.athlete_id != current_user.id and current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    if act2.athlete_id != current_user.id and current_user.role != RoleEnum.coach:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    if act1.athlete_id != act2.athlete_id:
+        raise HTTPException(status_code=400, detail="Activities must belong to the same athlete")
+    
+    if act1.id == act2.id:
+        raise HTTPException(status_code=400, detail="Cannot mark an activity as a duplicate of itself")
+    
+    # If act2 is itself a duplicate, resolve to its primary
+    if act2.duplicate_of_id:
+        act2_primary = await db.get(Activity, act2.duplicate_of_id)
+        if act2_primary:
+            act2 = act2_primary
+        else:
+            raise HTTPException(status_code=400, detail="Could not resolve primary for second activity")
+    
+    # Mark act1 as duplicate of act2
+    act1.duplicate_of_id = act2.id
+    db.add(act1)
+    await db.commit()
+
+
 @router.get("/{activity_id}", response_model=ActivityDetail)
 async def get_activity(
     activity_id: int,
