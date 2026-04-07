@@ -975,15 +975,8 @@ export const ActivityDetailPage = () => {
         const idx = state?.activeTooltipIndex;
         if (typeof idx !== 'number' || !Number.isFinite(idx)) return;
 
-        // Handle drag selection
-        if (isDraggingChartRef.current && dragStartIdxRef.current !== null) {
-            const startIdx = Math.min(dragStartIdxRef.current, idx);
-            const endIdx = Math.max(dragStartIdxRef.current, idx);
-            if (endIdx - startIdx >= 3) {
-                setChartSelection({ startIdx, endIdx });
-            }
-            return; // suppress hover tooltip while dragging
-        }
+        // Suppress hover tooltip while dragging (selection handled by native Box events)
+        if (isDraggingChartRef.current) return;
 
         if (idx === hoveredPointIndexRef.current || idx === pendingHoveredPointIndexRef.current) return;
         pendingHoveredPointIndexRef.current = idx;

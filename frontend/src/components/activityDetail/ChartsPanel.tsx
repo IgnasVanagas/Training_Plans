@@ -135,10 +135,26 @@ export const ChartsPanel = ({
                     <Box
                         h={360}
                         style={{ cursor: 'crosshair', userSelect: 'none' }}
-                        onMouseDown={() => {
+                        onMouseDown={(e: React.MouseEvent) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                            const idx = Math.round(ratio * (chartRenderData.length - 1));
                             isDraggingChartRef.current = true;
-                            dragStartIdxRef.current = hoveredPointIndexRef.current;
+                            dragStartIdxRef.current = idx;
                             setChartSelection(null);
+                        }}
+                        onMouseMove={(e: React.MouseEvent) => {
+                            if (!isDraggingChartRef.current || dragStartIdxRef.current === null) return;
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                            const idx = Math.round(ratio * (chartRenderData.length - 1));
+                            const startIdx = Math.min(dragStartIdxRef.current, idx);
+                            const endIdx = Math.max(dragStartIdxRef.current, idx);
+                            if (endIdx - startIdx >= 3) {
+                                setChartSelection({ startIdx, endIdx });
+                            } else {
+                                setChartSelection(null);
+                            }
                         }}
                         onMouseUp={() => { isDraggingChartRef.current = false; dragStartIdxRef.current = null; }}
                         onMouseLeave={() => { isDraggingChartRef.current = false; dragStartIdxRef.current = null; }}
