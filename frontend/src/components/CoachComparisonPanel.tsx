@@ -276,6 +276,15 @@ const extractSplits = (detail: ActivityDetail): SplitRow[] => {
     .filter((row) => row.durationSec > 0 || row.distanceM > 0 || row.avgHr != null || row.avgPower != null || row.avgSpeed != null);
 };
 
+const normalizeStreams = (value: unknown): any[] => {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') {
+    const maybeData = (value as { data?: unknown }).data;
+    if (Array.isArray(maybeData)) return maybeData;
+  }
+  return [];
+};
+
 const buildAggregate = (details: ActivityDetail[], athleteMap: Map<number, AthleteLike>): Aggregate => {
   const aggregate: Aggregate = {
     activitiesCount: 0,
@@ -1039,31 +1048,37 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
 
   const streamChartData = useMemo(() => {
     if (mode !== 'workouts') return [];
-    const ls = leftWorkout?.streams;
-    const rs = rightWorkout?.streams;
-    const hasLeft = Array.isArray(ls) && ls.length > 0;
-    const hasRight = Array.isArray(rs) && rs.length > 0;
+    const ls = normalizeStreams(leftWorkout?.streams);
+    const rs = normalizeStreams(rightWorkout?.streams);
+    const hasLeft = ls.length > 0;
+    const hasRight = rs.length > 0;
     if (!hasLeft && !hasRight) return [];
     const aStart = streamOffset < 0 ? Math.abs(streamOffset) : 0;
     const bStart = streamOffset > 0 ? streamOffset : 0;
-    const lLen = hasLeft ? Math.max(0, ls!.length - aStart) : 0;
-    const rLen = hasRight ? Math.max(0, rs!.length - bStart) : 0;
+    const lLen = hasLeft ? Math.max(0, ls.length - aStart) : 0;
+    const rLen = hasRight ? Math.max(0, rs.length - bStart) : 0;
     const len = Math.max(lLen, rLen);
     const step = Math.max(1, Math.floor(len / 400));
     const result: { t: number; hrA: number | null; hrB: number | null; pwA: number | null; pwB: number | null; cdA: number | null; cdB: number | null }[] = [];
     for (let i = 0; i < len; i += step) {
       const lIdx = i + aStart;
       const rIdx = i + bStart;
-      const lr = hasLeft && lIdx < ls!.length ? (ls![lIdx] as any) : null;
-      const rr = hasRight && rIdx < rs!.length ? (rs![rIdx] as any) : null;
+      const lr = hasLeft && lIdx < ls.length ? (ls[lIdx] as any) : null;
+      const rr = hasRight && rIdx < rs.length ? (rs[rIdx] as any) : null;
+      const leftHrRaw = Number(lr?.heart_rate ?? lr?.hr ?? lr?.heartrate ?? null);
+      const rightHrRaw = Number(rr?.heart_rate ?? rr?.hr ?? rr?.heartrate ?? null);
+      const leftPowerRaw = Number(lr?.power ?? lr?.watts ?? lr?.power_raw ?? null);
+      const rightPowerRaw = Number(rr?.power ?? rr?.watts ?? rr?.power_raw ?? null);
+      const leftCadenceRaw = Number(lr?.cadence ?? lr?.cad ?? null);
+      const rightCadenceRaw = Number(rr?.cadence ?? rr?.cad ?? null);
       result.push({
         t: +(i / 60).toFixed(1),
-        hrA: lr?.hr != null ? Math.round(lr.hr) : null,
-        hrB: rr?.hr != null ? Math.round(rr.hr) : null,
-        pwA: lr?.power != null ? Math.round(lr.power) : null,
-        pwB: rr?.power != null ? Math.round(rr.power) : null,
-        cdA: lr?.cadence != null ? Math.round(lr.cadence) : null,
-        cdB: rr?.cadence != null ? Math.round(rr.cadence) : null,
+        hrA: Number.isFinite(leftHrRaw) && leftHrRaw > 0 ? Math.round(leftHrRaw) : null,
+        hrB: Number.isFinite(rightHrRaw) && rightHrRaw > 0 ? Math.round(rightHrRaw) : null,
+        pwA: Number.isFinite(leftPowerRaw) && leftPowerRaw > 0 ? Math.round(leftPowerRaw) : null,
+        pwB: Number.isFinite(rightPowerRaw) && rightPowerRaw > 0 ? Math.round(rightPowerRaw) : null,
+        cdA: Number.isFinite(leftCadenceRaw) && leftCadenceRaw > 0 ? Math.round(leftCadenceRaw) : null,
+        cdB: Number.isFinite(rightCadenceRaw) && rightCadenceRaw > 0 ? Math.round(rightCadenceRaw) : null,
       });
     }
     return result;
@@ -1556,7 +1571,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                         <Chip size="xs" checked={effectiveSplitMetricVisibility.delta} onChange={(checked) => toggleSplitMetric('delta', checked)} variant="light">{t('Delta') || 'Delta'}</Chip>
                       </Group>
                     </Group>
-                    <ScrollArea mah={isMobile ? 360 : 460} offsetScrollbars>
+                    <ScrollArea offsetScrollbars>
                     <Table withTableBorder withColumnBorders>
                       <Table.Thead style={{ position: 'sticky', top: 0, zIndex: 3 }}>
                         <Table.Tr>
