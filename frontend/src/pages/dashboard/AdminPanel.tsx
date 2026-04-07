@@ -32,6 +32,7 @@ import {
   getAdminUsers,
 } from "../../api/admin";
 import { extractApiErrorMessage } from "./utils";
+import { QueryErrorAlert } from "../../components/common/QueryErrorAlert";
 
 const ROLE_COLORS: Record<string, string> = {
   admin: "red",
@@ -173,6 +174,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
             </Group>
 
             {usersQuery.isLoading && <Loader />}
+            {usersQuery.isError && <QueryErrorAlert error={usersQuery.error} onRetry={() => void usersQuery.refetch()} title="Failed to load users" />}
             {usersQuery.data && (
               <Table striped highlightOnHover withTableBorder>
                 <Table.Thead>
@@ -286,6 +288,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
             </Group>
 
             {logsQuery.isLoading && <Loader />}
+            {logsQuery.isError && <QueryErrorAlert error={logsQuery.error} onRetry={() => void logsQuery.refetch()} title="Failed to load audit logs" />}
             {logsQuery.data && (
               <Table striped withTableBorder>
                 <Table.Thead>
@@ -341,6 +344,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
         {/* ── SYSTEM HEALTH ─────────────────────────────────────────────── */}
         <Tabs.Panel value="health">
           {statsQuery.isLoading && <Loader />}
+          {statsQuery.isError && <QueryErrorAlert error={statsQuery.error} onRetry={() => void statsQuery.refetch()} title="Failed to load system health" />}
           {stats && (
             <Stack gap="md">
               <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">

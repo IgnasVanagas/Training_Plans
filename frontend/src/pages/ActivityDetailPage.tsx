@@ -19,6 +19,7 @@ import SupportContactButton from "../components/common/SupportContactButton";
 import { formatHrZoneLabel, getHrZoneClassifierBounds } from "../utils/hrZones";
 import { useI18n } from "../i18n/I18nProvider";
 import { readSnapshot, writeSnapshot } from "../utils/localSnapshot";
+import { extractApiErrorMessage } from "./dashboard/utils";
 import { CommentsPanel } from "../components/activityDetail/CommentsPanel";
 import { SessionFeedbackPanel } from "../components/activityDetail/SessionFeedbackPanel";
 import { ComparisonPanel } from "../components/activityDetail/ComparisonPanel";
@@ -236,7 +237,10 @@ export const ActivityDetailPage = () => {
             queryClient.removeQueries({ queryKey: ['activity', id] });
             queryClient.refetchQueries({ queryKey: ['activity', id] });
             queryClient.invalidateQueries({ queryKey: ['activities'] });
-        }
+        },
+        onError: (error) => {
+            notifications.show({ color: 'red', title: 'Re-parse failed', message: extractApiErrorMessage(error) });
+        },
     });
     
     const { data: activity, isLoading, isError, refetch } = useQuery({

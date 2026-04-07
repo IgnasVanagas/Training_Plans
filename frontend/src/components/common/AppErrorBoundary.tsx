@@ -43,7 +43,9 @@ export default class AppErrorBoundary extends React.Component<Props, State> {
     return { hasError: true };
   }
 
-  public componentDidCatch(): void {}
+  public componentDidCatch(error: Error, info: React.ErrorInfo): void {
+    console.error("[AppErrorBoundary]", error, info.componentStack);
+  }
 
   private handleReload = () => {
     window.location.reload();

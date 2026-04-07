@@ -2,7 +2,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { MantineProvider, createTheme } from "@mantine/core";
 import { Notifications } from "@mantine/notifications";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { notifications } from "@mantine/notifications";
+import { extractApiErrorMessage } from "./pages/dashboard/utils";
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
 import "@mantine/notifications/styles.css";
@@ -13,6 +15,15 @@ import AppErrorBoundary from "./components/common/AppErrorBoundary";
 const faviconPath = "/origami-favicon.png";
 
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      notifications.show({
+        color: "red",
+        title: "Failed to load data",
+        message: extractApiErrorMessage(error),
+      });
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 5 * 60_000,

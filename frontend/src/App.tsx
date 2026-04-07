@@ -16,6 +16,7 @@ const ActivityDetailPage = lazy(() =>
   import("./pages/ActivityDetailPage").then((module) => ({ default: module.ActivityDetailPage }))
 );
 const PublicCalendarPage = lazy(() => import("./pages/PublicCalendarPage"));
+const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 const JoinRedirect = () => {
   const [searchParams] = useSearchParams();
@@ -90,6 +91,7 @@ const App = () => {
               </ProtectedRoute>
             }
           />
+          <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

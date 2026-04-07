@@ -1341,8 +1341,8 @@ export const TrainingCalendar = ({
             link.click();
             link.remove();
             window.URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error('Failed to download planned workout', error);
+        } catch {
+            notifications.show({ color: 'red', title: 'Download failed', message: 'Could not download the planned workout. Please try again.' });
         }
     };
 

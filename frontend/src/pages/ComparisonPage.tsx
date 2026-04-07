@@ -55,6 +55,7 @@ import {
 } from '../components/coachComparison/utils';
 import { useI18n } from '../i18n/I18nProvider';
 import { ComparisonLoadingSkeleton } from '../components/common/SkeletonScreens';
+import { QueryErrorAlert } from '../components/common/QueryErrorAlert';
 
 /* ───────────────── types ───────────────── */
 type AthleteLike = {
@@ -489,7 +490,7 @@ export const ComparisonPage = () => {
   const athleteMap = useMemo(() => new Map(allAthletes.map((a) => [a.id, a])), [allAthletes]);
   const isAthlete = me?.role === 'athlete';
 
-  const { data: activities = [] } = useQuery({
+  const { data: activities = [], isError: activitiesError, error: activitiesErrorObj, refetch: refetchActivities } = useQuery({
     queryKey: ['comparison-activities'],
     queryFn: async () => {
       const r = await api.get<ActivityListItem[]>('/activities/', {
@@ -782,6 +783,7 @@ export const ComparisonPage = () => {
           </Group>
 
           {/* ── selectors ── */}
+          {activitiesError && <QueryErrorAlert error={activitiesErrorObj} onRetry={() => void refetchActivities()} title="Failed to load activities" />}
           {mode === 'workouts' ? (
             <Grid gutter="md">
               <Grid.Col span={{ base: 12, md: 6 }}>

@@ -32,6 +32,7 @@ import {
 import api from "../../api/client";
 import { useI18n } from "../../i18n/I18nProvider";
 import { User } from "./types";
+import { QueryErrorAlert } from "../../components/common/QueryErrorAlert";
 import { formatMinutesHm } from "./utils";
 
 type Props = {
@@ -219,6 +220,8 @@ const DashboardCoachAthletesPage = ({
           leftSection={<IconSearch size={16} />}
         />
       </Group>
+
+      {activitiesQuery.isError && <QueryErrorAlert error={activitiesQuery.error} onRetry={() => void activitiesQuery.refetch()} title="Failed to load activity data" />}
 
       <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="md">
         <Paper withBorder p="md" radius="md">

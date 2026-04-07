@@ -29,6 +29,7 @@ import { useI18n } from "../../i18n/I18nProvider";
 import { getPersonalRecords, type PersonalRecordsResponse } from "../../api/activities";
 import { getLatestSeasonPlan, type PlannerGoalRace } from "../../api/planning";
 import type { User } from "./types";
+import { QueryErrorAlert } from "../../components/common/QueryErrorAlert";
 
 type Props = {
   me: User;
@@ -432,6 +433,8 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
 
         {seasonPlanQuery.isLoading ? (
           <Loader size="sm" />
+        ) : seasonPlanQuery.isError ? (
+          <QueryErrorAlert error={seasonPlanQuery.error} onRetry={() => void seasonPlanQuery.refetch()} title="Failed to load season plan" />
         ) : races.length === 0 ? (
           <Text c="dimmed" size="sm">
             {t("No races configured")}
@@ -480,6 +483,8 @@ const DashboardRacesRecordsTab = ({ me, athleteId }: Props) => {
 
         {prsQuery.isLoading ? (
           <Loader size="sm" />
+        ) : prsQuery.isError ? (
+          <QueryErrorAlert error={prsQuery.error} onRetry={() => void prsQuery.refetch()} title="Failed to load personal records" />
         ) : (
           renderPRsTable(prsQuery.data ?? undefined)
         )}

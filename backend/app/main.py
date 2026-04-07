@@ -226,18 +226,21 @@ async def on_startup() -> None:
         except Exception as exc:
             logger.warning("Strava webhook subscription check failed: %s", exc)
 
-    # Backfill duplicate_of_id for any historic activities that were recorded
-    # before the duplicate-detection column existed.  Safe to run on every
-    # startup — only touches rows where duplicate_of_id IS NULL.
-    try:
-        from .services.activity_dedupe import _backfill_duplicates
-        marked = await asyncio.wait_for(_backfill_duplicates(engine), timeout=_STARTUP_DB_TIMEOUT)
-        if marked:
-            logger.info("Duplicate backfill: marked %d historic duplicate(s)", marked)
-    except asyncio.TimeoutError:
-        logger.warning("Duplicate backfill timed out (non-fatal)")
-    except Exception as exc:
-        logger.warning("Duplicate backfill failed (non-fatal): %s", exc)
+    # Backfill duplicate_of_id for historic rows can be memory-heavy on small
+    # instances. Keep it opt-in in production.
+    duplicate_backfill_enabled = os.getenv("ENABLE_STARTUP_DUPLICATE_BACKFILL", "false").lower() in {"1", "true", "yes", "on"}
+    if duplicate_backfill_enabled:
+        try:
+            from .services.activity_dedupe import _backfill_duplicates
+            marked = await asyncio.wait_for(_backfill_duplicates(engine), timeout=_STARTUP_DB_TIMEOUT)
+            if marked:
+                logger.info("Duplicate backfill: marked %d historic duplicate(s)", marked)
+        except asyncio.TimeoutError:
+            logger.warning("Duplicate backfill timed out (non-fatal)")
+        except Exception as exc:
+            logger.warning("Duplicate backfill failed (non-fatal): %s", exc)
+    else:
+        logger.info("Startup duplicate backfill disabled (set ENABLE_STARTUP_DUPLICATE_BACKFILL=true to enable)")
 
     # Trigger a sync for any Strava user whose initial sync never completed
     try:
