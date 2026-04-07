@@ -134,6 +134,18 @@ type Aggregate = {
   longestSession?: ActivityDetail | null;
 };
 
+type PeriodAggregate = {
+  activitiesCount: number;
+  totalMinutes: number;
+  totalDistanceKm: number;
+  totalLoadImpact: number;
+  aerobicLoad: number;
+  anaerobicLoad: number;
+  avgLoadPerSession: number;
+  avgHr: number | null;
+  avgPower: number | null;
+};
+
 type SplitRow = {
   split: number;
   durationSec: number;
@@ -369,6 +381,85 @@ const dominantZone = (zones: Record<string, number>) => {
   });
   const total = Object.values(zones).reduce((sum, value) => sum + value, 0);
   return { zone: winner, sharePct: total > 0 ? (seconds / total) * 100 : 0 };
+};
+
+const buildPeriodAggregate = (rows: ActivityListItem[]): PeriodAggregate => {
+  let durationWeightedHr = 0;
+  let durationWeightedPower = 0;
+  let durationMinutesForHr = 0;
+  let durationMinutesForPower = 0;
+
+  const aggregate: PeriodAggregate = {
+    activitiesCount: rows.length,
+    totalMinutes: 0,
+    totalDistanceKm: 0,
+    totalLoadImpact: 0,
+    aerobicLoad: 0,
+    anaerobicLoad: 0,
+    avgLoadPerSession: 0,
+    avgHr: null,
+    avgPower: null,
+  };
+
+  rows.forEach((row) => {
+    const minutes = safeNum(row.moving_time || row.duration) / 60;
+    const distanceKm = safeNum(row.distance) / 1000;
+    const totalLoad = safeNum(row.total_load_impact);
+    const aerobic = safeNum((row as any).aerobic_load);
+    const anaerobic = safeNum((row as any).anaerobic_load);
+
+    aggregate.totalMinutes += minutes;
+    aggregate.totalDistanceKm += distanceKm;
+    aggregate.totalLoadImpact += totalLoad;
+    aggregate.aerobicLoad += aerobic;
+    aggregate.anaerobicLoad += anaerobic;
+
+    if (row.average_hr != null && minutes > 0) {
+      durationWeightedHr += safeNum(row.average_hr) * minutes;
+      durationMinutesForHr += minutes;
+    }
+
+    if (row.average_watts != null && minutes > 0) {
+      durationWeightedPower += safeNum(row.average_watts) * minutes;
+      durationMinutesForPower += minutes;
+    }
+  });
+
+  aggregate.avgHr = durationMinutesForHr > 0 ? durationWeightedHr / durationMinutesForHr : null;
+  aggregate.avgPower = durationMinutesForPower > 0 ? durationWeightedPower / durationMinutesForPower : null;
+  aggregate.avgLoadPerSession = aggregate.activitiesCount > 0 ? aggregate.totalLoadImpact / aggregate.activitiesCount : 0;
+  return aggregate;
+};
+
+const toIsoDateKey = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const resolvePeriodBounds = (mode: AnalysisMode, periodKey: string | null): { days: number; endDate: string } | null => {
+  if (mode === 'workouts' || !periodKey) return null;
+
+  if (mode === 'weeks') {
+    const start = new Date(`${periodKey}T00:00:00`);
+    if (Number.isNaN(start.getTime())) return null;
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return {
+      days: 7,
+      endDate: toIsoDateKey(end),
+    };
+  }
+
+  const monthStart = new Date(`${periodKey}-01T00:00:00`);
+  if (Number.isNaN(monthStart.getTime())) return null;
+  const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+  const dayCount = Math.max(1, Math.floor((monthEnd.getTime() - monthStart.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  return {
+    days: Math.min(60, dayCount),
+    endDate: toIsoDateKey(monthEnd),
+  };
 };
 
 const MetricComparison = ({ label, leftVal, rightVal, suffix, lowerBetter, decimals }: {
@@ -626,6 +717,56 @@ const PeriodSummaryTable = ({
   );
 };
 
+const PeriodTotalsPanel = ({
+  title,
+  aggregate,
+  sideColor,
+  t,
+}: {
+  title: string;
+  aggregate: PeriodAggregate;
+  sideColor?: string;
+  t: (value: string) => string;
+}) => {
+  return (
+    <Paper withBorder p="sm" radius="md" style={sideColor ? { borderLeft: `4px solid ${sideColor}` } : undefined}>
+      <Stack gap="sm">
+        <Group justify="space-between" align="flex-start">
+          <Text fw={700}>{title}</Text>
+          <Badge variant="light">{aggregate.activitiesCount} {t('Sessions') || 'Sessions'}</Badge>
+        </Group>
+
+        <SimpleGrid cols={2} spacing="xs">
+          <Paper withBorder p="xs" radius="sm">
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Total time') || 'Total time'}</Text>
+            <Text fw={700}>{formatMinutes(aggregate.totalMinutes)}</Text>
+          </Paper>
+          <Paper withBorder p="xs" radius="sm">
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Total distance') || 'Total distance'}</Text>
+            <Text fw={700}>{formatDistanceKm(aggregate.totalDistanceKm)}</Text>
+          </Paper>
+          <Paper withBorder p="xs" radius="sm">
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Total intensity') || 'Total intensity'}</Text>
+            <Text fw={700}>{aggregate.totalLoadImpact.toFixed(1)}</Text>
+          </Paper>
+          <Paper withBorder p="xs" radius="sm">
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Aerobic') || 'Aerobic'}</Text>
+            <Text fw={700}>{aggregate.aerobicLoad.toFixed(1)}</Text>
+          </Paper>
+          <Paper withBorder p="xs" radius="sm">
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Anaerobic') || 'Anaerobic'}</Text>
+            <Text fw={700}>{aggregate.anaerobicLoad.toFixed(1)}</Text>
+          </Paper>
+          <Paper withBorder p="xs" radius="sm">
+            <Text size="10px" c="dimmed" tt="uppercase">{t('Average power') || 'Average power'}</Text>
+            <Text fw={700}>{aggregate.avgPower != null ? `${Math.round(aggregate.avgPower)} W` : '-'}</Text>
+          </Paper>
+        </SimpleGrid>
+      </Stack>
+    </Paper>
+  );
+};
+
 /* ── Calendar-based activity picker for workouts mode ── */
 const ActivityCalendarPicker = ({
   title,
@@ -866,10 +1007,13 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const athleteMap = useMemo(() => new Map(allAthletes.map((athlete) => [athlete.id, athlete])), [allAthletes]);
 
   const { data: activities = [], isLoading: activitiesLoading, error: activitiesError } = useQuery({
-    queryKey: ['coach-comparison-activities-v2'],
+    queryKey: ['coach-comparison-activities-v2', mode !== 'workouts'],
     queryFn: async () => {
       const res = await api.get<ActivityListItem[]>('/activities/', {
-        params: { limit: COMPARISON_ACTIVITY_FETCH_LIMIT, include_load_metrics: false },
+        params: {
+          limit: COMPARISON_ACTIVITY_FETCH_LIMIT,
+          include_load_metrics: mode !== 'workouts',
+        },
       });
       return res.data;
     },
@@ -980,9 +1124,8 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   const { data: detailsById = new Map<number, ActivityDetail>(), isLoading: detailsLoading } = useQuery({
     queryKey: ['coach-comparison-details-v2', mode, [...idsToLoad].sort((a, b) => a - b).join(',')],
     queryFn: async () => {
-      const params = mode !== 'workouts' ? { include_streams: false } : {};
       const results = await Promise.allSettled(idsToLoad.map(async (id) => {
-        const res = await api.get<ActivityDetail>(`/activities/${id}`, { params });
+        const res = await api.get<ActivityDetail>(`/activities/${id}`);
         return [id, res.data] as const;
       }));
       const map = new Map<number, ActivityDetail>();
@@ -993,7 +1136,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
       });
       return map;
     },
-    enabled: idsToLoad.length > 0,
+    enabled: mode === 'workouts' && idsToLoad.length > 0,
     staleTime: 1000 * 60,
   });
 
@@ -1024,6 +1167,79 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
 
   const detailFailureCount = Math.max(0, idsToLoad.length - detailsById.size);
   const hasLoadedDetails = leftDetails.length > 0 || rightDetails.length > 0;
+
+  const activityById = useMemo(() => {
+    const map = new Map<number, ActivityListItem>();
+    activities.forEach((activity) => {
+      map.set(activity.id, activity);
+    });
+    return map;
+  }, [activities]);
+
+  const leftPeriodActivities = useMemo(
+    () => leftIds.map((id) => activityById.get(id)).filter((row): row is ActivityListItem => Boolean(row)),
+    [leftIds, activityById],
+  );
+  const rightPeriodActivities = useMemo(
+    () => rightIds.map((id) => activityById.get(id)).filter((row): row is ActivityListItem => Boolean(row)),
+    [rightIds, activityById],
+  );
+
+  const leftPeriodAggregate = useMemo(() => buildPeriodAggregate(leftPeriodActivities), [leftPeriodActivities]);
+  const rightPeriodAggregate = useMemo(() => buildPeriodAggregate(rightPeriodActivities), [rightPeriodActivities]);
+
+  const leftPeriodBounds = useMemo(() => resolvePeriodBounds(mode, leftPeriodKey), [mode, leftPeriodKey]);
+  const rightPeriodBounds = useMemo(() => resolvePeriodBounds(mode, rightPeriodKey), [mode, rightPeriodKey]);
+
+  const { data: leftTrainingHistory = [], isLoading: leftTrainingHistoryLoading } = useQuery({
+    queryKey: ['comparison-training-status-history', 'left', leftAthleteId, leftPeriodBounds?.days, leftPeriodBounds?.endDate],
+    queryFn: async () => {
+      const response = await api.get('/activities/training-status-history', {
+        params: {
+          athlete_id: leftAthleteId ? Number(leftAthleteId) : undefined,
+          days: leftPeriodBounds?.days,
+          end_date: leftPeriodBounds?.endDate,
+        },
+      });
+      return Array.isArray(response.data) ? response.data : [];
+    },
+    enabled: mode !== 'workouts' && Boolean(leftAthleteId && leftPeriodBounds),
+    staleTime: 1000 * 60,
+  });
+
+  const { data: rightTrainingHistory = [], isLoading: rightTrainingHistoryLoading } = useQuery({
+    queryKey: ['comparison-training-status-history', 'right', rightAthleteId, rightPeriodBounds?.days, rightPeriodBounds?.endDate],
+    queryFn: async () => {
+      const response = await api.get('/activities/training-status-history', {
+        params: {
+          athlete_id: rightAthleteId ? Number(rightAthleteId) : undefined,
+          days: rightPeriodBounds?.days,
+          end_date: rightPeriodBounds?.endDate,
+        },
+      });
+      return Array.isArray(response.data) ? response.data : [];
+    },
+    enabled: mode !== 'workouts' && Boolean(rightAthleteId && rightPeriodBounds),
+    staleTime: 1000 * 60,
+  });
+
+  const leftTrainingHistorySeries = useMemo(() => {
+    return leftTrainingHistory.map((row: any, idx: number) => ({
+      label: typeof row?.reference_date === 'string' ? row.reference_date.slice(5) : String(idx + 1),
+      fatigue: safeNum(row?.atl),
+      fitness: safeNum(row?.ctl),
+      form: safeNum(row?.tsb),
+    }));
+  }, [leftTrainingHistory]);
+
+  const rightTrainingHistorySeries = useMemo(() => {
+    return rightTrainingHistory.map((row: any, idx: number) => ({
+      label: typeof row?.reference_date === 'string' ? row.reference_date.slice(5) : String(idx + 1),
+      fatigue: safeNum(row?.atl),
+      fitness: safeNum(row?.ctl),
+      form: safeNum(row?.tsb),
+    }));
+  }, [rightTrainingHistory]);
 
   const splitChartData = useMemo(() => {
     if (mode !== 'workouts') return [];
@@ -1103,30 +1319,19 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
   }, [mode, leftWorkout, rightWorkout]);
 
   const zoneChartData = useMemo(() => {
-    if (mode === 'workouts') {
-      if (!leftWorkout || !rightWorkout) return [];
-      const lz = extractZonesForDetail(leftWorkout, athleteMap.get(leftWorkout.athlete_id));
-      const rz = extractZonesForDetail(rightWorkout, athleteMap.get(rightWorkout.athlete_id));
-      const isCycling = lz.sport === 'cycling' || rz.sport === 'cycling';
-      const lZones = isCycling ? lz.cycling : lz.running;
-      const rZones = isCycling ? rz.cycling : rz.running;
-      const count = isCycling ? 7 : 5;
-      return Array.from({ length: count }, (_, idx) => ({
-        zone: `Z${idx + 1}`,
-        sideA: Math.round((lZones[`Z${idx + 1}`] || 0) / 60),
-        sideB: Math.round((rZones[`Z${idx + 1}`] || 0) / 60),
-      })).filter((row) => row.sideA > 0 || row.sideB > 0);
-    }
-    const isCycling = Object.values(leftAggregate.cyclingZones).some((v) => v > 0) || Object.values(rightAggregate.cyclingZones).some((v) => v > 0);
-    const lZones = isCycling ? leftAggregate.cyclingZones : leftAggregate.runningZones;
-    const rZones = isCycling ? rightAggregate.cyclingZones : rightAggregate.runningZones;
+    if (!leftWorkout || !rightWorkout || mode !== 'workouts') return [];
+    const lz = extractZonesForDetail(leftWorkout, athleteMap.get(leftWorkout.athlete_id));
+    const rz = extractZonesForDetail(rightWorkout, athleteMap.get(rightWorkout.athlete_id));
+    const isCycling = lz.sport === 'cycling' || rz.sport === 'cycling';
+    const lZones = isCycling ? lz.cycling : lz.running;
+    const rZones = isCycling ? rz.cycling : rz.running;
     const count = isCycling ? 7 : 5;
     return Array.from({ length: count }, (_, idx) => ({
       zone: `Z${idx + 1}`,
       sideA: Math.round((lZones[`Z${idx + 1}`] || 0) / 60),
       sideB: Math.round((rZones[`Z${idx + 1}`] || 0) / 60),
     })).filter((row) => row.sideA > 0 || row.sideB > 0);
-  }, [mode, leftWorkout, rightWorkout, leftAggregate, rightAggregate, athleteMap]);
+  }, [mode, leftWorkout, rightWorkout, athleteMap]);
 
   const leftPeriodLabel = mode === 'weeks'
     ? (leftPeriodKey ? parseWeekLabel(leftPeriodKey) : '-')
@@ -1150,18 +1355,14 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
 
   const periodInsights = useMemo(() => {
     if (mode === 'workouts') return [] as string[];
-    const leftRunningLeader = dominantZone(leftAggregate.runningZones);
-    const rightRunningLeader = dominantZone(rightAggregate.runningZones);
-    const leftCyclingLeader = dominantZone(leftAggregate.cyclingZones);
-    const rightCyclingLeader = dominantZone(rightAggregate.cyclingZones);
     return [
-      `${t('Volume change') || 'Volume change'}: ${formatDeltaPct(leftAggregate.totalMinutes, rightAggregate.totalMinutes)}`,
-      `${t('Distance change') || 'Distance change'}: ${formatDeltaPct(leftAggregate.totalDistanceKm, rightAggregate.totalDistanceKm)}`,
-      `${t('Load change') || 'Load change'}: ${compareValue(leftAggregate.totalLoadImpact, rightAggregate.totalLoadImpact)}`,
-      `${t('Running zone focus') || 'Running zone focus'}: ${leftRunningLeader.zone} ${leftRunningLeader.sharePct.toFixed(0)}% vs ${rightRunningLeader.zone} ${rightRunningLeader.sharePct.toFixed(0)}%`,
-      `${t('Cycling zone focus') || 'Cycling zone focus'}: ${leftCyclingLeader.zone} ${leftCyclingLeader.sharePct.toFixed(0)}% vs ${rightCyclingLeader.zone} ${rightCyclingLeader.sharePct.toFixed(0)}%`,
+      `${t('Volume change') || 'Volume change'}: ${formatDeltaPct(leftPeriodAggregate.totalMinutes, rightPeriodAggregate.totalMinutes)}`,
+      `${t('Distance change') || 'Distance change'}: ${formatDeltaPct(leftPeriodAggregate.totalDistanceKm, rightPeriodAggregate.totalDistanceKm)}`,
+      `${t('Load change') || 'Load change'}: ${compareValue(leftPeriodAggregate.totalLoadImpact, rightPeriodAggregate.totalLoadImpact)}`,
+      `${t('Sessions') || 'Sessions'}: ${compareValue(leftPeriodAggregate.activitiesCount, rightPeriodAggregate.activitiesCount)}`,
+      `${t('Average load / session') || 'Average load / session'}: ${compareValue(leftPeriodAggregate.avgLoadPerSession, rightPeriodAggregate.avgLoadPerSession)}`,
     ];
-  }, [leftAggregate, mode, rightAggregate, t]);
+  }, [leftPeriodAggregate, mode, rightPeriodAggregate, t]);
 
   const compareCards = mode === 'workouts'
     ? [
@@ -1171,10 +1372,10 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
         { label: t('Average power / pace') || 'Average power / pace', value: compareValue(leftWorkout?.average_watts ?? null, rightWorkout?.average_watts ?? null, ' W') },
       ]
     : [
-        { label: t('Sessions') || 'Sessions', value: compareValue(leftAggregate.activitiesCount, rightAggregate.activitiesCount) },
-        { label: t('Total time') || 'Total time', value: compareValue(leftAggregate.totalMinutes, rightAggregate.totalMinutes, ' min') },
-        { label: t('Distance') || 'Distance', value: compareValue(leftAggregate.totalDistanceKm, rightAggregate.totalDistanceKm, ' km') },
-        { label: t('Load') || 'Load', value: compareValue(leftAggregate.totalLoadImpact, rightAggregate.totalLoadImpact) },
+        { label: t('Sessions') || 'Sessions', value: compareValue(leftPeriodAggregate.activitiesCount, rightPeriodAggregate.activitiesCount) },
+        { label: t('Total time') || 'Total time', value: compareValue(leftPeriodAggregate.totalMinutes, rightPeriodAggregate.totalMinutes, ' min') },
+        { label: t('Distance') || 'Distance', value: compareValue(leftPeriodAggregate.totalDistanceKm, rightPeriodAggregate.totalDistanceKm, ' km') },
+        { label: t('Load') || 'Load', value: compareValue(leftPeriodAggregate.totalLoadImpact, rightPeriodAggregate.totalLoadImpact) },
       ];
 
   const leftSideLabel = mode === 'workouts'
@@ -1297,7 +1498,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           <Alert icon={<IconAlertTriangle size={16} />} color="red" variant="light">
             {t('Comparison activity list failed to load.') || 'Comparison activity list failed to load.'}
           </Alert>
-        ) : detailsLoading || activitiesLoading ? (
+        ) : activitiesLoading || (mode === 'workouts' && detailsLoading) ? (
           <Stack gap="sm">
             <Skeleton height={60} radius="md" />
             <Skeleton height={200} radius="md" />
@@ -1310,13 +1511,13 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
           <Alert icon={<IconCalendarStats size={16} />} color="blue" variant="light">
             {t('No training data exists for the current selection.') || 'No training data exists for the current selection.'}
           </Alert>
-        ) : !hasLoadedDetails ? (
+        ) : mode === 'workouts' && !hasLoadedDetails ? (
           <Alert icon={<IconAlertTriangle size={16} />} color="orange" variant="light">
             {t('Some selected activities could not be loaded. Try changing the selection or retrying.') || 'Some selected activities could not be loaded. Try changing the selection or retrying.'}
           </Alert>
         ) : (
           <Stack gap="md">
-            {detailFailureCount > 0 && (
+            {mode === 'workouts' && detailFailureCount > 0 && (
               <Alert icon={<IconAlertTriangle size={16} />} color="orange" variant="light">
                 {t('Partial comparison data loaded.') || 'Partial comparison data loaded.'}
                 <Text size="sm" mt={4}>
@@ -1336,17 +1537,17 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
             )}
             {mode !== 'workouts' && (
               <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="xs">
-                <MetricComparison label={t('Sessions') || 'Sessions'} leftVal={leftAggregate.activitiesCount} rightVal={rightAggregate.activitiesCount} decimals={0} />
-                <MetricComparison label={t('Total time') || 'Total time'} leftVal={leftAggregate.totalMinutes} rightVal={rightAggregate.totalMinutes} suffix=" min" decimals={0} />
-                <MetricComparison label={t('Distance') || 'Distance'} leftVal={leftAggregate.totalDistanceKm} rightVal={rightAggregate.totalDistanceKm} suffix=" km" />
-                <MetricComparison label={t('Training Load') || 'Training Load'} leftVal={leftAggregate.totalLoadImpact} rightVal={rightAggregate.totalLoadImpact} />
-                <MetricComparison label={t('Avg HR') || 'Avg HR'} leftVal={leftAggregate.avgHr} rightVal={rightAggregate.avgHr} suffix=" bpm" lowerBetter decimals={0} />
-                <MetricComparison label={t('Avg Power') || 'Avg Power'} leftVal={leftAggregate.avgPower} rightVal={rightAggregate.avgPower} suffix=" W" decimals={0} />
+                <MetricComparison label={t('Sessions') || 'Sessions'} leftVal={leftPeriodAggregate.activitiesCount} rightVal={rightPeriodAggregate.activitiesCount} decimals={0} />
+                <MetricComparison label={t('Total time') || 'Total time'} leftVal={leftPeriodAggregate.totalMinutes} rightVal={rightPeriodAggregate.totalMinutes} suffix=" min" decimals={0} />
+                <MetricComparison label={t('Distance') || 'Distance'} leftVal={leftPeriodAggregate.totalDistanceKm} rightVal={rightPeriodAggregate.totalDistanceKm} suffix=" km" />
+                <MetricComparison label={t('Total intensity') || 'Total intensity'} leftVal={leftPeriodAggregate.totalLoadImpact} rightVal={rightPeriodAggregate.totalLoadImpact} />
+                <MetricComparison label={t('Aerobic') || 'Aerobic'} leftVal={leftPeriodAggregate.aerobicLoad} rightVal={rightPeriodAggregate.aerobicLoad} />
+                <MetricComparison label={t('Anaerobic') || 'Anaerobic'} leftVal={leftPeriodAggregate.anaerobicLoad} rightVal={rightPeriodAggregate.anaerobicLoad} />
               </SimpleGrid>
             )}
 
             {/* ── Charts Section ── */}
-            {(streamChartData.length > 0 || powerCurveChartData.length > 0 || zoneChartData.length > 0) && (
+            {mode === 'workouts' && (streamChartData.length > 0 || powerCurveChartData.length > 0 || zoneChartData.length > 0) && (
               <Paper withBorder p="sm" radius="md">
                 <Tabs defaultValue={streamChartData.length > 0 ? 'stream' : powerCurveChartData.length > 0 ? 'curve' : 'zones'}>
                   <Tabs.List mb="sm">
@@ -1660,24 +1861,72 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                 )}
               </>
             ) : (
-              <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
-                <PeriodSummaryTable
-                  title={leftSideLabel}
-                  details={leftDetails}
-                  aggregate={leftAggregate}
-                  athlete={leftAthleteId ? athleteMap.get(Number(leftAthleteId)) : undefined}
-                  sideColor={chartColors.sideA}
-                  t={t}
-                />
-                <PeriodSummaryTable
-                  title={rightSideLabel}
-                  details={rightDetails}
-                  aggregate={rightAggregate}
-                  athlete={rightAthleteId ? athleteMap.get(Number(rightAthleteId)) : undefined}
-                  sideColor={chartColors.sideB}
-                  t={t}
-                />
-              </SimpleGrid>
+              <>
+                <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
+                  <PeriodTotalsPanel
+                    title={leftSideLabel}
+                    aggregate={leftPeriodAggregate}
+                    sideColor={chartColors.sideA}
+                    t={t}
+                  />
+                  <PeriodTotalsPanel
+                    title={rightSideLabel}
+                    aggregate={rightPeriodAggregate}
+                    sideColor={chartColors.sideB}
+                    t={t}
+                  />
+                </SimpleGrid>
+
+                <Paper withBorder p="sm" radius="md">
+                  <Group justify="space-between" mb="sm" wrap="wrap" gap="xs">
+                    <Text fw={600}>{t('Form / Strain trend') || 'Form / Strain trend'}</Text>
+                    <Group gap={10}>
+                      <Text size="xs" c="dimmed">{t('Fatigue') || 'Fatigue'}</Text>
+                      <Text size="xs" c="dimmed">{t('Fitness') || 'Fitness'}</Text>
+                      <Text size="xs" c="dimmed">{t('Form') || 'Form'}</Text>
+                    </Group>
+                  </Group>
+                  <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="sm">
+                    <Paper withBorder p="xs" radius="sm">
+                      <Text size="xs" fw={700} c="dimmed" mb={6}>{leftSideLabel}</Text>
+                      {leftTrainingHistoryLoading ? (
+                        <Skeleton height={180} radius="sm" />
+                      ) : (
+                        <ResponsiveContainer width="100%" height={180}>
+                          <ComposedChart data={leftTrainingHistorySeries} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.07)'} />
+                            <XAxis dataKey="label" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} />
+                            <YAxis tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} />
+                            <RechartTooltip contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, fontSize: 11 }} />
+                            <Line dataKey="fatigue" name={t('Fatigue') || 'Fatigue'} stroke="#ef4444" strokeWidth={1.8} dot={false} connectNulls />
+                            <Line dataKey="fitness" name={t('Fitness') || 'Fitness'} stroke="#22c55e" strokeWidth={1.8} dot={false} connectNulls />
+                            <Line dataKey="form" name={t('Form') || 'Form'} stroke="#6E4BF3" strokeWidth={1.8} dot={false} connectNulls />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      )}
+                    </Paper>
+
+                    <Paper withBorder p="xs" radius="sm">
+                      <Text size="xs" fw={700} c="dimmed" mb={6}>{rightSideLabel}</Text>
+                      {rightTrainingHistoryLoading ? (
+                        <Skeleton height={180} radius="sm" />
+                      ) : (
+                        <ResponsiveContainer width="100%" height={180}>
+                          <ComposedChart data={rightTrainingHistorySeries} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.07)'} />
+                            <XAxis dataKey="label" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} />
+                            <YAxis tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} />
+                            <RechartTooltip contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, fontSize: 11 }} />
+                            <Line dataKey="fatigue" name={t('Fatigue') || 'Fatigue'} stroke="#ef4444" strokeWidth={1.8} dot={false} connectNulls />
+                            <Line dataKey="fitness" name={t('Fitness') || 'Fitness'} stroke="#22c55e" strokeWidth={1.8} dot={false} connectNulls />
+                            <Line dataKey="form" name={t('Form') || 'Form'} stroke="#6E4BF3" strokeWidth={1.8} dot={false} connectNulls />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      )}
+                    </Paper>
+                  </SimpleGrid>
+                </Paper>
+              </>
             )}
 
             <Divider />
