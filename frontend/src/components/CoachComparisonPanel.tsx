@@ -1241,6 +1241,22 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     }));
   }, [rightTrainingHistory]);
 
+  const sharedTrainingTrendDomain = useMemo<[number, number]>(() => {
+    const allValues = [
+      ...leftTrainingHistorySeries.flatMap((row) => [row.fatigue, row.fitness, row.form]),
+      ...rightTrainingHistorySeries.flatMap((row) => [row.fatigue, row.fitness, row.form]),
+    ].filter((value) => Number.isFinite(value));
+
+    if (allValues.length === 0) return [-10, 10];
+
+    const minValue = Math.min(...allValues);
+    const maxValue = Math.max(...allValues);
+
+    // Keep a little breathing room while preserving true relative scale.
+    const padding = Math.max(5, (maxValue - minValue) * 0.08);
+    return [Math.floor(minValue - padding), Math.ceil(maxValue + padding)];
+  }, [leftTrainingHistorySeries, rightTrainingHistorySeries]);
+
   const splitChartData = useMemo(() => {
     if (mode !== 'workouts') return [];
     const maxLen = Math.max(leftSplits.length, rightSplits.length);
@@ -1633,7 +1649,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                           <ComposedChart data={streamChartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.07)'} />
                             <XAxis dataKey="t" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} label={{ value: 'min', position: 'insideBottomRight', offset: -4, fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} />
-                            <YAxis tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} />
+                            <YAxis domain={sharedTrainingTrendDomain} tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} />
                             <RechartTooltip
                               contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, fontSize: 11 }}
                               formatter={(v: number, name: string) => [v, name]}
@@ -1900,7 +1916,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
                           <ComposedChart data={leftTrainingHistorySeries} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke={isDark ? 'rgba(148,163,184,0.12)' : 'rgba(15,23,42,0.07)'} />
                             <XAxis dataKey="label" tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} />
-                            <YAxis tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} />
+                            <YAxis domain={sharedTrainingTrendDomain} tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#64748b' }} tickLine={false} axisLine={false} width={36} />
                             <RechartTooltip contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: '1px solid rgba(148,163,184,0.2)', borderRadius: 6, fontSize: 11 }} />
                             <Line dataKey="fatigue" name={t('Fatigue') || 'Fatigue'} stroke="#ef4444" strokeWidth={1.8} dot={false} connectNulls />
                             <Line dataKey="fitness" name={t('Fitness') || 'Fitness'} stroke="#22c55e" strokeWidth={1.8} dot={false} connectNulls />

@@ -99,6 +99,8 @@ export const CalendarEventCard = ({
       : distanceLabel !== '-'
         ? distanceLabel
         : (durationLabel !== '-' ? durationLabel : '—');
+  const duplicateCount = r.duplicate_recordings_count ?? 0;
+  const recordingCount = duplicateCount > 0 ? duplicateCount + 1 : 0;
   const metricParts = [timeLabel].filter(Boolean);
 
   return (
@@ -157,6 +159,11 @@ export const CalendarEventCard = ({
         <Text size="xs" fw={900} c={palette.textMain} style={{ lineHeight: 1.1, letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
           {primaryMetric}
         </Text>
+        {recordingCount > 1 && (
+          <Badge size="xs" radius="sm" variant="light" color="orange" style={{ flexShrink: 0 }}>
+            {recordingCount}x
+          </Badge>
+        )}
       </Group>
       {r.title && !isRestDay && (
         <Text size="10px" c={palette.textDim} pl={1} style={{ lineHeight: 1.1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -304,6 +311,9 @@ export const DayEventItem = ({
           </Box>
           <Text fw={700} size="sm" c={palette.textMain}>{r.title}</Text>
           {!r.is_planned && <Badge size="xs" variant="light" color="gray">Completed</Badge>}
+          {!r.is_planned && (r.duplicate_recordings_count ?? 0) > 0 && (
+            <Badge size="xs" variant="light" color="orange">{(r.duplicate_recordings_count ?? 0) + 1}x</Badge>
+          )}
           {r.is_planned && r.approval_status === 'pending' && <Badge size="xs" variant="light" color="orange">Pending approval</Badge>}
         </Group>
         <Text size="xs" c={palette.textDim} fw={700}>
