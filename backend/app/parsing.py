@@ -297,26 +297,27 @@ def parse_fit(file_path):
     # Power curve for running might be unwanted if it's junk data.
     # Check if power is mostly 0
     power_curve = calculate_power_curve(df)
-    
+
     if sport == 'running' and 'power' in df.columns:
          p_mean = df['power'].fillna(0).mean()
          if p_mean < 10: # If avg power is very low, it's likely noise or missing
              power_curve = None
-             
+
     hr_zones = calculate_hr_zones(df)
     pace_curve = calculate_pace_curve(df)
-    streams = clean_streams(df)
-    best_efforts = _compute_best_efforts(streams, sport, power_curve)
-    
     splits_metric = calculate_metric_splits(df)
-    
-    # Prepare streams for JSON
-    # Convert timestamps to string
+
+    # Capture start_time and convert timestamps to strings BEFORE clean_streams
+    # so that no non-JSON-serializable Timestamp objects leak into the streams list.
     if not start_time and not df.empty and 'timestamp' in df.columns:
         start_time = df['timestamp'].iloc[0]
 
-    df['timestamp'] = df['timestamp'].astype(str)
-    
+    if 'timestamp' in df.columns:
+        df['timestamp'] = df['timestamp'].astype(str)
+
+    streams = clean_streams(df)
+    best_efforts = _compute_best_efforts(streams, sport, power_curve)
+
     return {
         "summary": summary,
         "streams": streams,
@@ -599,19 +600,22 @@ def parse_fit_decode(file_path):
          p_mean = df['power'].fillna(0).mean()
          if p_mean < 10:
              power_curve = None
-             
+
     hr_zones = calculate_hr_zones(df)
     pace_curve = calculate_pace_curve(df)
+    splits_metric = calculate_metric_splits(df)
+
+    # Capture start_time and convert timestamps to strings BEFORE clean_streams
+    # so that no non-JSON-serializable Timestamp objects leak into the streams list.
+    if not start_time and not df.empty and 'timestamp' in df.columns:
+        start_time = df['timestamp'].iloc[0]
+
+    if 'timestamp' in df.columns:
+        df['timestamp'] = df['timestamp'].astype(str)
+
     streams = clean_streams(df)
     best_efforts = _compute_best_efforts(streams, sport, power_curve)
-    
-    splits_metric = calculate_metric_splits(df)
-    
-    if not start_time and not df.empty and 'timestamp' in df.columns:
-         start_time = df['timestamp'].iloc[0]
 
-    df['timestamp'] = df['timestamp'].astype(str)
-    
     return {
         "summary": summary,
         "streams": streams,
