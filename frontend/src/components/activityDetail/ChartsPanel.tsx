@@ -163,6 +163,7 @@ export const ChartsPanel = ({
                             <LineChart data={chartRenderData} onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
                                 <XAxis dataKey="time_min" hide />
+                                <YAxis yAxisId="selection" hide domain={[0, 1]} />
                                 <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
                                 <YAxis yAxisId="power" hide domain={[0, 'auto']} />
                                 <YAxis yAxisId="pace" hide reversed domain={['auto', 'auto']} />
@@ -202,12 +203,15 @@ export const ChartsPanel = ({
                                 {focusSeries.altitude && <Line yAxisId="altitude" type="monotone" dataKey="altitude" stroke="#868e96" strokeWidth={1.2} dot={false} name="Altitude" isAnimationActive={false} connectNulls />}
                                 {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
                                     <ReferenceArea
+                                        yAxisId="selection"
                                         x1={chartRenderData[chartSelection.startIdx].time_min}
                                         x2={chartRenderData[chartSelection.endIdx].time_min}
+                                        y1={0}
+                                        y2={1}
                                         fill={ui.accent}
-                                        fillOpacity={0.13}
+                                        fillOpacity={0.2}
                                         stroke={ui.accent}
-                                        strokeOpacity={0.6}
+                                        strokeOpacity={0.85}
                                         strokeWidth={1.5}
                                         ifOverflow="extendDomain"
                                     />

@@ -956,12 +956,7 @@ export const ActivityDetailPage = () => {
     const handleFsChartMove = useCallback((state: any) => {
         const idx = state?.activeTooltipIndex;
         if (typeof idx !== 'number' || !Number.isFinite(idx)) return;
-        if (isFsDraggingRef.current && fsDragStartIdxRef.current !== null) {
-            const startIdx = Math.min(fsDragStartIdxRef.current, idx);
-            const endIdx = Math.max(fsDragStartIdxRef.current, idx);
-            if (endIdx - startIdx >= 3) setChartSelection({ startIdx, endIdx });
-            return;
-        }
+        if (isFsDraggingRef.current) return;
         setFsMapIndex(idx);
     }, []);
 
@@ -2482,6 +2477,7 @@ export const ActivityDetailPage = () => {
                     supportsSpeedSeries={supportsSpeedSeries}
                     chartRenderData={chartRenderData}
                     chartSelection={chartSelection}
+                    setChartSelection={setChartSelection}
                     onFsChartMove={handleFsChartMove}
                     onFsChartLeave={handleFsChartLeave}
                     isFsDraggingRef={isFsDraggingRef}

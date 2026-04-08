@@ -48,6 +48,7 @@ interface FullscreenMapModalProps {
     supportsSpeedSeries: boolean;
     chartRenderData: any[];
     chartSelection: { startIdx: number; endIdx: number } | null;
+    setChartSelection: (sel: { startIdx: number; endIdx: number } | null) => void;
     onFsChartMove: (state: any) => void;
     onFsChartLeave: () => void;
     isFsDraggingRef: MutableRefObject<boolean>;
@@ -81,6 +82,7 @@ export const FullscreenMapModal = ({
     supportsSpeedSeries,
     chartRenderData,
     chartSelection,
+    setChartSelection,
     onFsChartMove,
     onFsChartLeave,
     isFsDraggingRef,
@@ -213,61 +215,89 @@ export const FullscreenMapModal = ({
                     {/* Multi-metric chart — drag to select segment */}
                     {chartRenderData.length > 0 && (
                         <Box style={{ flexShrink: 0, background: isDark ? '#0E1A30' : '#F8FAFF', borderTop: `1px solid ${ui.border}` }}>
-                            <ResponsiveContainer width="100%" height={120}>
-                                <LineChart
-                                    data={chartRenderData}
-                                    onMouseMove={onFsChartMove}
-                                    onMouseDown={(e: any) => { const idx = e?.activeTooltipIndex; if (typeof idx === 'number') { fsDragStartIdxRef.current = idx; isFsDraggingRef.current = true; } }}
-                                    onMouseUp={() => { isFsDraggingRef.current = false; }}
-                                    onMouseLeave={onFsChartLeave}
-                                    style={{ cursor: 'crosshair', userSelect: 'none' }}
-                                    margin={{ top: 4, right: 8, left: 8, bottom: 4 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                    <XAxis dataKey="distance" hide tickFormatter={(v: number) => `${(v / 1000).toFixed(1)} km`} />
-                                    <YAxis yAxisId="alt" hide domain={['dataMin - 10', 'dataMax + 10']} />
-                                    <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
-                                    <YAxis yAxisId="power" hide domain={[0, 'auto']} />
-                                    <YAxis yAxisId="pace" hide reversed domain={['auto', 'auto']} />
-                                    <YAxis yAxisId="cad" hide domain={[0, 'auto']} />
-                                    <Tooltip
-                                        isAnimationActive={false}
-                                        cursor={{ stroke: ui.accent, strokeWidth: 1 }}
-                                        content={({ active, payload }: any) => {
-                                            if (isFsDraggingRef.current || !active || !payload?.[0]) return null;
-                                            const d = payload[0].payload;
-                                            const distKm = d.distance ? (d.distance / 1000).toFixed(2) : null;
-                                            return (
-                                                <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt} style={{ fontSize: 11 }}>
-                                                    {distKm && <Text size="xs" fw={600} c={ui.textDim}>{t('Distance')}: {distKm} km</Text>}
-                                                    {fsVisibleMetrics.altitude && d.altitude != null && <Text size="xs" c={ui.textMain}>Elev: {Math.round(d.altitude)} m</Text>}
-                                                    {fsVisibleMetrics.heart_rate && d.heart_rate != null && <Text size="xs" c="#fa5252">HR: {Math.round(Number(d.heart_rate))} bpm</Text>}
-                                                    {fsVisibleMetrics.power && d.power_raw != null && <Text size="xs" c="#fd7e14">Power: {Math.round(Number(d.power_raw))} W</Text>}
-                                                    {fsVisibleMetrics.pace && d.pace != null && Number.isFinite(Number(d.pace)) && <Text size="xs" c="#228be6">Pace: {Math.floor(Number(d.pace))}:{Math.floor((Number(d.pace) % 1) * 60).toString().padStart(2, '0')}/km</Text>}
-                                                    {fsVisibleMetrics.cadence && d.cadence != null && <Text size="xs" c="#40c057">Cad: {Math.round(Number(d.cadence))} rpm</Text>}
-                                                </Paper>
-                                            );
-                                        }}
-                                    />
-                                    {fsVisibleMetrics.altitude && <Line yAxisId="alt" type="monotone" dataKey="altitude" stroke={isDark ? '#60A5FA' : '#3B82F6'} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
-                                    {fsVisibleMetrics.heart_rate && <Line yAxisId="hr" type="monotone" dataKey="heart_rate" stroke="#fa5252" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
-                                    {fsVisibleMetrics.power && <Line yAxisId="power" type="monotone" dataKey="power_raw" stroke="#fd7e14" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
-                                    {fsVisibleMetrics.pace && <Line yAxisId="pace" type="monotone" dataKey="pace" stroke="#228be6" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={false} />}
-                                    {fsVisibleMetrics.cadence && <Line yAxisId="cad" type="monotone" dataKey="cadence" stroke="#40c057" strokeWidth={1.2} dot={false} isAnimationActive={false} connectNulls />}
-                                    {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
-                                        <ReferenceArea
-                                            yAxisId="alt"
-                                            x1={chartRenderData[chartSelection.startIdx].distance}
-                                            x2={chartRenderData[chartSelection.endIdx].distance}
-                                            fill={ui.accent}
-                                            fillOpacity={0.13}
-                                            stroke={ui.accent}
-                                            strokeOpacity={0.5}
-                                            strokeWidth={1}
+                            <Box
+                                style={{ cursor: 'crosshair', userSelect: 'none' }}
+                                onMouseDown={(e: React.MouseEvent) => {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                                    const idx = Math.round(ratio * (chartRenderData.length - 1));
+                                    isFsDraggingRef.current = true;
+                                    fsDragStartIdxRef.current = idx;
+                                    setChartSelection(null);
+                                }}
+                                onMouseMove={(e: React.MouseEvent) => {
+                                    if (!isFsDraggingRef.current || fsDragStartIdxRef.current === null) return;
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                                    const idx = Math.round(ratio * (chartRenderData.length - 1));
+                                    const startIdx = Math.min(fsDragStartIdxRef.current, idx);
+                                    const endIdx = Math.max(fsDragStartIdxRef.current, idx);
+                                    if (endIdx - startIdx >= 3) {
+                                        setChartSelection({ startIdx, endIdx });
+                                    } else {
+                                        setChartSelection(null);
+                                    }
+                                }}
+                                onMouseUp={() => { isFsDraggingRef.current = false; fsDragStartIdxRef.current = null; }}
+                                onMouseLeave={() => { isFsDraggingRef.current = false; fsDragStartIdxRef.current = null; onFsChartLeave(); }}
+                            >
+                                <ResponsiveContainer width="100%" height={120}>
+                                    <LineChart
+                                        data={chartRenderData}
+                                        onMouseMove={onFsChartMove}
+                                        onMouseLeave={onFsChartLeave}
+                                        margin={{ top: 4, right: 8, left: 8, bottom: 4 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
+                                        <XAxis dataKey="distance" hide tickFormatter={(v: number) => `${(v / 1000).toFixed(1)} km`} />
+                                        <YAxis yAxisId="selection" hide domain={[0, 1]} />
+                                        <YAxis yAxisId="alt" hide domain={['dataMin - 10', 'dataMax + 10']} />
+                                        <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
+                                        <YAxis yAxisId="power" hide domain={[0, 'auto']} />
+                                        <YAxis yAxisId="pace" hide reversed domain={['auto', 'auto']} />
+                                        <YAxis yAxisId="cad" hide domain={[0, 'auto']} />
+                                        <Tooltip
+                                            isAnimationActive={false}
+                                            cursor={{ stroke: ui.accent, strokeWidth: 1 }}
+                                            content={({ active, payload }: any) => {
+                                                if (isFsDraggingRef.current || !active || !payload?.[0]) return null;
+                                                const d = payload[0].payload;
+                                                const distKm = d.distance ? (d.distance / 1000).toFixed(2) : null;
+                                                return (
+                                                    <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt} style={{ fontSize: 11 }}>
+                                                        {distKm && <Text size="xs" fw={600} c={ui.textDim}>{t('Distance')}: {distKm} km</Text>}
+                                                        {fsVisibleMetrics.altitude && d.altitude != null && <Text size="xs" c={ui.textMain}>Elev: {Math.round(d.altitude)} m</Text>}
+                                                        {fsVisibleMetrics.heart_rate && d.heart_rate != null && <Text size="xs" c="#fa5252">HR: {Math.round(Number(d.heart_rate))} bpm</Text>}
+                                                        {fsVisibleMetrics.power && d.power_raw != null && <Text size="xs" c="#fd7e14">Power: {Math.round(Number(d.power_raw))} W</Text>}
+                                                        {fsVisibleMetrics.pace && d.pace != null && Number.isFinite(Number(d.pace)) && <Text size="xs" c="#228be6">Pace: {Math.floor(Number(d.pace))}:{Math.floor((Number(d.pace) % 1) * 60).toString().padStart(2, '0')}/km</Text>}
+                                                        {fsVisibleMetrics.cadence && d.cadence != null && <Text size="xs" c="#40c057">Cad: {Math.round(Number(d.cadence))} rpm</Text>}
+                                                    </Paper>
+                                                );
+                                            }}
                                         />
-                                    )}
-                                </LineChart>
-                            </ResponsiveContainer>
+                                        {fsVisibleMetrics.altitude && <Line yAxisId="alt" type="monotone" dataKey="altitude" stroke={isDark ? '#60A5FA' : '#3B82F6'} strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
+                                        {fsVisibleMetrics.heart_rate && <Line yAxisId="hr" type="monotone" dataKey="heart_rate" stroke="#fa5252" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
+                                        {fsVisibleMetrics.power && <Line yAxisId="power" type="monotone" dataKey="power_raw" stroke="#fd7e14" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls />}
+                                        {fsVisibleMetrics.pace && <Line yAxisId="pace" type="monotone" dataKey="pace" stroke="#228be6" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={false} />}
+                                        {fsVisibleMetrics.cadence && <Line yAxisId="cad" type="monotone" dataKey="cadence" stroke="#40c057" strokeWidth={1.2} dot={false} isAnimationActive={false} connectNulls />}
+                                        {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
+                                            <ReferenceArea
+                                                yAxisId="selection"
+                                                x1={chartRenderData[chartSelection.startIdx].distance}
+                                                x2={chartRenderData[chartSelection.endIdx].distance}
+                                                y1={0}
+                                                y2={1}
+                                                fill={ui.accent}
+                                                fillOpacity={0.2}
+                                                stroke={ui.accent}
+                                                strokeOpacity={0.85}
+                                                strokeWidth={1.2}
+                                                ifOverflow="extendDomain"
+                                            />
+                                        )}
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </Box>
                         </Box>
                     )}
                 </Box>
