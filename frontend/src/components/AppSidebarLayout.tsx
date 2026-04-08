@@ -15,7 +15,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import SupportContactButton from './common/SupportContactButton';
-import { clearAuthSession } from '../utils/authSession';
+import { optimisticSignOut } from '../utils/authSession';
 
 const appLogo = '/origami-logo.png';
 
@@ -82,14 +82,8 @@ export const AppSidebarLayout = ({
               color="red"
               size="xs"
               leftSection={<IconLogout size={14} />}
-              onClick={async () => {
-                try {
-                  await api.post('/auth/logout');
-                } catch {
-                  // Continue local cleanup even if backend logout request fails.
-                }
-                clearAuthSession();
-                window.location.replace('/');
+              onClick={() => {
+                optimisticSignOut({ apiBaseUrl: api.defaults.baseURL });
               }}
             >
               Sign Out

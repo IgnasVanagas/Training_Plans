@@ -52,7 +52,7 @@ import {
 import { useI18n } from "../../i18n/I18nProvider";
 import OfflineNotice from "../../components/common/OfflineNotice";
 import SupportContactButton from "../../components/common/SupportContactButton";
-import { clearAuthSession } from "../../utils/authSession";
+import { optimisticSignOut } from "../../utils/authSession";
 import api from "../../api/client";
 
 const appLogo = "/origami-logo.png";
@@ -287,14 +287,8 @@ const DashboardLayoutShell = ({
             <Menu.Item
               color="red"
               leftSection={<IconLogout size={14} />}
-              onClick={async () => {
-                try {
-                  await api.post("/auth/logout");
-                } catch {
-                  // Continue local cleanup even if backend logout request fails.
-                }
-                clearAuthSession();
-                window.location.replace("/");
+              onClick={() => {
+                optimisticSignOut({ apiBaseUrl: api.defaults.baseURL });
               }}
             >
               {t("Sign Out")}

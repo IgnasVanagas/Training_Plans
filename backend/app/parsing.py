@@ -115,26 +115,119 @@ def clean_streams(df):
     df = df.replace([np.inf, -np.inf, np.nan], None)
     return df.where(pd.notnull(df), None).to_dict(orient='records')
 
+
+def _ensure_distance_column(df: pd.DataFrame) -> pd.DataFrame:
+    """If the 'distance' column is absent or entirely null, derive cumulative
+    distance from speed × Δt so that best-effort computation has data.
+    Called while timestamps are still datetime objects (before astype(str))."""
+    if 'distance' in df.columns and df['distance'].notna().any():
+        return df
+    if 'speed' not in df.columns or df['speed'].isnull().all():
+        return df
+
+    speed = df['speed'].fillna(0.0)
+    if 'timestamp' in df.columns:
+        try:
+            ts = pd.to_datetime(df['timestamp'], utc=True, errors='coerce')
+            dt = ts.diff().dt.total_seconds().fillna(1.0).clip(lower=0.1, upper=10.0)
+        except Exception:
+            dt = pd.Series([1.0] * len(df), index=df.index)
+    else:
+        dt = pd.Series([1.0] * len(df), index=df.index)
+
+    df = df.copy()
+    df['distance'] = (speed * dt).cumsum()
+    return df
+
 def infer_sport(df):
-    # Heuristics to guess sport
+    # Heuristics to guess sport from stream data
     if 'vertical_oscillation' in df.columns and df['vertical_oscillation'].notna().sum() > 10:
         return 'running'
     if 'stance_time' in df.columns and df['stance_time'].notna().sum() > 10:
         return 'running'
-    
+
     avg_speed_m_s = df['speed'].mean() if 'speed' in df.columns else 0
     avg_cadence = df['cadence'].mean() if 'cadence' in df.columns else 0
-    
-    # Running: typically > 140 cadence, speed 2-6 m/s
-    # Cycling: < 100 cadence usually (though can be higher), speed > 6 m/s
-    
+
     if avg_cadence > 130 and avg_speed_m_s < 7:
         return 'running'
-    
-    if avg_speed_m_s > 8: # > 29 km/h, likely cycling or driving
+    if avg_speed_m_s > 8:  # > 29 km/h, likely cycling
         return 'cycling'
-        
+
     return 'unknown'
+
+
+# FIT sport enum values that map to our canonical sport names
+_FIT_SPORT_MAP: dict[str, str] = {
+    'running': 'running',
+    'cycling': 'cycling',
+    'swimming': 'swimming',
+    'walking': 'walking',
+    'hiking': 'hiking',
+    'transition': 'triathlon',
+    'multisport': 'triathlon',
+    'triathlon': 'triathlon',
+    'open_water': 'swimming',
+    'cross_country_skiing': 'cross_country_skiing',
+    'alpine_skiing': 'alpine_skiing',
+    'snowboarding': 'snowboarding',
+    'rowing': 'rowing',
+    'mountaineering': 'hiking',
+    'e_biking': 'cycling',
+    'motorcycling': 'cycling',
+    'boating': 'other',
+    'driving': 'other',
+    'golf': 'other',
+    'hang_gliding': 'other',
+    'horseback_riding': 'other',
+    'hunting': 'other',
+    'fishing': 'other',
+    'inline_skating': 'other',
+    'rock_climbing': 'other',
+    'sailing': 'other',
+    'ice_skating': 'other',
+    'sky_diving': 'other',
+    'snowshoeing': 'hiking',
+    'snowmobiling': 'other',
+    'stand_up_paddleboarding': 'other',
+    'surfing': 'other',
+    'wakeboarding': 'other',
+    'water_skiing': 'other',
+    'kayaking': 'other',
+    'rafting': 'other',
+    'windsurfing': 'other',
+    'kitesurfing': 'other',
+    'tactical': 'other',
+    'jumpmaster': 'other',
+    'boxing': 'strength_training',
+    'floor_climbing': 'strength_training',
+    'strength_training': 'strength_training',
+    'fitness_equipment': 'strength_training',
+}
+
+
+def normalize_fit_sport(raw: str, df: pd.DataFrame | None = None) -> str:
+    """Convert a raw FIT sport string to a canonical sport name.
+    Falls back to stream-based inference when the value is generic/unknown."""
+    lower = raw.strip().lower()
+    # Direct lookup first
+    if lower in _FIT_SPORT_MAP:
+        return _FIT_SPORT_MAP[lower]
+    # Partial match fallbacks
+    if 'run' in lower:
+        return 'running'
+    if 'cycl' in lower or 'bike' in lower or 'ride' in lower or 'e_bik' in lower:
+        return 'cycling'
+    if 'swim' in lower:
+        return 'swimming'
+    if 'walk' in lower or 'hik' in lower:
+        return 'walking'
+    if 'strength' in lower or 'fitness' in lower or 'gym' in lower:
+        return 'strength_training'
+    # Generic / unknown → fall back to heuristic inference from streams
+    if lower in ('generic', 'unknown', '') and df is not None:
+        return infer_sport(df)
+    return lower or 'unknown'
 
 
 def _haversine_distance_m(lat1, lon1, lat2, lon2):
@@ -211,7 +304,7 @@ def parse_fit(file_path):
                 
                 if msg.name == 'session' or msg.name == 'sport':
                     if msg.get_value('sport'):
-                        sport = str(msg.get_value('sport')).lower()
+                        sport = str(msg.get_value('sport'))
                     if msg.name == 'session' and msg.get_value('start_time'):
                          start_time = msg.get_value('start_time')
                         
@@ -228,6 +321,10 @@ def parse_fit(file_path):
                             r_data['distance'] = data.value
                         elif data.name == 'enhanced_speed':
                             r_data['speed'] = data.value
+                        elif data.name == 'speed':
+                            # Only use plain speed if enhanced_speed hasn't been set
+                            if 'speed' not in r_data:
+                                r_data['speed'] = data.value
                         elif data.name == 'heart_rate':
                             r_data['heart_rate'] = data.value
                         elif data.name == 'power':
@@ -236,6 +333,9 @@ def parse_fit(file_path):
                             r_data['cadence'] = data.value
                         elif data.name == 'enhanced_altitude':
                             r_data['altitude'] = data.value
+                        elif data.name == 'altitude':
+                            if 'altitude' not in r_data:
+                                r_data['altitude'] = data.value
                         elif data.name == 'vertical_oscillation':
                              r_data['vertical_oscillation'] = data.value
                         elif data.name == 'stance_time':
@@ -264,14 +364,16 @@ def parse_fit(file_path):
         return None
 
     df = pd.DataFrame(data_points)
-    
-    # Infer sport if unknown
-    if sport == 'unknown':
-        sport = infer_sport(df)
-    
+
+    # Derive cumulative distance from speed if missing (needed for best efforts)
+    df = _ensure_distance_column(df)
+
+    # Normalize sport name (handles FIT enum strings like "generic", "e_biking", etc.)
+    sport = normalize_fit_sport(sport, df)
+
     # Calculate Summaries
     # Prefer calculated summaries from full stream, or explicit session message if implemented
-    
+
     # Calculate Elevation Gain for fallback parser
     total_ascent = 0
     if 'altitude' in df.columns:
@@ -476,7 +578,7 @@ def parse_fit_decode(file_path):
                    if frame.has_field('sport'):
                        sport_val = frame.get_value('sport')
                        if sport_val:
-                           sport = str(sport_val).lower()
+                           sport = str(sport_val)  # normalize_fit_sport applied after df is built
                    
                    if frame.has_field('start_time'):
                        start_time = frame.get_value('start_time')
@@ -533,11 +635,13 @@ def parse_fit_decode(file_path):
                     if r_data['lon']: r_data['lon'] *= (180 / 2**31)
                     
                     r_data['distance'] = frame.get_value('distance', fallback=None)
-                    r_data['speed'] = frame.get_value('enhanced_speed', fallback=None)
+                    # Prefer enhanced_speed (higher precision), fall back to speed
+                    r_data['speed'] = frame.get_value('enhanced_speed', fallback=None) or frame.get_value('speed', fallback=None)
                     r_data['heart_rate'] = frame.get_value('heart_rate', fallback=None)
                     r_data['power'] = frame.get_value('power', fallback=None)
                     r_data['cadence'] = frame.get_value('cadence', fallback=None)
-                    r_data['altitude'] = frame.get_value('enhanced_altitude', fallback=None)
+                    # Prefer enhanced_altitude (higher precision), fall back to altitude
+                    r_data['altitude'] = frame.get_value('enhanced_altitude', fallback=None) or frame.get_value('altitude', fallback=None)
                     r_data['vertical_oscillation'] = frame.get_value('vertical_oscillation', fallback=None)
                     r_data['stance_time'] = frame.get_value('stance_time', fallback=None)
                     r_data['step_length'] = frame.get_value('step_length', fallback=None)
@@ -550,10 +654,13 @@ def parse_fit_decode(file_path):
         return None
 
     df = pd.DataFrame(data_points)
-    
-    if sport == 'unknown':
-        sport = infer_sport(df)
-        
+
+    # Derive cumulative distance from speed if missing (needed for best efforts)
+    df = _ensure_distance_column(df)
+
+    # Normalize sport name (handles FIT enum strings like "generic", "e_biking", etc.)
+    sport = normalize_fit_sport(sport, df)
+
     # Stats Calculation Helpers
     def get_max_stat(df, col, session_val):
         val = session_val

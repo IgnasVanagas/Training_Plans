@@ -1,7 +1,11 @@
-import { Alert, Badge, Button, Group, NumberInput, Paper, SegmentedControl, Select, Stack, Text, TextInput, Textarea, ThemeIcon, Title } from '@mantine/core';
+import {
+  Alert, Badge, Button, Group, NumberInput, Paper, Progress,
+  SegmentedControl, Select, Stack, Text, TextInput, Textarea,
+  ThemeIcon, Title, Loader, useComputedColorScheme,
+} from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { Dropzone, FileWithPath } from '@mantine/dropzone';
-import { IconCheck, IconFile, IconRocket, IconUpload, IconX } from '@tabler/icons-react';
+import { IconCheck, IconFile, IconFileAlert, IconRocket, IconUpload, IconX } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
@@ -12,6 +16,8 @@ import { useI18n } from '../../i18n/I18nProvider';
 type Props = {
   onUploaded?: () => void;
 };
+
+type UploadStage = 'idle' | 'uploading' | 'processing' | 'done' | 'error';
 
 function parseDuration(value: string): number | null {
   const parts = value.split(':').map(Number);
@@ -24,13 +30,24 @@ function parseDuration(value: string): number | null {
   return null;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function ActivityUploadPanel({ onUploaded }: Props) {
   const { t } = useI18n();
+  const isDark = useComputedColorScheme('light') === 'dark';
   const queryClient = useQueryClient();
   const [mode, setMode] = useState<'upload' | 'manual'>('upload');
+
+  // File upload state
+  const [stage, setStage] = useState<UploadStage>('idle');
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [showCompletionPulse, setShowCompletionPulse] = useState(false);
-  const [reflection, setReflection] = useState('');
+  const [uploadedResult, setUploadedResult] = useState<any | null>(null);
 
   // Manual form state
   const [sport, setSport] = useState('running');
@@ -41,6 +58,7 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
   const [rpe, setRpe] = useState<number | string>('');
   const [manualNotes, setManualNotes] = useState('');
   const [manualError, setManualError] = useState<string | null>(null);
+  const [manualDone, setManualDone] = useState(false);
 
   const sportOptions = [
     { value: 'running', label: t('Running') || 'Running' },
@@ -53,16 +71,43 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
 
   const isStrength = sport === 'strength_training';
 
+  const ui = {
+    surface: isDark ? '#12223E' : '#FFFFFF',
+    border: isDark ? 'rgba(148,163,184,0.28)' : '#DCE6F7',
+    textMain: isDark ? '#E2E8F0' : '#0F172A',
+    textDim: isDark ? '#9FB0C8' : '#52617A',
+    subtleBg: isDark ? '#182B4B' : '#F8FAFF',
+  };
+
+  const resetUpload = () => {
+    setStage('idle');
+    setUploadProgress(0);
+    setDroppedFile(null);
+    setUploadError(null);
+    setUploadedResult(null);
+  };
+
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
       const res = await api.post('/activities/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (evt) => {
+          const pct = evt.total
+            ? Math.min(99, Math.round((evt.loaded * 100) / evt.total))
+            : 50;
+          setUploadProgress(pct);
+        },
       });
       return res.data;
     },
     onMutate: async (file: File) => {
+      setStage('uploading');
+      setUploadProgress(0);
+      setUploadError(null);
+      setUploadedResult(null);
+
       await queryClient.cancelQueries({ queryKey: ['activities'] });
       const tempActivity = {
         id: -Date.now(), sport: null, created_at: new Date().toISOString(),
@@ -76,40 +121,69 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
       });
       return { snapshots };
     },
-    onSuccess: (_data, _vars, context) => {
+    onSuccess: (data, _vars, context) => {
       context?.snapshots?.forEach(([qk, qd]) => queryClient.setQueryData(qk, qd));
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
-      setUploadError(null);
-      setShowCompletionPulse(true);
+      setUploadProgress(100);
+      setStage('done');
+      setUploadedResult(data);
       notifications.show({
         color: 'teal',
-        title: 'Workout captured',
-        message: "Session saved. Add a quick reflection so your coach can adapt tomorrow's plan.",
-        position: 'bottom-right'
+        title: 'Activity uploaded',
+        message: `${data?.filename || droppedFile?.name} saved successfully.`,
+        position: 'bottom-right',
       });
-      window.setTimeout(() => setShowCompletionPulse(false), 1200);
       onUploaded?.();
     },
     onError: (err: any, _vars, context) => {
       context?.snapshots?.forEach(([qk, qd]) => queryClient.setQueryData(qk, qd));
-      const detail = err.response?.data?.detail || 'Upload failed';
-      const lowered = String(detail).toLowerCase();
-      if (lowered.includes('garmin')) {
-        setUploadError("Garmin is taking longer than usual. Your workout is safe and we'll keep retrying in the background.");
+      setStage('error');
+
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail || '';
+
+      if (status === 409) {
+        setUploadError('This file was already uploaded. Your activity is in the list.');
         return;
       }
-      if (lowered.includes('format') || lowered.includes('parse')) {
-        setUploadError("We could not read this file format yet. Try a fresh FIT/GPX export and we'll keep your progress intact.");
+      if (status === 413) {
+        setUploadError('File too large. Max allowed size is 10 MB.');
         return;
       }
-      setUploadError('We hit a sync issue, but your momentum is not lost. Try again in a moment.');
-    }
+      const lower = String(detail).toLowerCase();
+      if (lower.includes('format') || lower.includes('parse') || lower.includes('fit') || lower.includes('gpx')) {
+        setUploadError('Could not read this file. Make sure it is a valid .fit or .gpx export from your device.');
+        return;
+      }
+      setUploadError(detail || 'Upload failed. Please try again.');
+    },
   });
 
   const handleDrop = (files: FileWithPath[]) => {
-    if (files.length > 0) uploadMutation.mutate(files[0]);
+    if (files.length === 0) return;
+    const file = files[0];
+    setDroppedFile(file);
+    // Small delay to let the dropped file state render before the loading state kicks in
+    uploadMutation.mutate(file);
   };
+
+  const handleReject = (rejections: { file: File; errors: { code: string }[] }[]) => {
+    const code = rejections?.[0]?.errors?.[0]?.code;
+    if (code === 'file-too-large') {
+      setUploadError('File too large. Max allowed size is 10 MB.');
+    } else {
+      setUploadError('Invalid file. Please upload a .fit or .gpx file under 10 MB.');
+    }
+    setDroppedFile(rejections?.[0]?.file ?? null);
+    setStage('error');
+  };
+
+  // Transition from uploading → processing once upload bytes are done
+  if (stage === 'uploading' && uploadProgress >= 99) {
+    // The server is now parsing — show indeterminate processing state
+    // This is handled below via the progress display
+  }
 
   const manualMutation = useMutation({
     mutationFn: createManualActivity,
@@ -133,26 +207,26 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
       setManualError(null);
-      setShowCompletionPulse(true);
+      setManualDone(true);
       notifications.show({
         color: 'teal',
         title: t('Activity saved') || 'Activity saved',
         message: t('Manual activity logged successfully.') || 'Manual activity logged successfully.',
-        position: 'bottom-right'
+        position: 'bottom-right',
       });
-      window.setTimeout(() => setShowCompletionPulse(false), 1200);
       setDurationStr('');
       setDistance('');
       setAvgHr('');
       setRpe('');
       setManualNotes('');
       onUploaded?.();
+      setTimeout(() => setManualDone(false), 3000);
     },
     onError: (err: any, _vars, context) => {
       context?.snapshots?.forEach(([qk, qd]) => queryClient.setQueryData(qk as unknown[], qd));
       const detail = err.response?.data?.detail || 'Failed to save activity';
       setManualError(String(detail));
-    }
+    },
   });
 
   const handleManualSubmit = () => {
@@ -178,11 +252,127 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
     });
   };
 
+  // ── Render upload section content based on stage ─────────────────────────
+  const renderUploadContent = () => {
+    if (stage === 'done' && uploadedResult) {
+      return (
+        <Stack gap="sm">
+          <Group gap="sm">
+            <ThemeIcon color="teal" variant="light" radius="xl" size="lg">
+              <IconCheck size={20} />
+            </ThemeIcon>
+            <Stack gap={0}>
+              <Text fw={700} size="sm" c={ui.textMain}>{uploadedResult.filename || droppedFile?.name}</Text>
+              <Text size="xs" c={ui.textDim}>
+                {uploadedResult.sport && <>{uploadedResult.sport} · </>}
+                {uploadedResult.distance ? `${(uploadedResult.distance / 1000).toFixed(2)} km` : null}
+                {uploadedResult.duration ? ` · ${Math.round(uploadedResult.duration / 60)} min` : null}
+              </Text>
+            </Stack>
+          </Group>
+          <Button variant="subtle" size="xs" color="gray" onClick={resetUpload}>
+            Upload another file
+          </Button>
+        </Stack>
+      );
+    }
+
+    if (stage === 'error') {
+      return (
+        <Stack gap="sm">
+          <Group gap="sm">
+            <ThemeIcon color="red" variant="light" radius="xl" size="lg">
+              <IconFileAlert size={20} />
+            </ThemeIcon>
+            <Stack gap={0}>
+              <Text fw={600} size="sm" c={ui.textMain}>{droppedFile?.name || 'Upload failed'}</Text>
+              <Text size="xs" c="red">{uploadError}</Text>
+            </Stack>
+          </Group>
+          <Button variant="subtle" size="xs" color="orange" onClick={resetUpload}>
+            Try again
+          </Button>
+        </Stack>
+      );
+    }
+
+    if (stage === 'uploading' || stage === 'processing') {
+      const isProcessing = uploadProgress >= 99;
+      return (
+        <Stack gap="xs">
+          <Group gap="sm" wrap="nowrap">
+            <ThemeIcon color="orange" variant="light" radius="xl" size="lg">
+              {isProcessing ? <Loader size={18} color="orange" type="dots" /> : <IconUpload size={18} />}
+            </ThemeIcon>
+            <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+              <Text fw={600} size="sm" c={ui.textMain} truncate>
+                {droppedFile?.name}
+              </Text>
+              <Text size="xs" c={ui.textDim}>
+                {droppedFile ? formatBytes(droppedFile.size) : ''} ·{' '}
+                {isProcessing ? 'Parsing activity data…' : `Uploading… ${uploadProgress}%`}
+              </Text>
+            </Stack>
+          </Group>
+          {isProcessing ? (
+            <Progress value={100} animated color="orange" size="xs" radius="xl" />
+          ) : (
+            <Progress value={uploadProgress} color="orange" size="xs" radius="xl" />
+          )}
+        </Stack>
+      );
+    }
+
+    // idle
+    return (
+      <Dropzone
+        onDrop={handleDrop}
+        onReject={handleReject}
+        maxSize={10 * 1024 * 1024}
+        accept={{ 'application/octet-stream': ['.fit'], 'application/gpx+xml': ['.gpx'], 'text/xml': ['.gpx'], 'application/vnd.ant.fit': ['.fit'] }}
+        p="xl"
+        radius="md"
+        bg="var(--mantine-color-body)"
+        style={{
+          border: `1px dashed ${isDark ? 'rgba(251,146,60,0.5)' : 'var(--mantine-color-orange-4)'}`,
+          cursor: 'pointer',
+          transition: 'border-color 180ms ease, background 180ms ease',
+        }}
+      >
+        <Group justify="center" gap="lg" mih={140} style={{ pointerEvents: 'none' }}>
+          <Dropzone.Accept>
+            <ThemeIcon size={54} radius="xl" color="teal" variant="light">
+              <IconCheck size={28} />
+            </ThemeIcon>
+          </Dropzone.Accept>
+          <Dropzone.Reject>
+            <ThemeIcon size={54} radius="xl" color="red" variant="light">
+              <IconX size={28} />
+            </ThemeIcon>
+          </Dropzone.Reject>
+          <Dropzone.Idle>
+            <ThemeIcon size={54} radius="xl" color="orange" variant="light">
+              <IconFile size={28} />
+            </ThemeIcon>
+          </Dropzone.Idle>
+          <Stack gap={2} align="center">
+            <Text size="md" fw={600} ta="center" c={ui.textMain}>
+              {t('Drop your activity file here') || 'Drop your activity file here'}
+            </Text>
+            <Text size="sm" c={ui.textDim} ta="center">
+              {t('or click to browse') || 'or click to browse'} · FIT or GPX · max 10 MB
+            </Text>
+          </Stack>
+        </Group>
+      </Dropzone>
+    );
+  };
+
   return (
     <Stack gap="sm">
       <SegmentedControl
         value={mode}
-        onChange={(v) => setMode(v as 'upload' | 'manual')}
+        onChange={(v) => { setMode(v as 'upload' | 'manual'); resetUpload(); }}
         data={[
           { value: 'upload', label: t('Upload file') || 'Upload file' },
           { value: 'manual', label: t('Log manually') || 'Log manually' },
@@ -191,188 +381,128 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
       />
 
       {mode === 'upload' ? (
-        <>
-          <Paper withBorder p="md" radius="md" shadow="sm" style={{ fontFamily: '"Inter", sans-serif' }}>
-            <Stack gap="sm">
-              <Group justify="space-between" align="center">
-                <Group gap="sm">
-                  <ThemeIcon color="orange" variant="light" radius="xl" size="lg">
-                    <IconUpload size={18} />
-                  </ThemeIcon>
-                  <Stack gap={0}>
-                    <Title order={3}>{t('Upload Activity') || 'Upload Activity'}</Title>
-                    <Text size="sm" c="dimmed">{t('Bring in your latest session from FIT or GPX in one step.') || 'Bring in your latest session from FIT or GPX in one step.'}</Text>
-                  </Stack>
-                </Group>
-                <Group gap={6}>
-                  <Badge variant="light" color="gray">FIT</Badge>
-                  <Badge variant="light" color="gray">GPX</Badge>
-                  <Badge variant="light" color="gray">10MB max</Badge>
-                </Group>
+        <Paper
+          withBorder
+          p="md"
+          radius="md"
+          shadow="sm"
+          style={{ fontFamily: '"Inter", sans-serif', borderColor: ui.border, background: ui.surface }}
+        >
+          <Stack gap="md">
+            <Group justify="space-between" align="center" wrap="nowrap">
+              <Group gap="sm">
+                <ThemeIcon color="orange" variant="light" radius="xl" size="lg">
+                  <IconUpload size={18} />
+                </ThemeIcon>
+                <Stack gap={0}>
+                  <Title order={5} c={ui.textMain}>{t('Upload Activity') || 'Upload Activity'}</Title>
+                  <Text size="xs" c={ui.textDim}>FIT or GPX from your device</Text>
+                </Stack>
               </Group>
-
-              <Dropzone
-                onDrop={handleDrop}
-                onReject={() => setUploadError('File rejected. Please upload a valid FIT or GPX file under 10MB.')}
-                maxSize={10 * 1024 * 1024}
-                p="xl"
-                radius="md"
-                bg="var(--mantine-color-body)"
-                style={{
-                  border: '1px dashed var(--mantine-color-orange-4)',
-                  cursor: 'pointer',
-                  transition: 'all 180ms ease'
-                }}
-              >
-                <Group justify="center" gap="lg" mih={170} style={{ pointerEvents: 'none' }}>
-                  <Dropzone.Accept>
-                    <ThemeIcon size={54} radius="xl" color="teal" variant="light">
-                      <IconCheck size={28} />
-                    </ThemeIcon>
-                  </Dropzone.Accept>
-                  <Dropzone.Reject>
-                    <ThemeIcon size={54} radius="xl" color="red" variant="light">
-                      <IconX size={28} />
-                    </ThemeIcon>
-                  </Dropzone.Reject>
-                  <Dropzone.Idle>
-                    <ThemeIcon size={54} radius="xl" color="orange" variant="light">
-                      <IconFile size={28} />
-                    </ThemeIcon>
-                  </Dropzone.Idle>
-
-                  <Stack gap={2} align="center">
-                    <Text size="lg" fw={600} ta="center">{t('Drop your activity file here') || 'Drop your activity file here'}</Text>
-                    <Text size="sm" c="dimmed" ta="center">{t('or click to browse files from your device') || 'or click to browse files from your device'}</Text>
-                  </Stack>
-                </Group>
-              </Dropzone>
-            </Stack>
-          </Paper>
-
-          {uploadError && (
-            <Alert color="orange" variant="light" title="Sync paused">
-              {uploadError}
-            </Alert>
-          )}
-          {uploadMutation.isPending && <Text>{t('Uploading and processing...') || 'Uploading and processing...'}</Text>}
-        </>
-      ) : (
-        <Paper withBorder p="md" radius="md" shadow="sm">
-          <Stack gap="sm">
-            <Select
-              label={t('Sport') || 'Sport'}
-              data={sportOptions}
-              value={sport}
-              onChange={(v) => v && setSport(v)}
-            />
-            <DateInput
-              label={t('Date') || 'Date'}
-              value={manualDate}
-              onChange={setManualDate}
-              maxDate={new Date()}
-            />
-            <TextInput
-              label={t('Duration') || 'Duration'}
-              placeholder="hh:mm:ss"
-              value={durationStr}
-              onChange={(e) => setDurationStr(e.currentTarget.value)}
-              required
-            />
-            {!isStrength && (
-              <NumberInput
-                label={`${t('Distance') || 'Distance'} (km)`}
-                value={distance}
-                onChange={setDistance}
-                min={0}
-                decimalScale={2}
-                step={0.1}
-              />
-            )}
-            {!isStrength && (
-              <NumberInput
-                label={`${t('Average heart rate') || 'Average heart rate'} (bpm)`}
-                value={avgHr}
-                onChange={setAvgHr}
-                min={20}
-                max={250}
-              />
-            )}
-            <NumberInput
-              label="RPE"
-              value={rpe}
-              onChange={setRpe}
-              min={1}
-              max={10}
-            />
-            <Textarea
-              label={t('Notes') || 'Notes'}
-              placeholder={t('How did the session feel?') || 'How did the session feel?'}
-              value={manualNotes}
-              onChange={(e) => setManualNotes(e.currentTarget.value)}
-              autosize
-              minRows={2}
-              maxRows={4}
-            />
-            {manualError && (
-              <Alert color="red" variant="light">
-                {manualError}
-              </Alert>
-            )}
-            <Group justify="flex-end">
-              <Button variant="default" onClick={() => setMode('upload')}>
-                {t('Cancel') || 'Cancel'}
-              </Button>
-              <Button color="orange" loading={manualMutation.isPending} onClick={handleManualSubmit}>
-                {t('Save activity') || 'Save activity'}
-              </Button>
+              <Group gap={4}>
+                <Badge variant="light" color="gray" size="sm">FIT</Badge>
+                <Badge variant="light" color="gray" size="sm">GPX</Badge>
+              </Group>
             </Group>
+
+            {renderUploadContent()}
+          </Stack>
+        </Paper>
+      ) : (
+        <Paper
+          withBorder
+          p="md"
+          radius="md"
+          shadow="sm"
+          style={{ borderColor: ui.border, background: ui.surface }}
+        >
+          <Stack gap="sm">
+            {manualDone ? (
+              <Group gap="sm">
+                <ThemeIcon color="teal" variant="light" radius="xl" size="lg">
+                  <IconCheck size={20} />
+                </ThemeIcon>
+                <Stack gap={0}>
+                  <Text fw={700} size="sm" c={ui.textMain}>Activity logged</Text>
+                  <Text size="xs" c={ui.textDim}>Your session has been saved.</Text>
+                </Stack>
+              </Group>
+            ) : (
+              <>
+                <Select
+                  label={t('Sport') || 'Sport'}
+                  data={sportOptions}
+                  value={sport}
+                  onChange={(v) => v && setSport(v)}
+                />
+                <DateInput
+                  label={t('Date') || 'Date'}
+                  value={manualDate}
+                  onChange={setManualDate}
+                  maxDate={new Date()}
+                />
+                <TextInput
+                  label={t('Duration') || 'Duration'}
+                  placeholder="hh:mm:ss"
+                  value={durationStr}
+                  onChange={(e) => setDurationStr(e.currentTarget.value)}
+                  required
+                />
+                {!isStrength && (
+                  <NumberInput
+                    label={`${t('Distance') || 'Distance'} (km)`}
+                    value={distance}
+                    onChange={setDistance}
+                    min={0}
+                    decimalScale={2}
+                    step={0.1}
+                  />
+                )}
+                {!isStrength && (
+                  <NumberInput
+                    label={`${t('Average heart rate') || 'Average heart rate'} (bpm)`}
+                    value={avgHr}
+                    onChange={setAvgHr}
+                    min={20}
+                    max={250}
+                  />
+                )}
+                <NumberInput
+                  label="RPE"
+                  value={rpe}
+                  onChange={setRpe}
+                  min={1}
+                  max={10}
+                />
+                <Textarea
+                  label={t('Notes') || 'Notes'}
+                  placeholder={t('How did the session feel?') || 'How did the session feel?'}
+                  value={manualNotes}
+                  onChange={(e) => setManualNotes(e.currentTarget.value)}
+                  autosize
+                  minRows={2}
+                  maxRows={4}
+                />
+                {manualError && (
+                  <Alert color="red" variant="light" icon={<IconFileAlert size={16} />}>
+                    {manualError}
+                  </Alert>
+                )}
+                <Group justify="flex-end">
+                  <Button
+                    color="orange"
+                    loading={manualMutation.isPending}
+                    leftSection={<IconRocket size={16} />}
+                    onClick={handleManualSubmit}
+                  >
+                    {t('Save activity') || 'Save activity'}
+                  </Button>
+                </Group>
+              </>
+            )}
           </Stack>
         </Paper>
       )}
-
-      {showCompletionPulse && (
-        <Paper withBorder p="sm" radius="md" bg="teal.0" style={{ transition: 'all 220ms ease' }}>
-          <Group justify="space-between" align="center">
-            <Group gap="xs">
-              <IconCheck size={16} color="teal" />
-              <Text fw={600} size="sm">{t('Activity saved') || 'Activity saved'}</Text>
-            </Group>
-            <IconRocket size={16} color="teal" />
-          </Group>
-        </Paper>
-      )}
-
-      <Paper withBorder p="sm" radius="md">
-        <Text size="sm" fw={600}>{t('Coach feedback loop') || 'Coach feedback loop'}</Text>
-        <Text size="xs" c="dimmed" mb={6}>{t('How did this session feel? A short note helps your coach tune your next workout.') || 'How did this session feel? A short note helps your coach tune your next workout.'}</Text>
-        <Group>
-          <TextInput
-            value={reflection}
-            onChange={(e) => setReflection(e.currentTarget.value)}
-            placeholder={t('RPE, mood, soreness (optional)') || 'RPE, mood, soreness (optional)'}
-            flex={1}
-          />
-          <Button
-            size="xs"
-            variant="subtle"
-            color="orange"
-            onClick={() => {
-              notifications.show({
-                color: 'blue',
-                title: t('Coach notified') || 'Coach notified',
-                message: reflection.trim()
-                  ? t('Reflection sent. Your coach can respond with plan adjustments.') || 'Reflection sent. Your coach can respond with plan adjustments.'
-                  : t('Session sent to coach as On Plan. Add reflection anytime.') || 'Session sent to coach as On Plan. Add reflection anytime.',
-                position: 'bottom-right'
-              });
-              setReflection('');
-            }}
-          >
-            {t('Send') || 'Send'}
-          </Button>
-        </Group>
-      </Paper>
     </Stack>
   );
 }

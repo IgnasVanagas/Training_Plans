@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status, Query, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, status, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, case
 from sqlalchemy.orm import defer
-from ..database import get_db
+from ..database import get_db, AsyncSessionLocal
 from ..models import User, Activity, OrganizationMember, RoleEnum, Profile, ProfileMetricHistory, PlannedWorkout, RHRDaily
 from ..integrations.crypto import decrypt_token, encrypt_token
 from ..integrations.registry import get_connector
@@ -58,6 +58,16 @@ def _invalidate_athlete_caches(athlete_id: int) -> None:
         stale = [k for k in store if k.startswith(prefix)]
         for k in stale:
             del store[k]
+
+
+async def _bg_match_and_score(athlete_id: int, activity_date: date) -> None:
+    """Background task wrapper: opens its own DB session so the request session
+    can be closed before this runs."""
+    try:
+        async with AsyncSessionLocal() as db:
+            await match_and_score(db, athlete_id, activity_date)
+    except Exception as exc:
+        logger.warning("Background match_and_score failed for athlete %s: %s", athlete_id, exc)
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -1982,6 +1992,7 @@ async def create_manual_activity(
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED, response_model=ActivityDetail)
 async def upload_activity(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -2135,6 +2146,7 @@ async def upload_activity(
         "pace_curve": parsed_data.get("pace_curve"),
         "laps": parsed_data.get("laps"),
         "splits_metric": parsed_data.get("splits_metric"),
+        "best_efforts": parsed_data.get("best_efforts"),
         "_meta": {
             "deleted": False,
             "file_sha256": file_sha256,
@@ -2164,8 +2176,8 @@ async def upload_activity(
     await db.commit()
     await db.refresh(new_activity)
 
-    # Run Compliance Check
-    await match_and_score(db, current_user.id, new_activity.created_at.date())
+    # Schedule compliance re-scoring in the background so the response returns fast.
+    background_tasks.add_task(_bg_match_and_score, current_user.id, new_activity.created_at.date())
 
     profile = await db.scalar(select(Profile).where(Profile.user_id == current_user.id))
     ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
@@ -3452,6 +3464,7 @@ async def update_activity_feedback(
 @router.delete("/{activity_id}")
 async def delete_activity(
     activity_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -3517,7 +3530,9 @@ async def delete_activity(
     db.add(activity)
     await db.commit()
 
-    await match_and_score(db, athlete_id, activity_date)
+    # Run compliance re-scoring in the background so the DELETE response returns
+    # immediately after the commit.
     _invalidate_athlete_caches(athlete_id)
+    background_tasks.add_task(_bg_match_and_score, athlete_id, activity_date)
 
     return {"status": "success", "is_deleted": True}
