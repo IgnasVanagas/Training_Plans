@@ -1,18 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  ActionIcon,
   Avatar,
   Box,
   Button,
   Checkbox,
   Divider,
-  FileInput,
   Group,
+  Modal,
   NumberInput,
   Paper,
   Radio,
   Select,
   SimpleGrid,
+  Slider,
   Stack,
   Text,
   TextInput,
@@ -22,7 +22,9 @@ import {
 import { notifications } from "@mantine/notifications";
 import { DateInput } from "@mantine/dates";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { IconPhoto, IconUpload } from "@tabler/icons-react";
+import { IconCamera } from "@tabler/icons-react";
+import Cropper from "react-easy-crop";
+import type { Area } from "react-easy-crop";
 import { uploadProfilePicture, resolveUserPictureUrl } from "../../api/organizations";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Profile, User } from "./types";
@@ -53,6 +55,34 @@ const getSupportedTimeZones = (): string[] => {
   return intlWithSupportedValues.supportedValuesOf?.("timeZone") ?? [Intl.DateTimeFormat().resolvedOptions().timeZone];
 };
 
+async function getCroppedImg(imageSrc: string, pixelCrop: Area): Promise<File> {
+  const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = imageSrc;
+  });
+  const canvas = document.createElement("canvas");
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(
+    image,
+    pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height,
+    0, 0, pixelCrop.width, pixelCrop.height,
+  );
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (blob) resolve(new File([blob], "profile.jpg", { type: "image/jpeg" }));
+        else reject(new Error("Canvas is empty"));
+      },
+      "image/jpeg",
+      0.9,
+    );
+  });
+}
+
 type Props = {
   user: User;
   onSubmit: (data: Profile) => void;
@@ -81,19 +111,60 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
 
   const queryClient = useQueryClient();
   const [profile, setProfile] = useState<Profile>(initialProfile);
-  const [pictureFile, setPictureFile] = useState<File | null>(null);
+
+  // ── Profile picture ──────────────────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [rawImageSrc, setRawImageSrc] = useState<string | null>(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const uploadPictureMutation = useMutation({
     mutationFn: (file: File) => uploadProfilePicture(file),
-    onSuccess: () => {
+    onSuccess: (data) => {
       notifications.show({ color: "green", title: t("Picture updated"), message: "" });
-      setPictureFile(null);
+      const picture = (data as { profile?: { picture?: string | null } })?.profile?.picture;
+      if (picture) setPreviewUrl(resolveUserPictureUrl(picture));
       queryClient.invalidateQueries({ queryKey: ["me"] });
     },
     onError: () => {
       notifications.show({ color: "red", title: t("Upload failed"), message: "" });
     },
   });
+
+  const handleAvatarClick = () => fileInputRef.current?.click();
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    const url = URL.createObjectURL(file);
+    setRawImageSrc(url);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCropModalOpen(true);
+  };
+
+  const onCropComplete = useCallback((_: Area, croppedPixels: Area) => {
+    setCroppedAreaPixels(croppedPixels);
+  }, []);
+
+  const closeCropModal = () => {
+    setCropModalOpen(false);
+    if (rawImageSrc) URL.revokeObjectURL(rawImageSrc);
+    setRawImageSrc(null);
+  };
+
+  const handleCropSave = async () => {
+    if (!rawImageSrc || !croppedAreaPixels) return;
+    const croppedFile = await getCroppedImg(rawImageSrc, croppedAreaPixels);
+    closeCropModal();
+    uploadPictureMutation.mutate(croppedFile);
+  };
+
+  // ────────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     setProfile(initialProfile);
@@ -145,46 +216,107 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
 
   const panelBg = isDark ? "var(--mantine-color-dark-6)" : "white";
   const fullName = `${profile.first_name || ""} ${profile.last_name || ""}`.trim();
+  const avatarSrc = previewUrl || resolveUserPictureUrl(user.profile?.picture) || undefined;
+  const avatarInitial = (user.profile?.first_name || user.email || "?").slice(0, 1).toUpperCase();
 
   return (
     <Box maw={900} mx="auto" py="md">
-      {/* Profile picture */}
+      {/* ── Profile picture ── */}
       <Paper p="md" radius="md" withBorder bg={panelBg} mb="lg">
         <Group gap="md" align="center">
-          <Avatar
-            radius="xl"
-            size={72}
-            src={resolveUserPictureUrl(user.profile?.picture) || undefined}
-            color="indigo"
+          {/* Clickable avatar with hover overlay */}
+          <div
+            role="button"
+            aria-label={t("Change profile picture")}
+            tabIndex={0}
+            style={{ position: "relative", cursor: "pointer", borderRadius: "50%", flexShrink: 0 }}
+            onClick={handleAvatarClick}
+            onKeyDown={(e) => e.key === "Enter" && handleAvatarClick()}
           >
-            {(user.profile?.first_name || user.email || "?").slice(0, 1).toUpperCase()}
-          </Avatar>
-          <Stack gap={4} style={{ flex: 1 }}>
-            <Text fw={700} size="sm">{t("Profile picture")}</Text>
-            <Group gap="xs" align="flex-end">
-              <FileInput
-                placeholder={t("Choose image")}
-                value={pictureFile}
-                onChange={setPictureFile}
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                leftSection={<IconPhoto size={14} />}
-                size="xs"
-                style={{ flex: 1 }}
-                clearable
-              />
-              <ActionIcon
-                variant="light"
-                color="indigo"
-                loading={uploadPictureMutation.isPending}
-                disabled={!pictureFile}
-                onClick={() => { if (pictureFile) uploadPictureMutation.mutate(pictureFile); }}
-              >
-                <IconUpload size={16} />
-              </ActionIcon>
-            </Group>
+            <Avatar radius={999} size={80} src={avatarSrc} color="indigo">
+              {avatarInitial}
+            </Avatar>
+            {/* Camera overlay */}
+            <div style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: "50%",
+              background: "rgba(0,0,0,0.45)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: uploadPictureMutation.isPending ? 1 : 0,
+              transition: "opacity 150ms ease",
+            }}
+              className="avatar-overlay"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.opacity = "1"; }}
+              onMouseLeave={(e) => {
+                if (!uploadPictureMutation.isPending)
+                  (e.currentTarget as HTMLDivElement).style.opacity = "0";
+              }}
+            >
+              <IconCamera size={22} color="white" />
+            </div>
+          </div>
+          <Stack gap={2}>
+            <Text fw={700} size="sm">{fullName || user.email}</Text>
+            <Text size="xs" c="dimmed">{t("Click to change picture")}</Text>
           </Stack>
         </Group>
+        <input
+          ref={fileInputRef}
+          type="file"
+          hidden
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          onChange={handleFileChange}
+        />
       </Paper>
+
+      {/* ── Crop modal ── */}
+      <Modal
+        opened={cropModalOpen}
+        onClose={closeCropModal}
+        title={t("Crop profile picture")}
+        centered
+        size="md"
+        radius="md"
+        overlayProps={{ backgroundOpacity: 0.4, blur: 2 }}
+      >
+        <Stack gap="md">
+          <div style={{ position: "relative", width: "100%", height: 300, background: "#111", borderRadius: 8, overflow: "hidden" }}>
+            <Cropper
+              image={rawImageSrc || ""}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              cropShape="round"
+              showGrid={false}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+            />
+          </div>
+          <Slider
+            min={1}
+            max={3}
+            step={0.01}
+            value={zoom}
+            onChange={setZoom}
+            label={null}
+            color="indigo"
+          />
+          <Group justify="flex-end" gap="sm">
+            <Button variant="default" onClick={closeCropModal}>{t("Cancel")}</Button>
+            <Button
+              color="indigo"
+              loading={uploadPictureMutation.isPending}
+              onClick={handleCropSave}
+            >
+              {t("Save")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <Title order={2} mb="lg">{t("My Profile")}</Title>
 
