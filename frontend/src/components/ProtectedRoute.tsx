@@ -1,8 +1,10 @@
 import { Center, Loader } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { Navigate } from "react-router-dom";
 
 import api from "../api/client";
+import { useI18n } from "../i18n/I18nProvider";
 import { clearAuthSession, hasAuthSession } from "../utils/authSession";
 
 type ProtectedRouteProps = {
@@ -10,6 +12,7 @@ type ProtectedRouteProps = {
 };
 
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
+  const { syncLanguagePreference } = useI18n();
   const hasSession = hasAuthSession();
   const sessionValidationQuery = useQuery({
     queryKey: ["protected-route-session"],
@@ -22,6 +25,10 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     staleTime: 0,
     refetchOnMount: true,
   });
+
+  useEffect(() => {
+    syncLanguagePreference((sessionValidationQuery.data as { profile?: { preferred_language?: string | null } } | undefined)?.profile?.preferred_language);
+  }, [sessionValidationQuery.data, syncLanguagePreference]);
 
   if (!hasSession) {
     return <Navigate to="/login" replace />;

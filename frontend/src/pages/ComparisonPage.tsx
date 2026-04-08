@@ -78,6 +78,7 @@ type ActivityListItem = {
   filename: string;
   sport?: string | null;
   created_at: string;
+  local_date?: string | null;
   distance?: number | null;
   duration?: number | null;
   moving_time?: number | null;
@@ -320,24 +321,43 @@ const ActivityCalendarPicker = ({
   t: (v: string) => string;
 }) => {
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
+  const toDateKey = useCallback((value: string | Date) => {
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
+      const parsed = new Date(trimmed);
+      if (!Number.isNaN(parsed.getTime())) {
+        return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+      }
+      return null;
+    }
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const activityDateKey = useCallback((activity: ActivityListItem) => {
+    if (activity.local_date && /^\d{4}-\d{2}-\d{2}$/.test(activity.local_date)) {
+      return activity.local_date;
+    }
+    return toDateKey(activity.created_at);
+  }, [toDateKey]);
+
   const activitiesByDate = useMemo(() => {
     const map = new Map<string, ActivityListItem[]>();
     activities.forEach((a) => {
-      const d = new Date(a.created_at.endsWith('Z') ? a.created_at : a.created_at + 'Z');
-      const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const k = activityDateKey(a);
+      if (!k) return;
       const l = map.get(k) || [];
       l.push(a);
       map.set(k, l);
     });
     return map;
-  }, [activities]);
+  }, [activities, activityDateKey]);
   const selectedDate = useMemo(() => {
     if (!selectedId) return null;
     const act = activities.find((a) => String(a.id) === selectedId);
     if (!act) return null;
-    const d = new Date(act.created_at.endsWith('Z') ? act.created_at : act.created_at + 'Z');
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }, [selectedId, activities]);
+    return activityDateKey(act);
+  }, [selectedId, activities, activityDateKey]);
   const [focusDate, setFocusDate] = useState<string | null>(selectedDate);
   const activitiesForFocusDate = useMemo(() => (focusDate ? activitiesByDate.get(focusDate) || [] : []), [focusDate, activitiesByDate]);
 
@@ -378,7 +398,7 @@ const ActivityCalendarPicker = ({
             <Text size="xs" c="dimmed">{t('Selected') || 'Selected'}</Text>
             <Text size="sm" fw={600}>{selectedActivity.filename}</Text>
             <Text size="xs" c="dimmed">
-              {formatName(athleteMap.get(selectedActivity.athlete_id))} · {new Date(selectedActivity.created_at).toLocaleDateString()} · {normalizeSport(selectedActivity.sport)}
+              {formatName(athleteMap.get(selectedActivity.athlete_id))} · {selectedActivity.local_date ? new Date(`${selectedActivity.local_date}T00:00:00`).toLocaleDateString() : new Date(selectedActivity.created_at).toLocaleDateString()} · {normalizeSport(selectedActivity.sport)}
             </Text>
           </Paper>
         )}
@@ -507,7 +527,7 @@ export const ComparisonPage = () => {
   const weekOptionsByAthlete = useMemo(() => {
     const out = new Map<string, Array<{ value: string; label: string }>>();
     allAthletes.forEach((a) => {
-      const unique = Array.from(new Set(activities.filter((x) => x.athlete_id === a.id).map((x) => toWeekKey(x.created_at)))).sort((a, b) => (a < b ? 1 : -1));
+      const unique = Array.from(new Set(activities.filter((x) => x.athlete_id === a.id).map((x) => toWeekKey(x.local_date || x.created_at)))).sort((a, b) => (a < b ? 1 : -1));
       out.set(String(a.id), unique.map((v) => ({ value: v, label: parseWeekLabel(v) })));
     });
     return out;
@@ -516,7 +536,7 @@ export const ComparisonPage = () => {
   const monthOptionsByAthlete = useMemo(() => {
     const out = new Map<string, Array<{ value: string; label: string }>>();
     allAthletes.forEach((a) => {
-      const unique = Array.from(new Set(activities.filter((x) => x.athlete_id === a.id).map((x) => toMonthKey(x.created_at)))).sort((a, b) => (a < b ? 1 : -1));
+      const unique = Array.from(new Set(activities.filter((x) => x.athlete_id === a.id).map((x) => toMonthKey(x.local_date || x.created_at)))).sort((a, b) => (a < b ? 1 : -1));
       out.set(String(a.id), unique.map((v) => ({ value: v, label: parseMonthLabel(v) })));
     });
     return out;
@@ -530,7 +550,7 @@ export const ComparisonPage = () => {
 
   const workoutOptions = useMemo(() =>
     activities.slice().sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
-      .map((a) => ({ value: String(a.id), label: `${formatName(athleteMap.get(a.athlete_id))} · ${new Date(a.created_at).toLocaleDateString()} · ${normalizeSport(a.sport)} · ${a.filename}` })),
+      .map((a) => ({ value: String(a.id), label: `${formatName(athleteMap.get(a.athlete_id))} · ${a.local_date ? new Date(`${a.local_date}T00:00:00`).toLocaleDateString() : new Date(a.created_at).toLocaleDateString()} · ${normalizeSport(a.sport)} · ${a.filename}` })),
     [activities, athleteMap]);
 
   useEffect(() => {
@@ -559,7 +579,7 @@ export const ComparisonPage = () => {
     if (mode === 'workouts') return leftWorkoutId ? [Number(leftWorkoutId)] : [];
     if (!leftAthleteId || !leftPeriodKey) return [];
     return activities.filter((a) => String(a.athlete_id) === leftAthleteId)
-      .filter((a) => (mode === 'weeks' ? toWeekKey(a.created_at) : toMonthKey(a.created_at)) === leftPeriodKey)
+      .filter((a) => (mode === 'weeks' ? toWeekKey(a.local_date || a.created_at) : toMonthKey(a.local_date || a.created_at)) === leftPeriodKey)
       .map((a) => a.id);
   }, [activities, leftAthleteId, leftPeriodKey, leftWorkoutId, mode]);
 
@@ -567,7 +587,7 @@ export const ComparisonPage = () => {
     if (mode === 'workouts') return rightWorkoutId ? [Number(rightWorkoutId)] : [];
     if (!rightAthleteId || !rightPeriodKey) return [];
     return activities.filter((a) => String(a.athlete_id) === rightAthleteId)
-      .filter((a) => (mode === 'weeks' ? toWeekKey(a.created_at) : toMonthKey(a.created_at)) === rightPeriodKey)
+      .filter((a) => (mode === 'weeks' ? toWeekKey(a.local_date || a.created_at) : toMonthKey(a.local_date || a.created_at)) === rightPeriodKey)
       .map((a) => a.id);
   }, [activities, mode, rightAthleteId, rightPeriodKey, rightWorkoutId]);
 

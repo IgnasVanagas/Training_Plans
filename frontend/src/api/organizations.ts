@@ -182,3 +182,19 @@ export const resolveOrgPictureUrl = (filename?: string | null): string | null =>
     ?? "http://localhost:8000";
   return `${base.replace(/\/$/, "")}/uploads/org/${filename}`;
 };
+
+export const uploadProfilePicture = async (file: File): Promise<unknown> => {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await client.post("/users/profile/picture", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return response.data;
+};
+
+export const resolveUserPictureUrl = (filename?: string | null): string | null => {
+  if (!filename) return null;
+  if (/^https?:\/\//i.test(filename)) return filename;
+  const base = (import.meta as unknown as Record<string, unknown> & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL ?? "http://localhost:8000";
+  return `${base.replace(/\/$/, "")}/uploads/user/${filename}`;
+};

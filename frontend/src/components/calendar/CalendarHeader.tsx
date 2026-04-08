@@ -1,10 +1,12 @@
-import { format, addMonths, addWeeks } from 'date-fns';
+import { format, addWeeks } from 'date-fns';
+import { enUS, lt as ltLocale } from 'date-fns/locale';
 import { ReactNode } from 'react';
 import { Button, ActionIcon, Group, Popover, SegmentedControl, Box, Stack } from '@mantine/core';
 import { MonthPicker } from '@mantine/dates';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useComputedColorScheme } from '@mantine/core';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useI18n } from '../../i18n/I18nProvider';
 
 type CalendarHeaderProps = {
     date: Date;
@@ -31,6 +33,8 @@ const CalendarHeader = ({
     const isMobile = useMediaQuery('(max-width: 48em)');
     const isDark = useComputedColorScheme('light') === 'dark';
     const accentSecondary = '#6E4BF3';
+    const { language, t } = useI18n();
+    const calendarLocale = language === 'lt' ? ltLocale : enUS;
 
     const handleNext = () => {
         // In both continuous and week views, navigate by 1 week for smooth scrolling
@@ -79,11 +83,12 @@ const CalendarHeader = ({
                                 onClick={open}
                                 styles={{ root: { borderRadius: 8, color: isDark ? '#E2E8F0' : '#1E293B', letterSpacing: '-0.01em', fontSize: isMobile ? 13 : 15, padding: isMobile ? '0 4px' : undefined } }}
                             >
-                                {format(date, 'MMM yyyy')}
+                                {format(date, 'MMM yyyy', { locale: calendarLocale })}
                             </Button>
                         </Popover.Target>
                         <Popover.Dropdown>
                             <MonthPicker
+                                locale={language}
                                 value={date}
                                 onChange={(val) => {
                                     if (val) {
@@ -110,7 +115,7 @@ const CalendarHeader = ({
                         onClick={handleToday}
                         styles={{ root: { fontWeight: 600, borderRadius: 8, color: isDark ? '#F8FAFC' : '#1E293B' } }}
                     >
-                        Today
+                        {t('Today')}
                     </Button>
                 </Group>
 
@@ -125,8 +130,8 @@ const CalendarHeader = ({
                             value={currentView}
                             onChange={(value) => onViewChange(value as 'month' | 'week')}
                             data={[
-                                { value: 'month', label: 'Month' },
-                                { value: 'week', label: 'Week' },
+                                { value: 'month', label: t('Month') },
+                                { value: 'week', label: t('Week') },
                             ]}
                         />
                     )}
@@ -161,8 +166,8 @@ const CalendarHeader = ({
                         value={currentView}
                         onChange={(value) => onViewChange(value as 'month' | 'week')}
                         data={[
-                            { value: 'month', label: 'Month' },
-                            { value: 'week', label: 'Week' },
+                            { value: 'month', label: t('Month') },
+                            { value: 'week', label: t('Week') },
                         ]}
                     />
                 </Stack>

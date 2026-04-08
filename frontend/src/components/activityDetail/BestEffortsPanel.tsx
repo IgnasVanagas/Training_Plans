@@ -71,7 +71,7 @@ export const BestEffortsPanel = ({
                         <Table.Th></Table.Th>
                         <Table.Th>{t('Effort')}</Table.Th>
                         {isCyclingActivity && <Table.Th>{t('Power')}</Table.Th>}
-                        {isCyclingActivity && me?.profile?.weight && <Table.Th>W/kg</Table.Th>}
+                        {isCyclingActivity && me?.profile?.weight && <Table.Th>{t('W/kg')}</Table.Th>}
                         {(isRunningActivity || isCyclingActivity || hasCyclingDistEfforts) && <Table.Th>{t('Time')}</Table.Th>}
                         {isRunningActivity && <Table.Th>{t('Pace')}</Table.Th>}
                         {isCyclingActivity && <Table.Th>{t('Speed')}</Table.Th>}
@@ -92,7 +92,7 @@ export const BestEffortsPanel = ({
                             ? (displayMeters / 1000) / (displaySeconds / 3600)
                             : (meta?.speedKmh ?? null);
                         const medalColor = prRank === 1 ? '#f0a500' : prRank === 2 ? '#a0a0a0' : prRank === 3 ? '#cd7f32' : undefined;
-                        const rankLabel = prRank === 1 ? 'PR' : prRank === 2 ? '2nd' : prRank === 3 ? '3rd' : undefined;
+                        const rankLabel = prRank === 1 ? t('PR') : prRank === 2 ? t('2nd') : prRank === 3 ? t('3rd') : undefined;
                         return (
                             <Table.Tr
                                 key={key}

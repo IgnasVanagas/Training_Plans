@@ -148,8 +148,10 @@ class Profile(Base):
     training_days = Column(JSONB, nullable=True)  # e.g. ["monday","tuesday",...]
     main_sport = Column(String(50), nullable=True)
     timezone = Column(String(50), nullable=True)
+    preferred_language = Column(String(10), default="en", nullable=True)
     preferred_units = Column(String(20), default="metric", nullable=True) # metric, imperial
     week_start_day = Column(String(20), default="monday", nullable=True) # monday, sunday
+    picture = Column(String(255), nullable=True)
 
     user = relationship("User", back_populates="profile")
 

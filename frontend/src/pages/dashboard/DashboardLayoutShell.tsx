@@ -13,7 +13,6 @@ import {
   Menu,
   NavLink,
   ScrollArea,
-  SegmentedControl,
   Stack,
   Text,
   Title,
@@ -103,7 +102,7 @@ const DashboardLayoutShell = ({
   organizationName,
   onAthleteSettings,
 }: Props) => {
-  const { language, setLanguage, t } = useI18n();
+  const { t } = useI18n();
   const { setColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme("light");
   const isDark = computedColorScheme === "dark";
@@ -298,16 +297,6 @@ const DashboardLayoutShell = ({
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>
-        <SegmentedControl
-          size="xs"
-          value={language}
-          onChange={(value) => setLanguage(value as "en" | "lt")}
-          data={[
-            { value: "en", label: "EN" },
-            { value: "lt", label: "LT" },
-          ]}
-          visibleFrom="xs"
-        />
       </Group>
     </Group>
   );

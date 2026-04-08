@@ -19,6 +19,18 @@ export const normalizeSport = (sport?: string | null) => {
   return 'other';
 };
 
+const parseDateInput = (input: string) => {
+  const raw = (input || '').trim();
+  const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const month = Number(dateOnlyMatch[2]) - 1;
+    const day = Number(dateOnlyMatch[3]);
+    return new Date(year, month, day);
+  }
+  return new Date(raw);
+};
+
 export const formatName = (athlete?: AthleteLike) => {
   if (!athlete) return 'Unknown athlete';
   if (athlete.profile?.first_name || athlete.profile?.last_name) {
@@ -28,7 +40,7 @@ export const formatName = (athlete?: AthleteLike) => {
 };
 
 export const toMonthKey = (isoDate: string) => {
-  const dt = new Date(isoDate);
+  const dt = parseDateInput(isoDate);
   const y = dt.getFullYear();
   const m = `${dt.getMonth() + 1}`.padStart(2, '0');
   return `${y}-${m}`;
@@ -41,7 +53,7 @@ export const parseMonthLabel = (monthKey: string) => {
 };
 
 export const toWeekKey = (isoDate: string) => {
-  const dt = new Date(isoDate);
+  const dt = parseDateInput(isoDate);
   return format(startOfWeek(dt, { weekStartsOn: 1 }), 'yyyy-MM-dd');
 };
 

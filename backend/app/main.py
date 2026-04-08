@@ -95,6 +95,11 @@ _ORG_UPLOADS_DIR = pathlib.Path(os.getenv("ORG_UPLOADS_DIR", "uploads/org"))
 _ORG_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads/org", StaticFiles(directory=str(_ORG_UPLOADS_DIR)), name="org_uploads")
 
+# User profile picture uploads — served at /uploads/user/<filename>
+_USER_UPLOADS_DIR = pathlib.Path(os.getenv("USER_UPLOADS_DIR", "uploads/user"))
+_USER_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads/user", StaticFiles(directory=str(_USER_UPLOADS_DIR)), name="user_uploads")
+
 allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,https://training-plans-1.onrender.com,https://training-plans.onrender.com")
 allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
 # Auto-include FRONTEND_BASE_URL so CORS works even if ALLOWED_ORIGINS is out of sync
@@ -162,6 +167,8 @@ async def on_startup() -> None:
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS contact_number VARCHAR(50)"))
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS menstruation_available_to_coach BOOLEAN DEFAULT FALSE"))
             await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS training_days JSONB"))
+            await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS preferred_language VARCHAR(10) DEFAULT 'en'"))
+            await conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS picture VARCHAR(255)"))
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"))
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS duplicate_of_id INTEGER REFERENCES activities(id)"))
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS rpe FLOAT"))

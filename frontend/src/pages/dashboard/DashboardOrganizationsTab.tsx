@@ -10,7 +10,6 @@ import {
   Modal,
   Paper,
   ScrollArea,
-  Select,
   SegmentedControl,
   SimpleGrid,
   Stack,
@@ -192,6 +191,12 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
     enabled: orgSettingsOpen && orgSettingsId !== null,
   });
 
+  useEffect(() => {
+    if (!orgSettingsQuery.data) return;
+    setOrgEditName(orgSettingsQuery.data.name || "");
+    setOrgEditDescription(orgSettingsQuery.data.description || "");
+  }, [orgSettingsQuery.data]);
+
   const updateOrgMutation = useMutation({
     mutationFn: (vars: { name: string; description: string }) =>
       updateOrganization(orgSettingsId as number, { name: vars.name, description: vars.description }),
@@ -236,12 +241,6 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
     setOrgEditDescription(currentDescription || "");
     setOrgPictureFile(null);
     setOrgSettingsOpen(true);
-
-    useEffect(() => {
-      if (!orgSettingsQuery.data) return;
-      setOrgEditName(orgSettingsQuery.data.name || "");
-      setOrgEditDescription(orgSettingsQuery.data.description || "");
-    }, [orgSettingsQuery.data]);
   };
 
   const [activeThreadKey, setActiveThreadKey] = useState<string>("group");
@@ -637,37 +636,80 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
           </ThemeIcon>
           <Title order={3}>{t("Organizations")}</Title>
         </Group>
-        <Group gap="xs">
-          {activeMemberships.length > 1 && (
-            <Select
-              size="xs"
-              w={220}
-              placeholder={t("Switch organization")}
-              data={activeMemberships
-                .filter((m) => m.organization)
-                .map((m) => ({ value: String(m.organization?.id), label: m.organization?.name || t("Organization") }))}
-              value={selectedActiveOrgId}
-              onChange={setSelectedActiveOrgId}
-              allowDeselect={false}
-            />
-          )}
-          {selectedActiveOrganizationId && isCurrentUserOrgAdmin && (
-            <Tooltip label={t("Organization settings")}>
-              <ActionIcon
-                variant="light"
-                color="indigo"
-                onClick={() => {
-                  const selected = activeMemberships.find((m) => m.organization?.id === selectedActiveOrganizationId)?.organization;
-                  if (!selected) return;
-                  openOrgSettings(selected.id, selected.name, selected.description || "");
-                }}
-              >
-                <IconSettings size={16} />
-              </ActionIcon>
-            </Tooltip>
-          )}
-        </Group>
       </Group>
+
+      {/* ── My Organizations ── */}
+      {activeMemberships.length > 0 && (
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
+          {activeMemberships.map((membership) => {
+            const org = membership.organization!;
+            const isSelected = org.id === selectedActiveOrganizationId;
+            const isAdmin = membership.is_admin;
+            const orgCoaches = (me.coaches || []).filter(
+              (coach) => (coach.organization_ids || []).includes(org.id),
+            );
+            return (
+              <Paper
+                key={org.id}
+                withBorder
+                p="md"
+                radius="md"
+                style={{
+                  cursor: "pointer",
+                  borderColor: isSelected ? "var(--mantine-color-indigo-6)" : (isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)"),
+                  borderWidth: isSelected ? 2 : 1,
+                  background: isSelected ? (isDark ? "rgba(99,102,241,0.10)" : "rgba(99,102,241,0.05)") : undefined,
+                  transition: "border-color 120ms ease, background 120ms ease",
+                }}
+                onClick={() => setSelectedActiveOrgId(String(org.id))}
+              >
+                <Group justify="space-between" align="flex-start" wrap="nowrap">
+                  <Group gap="sm" align="flex-start" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                    <Avatar
+                      radius="xl"
+                      size={44}
+                      src={resolveOrgPictureUrl(org.picture) || undefined}
+                      color="indigo"
+                    >
+                      {org.name.slice(0, 1).toUpperCase()}
+                    </Avatar>
+                    <Stack gap={2} style={{ flex: 1, minWidth: 0 }}>
+                      <Group gap="xs" wrap="nowrap">
+                        <Text fw={700} size="sm" lineClamp={1} style={{ flex: 1, minWidth: 0 }}>{org.name}</Text>
+                        {isAdmin && <Badge size="xs" variant="filled" color="indigo">{t("Admin")}</Badge>}
+                        {isSelected && <Badge size="xs" variant="light" color="green">{t("Active")}</Badge>}
+                      </Group>
+                      {org.description && (
+                        <Text size="xs" c="dimmed" lineClamp={2}>{org.description}</Text>
+                      )}
+                      {orgCoaches.length > 0 && (
+                        <Text size="xs" c="dimmed">
+                          {t("Coach")}: {orgCoaches.map((c) => `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.email).join(", ")}
+                        </Text>
+                      )}
+                    </Stack>
+                  </Group>
+                  {isAdmin && (
+                    <Tooltip label={t("Organization settings")}>
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        color="indigo"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openOrgSettings(org.id, org.name, org.description || "");
+                        }}
+                      >
+                        <IconSettings size={14} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </Group>
+              </Paper>
+            );
+          })}
+        </SimpleGrid>
+      )}
 
       {/* ── Discover section (athlete only) ── */}
       {me.role === "athlete" && (

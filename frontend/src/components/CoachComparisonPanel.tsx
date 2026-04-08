@@ -68,6 +68,7 @@ type ActivityListItem = {
   filename: string;
   sport?: string | null;
   created_at: string;
+  local_date?: string | null;
   distance?: number | null;
   duration?: number | null;
   moving_time?: number | null;
@@ -798,26 +799,33 @@ const ActivityCalendarPicker = ({
     return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
   }, []);
 
+  const activityDateKey = useCallback((activity: ActivityListItem) => {
+    if (activity.local_date && /^\d{4}-\d{2}-\d{2}$/.test(activity.local_date)) {
+      return activity.local_date;
+    }
+    return toDateKey(activity.created_at);
+  }, [toDateKey]);
+
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
 
   const activitiesByDate = useMemo(() => {
     const map = new Map<string, ActivityListItem[]>();
     activities.forEach((a) => {
-      const key = toDateKey(a.created_at);
+      const key = activityDateKey(a);
       if (!key) return;
       const list = map.get(key) || [];
       list.push(a);
       map.set(key, list);
     });
     return map;
-  }, [activities, toDateKey]);
+  }, [activities, activityDateKey]);
 
   const selectedDate = useMemo(() => {
     if (!selectedId) return null;
     const act = activities.find((a) => String(a.id) === selectedId);
     if (!act) return null;
-    return toDateKey(act.created_at);
-  }, [selectedId, activities, toDateKey]);
+    return activityDateKey(act);
+  }, [selectedId, activities, activityDateKey]);
 
   const [focusDate, setFocusDate] = useState<string | null>(selectedDate);
 
@@ -905,7 +913,7 @@ const ActivityCalendarPicker = ({
             <Text size="xs" c="dimmed">{t('Selected') || 'Selected'}</Text>
             <Text size="sm" fw={600}>{selectedActivity.filename}</Text>
             <Text size="xs" c="dimmed">
-              {formatName(athleteMap.get(selectedActivity.athlete_id))} · {new Date(selectedActivity.created_at).toLocaleDateString()} · {normalizeSport(selectedActivity.sport)}
+              {formatName(athleteMap.get(selectedActivity.athlete_id))} · {selectedActivity.local_date ? new Date(`${selectedActivity.local_date}T00:00:00`).toLocaleDateString() : new Date(selectedActivity.created_at).toLocaleDateString()} · {normalizeSport(selectedActivity.sport)}
             </Text>
           </Paper>
         )}
@@ -1026,7 +1034,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
       .sort((left, right) => (left.created_at < right.created_at ? 1 : -1))
       .map((activity) => ({
         value: String(activity.id),
-        label: `${formatName(athleteMap.get(activity.athlete_id))} · ${new Date(activity.created_at).toLocaleDateString()} · ${normalizeSport(activity.sport)} · ${activity.filename}`,
+        label: `${formatName(athleteMap.get(activity.athlete_id))} · ${activity.local_date ? new Date(`${activity.local_date}T00:00:00`).toLocaleDateString() : new Date(activity.created_at).toLocaleDateString()} · ${normalizeSport(activity.sport)} · ${activity.filename}`,
       }))
   ), [activities, athleteMap]);
 
@@ -1041,7 +1049,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
       const unique = Array.from(new Set(
         activities
           .filter((activity) => activity.athlete_id === athlete.id)
-          .map((activity) => toWeekKey(activity.created_at))
+          .map((activity) => toWeekKey(activity.local_date || activity.created_at))
           .filter((value): value is string => Boolean(value))
       )).sort((left, right) => (left < right ? 1 : -1));
       out.set(String(athlete.id), unique.map((value) => ({ value, label: parseWeekLabel(value) })));
@@ -1055,7 +1063,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
       const unique = Array.from(new Set(
         activities
           .filter((activity) => activity.athlete_id === athlete.id)
-          .map((activity) => toMonthKey(activity.created_at))
+          .map((activity) => toMonthKey(activity.local_date || activity.created_at))
           .filter((value): value is string => Boolean(value))
       )).sort((left, right) => (left < right ? 1 : -1));
       out.set(String(athlete.id), unique.map((value) => ({ value, label: parseMonthLabel(value) })));
@@ -1106,7 +1114,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     if (!leftAthleteId || !leftPeriodKey) return [];
     return activities
       .filter((activity) => String(activity.athlete_id) === leftAthleteId)
-      .filter((activity) => (mode === 'weeks' ? toWeekKey(activity.created_at) : toMonthKey(activity.created_at)) === leftPeriodKey)
+      .filter((activity) => (mode === 'weeks' ? toWeekKey(activity.local_date || activity.created_at) : toMonthKey(activity.local_date || activity.created_at)) === leftPeriodKey)
       .map((activity) => activity.id);
   }, [activities, leftAthleteId, leftPeriodKey, leftWorkoutId, mode]);
 
@@ -1115,7 +1123,7 @@ export const CoachComparisonPanel = ({ athletes, me, isAthlete }: { athletes: At
     if (!rightAthleteId || !rightPeriodKey) return [];
     return activities
       .filter((activity) => String(activity.athlete_id) === rightAthleteId)
-      .filter((activity) => (mode === 'weeks' ? toWeekKey(activity.created_at) : toMonthKey(activity.created_at)) === rightPeriodKey)
+      .filter((activity) => (mode === 'weeks' ? toWeekKey(activity.local_date || activity.created_at) : toMonthKey(activity.local_date || activity.created_at)) === rightPeriodKey)
       .map((activity) => activity.id);
   }, [activities, mode, rightAthleteId, rightPeriodKey, rightWorkoutId]);
 

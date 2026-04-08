@@ -357,8 +357,10 @@ const Dashboard = () => {
       const response = await api.put<User>("/users/profile", updatedProfile);
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      queryClient.setQueryData(["me"], data);
       queryClient.invalidateQueries({ queryKey: ["me"] });
+      queryClient.invalidateQueries({ queryKey: ["protected-route-session"] });
       notifications.show({
         color: "green",
         title: t("Profile saved") || "Profile saved",

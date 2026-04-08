@@ -2819,6 +2819,7 @@ async def get_activities(
                 athlete_id=activity.athlete_id,
                 filename=activity.filename,
                 created_at=activity.created_at,
+                local_date=activity.local_date,
                 file_type=activity.file_type,
                 sport=activity.sport,
                 distance=activity.distance,

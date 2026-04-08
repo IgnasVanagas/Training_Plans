@@ -1,9 +1,12 @@
 import { useState, useEffect } from "react";
 import {
+  ActionIcon,
+  Avatar,
   Box,
   Button,
   Checkbox,
   Divider,
+  FileInput,
   Group,
   NumberInput,
   Paper,
@@ -16,7 +19,11 @@ import {
   Title,
   useComputedColorScheme,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { DateInput } from "@mantine/dates";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { IconPhoto, IconUpload } from "@tabler/icons-react";
+import { uploadProfilePicture, resolveUserPictureUrl } from "../../api/organizations";
 import { useI18n } from "../../i18n/I18nProvider";
 import type { Profile, User } from "./types";
 
@@ -72,7 +79,21 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
       }
     : ({} as Profile);
 
+  const queryClient = useQueryClient();
   const [profile, setProfile] = useState<Profile>(initialProfile);
+  const [pictureFile, setPictureFile] = useState<File | null>(null);
+
+  const uploadPictureMutation = useMutation({
+    mutationFn: (file: File) => uploadProfilePicture(file),
+    onSuccess: () => {
+      notifications.show({ color: "green", title: t("Picture updated"), message: "" });
+      setPictureFile(null);
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+    onError: () => {
+      notifications.show({ color: "red", title: t("Upload failed"), message: "" });
+    },
+  });
 
   useEffect(() => {
     setProfile(initialProfile);
@@ -127,6 +148,44 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
 
   return (
     <Box maw={900} mx="auto" py="md">
+      {/* Profile picture */}
+      <Paper p="md" radius="md" withBorder bg={panelBg} mb="lg">
+        <Group gap="md" align="center">
+          <Avatar
+            radius="xl"
+            size={72}
+            src={resolveUserPictureUrl(user.profile?.picture) || undefined}
+            color="indigo"
+          >
+            {(user.profile?.first_name || user.email || "?").slice(0, 1).toUpperCase()}
+          </Avatar>
+          <Stack gap={4} style={{ flex: 1 }}>
+            <Text fw={700} size="sm">{t("Profile picture")}</Text>
+            <Group gap="xs" align="flex-end">
+              <FileInput
+                placeholder={t("Choose image")}
+                value={pictureFile}
+                onChange={setPictureFile}
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                leftSection={<IconPhoto size={14} />}
+                size="xs"
+                style={{ flex: 1 }}
+                clearable
+              />
+              <ActionIcon
+                variant="light"
+                color="indigo"
+                loading={uploadPictureMutation.isPending}
+                disabled={!pictureFile}
+                onClick={() => { if (pictureFile) uploadPictureMutation.mutate(pictureFile); }}
+              >
+                <IconUpload size={16} />
+              </ActionIcon>
+            </Group>
+          </Stack>
+        </Group>
+      </Paper>
+
       <Title order={2} mb="lg">{t("My Profile")}</Title>
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="xl">

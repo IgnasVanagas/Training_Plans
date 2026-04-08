@@ -4,6 +4,8 @@ import { IconSend } from "@tabler/icons-react";
 import { useState } from "react";
 import { addThreadComment, getThread } from "../../api/communications";
 import { formatDistanceToNow } from "date-fns";
+import { enUS, lt as ltLocale } from "date-fns/locale";
+import { useI18n } from "../../i18n/I18nProvider";
 
 interface CommentsPanelProps {
     entityType: "activity" | "workout";
@@ -15,6 +17,8 @@ export const CommentsPanel = ({ entityType, entityId, athleteId }: CommentsPanel
     const theme = useMantineTheme();
     const queryClient = useQueryClient();
     const [newComment, setNewComment] = useState("");
+    const { language, t } = useI18n();
+    const relativeTimeLocale = language === "lt" ? ltLocale : enUS;
 
     const { data: thread, isLoading } = useQuery({
         queryKey: ["thread", entityType, entityId],
@@ -45,14 +49,14 @@ export const CommentsPanel = ({ entityType, entityId, athleteId }: CommentsPanel
 
     return (
         <Paper withBorder p="md" radius="lg" h="100%" display="flex" style={{ flexDirection: "column" }}>
-            <Title order={5} mb="sm">Comments</Title>
+            <Title order={5} mb="sm">{t("Comments")}</Title>
             
             <Box style={{ flex: 1, position: "relative" }}>
                 <LoadingOverlay visible={isLoading} />
                 <ScrollArea h={300} type="always" offsetScrollbars>
                     <Stack gap="md" pr="xs">
                         {thread?.comments.length === 0 && (
-                            <Text c="dimmed" fs="italic" size="sm">No comments yet.</Text>
+                            <Text c="dimmed" fs="italic" size="sm">{t("No comments yet.")}</Text>
                         )}
                         {thread?.comments.map((comment) => (
                             <Group key={comment.id} align="flex-start" wrap="nowrap">
@@ -62,10 +66,10 @@ export const CommentsPanel = ({ entityType, entityId, athleteId }: CommentsPanel
                                 <Paper withBorder p="xs" radius="md" bg={theme.colors.gray[0]} style={{ flex: 1 }}>
                                     <Group justify="space-between" mb={4}>
                                         <Text size="xs" fw={700} c={comment.author_role === "coach" ? "teal" : "blue"}>
-                                            {comment.author_role === "coach" ? "Coach" : "Athlete"}
+                                            {comment.author_role === "coach" ? t("Coach") : t("Athlete")}
                                         </Text>
                                         <Text size="xs" c="dimmed">
-                                            {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
+                                            {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true, locale: relativeTimeLocale })}
                                         </Text>
                                     </Group>
                                     <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{comment.body}</Text>
@@ -78,7 +82,7 @@ export const CommentsPanel = ({ entityType, entityId, athleteId }: CommentsPanel
 
             <Group align="flex-end" mt="md" gap="xs">
                 <Textarea
-                    placeholder="Write a comment..."
+                    placeholder={t("Write a comment...")}
                     autosize
                     minRows={1}
                     maxRows={4}

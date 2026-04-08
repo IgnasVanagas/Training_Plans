@@ -1168,6 +1168,37 @@ async def update_profile(
     return current_user
 
 
+_USER_UPLOADS_DIR = pathlib.Path("uploads/user")
+_USER_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@router.post("/profile/picture", response_model=UserOut)
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UserOut:
+    """Upload or replace the current user's profile picture."""
+    ext = pathlib.Path(file.filename or "").suffix.lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+        raise HTTPException(status_code=400, detail="Only image files are allowed (jpg, png, webp, gif)")
+
+    filename = f"{uuid.uuid4()}{ext}"
+    dest = _USER_UPLOADS_DIR / filename
+    with dest.open("wb") as out_file:
+        shutil.copyfileobj(file.file, out_file)
+
+    if not current_user.profile:
+        current_user.profile = Profile(user_id=current_user.id)
+        db.add(current_user.profile)
+
+    current_user.profile.picture = filename
+    await db.commit()
+    await db.refresh(current_user)
+    _normalize_user_for_response(current_user)
+    return current_user
+
+
 # ─── Org admin helpers ─────────────────────────────────────────────────────────
 
 _ORG_UPLOADS_DIR = pathlib.Path("uploads/org")

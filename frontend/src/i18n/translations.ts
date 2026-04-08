@@ -50,6 +50,10 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Personal Information": "Asmeninė informacija",
     "Date of Birth": "Gimimo data",
     "Time Zone": "Laiko juosta",
+    "Timezone": "Laiko juosta",
+    "Language": "Kalba",
+    "English": "Anglų",
+    "Lithuanian": "Lietuvių",
     "Preferred Units": "Pageidaujami vienetai",
     "Week Start Day": "Savaitės pradžios diena",
     "Sports": "Sporto šakos",
@@ -428,6 +432,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "RPE, mood, soreness (optional)": "RPE, nuotaika, skausmingumas (nebūtina)",
     "Loading calendar...": "Įkeliamas kalendorius...",
     "Loading activities...": "Įkeliamos veiklos...",
+    "Used across the app and synced to your account": "Naudojama visoje programoje ir sinchronizuojama su jūsų paskyra",
     "Filter by Date Range": "Filtruoti pagal datų intervalą",
     "Deleted": "Ištrinta",
     "No activities for this day.": "Šiai dienai veiklų nėra.",
@@ -466,16 +471,27 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "How did this session feel?": "Kaip jautėtės šioje sesijoje?",
     "No notes provided.": "Pastabų nepateikta.",
     "Focus Mode": "Fokusavimo režimas",
+    "Show": "Rodyti",
+    "5s Power avg": "5 s galios vid.",
+    "Pacing": "Tempo valdymas",
+    "Cardio": "Kardio",
+    "Efficiency": "Efektyvumas",
     "Heart Rate": "Širdies ritmas",
     "Pace": "Tempas",
     "Power": "Galia",
     "Cadence": "Kadencija",
     "Altitude": "Aukštis",
+    "Today": "Šiandien",
+    "Month": "Mėnuo",
+    "Comments": "Komentarai",
+    "No comments yet.": "Komentarų dar nėra.",
+    "Write a comment...": "Parašykite komentarą...",
     "Best Efforts": "Geriausi rezultatai",
     "Show PRs only": "Rodyti tik rekordus",
     "Time": "Laikas",
     "Distance": "Atstumas",
     "Elev": "Aukštis",
+    "W/kg": "W/kg",
     "Max Power": "Maksimali galia",
     "Pace Zone Time": "Tempo zonos laikas",
     "Power Zone Time": "Galios zonos laikas",
@@ -507,6 +523,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Re-parse": "Perkurti duomenis",
     "Re-parse activity from original file.": "Perkurti veiklos duomenis iš originalaus failo.",
     "Selected": "Pasirinkta",
+    "No stream data available for this activity": "Šiai veiklai nėra srauto duomenų",
     "No activities on this date": "Šią dieną veiklų nėra",
     "Visible stats": "Matoma statistika",
     "Avg HR": "Vid. ŠSD",
@@ -875,7 +892,6 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Metric system": "Metrinė sistema"
     ,"km, kg": "km, kg"
     ,"Select timezone": "Pasirinkite laiko juostą"
-    ,"Timezone": "Laiko juosta"
     ,"Used for message timestamps and scheduling": "Naudojama pranešimų laikui ir planavimui"
     ,"No timezone found": "Laiko juosta nerasta"
     ,"Training days": "Treniruočių dienos"

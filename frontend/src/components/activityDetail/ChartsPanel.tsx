@@ -91,13 +91,13 @@ export const ChartsPanel = ({
         <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
             <Group justify="space-between" mb="md" wrap="wrap" gap="sm">
                 <Group gap="xs" wrap="wrap">
-                    <Text size="xs" fw={700} c={ui.textDim}>Show:</Text>
-                    <Chip size="xs" checked={visibleSeries.heart_rate} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, heart_rate: checked }))} variant="light">Heart Rate</Chip>
-                    {supportsPaceSeries && <Chip size="xs" checked={visibleSeries.pace} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, pace: checked }))} variant="light">Pace</Chip>}
-                    {supportsSpeedSeries && <Chip size="xs" checked={visibleSeries.speed} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, speed: checked }))} variant="light">Speed</Chip>}
-                    <Chip size="xs" checked={visibleSeries.power} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, power: checked }))} variant="light">Power</Chip>
-                    <Chip size="xs" checked={visibleSeries.cadence} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, cadence: checked }))} variant="light">Cadence</Chip>
-                    <Chip size="xs" checked={visibleSeries.altitude} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, altitude: checked }))} variant="light">Altitude</Chip>
+                    <Text size="xs" fw={700} c={ui.textDim}>{t("Show")}</Text>
+                    <Chip size="xs" checked={visibleSeries.heart_rate} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, heart_rate: checked }))} variant="light">{t("Heart Rate")}</Chip>
+                    {supportsPaceSeries && <Chip size="xs" checked={visibleSeries.pace} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, pace: checked }))} variant="light">{t("Pace")}</Chip>}
+                    {supportsSpeedSeries && <Chip size="xs" checked={visibleSeries.speed} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, speed: checked }))} variant="light">{t("Speed")}</Chip>}
+                    <Chip size="xs" checked={visibleSeries.power} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, power: checked }))} variant="light">{t("Power")}</Chip>
+                    <Chip size="xs" checked={visibleSeries.cadence} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, cadence: checked }))} variant="light">{t("Cadence")}</Chip>
+                    <Chip size="xs" checked={visibleSeries.altitude} onChange={(checked) => setVisibleSeries((prev) => ({ ...prev, altitude: checked }))} variant="light">{t("Altitude")}</Chip>
                 </Group>
                 <Group gap="xs">
                     <SegmentedControl
@@ -105,8 +105,8 @@ export const ChartsPanel = ({
                         value={powerChartMode}
                         onChange={(v) => setPowerChartMode(v as 'raw' | 'avg5s')}
                         data={[
-                            { label: 'Power', value: 'raw' },
-                            { label: '5s Power avg', value: 'avg5s' },
+                            { label: t('Power'), value: 'raw' },
+                            { label: t('5s Power avg'), value: 'avg5s' },
                         ]}
                     />
                     {focusMode && (
@@ -115,16 +115,16 @@ export const ChartsPanel = ({
                             value={focusObjective}
                             onChange={(v) => v && setFocusObjective(v as typeof focusObjective)}
                             data={[
-                                { value: 'pacing', label: 'Pacing' },
-                                { value: 'cardio', label: 'Cardio' },
-                                { value: 'efficiency', label: 'Efficiency' },
+                                { value: 'pacing', label: t('Pacing') },
+                                { value: 'cardio', label: t('Cardio') },
+                                { value: 'efficiency', label: t('Efficiency') },
                             ]}
                             w={120}
                         />
                     )}
                     <Switch
                         size="xs"
-                        label="Focus mode"
+                        label={t("Focus Mode")}
                         checked={focusMode}
                         onChange={(e) => setFocusMode(e.currentTarget.checked)}
                     />
@@ -184,13 +184,13 @@ export const ChartsPanel = ({
                                         const powerValue = powerChartMode === 'avg5s' ? Number(point.power_5s) : Number(point.power_raw);
                                         return (
                                             <Paper withBorder p={6} radius="sm" bg={ui.surfaceAlt}>
-                                                <Text size="xs" c={ui.textDim} fw={600} mb={4}>Time: {formatElapsedFromMinutes(point.time_min)}</Text>
-                                                {focusSeries.heart_rate && <Text size="xs" c={ui.textMain}>HR: {Number.isFinite(Number(point.heart_rate)) ? `${Math.round(Number(point.heart_rate))} bpm` : '-'}</Text>}
-                                                {focusSeries.power && <Text size="xs" c={ui.textMain}>Power: {Number.isFinite(powerValue) ? `${Math.round(powerValue)} W` : '-'}</Text>}
-                                                {focusSeries.pace && <Text size="xs" c={ui.textMain}>Pace: {paceText}</Text>}
-                                                {focusSeries.speed && <Text size="xs" c={ui.textMain}>Speed: {Number.isFinite(Number(point.speed_display)) ? `${Number(point.speed_display).toFixed(1)} ${speedUnit}` : '-'}</Text>}
-                                                {focusSeries.cadence && <Text size="xs" c={ui.textMain}>Cadence: {Number.isFinite(Number(point.cadence)) ? `${Math.round(Number(point.cadence))} rpm` : '-'}</Text>}
-                                                {focusSeries.altitude && <Text size="xs" c={ui.textMain}>Elev: {Number.isFinite(Number(point.altitude)) ? `${Math.round(Number(point.altitude))} m` : '-'}</Text>}
+                                                <Text size="xs" c={ui.textDim} fw={600} mb={4}>{t("Time")}: {formatElapsedFromMinutes(point.time_min)}</Text>
+                                                {focusSeries.heart_rate && <Text size="xs" c={ui.textMain}>{t("HR")}: {Number.isFinite(Number(point.heart_rate)) ? `${Math.round(Number(point.heart_rate))} bpm` : '-'}</Text>}
+                                                {focusSeries.power && <Text size="xs" c={ui.textMain}>{t("Power")}: {Number.isFinite(powerValue) ? `${Math.round(powerValue)} W` : '-'}</Text>}
+                                                {focusSeries.pace && <Text size="xs" c={ui.textMain}>{t("Pace")}: {paceText}</Text>}
+                                                {focusSeries.speed && <Text size="xs" c={ui.textMain}>{t("Speed")}: {Number.isFinite(Number(point.speed_display)) ? `${Number(point.speed_display).toFixed(1)} ${speedUnit}` : '-'}</Text>}
+                                                {focusSeries.cadence && <Text size="xs" c={ui.textMain}>{t("Cadence")}: {Number.isFinite(Number(point.cadence)) ? `${Math.round(Number(point.cadence))} rpm` : '-'}</Text>}
+                                                {focusSeries.altitude && <Text size="xs" c={ui.textMain}>{t("Elev")}: {Number.isFinite(Number(point.altitude)) ? `${Math.round(Number(point.altitude))} m` : '-'}</Text>}
                                             </Paper>
                                         );
                                     }}
@@ -252,7 +252,7 @@ export const ChartsPanel = ({
             ) : (
                 <Stack align="center" justify="center" h={200}>
                     <IconActivity size={40} color="gray" />
-                    <Text c={ui.textDim}>No stream data available for this activity</Text>
+                    <Text c={ui.textDim}>{t("No stream data available for this activity")}</Text>
                 </Stack>
             )}
         </Paper>

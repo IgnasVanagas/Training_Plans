@@ -6,12 +6,17 @@ const originalTextByNode = new WeakMap<Text, string>();
 type I18nContextValue = {
   language: Language;
   setLanguage: (language: Language) => void;
+  syncLanguagePreference: (language: unknown) => void;
   t: (text: string) => string;
 };
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 const STORAGE_KEY = "platform_language";
+
+const normalizeLanguage = (value: unknown): Language | null => {
+  return value === "lt" || value === "en" ? value : null;
+};
 
 const translateText = (source: string, language: Language): string => {
   if (!source || language === "en") return source;
@@ -89,13 +94,26 @@ export const I18nProvider = ({ children }: { children: React.ReactNode }) => {
   const frameRef = useRef<number | null>(null);
 
   const [language, setLanguageState] = useState<Language>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "lt" || stored === "en") return stored;
+    const stored = normalizeLanguage(localStorage.getItem(STORAGE_KEY));
+    if (stored) return stored;
     return "en";
   });
 
   const setLanguage = (nextLanguage: Language) => {
+    if (nextLanguage === language) {
+      localStorage.setItem(STORAGE_KEY, nextLanguage);
+      return;
+    }
     setLanguageState(nextLanguage);
+    localStorage.setItem(STORAGE_KEY, nextLanguage);
+  };
+
+  const syncLanguagePreference = (candidate: unknown) => {
+    const nextLanguage = normalizeLanguage(candidate);
+    if (!nextLanguage) return;
+    if (nextLanguage !== language) {
+      setLanguageState(nextLanguage);
+    }
     localStorage.setItem(STORAGE_KEY, nextLanguage);
   };
 
@@ -142,6 +160,7 @@ export const I18nProvider = ({ children }: { children: React.ReactNode }) => {
   const value = useMemo<I18nContextValue>(() => ({
     language,
     setLanguage,
+    syncLanguagePreference,
     t: (text: string) => translateText(text, language),
   }), [language]);
 

@@ -22,8 +22,10 @@ export type Profile = {
   auto_sync_integrations?: boolean | null;
   main_sport?: string | null;
   timezone?: string | null;
+  preferred_language?: string | null;
   preferred_units?: string | null;
   week_start_day?: string | null;
+  picture?: string | null;
 };
 
 export type User = {

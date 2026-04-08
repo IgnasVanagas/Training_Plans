@@ -48,8 +48,10 @@ class ProfileOut(BaseModel):
     auto_sync_integrations: bool = True
     main_sport: Optional[str] = None
     timezone: Optional[str] = None
+    preferred_language: Optional[str] = None
     preferred_units: Optional[str] = None
     week_start_day: Optional[str] = None
+    picture: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -122,6 +124,7 @@ class ProfileUpdate(BaseModel):
     auto_sync_integrations: Optional[bool] = None
     main_sport: Optional[str] = None
     timezone: Optional[str] = None
+    preferred_language: Optional[str] = None
     preferred_units: Optional[str] = None
     week_start_day: Optional[str] = None
 
@@ -421,6 +424,7 @@ class AthletePermissionUpdate(BaseModel):
 class ActivityBase(BaseModel):
     filename: str
     created_at: datetime
+    local_date: Optional[dt_date] = None
     file_type: str
     sport: Optional[str] = None
     distance: Optional[float] = None

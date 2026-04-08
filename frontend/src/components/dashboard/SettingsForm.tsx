@@ -9,6 +9,7 @@ import {
   Paper,
   PasswordInput,
   Select,
+  SegmentedControl,
   Stack,
   Text,
   Title,
@@ -70,7 +71,7 @@ const SettingsForm = ({
   onChangePassword,
 }: SettingsFormProps) => {
   const isDark = useComputedColorScheme("light") === "dark";
-  const { t } = useI18n();
+  const { language, setLanguage, t } = useI18n();
   const panelBg = isDark ? "var(--mantine-color-dark-6)" : "white";
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -148,6 +149,28 @@ const SettingsForm = ({
               placeholder={t("Select timezone") || "Select timezone"}
               nothingFoundMessage={t("No timezone found") || "No timezone found"}
               disabled={isSaving}
+            />
+          </Stack>
+
+          <Divider />
+
+          {/* Language */}
+          <Stack gap="xs">
+            <Text fw={600}>{t("Language") || "Language"}</Text>
+            <Text size="sm" c="dimmed">{t("Used across the app and synced to your account") || "Used across the app and synced to your account"}</Text>
+            <SegmentedControl
+              value={language}
+              onChange={(value) => {
+                const nextLanguage = value as "en" | "lt";
+                setLanguage(nextLanguage);
+                onSubmit({ preferred_language: nextLanguage } as Record<string, unknown>);
+              }}
+              data={[
+                { value: "en", label: t("English") || "English" },
+                { value: "lt", label: t("Lithuanian") || "Lithuanian" },
+              ]}
+              disabled={isSaving}
+              fullWidth
             />
           </Stack>
 
