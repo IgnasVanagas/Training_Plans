@@ -249,7 +249,7 @@ export const FullscreenMapModal = ({
                                         margin={{ top: 4, right: 8, left: 8, bottom: 4 }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={ui.border} />
-                                        <XAxis dataKey="distance" hide tickFormatter={(v: number) => `${(v / 1000).toFixed(1)} km`} />
+                                        <XAxis dataKey="time_min" hide />
                                         <YAxis yAxisId="selection" hide domain={[0, 1]} />
                                         <YAxis yAxisId="alt" hide domain={['dataMin - 10', 'dataMax + 10']} />
                                         <YAxis yAxisId="hr" hide domain={['auto', 'auto']} />
@@ -283,8 +283,8 @@ export const FullscreenMapModal = ({
                                         {chartSelection && chartRenderData[chartSelection.startIdx] && chartRenderData[chartSelection.endIdx] && (
                                             <ReferenceArea
                                                 yAxisId="selection"
-                                                x1={chartRenderData[chartSelection.startIdx].distance}
-                                                x2={chartRenderData[chartSelection.endIdx].distance}
+                                                x1={chartRenderData[chartSelection.startIdx].time_min}
+                                                x2={chartRenderData[chartSelection.endIdx].time_min}
                                                 y1={0}
                                                 y2={1}
                                                 fill={ui.accent}
