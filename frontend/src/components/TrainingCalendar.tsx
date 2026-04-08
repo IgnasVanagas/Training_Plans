@@ -349,6 +349,8 @@ export const TrainingCalendar = ({
         enabled: Boolean(calendarSeasonPlanAthleteId),
         queryFn: () => getLatestSeasonPlan(calendarSeasonPlanAthleteId),
         staleTime: 1000 * 60,
+        retry: 2,
+        retryDelay: (attemptIndex) => Math.min(1500 * (attemptIndex + 1), 4000),
     });
 
     useEffect(() => {

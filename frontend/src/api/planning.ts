@@ -1,5 +1,7 @@
 import api from "./client";
 
+const seasonPlanRequestTimeoutMs = Number(import.meta.env.VITE_SEASON_PLAN_TIMEOUT_MS || 45000);
+
 export type PlannerTargetMetric = {
   metric: string;
   value: string | number;
@@ -83,6 +85,9 @@ export type SeasonPlanApplyResponse = {
 export const getLatestSeasonPlan = async (athleteId?: number | null): Promise<SeasonPlan | null> => {
   const response = await api.get<SeasonPlan | null>("/planning/season", {
     params: athleteId ? { athlete_id: athleteId } : undefined,
+    timeout: Number.isFinite(seasonPlanRequestTimeoutMs) && seasonPlanRequestTimeoutMs > 0
+      ? seasonPlanRequestTimeoutMs
+      : 45000,
   });
   return response.data;
 };
