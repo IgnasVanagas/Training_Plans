@@ -143,8 +143,22 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
 
 @router.post("/logout")
 async def logout(response: Response) -> dict:
-    response.delete_cookie(key="access_token", path="/")
-    response.delete_cookie(key="refresh_token", path="/")
+    secure_cookie = os.getenv("AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
+    same_site_cookie = (os.getenv("AUTH_COOKIE_SAMESITE") or "lax").strip().lower()
+    if same_site_cookie not in {"lax", "strict", "none"}:
+        same_site_cookie = "lax"
+    response.delete_cookie(
+        key="access_token",
+        path="/",
+        secure=secure_cookie,
+        samesite=same_site_cookie,
+    )
+    response.delete_cookie(
+        key="refresh_token",
+        path="/",
+        secure=secure_cookie,
+        samesite=same_site_cookie,
+    )
     return {"message": "Logged out"}
 
 

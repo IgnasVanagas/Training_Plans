@@ -105,34 +105,55 @@ const LoginPage = () => {
       markAuthSessionActive(data.access_token);
       queryClient.clear();
 
-      try {
-        const meResponse = await api.get<{ email?: string | null }>("/users/me");
-        const authenticatedEmail = String(meResponse.data?.email || "").trim().toLowerCase();
-        if (!authenticatedEmail || authenticatedEmail !== data.requestedEmail) {
-          await api.post("/auth/logout").catch(() => {});
-          clearAuthSession();
-          queryClient.clear();
-          setError("Login failed for the selected account. Please try again.");
-          return;
+      // Wait briefly to ensure cookies are processed by browser
+      await new Promise(res => setTimeout(res, 100));
+
+      let verificationAttempts = 0;
+      const maxAttempts = 2;
+      let lastError: any = null;
+
+      while (verificationAttempts < maxAttempts) {
+        try {
+          const meResponse = await api.get<{ email?: string | null }>("/users/me");
+          const authenticatedEmail = String(meResponse.data?.email || "").trim().toLowerCase();
+          
+          if (authenticatedEmail && authenticatedEmail === data.requestedEmail) {
+            // Success - correct account verified
+            sessionStorage.setItem(STRAVA_LOGIN_RECENT_SYNC_FLAG, "1");
+            if (inviteCode) {
+              try {
+                await api.put("/users/organization/join", { code: inviteCode });
+              } catch (err) {
+                setError(getErrorMessage(err));
+                return;
+              }
+            }
+            navigate("/dashboard", { replace: true });
+            return;
+          }
+
+          lastError = { email: authenticatedEmail, expected: data.requestedEmail };
+          verificationAttempts++;
+
+          if (verificationAttempts < maxAttempts) {
+            await new Promise(res => setTimeout(res, 200));
+          }
+        } catch (err) {
+          lastError = err;
+          verificationAttempts++;
+
+          if (verificationAttempts < maxAttempts) {
+            await new Promise(res => setTimeout(res, 200));
+          }
         }
-      } catch (err) {
-        await api.post("/auth/logout").catch(() => {});
-        clearAuthSession();
-        queryClient.clear();
-        setError(getErrorMessage(err));
-        return;
       }
 
-      sessionStorage.setItem(STRAVA_LOGIN_RECENT_SYNC_FLAG, "1");
-      if (inviteCode) {
-        try {
-          await api.put("/users/organization/join", { code: inviteCode });
-        } catch (err) {
-          setError(getErrorMessage(err));
-          return;
-        }
-      }
-      navigate("/dashboard", { replace: true });
+      // All verification attempts failed
+      console.error("Login verification failed after retries:", lastError);
+      await api.post("/auth/logout").catch(() => {});
+      clearAuthSession();
+      queryClient.clear();
+      setError("Login failed for the selected account. Please try again.");
     },
     onError: (err) => setError(getErrorMessage(err))
   });
