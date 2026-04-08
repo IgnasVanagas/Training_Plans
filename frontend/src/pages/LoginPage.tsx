@@ -18,13 +18,13 @@ import {
   List
 } from "@mantine/core";
 import { DateInput } from '@mantine/dates';
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { IconAt, IconLock, IconUser, IconBuilding } from "@tabler/icons-react";
 import api from "../api/client";
 import SupportContactButton from "../components/common/SupportContactButton";
 import { useI18n } from "../i18n/I18nProvider";
-import { hasAuthSession, markAuthSessionActive } from "../utils/authSession";
+import { clearAuthSession, hasAuthSession, markAuthSessionActive } from "../utils/authSession";
 
 const appLogo = "/origami-logo.png";
 
@@ -32,11 +32,16 @@ type AuthResponse = {
   access_token: string;
 };
 
+type LoginResult = AuthResponse & {
+  requestedEmail: string;
+};
+
 const STRAVA_LOGIN_RECENT_SYNC_FLAG = "tp:strava-login-recent-sync";
 
 const LoginPage = () => {
   const { language, setLanguage, t } = useI18n();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const inviteCode = searchParams.get("invite");
   const verifyToken = searchParams.get("verify");
@@ -81,15 +86,43 @@ const LoginPage = () => {
   };
 
   const loginMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<LoginResult> => {
+      const requestedEmail = email.trim().toLowerCase();
+
+      // Ensure old auth cookies are cleared before establishing a new account session.
+      await api.post("/auth/logout").catch(() => {});
+
       const response = await api.post<AuthResponse>("/auth/login", {
-        email: email.trim().toLowerCase(),
+        email: requestedEmail,
         password
       });
-      return response.data;
+      return {
+        ...response.data,
+        requestedEmail,
+      };
     },
     onSuccess: async (data) => {
       markAuthSessionActive(data.access_token);
+      queryClient.clear();
+
+      try {
+        const meResponse = await api.get<{ email?: string | null }>("/users/me");
+        const authenticatedEmail = String(meResponse.data?.email || "").trim().toLowerCase();
+        if (!authenticatedEmail || authenticatedEmail !== data.requestedEmail) {
+          await api.post("/auth/logout").catch(() => {});
+          clearAuthSession();
+          queryClient.clear();
+          setError("Login failed for the selected account. Please try again.");
+          return;
+        }
+      } catch (err) {
+        await api.post("/auth/logout").catch(() => {});
+        clearAuthSession();
+        queryClient.clear();
+        setError(getErrorMessage(err));
+        return;
+      }
+
       sessionStorage.setItem(STRAVA_LOGIN_RECENT_SYNC_FLAG, "1");
       if (inviteCode) {
         try {
@@ -121,6 +154,7 @@ const LoginPage = () => {
     },
     onSuccess: (data) => {
       markAuthSessionActive(data.access_token);
+      queryClient.clear();
       navigate("/dashboard", { replace: true });
     },
     onError: (err) => setError(getErrorMessage(err))

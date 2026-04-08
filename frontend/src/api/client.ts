@@ -53,6 +53,25 @@ api.interceptors.request.use((config) => {
 let isRefreshing = false;
 let refreshSubscribers: Array<(token: string) => void> = [];
 
+function extractBearerToken(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const match = value.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+function getRequestToken(request: InternalAxiosRequestConfig | undefined): string | null {
+  if (!request?.headers) {
+    return null;
+  }
+  const direct = extractBearerToken((request.headers as any).Authorization);
+  if (direct) {
+    return direct;
+  }
+  return extractBearerToken((request.headers as any).authorization);
+}
+
 function onTokenRefreshed(token: string) {
   refreshSubscribers.forEach((cb) => cb(token));
   refreshSubscribers = [];
@@ -68,8 +87,16 @@ api.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      const currentToken = getAuthToken();
+      const requestToken = getRequestToken(originalRequest);
+
+      // Ignore stale in-flight requests from an older account/token.
+      if (requestToken && currentToken && requestToken !== currentToken) {
+        return Promise.reject(error);
+      }
+
       // Never revive a session from refresh cookies after explicit local logout.
-      if (!hasAuthSession()) {
+      if (!hasAuthSession() || !currentToken) {
         return Promise.reject(error);
       }
 
@@ -92,6 +119,7 @@ api.interceptors.response.use(
 
       originalRequest._retry = true;
       isRefreshing = true;
+      const refreshStartToken = currentToken;
 
       const attemptRefresh = async (attemptsLeft: number): Promise<string> => {
         try {
@@ -114,6 +142,13 @@ api.interceptors.response.use(
 
       try {
         const newToken = await attemptRefresh(1);
+
+        // If auth changed while refreshing (e.g. user switched accounts),
+        // do not overwrite newer session state with older refresh results.
+        if (!hasAuthSession() || getAuthToken() !== refreshStartToken) {
+          return Promise.reject(error);
+        }
+
         markAuthSessionActive(newToken);
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         onTokenRefreshed(newToken);

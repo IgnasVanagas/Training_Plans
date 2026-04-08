@@ -245,12 +245,14 @@ async def find_duplicate_activity(
 
     # Tier 1: Provider + source_id — search ALL rows (including secondaries) so
     #         re-syncing a previously-marked duplicate doesn't create a new row.
+    #         Deleted activities are excluded so re-syncing after deletion works.
     if source_provider and source_activity_id:
         sp = source_provider.strip().lower()
         si = source_activity_id.strip()
         found = await db.scalar(
             select(Activity).where(
                 Activity.athlete_id == athlete_id,
+                Activity.is_deleted == False,  # noqa: E712
                 Activity.streams["_meta"]["source_provider"].astext == sp,
                 Activity.streams["_meta"]["source_activity_id"].astext == si,
             ).limit(1)
@@ -258,11 +260,12 @@ async def find_duplicate_activity(
         if found:
             return await _resolve_primary(found)
 
-    # Tier 2: File SHA-256 (originals only)
+    # Tier 2: File SHA-256 (originals only, non-deleted)
     if file_sha256:
         found = await db.scalar(
             select(Activity).where(
                 Activity.athlete_id == athlete_id,
+                Activity.is_deleted == False,  # noqa: E712
                 Activity.streams["_meta"]["file_sha256"].astext == file_sha256,
                 Activity.duplicate_of_id.is_(None),
             ).limit(1)
@@ -270,11 +273,12 @@ async def find_duplicate_activity(
         if found:
             return found
 
-    # Tier 3: Fingerprint v1 (originals only)
+    # Tier 3: Fingerprint v1 (originals only, non-deleted)
     if fingerprint_v1:
         found = await db.scalar(
             select(Activity).where(
                 Activity.athlete_id == athlete_id,
+                Activity.is_deleted == False,  # noqa: E712
                 Activity.streams["_meta"]["fingerprint_v1"].astext == fingerprint_v1,
                 Activity.duplicate_of_id.is_(None),
             ).limit(1)
@@ -282,13 +286,14 @@ async def find_duplicate_activity(
         if found:
             return found
 
-    # Tier 4: Fuzzy — pull narrow window from DB, match in Python
+    # Tier 4: Fuzzy — pull narrow window from DB, match in Python (non-deleted only)
     if created_at is not None:
         window_start = created_at - timedelta(seconds=_FUZZY_WINDOW_S)
         window_end = created_at + timedelta(seconds=_FUZZY_WINDOW_S)
         candidates_res = await db.execute(
             select(Activity).where(
                 Activity.athlete_id == athlete_id,
+                Activity.is_deleted == False,  # noqa: E712
                 Activity.duplicate_of_id.is_(None),
                 Activity.created_at.between(window_start, window_end),
             )
