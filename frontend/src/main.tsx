@@ -8,6 +8,7 @@ import { extractApiErrorMessage } from "./pages/dashboard/utils";
 import "@mantine/core/styles.css";
 import "@mantine/dates/styles.css";
 import "@mantine/notifications/styles.css";
+import "./styles/animations.css";
 import App from "./App";
 import { I18nProvider } from "./i18n/I18nProvider";
 import AppErrorBoundary from "./components/common/AppErrorBoundary";

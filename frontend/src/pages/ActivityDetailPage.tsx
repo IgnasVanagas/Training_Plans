@@ -1630,11 +1630,11 @@ export const ActivityDetailPage = () => {
                     borderBottom: `1px solid ${ui.border}`
                 }}
             >
-                <Group justify="space-between" style={{ flex: 1 }}>
-                    <Group>
-                        <ActionIcon variant="subtle" onClick={handleBack} radius="md" color="gray"><IconArrowLeft size={18} /></ActionIcon>
-                        <Title order={4} c={ui.textMain}>{activity.filename}</Title>
-                        <Text size="sm" c={ui.textDim} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Group justify="space-between" style={{ flex: 1 }} wrap="nowrap">
+                    <Group wrap="nowrap" style={{ minWidth: 0, flex: 1 }}>
+                        <ActionIcon variant="subtle" onClick={handleBack} radius="md" color="gray" style={{ flexShrink: 0 }}><IconArrowLeft size={18} /></ActionIcon>
+                        <Title order={4} c={ui.textMain} lineClamp={1} style={{ minWidth: 0 }}>{activity.filename}</Title>
+                        <Text size="sm" c={ui.textDim} visibleFrom="sm" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                             <IconClock size={14} />
                             {(() => {
                                 const raw = streamPoints[0]?.timestamp || activity.created_at;
@@ -1646,10 +1646,10 @@ export const ActivityDetailPage = () => {
                                     + ' ' + dt.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: tz });
                             })()}
                         </Text>
-                        <Badge color={activity.sport === 'running' ? 'green' : 'blue'} variant="light">{activity.sport || 'activity'}</Badge>
-                        {activity.is_deleted && <Badge color="red" variant="light">Deleted</Badge>}
+                        <Badge color={activity.sport === 'running' ? 'green' : 'blue'} variant="light" style={{ flexShrink: 0 }}>{activity.sport || 'activity'}</Badge>
+                        {activity.is_deleted && <Badge color="red" variant="light" style={{ flexShrink: 0 }}>Deleted</Badge>}
                         {activity.strava_activity_url && (
-                            <Anchor href={activity.strava_activity_url} target="_blank" rel="noopener noreferrer" size="xs" fw={600} c="#FC5200" style={{ textDecoration: 'underline' }}>
+                            <Anchor href={activity.strava_activity_url} target="_blank" rel="noopener noreferrer" size="xs" fw={600} c="#FC5200" visibleFrom="sm" style={{ textDecoration: 'underline', flexShrink: 0 }}>
                                 {t("View on Strava")} <IconExternalLink size={12} style={{ verticalAlign: 'middle' }} />
                             </Anchor>
                         )}
@@ -1747,6 +1747,7 @@ export const ActivityDetailPage = () => {
                             setActiveSection(v as typeof activeSection);
                         }}
                         mb="md"
+                        styles={{ list: { flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'none', msOverflowStyle: 'none' } }}
                     >
                         <Tabs.List mb="md">
                             <Tabs.Tab value="overview">Overview</Tabs.Tab>
@@ -1838,7 +1839,7 @@ export const ActivityDetailPage = () => {
                                                      <Group justify="space-between">
                                                         <Group gap={4} align="center">
                                                           <Text size="sm" c={ui.textDim}>Weighted Avg Power (WAP)</Text>
-                                                          <MantineTooltip label="Average power misleads on variable rides (hilly/coasting). WAP weights intense surges more heavily by raising 30-second rolling averages to the 4th power. A big gap between WAP and Avg Power means the ride was 'surgy' and metabolically expensive." multiline w={280} withArrow>
+                                                          <MantineTooltip label="Average power misleads on variable rides (hilly/coasting). WAP weights intense surges more heavily by raising 30-second rolling averages to the 4th power. A big gap between WAP and Avg Power means the ride was 'surgy' and metabolically expensive." multiline maw={280} withArrow>
                                                             <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
                                                           </MantineTooltip>
                                                         </Group>
@@ -1849,7 +1850,7 @@ export const ActivityDetailPage = () => {
                                                      <Group justify="space-between">
                                                         <Group gap={4} align="center">
                                                           <Text size="sm" c={ui.textDim}>Relative Intensity (RI)</Text>
-                                                          <MantineTooltip label="WAP ÷ FTP. ≤0.75: Recovery/Endurance. 0.85–0.95: Tempo/Sweet Spot. 1.0+: Hard interval or short race effort. Tells you how hard this session was relative to your current fitness level." multiline w={280} withArrow>
+                                                          <MantineTooltip label="WAP ÷ FTP. ≤0.75: Recovery/Endurance. 0.85–0.95: Tempo/Sweet Spot. 1.0+: Hard interval or short race effort. Tells you how hard this session was relative to your current fitness level." multiline maw={280} withArrow>
                                                             <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
                                                           </MantineTooltip>
                                                         </Group>
@@ -1860,7 +1861,7 @@ export const ActivityDetailPage = () => {
                                                      <Group justify="space-between">
                                                         <Group gap={4} align="center">
                                                           <Text size="sm" c={ui.textDim}>Training Load (TL)</Text>
-                                                          <MantineTooltip label="Combines duration and intensity: (seconds × WAP × RI) / (FTP × 3600) × 100. A value of 100 equals riding at your threshold for exactly 1 hour. The universal currency for comparing a 4-hour easy ride to a 1-hour brutal interval session." multiline w={280} withArrow>
+                                                          <MantineTooltip label="Combines duration and intensity: (seconds × WAP × RI) / (FTP × 3600) × 100. A value of 100 equals riding at your threshold for exactly 1 hour. The universal currency for comparing a 4-hour easy ride to a 1-hour brutal interval session." multiline maw={280} withArrow>
                                                             <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
                                                           </MantineTooltip>
                                                         </Group>
@@ -1871,7 +1872,7 @@ export const ActivityDetailPage = () => {
                                                      <Group justify="space-between">
                                                         <Group gap={4} align="center">
                                                           <Text size="sm" c={ui.textDim}>Variability Index (VI)</Text>
-                                                          <MantineTooltip label="WAP ÷ Avg Power. 1.0–1.05: Steady time-trial/triathlon effort. 1.2+: Highly variable criterium/mountain bike. High values indicate frequent anaerobic bursts and fast-twitch fiber recruitment." multiline w={280} withArrow>
+                                                          <MantineTooltip label="WAP ÷ Avg Power. 1.0–1.05: Steady time-trial/triathlon effort. 1.2+: Highly variable criterium/mountain bike. High values indicate frequent anaerobic bursts and fast-twitch fiber recruitment." multiline maw={280} withArrow>
                                                             <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
                                                           </MantineTooltip>
                                                         </Group>

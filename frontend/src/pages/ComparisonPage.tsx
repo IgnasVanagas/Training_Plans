@@ -1203,7 +1203,7 @@ const WorkoutDetailCard = ({ detail, label, athleteMap, isDark, t, navigate }: {
           </Stack>
         </Group>
 
-        <SimpleGrid cols={3} spacing="xs">
+        <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="xs">
           <Paper withBorder p="xs" radius="sm">
             <Text size="10px" c="dimmed" tt="uppercase">{t('Duration') || 'Duration'}</Text>
             <Text fw={700}>{formatMinutes(safeNum(detail.duration) / 60)}</Text>
@@ -1286,7 +1286,7 @@ const PeriodDetailCard = ({ label, agg, details, athlete, sideColor, t }: {
           <Badge variant="light">{formatDistanceKm(agg.totalDistanceKm)}</Badge>
         </Group>
 
-        <SimpleGrid cols={3} spacing="xs">
+        <SimpleGrid cols={{ base: 2, sm: 3 }} spacing="xs">
           {([
             [t('Total time') || 'Total time', formatMinutes(agg.totalMinutes)],
             [t('Total distance') || 'Total distance', formatDistanceKm(agg.totalDistanceKm)],

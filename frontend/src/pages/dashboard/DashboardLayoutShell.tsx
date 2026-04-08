@@ -287,8 +287,12 @@ const DashboardLayoutShell = ({
             <Menu.Item
               color="red"
               leftSection={<IconLogout size={14} />}
-              onClick={() => {
-                api.post("/auth/logout").catch(() => {});
+              onClick={async () => {
+                try {
+                  await api.post("/auth/logout");
+                } catch {
+                  // Continue local cleanup even if backend logout request fails.
+                }
                 clearAuthSession();
                 window.location.replace("/");
               }}

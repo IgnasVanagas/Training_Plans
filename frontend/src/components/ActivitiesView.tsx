@@ -208,7 +208,7 @@ export function ActivitiesView({
             {isInitialActivitiesLoading && (
                 <ActivitiesListSkeleton count={6} />
             )}
-            {visibleActivities.map((act) => {
+            {visibleActivities.map((act, index) => {
                 const accentColor = resolveActivityAccentColor(
                     activityColors as any,
                     act.sport || undefined,
@@ -227,9 +227,10 @@ export function ActivitiesView({
                     padding="lg"
                     radius="lg"
                     bg={ui.cardBg}
+                    className={`stagger-${index % 6}`}
                     style={{
                         cursor: isOptimistic ? 'default' : 'pointer',
-                        transition: 'transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease',
+                        transition: 'transform 0.22s cubic-bezier(0.22,1,0.36,1), box-shadow 0.22s ease, border-color 0.22s ease',
                         ...cardStyle,
                         borderLeft: `4px solid ${accentColor}`,
                         opacity: isOptimistic ? 0.55 : 1,
@@ -243,10 +244,11 @@ export function ActivitiesView({
                         }
                     }}
                     onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.transform = 'translateY(-3px)';
                         e.currentTarget.style.boxShadow = isDark
-                            ? '0 8px 20px rgba(2, 6, 23, 0.35)'
-                            : '0 10px 22px rgba(15, 23, 42, 0.08)';
+                            ? `0 12px 28px rgba(2,6,23,0.45), 0 0 0 1px ${accentColor}33`
+                            : `0 12px 28px rgba(15,23,42,0.10), 0 0 0 1px ${accentColor}44`;
+                        e.currentTarget.style.borderColor = `${accentColor}88`;
                         if (!isOptimistic) {
                             prefetchTimerRef.current = setTimeout(() => {
                                 void queryClient.prefetchQuery({
@@ -263,12 +265,15 @@ export function ActivitiesView({
                     }}
                     onMouseLeave={(e) => {
                         e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = 'none';
+                        e.currentTarget.style.boxShadow = '';
+                        e.currentTarget.style.borderColor = ui.border;
                         if (prefetchTimerRef.current) {
                             clearTimeout(prefetchTimerRef.current);
                             prefetchTimerRef.current = null;
                         }
                     }}
+                    onMouseDown={(e) => { e.currentTarget.style.transform = 'translateY(-1px) scale(0.99)'; }}
+                    onMouseUp={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; }}
                 >
                     <Group justify="space-between" mb="xs">
                         <Stack gap={0} style={{ overflow: 'hidden' }}>

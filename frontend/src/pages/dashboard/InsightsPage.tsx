@@ -7,7 +7,7 @@ import {
 } from '@tabler/icons-react';
 import {
   ComposedChart, Area, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartTooltip,
-  Legend, ResponsiveContainer, Brush,
+  Legend, ResponsiveContainer, Brush, ReferenceLine,
 } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
@@ -101,7 +101,11 @@ const InsightsPage = ({
       {/* Fitness snapshot */}
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
         {me.profile?.main_sport === 'running' ? (
-          <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ borderColor: cardBorder }}>
+          <Card shadow="sm" radius="lg" withBorder padding="lg" bg={cardBg}
+            style={{ borderColor: cardBorder, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = isDark ? '0 12px 32px rgba(0,0,0,0.4)' : '0 12px 32px rgba(15,23,42,0.10)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
+          >
             <Group justify="space-between" mb="xs">
               <Text size="xs" c="dimmed" tt="uppercase" fw={700}>LT2</Text>
               <IconRun size={20} color="green" />
@@ -116,7 +120,12 @@ const InsightsPage = ({
             <Text size="xs" c="dimmed" mt="xs">{me.profile?.preferred_units === 'imperial' ? 'min/mi' : 'min/km'}</Text>
           </Card>
         ) : (
-          <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('ftp')}>
+          <Card shadow="sm" radius="lg" withBorder padding="lg" bg={cardBg}
+            style={{ cursor: 'pointer', borderColor: cardBorder, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
+            onClick={() => onSelectMetric('ftp')}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = isDark ? '0 12px 32px rgba(0,0,0,0.4)' : '0 12px 32px rgba(15,23,42,0.10)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
+          >
             <Group justify="space-between" mb="xs">
               <Text size="xs" c="dimmed" tt="uppercase" fw={700}>FTP</Text>
               <IconBolt size={20} color="orange" />
@@ -126,7 +135,12 @@ const InsightsPage = ({
           </Card>
         )}
 
-        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('rhr')}>
+        <Card shadow="sm" radius="lg" withBorder padding="lg" bg={cardBg}
+          style={{ cursor: 'pointer', borderColor: cardBorder, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
+          onClick={() => onSelectMetric('rhr')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = isDark ? '0 12px 32px rgba(0,0,0,0.4)' : '0 12px 32px rgba(15,23,42,0.10)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
+        >
           <Group justify="space-between" mb="xs">
             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Resting HR</Text>
             <IconHeart size={20} color="red" />
@@ -135,7 +149,12 @@ const InsightsPage = ({
           <Text size="xs" c="dimmed" mt="xs">BPM</Text>
         </Card>
 
-        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('hrv')}>
+        <Card shadow="sm" radius="lg" withBorder padding="lg" bg={cardBg}
+          style={{ cursor: 'pointer', borderColor: cardBorder, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
+          onClick={() => onSelectMetric('hrv')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = isDark ? '0 12px 32px rgba(0,0,0,0.4)' : '0 12px 32px rgba(15,23,42,0.10)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
+        >
           <Group justify="space-between" mb="xs">
             <Text size="xs" c="dimmed" tt="uppercase" fw={700}>HRV</Text>
             <IconHeart size={20} color="violet" />
@@ -146,7 +165,12 @@ const InsightsPage = ({
       </SimpleGrid>
 
       <SimpleGrid cols={{ base: 1, sm: 3 }}>
-        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('aerobic_load')}>
+        <Card shadow="sm" radius="lg" withBorder padding="lg" bg={cardBg}
+          style={{ cursor: 'pointer', borderColor: cardBorder, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
+          onClick={() => onSelectMetric('aerobic_load')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = isDark ? '0 12px 32px rgba(0,0,0,0.4)' : '0 12px 32px rgba(15,23,42,0.10)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
+        >
           <Group justify="space-between" mb="xs">
             <Group gap={4} align="center">
               <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Fatigue</Text>
@@ -160,7 +184,12 @@ const InsightsPage = ({
           <Text size="xs" c="dimmed" mt="xs">Short-term load (7d avg)</Text>
         </Card>
 
-        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('anaerobic_load')}>
+        <Card shadow="sm" radius="lg" withBorder padding="lg" bg={cardBg}
+          style={{ cursor: 'pointer', borderColor: cardBorder, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
+          onClick={() => onSelectMetric('anaerobic_load')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = isDark ? '0 12px 32px rgba(0,0,0,0.4)' : '0 12px 32px rgba(15,23,42,0.10)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
+        >
           <Group justify="space-between" mb="xs">
             <Group gap={4} align="center">
               <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Fitness</Text>
@@ -174,7 +203,12 @@ const InsightsPage = ({
           <Text size="xs" c="dimmed" mt="xs">Long-term load (42d avg)</Text>
         </Card>
 
-        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ cursor: 'pointer', borderColor: cardBorder }} onClick={() => onSelectMetric('training_status')}>
+        <Card shadow="sm" radius="lg" withBorder padding="lg" bg={cardBg}
+          style={{ cursor: 'pointer', borderColor: cardBorder, transition: 'transform 0.2s ease, box-shadow 0.2s ease' }}
+          onClick={() => onSelectMetric('training_status')}
+          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = isDark ? '0 12px 32px rgba(0,0,0,0.4)' : '0 12px 32px rgba(15,23,42,0.10)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = ''; }}
+        >
           <Group justify="space-between" mb="xs">
             <Group gap={4} align="center">
               <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Form</Text>
@@ -263,13 +297,40 @@ const InsightsPage = ({
         ) : (
           <ResponsiveContainer width="100%" height={320}>
             <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+              <defs>
+                <linearGradient id="fitnessGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#22c55e" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#22c55e" stopOpacity={0.02} />
+                </linearGradient>
+                <linearGradient id="fatigueGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#f97316" stopOpacity={0.30} />
+                  <stop offset="100%" stopColor="#f97316" stopOpacity={0.02} />
+                </linearGradient>
+                <linearGradient id="loadGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.55} />
+                  <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.15} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="2 5" stroke={gridColor} />
               <XAxis dataKey="dateLabel" tick={{ fontSize: 11, fill: axisColor }} tickLine={false} interval="preserveStartEnd" />
               <YAxis yAxisId="load" orientation="right" tick={{ fontSize: 11, fill: axisColor }} tickLine={false} axisLine={false} width={36} />
               <YAxis yAxisId="trend" orientation="left" tick={{ fontSize: 11, fill: axisColor }} tickLine={false} axisLine={false} width={36} />
               <RechartTooltip
-                contentStyle={{ background: isDark ? '#0f172a' : '#fff', border: `1px solid ${cardBorder}`, borderRadius: 8, fontSize: 12 }}
-                formatter={(value: number, name: string) => [value.toFixed(1), name]}
+                contentStyle={{
+                  background: isDark ? 'rgba(12,22,42,0.92)' : 'rgba(255,255,255,0.92)',
+                  backdropFilter: 'blur(10px)',
+                  border: `1px solid ${cardBorder}`,
+                  borderRadius: 10,
+                  fontSize: 12,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                }}
+                formatter={(value: number, name: string) => {
+                  const info = SERIES_INFO.find((s) => s.label === name);
+                  return [
+                    <span style={{ color: info?.color ?? 'inherit', fontWeight: 700 }}>{Number(value).toFixed(1)}</span>,
+                    name,
+                  ];
+                }}
                 labelFormatter={(label) => `Date: ${label}`}
               />
               <Legend
@@ -288,6 +349,7 @@ const InsightsPage = ({
                             padding: '2px 6px',
                             border: `1px solid ${isActive ? info.color : 'transparent'}`,
                             background: isActive ? (isDark ? `${info.color}22` : `${info.color}14`) : 'transparent',
+                            transition: 'all 0.15s ease',
                           }}
                         >
                           <Group gap={4} align="center">
@@ -301,11 +363,12 @@ const InsightsPage = ({
                   </Group>
                 )}
               />
-              <Bar yAxisId="load" dataKey="load" name="Daily TL" fill="#3b82f6" opacity={0.35} barSize={4} />
-              <Area yAxisId="trend" type="monotone" dataKey="fitness" name="Fitness" stroke="#22c55e" fill="#22c55e" fillOpacity={0.12} strokeWidth={2} dot={false} />
-              <Area yAxisId="trend" type="monotone" dataKey="fatigue" name="Fatigue" stroke="#f97316" fill="#f97316" fillOpacity={0.10} strokeWidth={2} dot={false} />
-              <Line yAxisId="trend" type="monotone" dataKey="form" name="Form" stroke="#a855f7" strokeWidth={2} dot={false} strokeDasharray="4 2" />
-              <Brush dataKey="dateLabel" height={20} travellerWidth={6} stroke={isDark ? '#334155' : '#cbd5e1'} />
+              <ReferenceLine yAxisId="trend" y={0} stroke={isDark ? 'rgba(148,163,184,0.25)' : 'rgba(15,23,42,0.15)'} strokeDasharray="3 4" />
+              <Bar yAxisId="load" dataKey="load" name="Daily TL" fill="url(#loadGrad)" barSize={8} radius={[2, 2, 0, 0]} />
+              <Area yAxisId="trend" type="monotone" dataKey="fitness" name="Fitness" stroke="#22c55e" strokeWidth={2.5} fill="url(#fitnessGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#22c55e' }} />
+              <Area yAxisId="trend" type="monotone" dataKey="fatigue" name="Fatigue" stroke="#f97316" strokeWidth={2.5} fill="url(#fatigueGrad)" dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#f97316' }} />
+              <Line yAxisId="trend" type="monotone" dataKey="form" name="Form" stroke="#a855f7" strokeWidth={2} dot={false} strokeDasharray="4 2" activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#a855f7' }} />
+              <Brush dataKey="dateLabel" height={20} travellerWidth={6} stroke={isDark ? '#334155' : '#cbd5e1'} fill={isDark ? '#1e293b' : '#f8fafc'} />
             </ComposedChart>
           </ResponsiveContainer>
         )}

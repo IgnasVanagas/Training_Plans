@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 
-import { clearAuthSession, getAuthToken, markAuthSessionActive } from "../utils/authSession";
+import { clearAuthSession, getAuthToken, hasAuthSession, markAuthSessionActive } from "../utils/authSession";
 
 const requestTimeoutMs = Number(import.meta.env.VITE_API_TIMEOUT_MS || 15000);
 
@@ -68,6 +68,11 @@ api.interceptors.response.use(
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
+      // Never revive a session from refresh cookies after explicit local logout.
+      if (!hasAuthSession()) {
+        return Promise.reject(error);
+      }
+
       // Don't attempt refresh for the refresh endpoint itself
       if (originalRequest.url?.includes("/auth/refresh")) {
         clearAuthSession();

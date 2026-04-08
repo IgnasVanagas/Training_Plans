@@ -1,0 +1,159 @@
+/* ============================================================
+   Origami Training — Global Animation Primitives
+   All animations use only transform/opacity (GPU composited).
+   No width/height/margin/padding animations to avoid layout thrash.
+   ============================================================ */
+
+/* ── Custom properties ─────────────────────────────────────── */
+:root {
+  --anim-fast: 150ms;
+  --anim-mid: 220ms;
+  --anim-slow: 350ms;
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+/* ── Keyframes ─────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmerSlide {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.6; }
+  50%       { opacity: 1; }
+}
+
+/* ── Staggered entry classes (use index % 6 in JSX) ────────── */
+.stagger-0 { animation: fadeInUp var(--anim-slow) var(--ease-spring) 0ms   both; }
+.stagger-1 { animation: fadeInUp var(--anim-slow) var(--ease-spring) 40ms  both; }
+.stagger-2 { animation: fadeInUp var(--anim-slow) var(--ease-spring) 80ms  both; }
+.stagger-3 { animation: fadeInUp var(--anim-slow) var(--ease-spring) 120ms both; }
+.stagger-4 { animation: fadeInUp var(--anim-slow) var(--ease-spring) 160ms both; }
+.stagger-5 { animation: fadeInUp var(--anim-slow) var(--ease-spring) 200ms both; }
+
+/* Section fade-in (page sections, panels, charts) */
+.section-enter {
+  animation: fadeInUp var(--anim-slow) var(--ease-spring) both;
+}
+
+/* Scale-in for modals / popovers */
+.scale-enter {
+  animation: scaleIn var(--anim-mid) var(--ease-spring) both;
+}
+
+/* ── Global button press feedback ───────────────────────────── */
+/* Mantine Button */
+.mantine-Button-root:active {
+  transform: scale(0.97) !important;
+  transition: transform 80ms ease !important;
+}
+
+/* Mantine ActionIcon */
+.mantine-ActionIcon-root:active {
+  transform: scale(0.93) !important;
+  transition: transform 80ms ease !important;
+}
+
+/* Mantine UnstyledButton */
+.mantine-UnstyledButton-root:active {
+  transform: scale(0.97) !important;
+  transition: transform 80ms ease !important;
+}
+
+/* ── Chip toggle feel ───────────────────────────────────────── */
+.mantine-Chip-root:active {
+  transform: scale(0.96);
+  transition: transform 80ms ease;
+}
+
+/* ── Smooth NavLink highlight ───────────────────────────────── */
+.mantine-NavLink-root {
+  transition: background-color var(--anim-fast) ease,
+              color var(--anim-fast) ease !important;
+}
+
+/* ── Enhanced Skeleton shimmer ──────────────────────────────── */
+.mantine-Skeleton-root::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerSlide 1.4s ease-in-out infinite;
+}
+
+/* Dark-mode shimmer tweak */
+[data-mantine-color-scheme="dark"] .mantine-Skeleton-root::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.06) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerSlide 1.4s ease-in-out infinite;
+}
+
+/* ── Mantine Tabs horizontal scroll on mobile ───────────────── */
+/* Hides the scrollbar visually while keeping touch-scroll behaviour */
+.mantine-Tabs-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Recharts selection reference area pulse ────────────────── */
+.recharts-reference-area-rect {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+/* ── Tooltip fade-in ────────────────────────────────────────── */
+.recharts-tooltip-wrapper {
+  transition: opacity 80ms ease, transform 80ms var(--ease-spring) !important;
+}
+
+/* ── Card hover transitions (applied globally for consistency) ─ */
+/* Cards that need hover should set transition via inline style;
+   this just ensures will-change is set efficiently */
+.hover-card {
+  transition: transform var(--anim-mid) var(--ease-spring),
+              box-shadow var(--anim-mid) ease,
+              border-color var(--anim-mid) ease;
+}
+
+.hover-card:hover {
+  transform: translateY(-3px);
+}
+
+.hover-card:active {
+  transform: translateY(-1px) scale(0.99);
+}
