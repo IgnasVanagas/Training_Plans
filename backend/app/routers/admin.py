@@ -1,15 +1,18 @@
 from datetime import datetime
+import os
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
-from ..auth import get_current_user
+from ..auth import get_current_user, get_password_hash, verify_password
 from ..database import get_db
-from ..models import Activity, IntegrationAuditLog, RoleEnum, User
+from ..models import Activity, IntegrationAuditLog, Profile, RoleEnum, User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -49,6 +52,74 @@ class AdminAuditLogOut(BaseModel):
 
 class RoleChangeRequest(BaseModel):
     role: str
+
+
+class AdminAthleteIdentityUpdateRequest(BaseModel):
+    admin_password: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+
+class AdminAthletePasswordResetRequest(BaseModel):
+    admin_password: str
+    new_password: str
+
+
+def _read_process_memory_mb() -> tuple[float | None, float | None]:
+    current_rss_mb: float | None = None
+    peak_rss_mb: float | None = None
+
+    try:
+        with open("/proc/self/status", "r", encoding="utf-8") as status_file:
+            for line in status_file:
+                if line.startswith("VmRSS:"):
+                    current_rss_mb = int(line.split()[1]) / 1024.0
+                elif line.startswith("VmHWM:"):
+                    peak_rss_mb = int(line.split()[1]) / 1024.0
+    except OSError:
+        pass
+
+    return current_rss_mb, peak_rss_mb
+
+
+def _assert_admin_password(admin: User, provided_password: str) -> None:
+    if not provided_password or not verify_password(provided_password, admin.password_hash):
+        raise HTTPException(status_code=403, detail="Admin password confirmation failed")
+
+
+def _validate_strong_password(value: str) -> None:
+    # Enforce high-entropy passwords for admin-initiated resets.
+    if len(value) < 12:
+        raise HTTPException(status_code=400, detail="Password must be at least 12 characters")
+    if not re.search(r"[A-Z]", value):
+        raise HTTPException(status_code=400, detail="Password must include an uppercase letter")
+    if not re.search(r"[a-z]", value):
+        raise HTTPException(status_code=400, detail="Password must include a lowercase letter")
+    if not re.search(r"\d", value):
+        raise HTTPException(status_code=400, detail="Password must include a number")
+    if not re.search(r"[^A-Za-z0-9]", value):
+        raise HTTPException(status_code=400, detail="Password must include a symbol")
+
+
+async def _write_admin_audit_log(
+    *,
+    db: AsyncSession,
+    admin: User,
+    action: str,
+    status: str,
+    message: str,
+) -> None:
+    db.add(
+        IntegrationAuditLog(
+            user_id=admin.id,
+            provider="admin",
+            action=action,
+            status=status,
+            message=message,
+        )
+    )
+    await db.commit()
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -120,6 +191,110 @@ async def change_user_role(
     return {"id": user_id, "role": new_role.value}
 
 
+@router.patch("/users/{user_id}/identity")
+async def update_athlete_identity(
+    user_id: int,
+    body: AdminAthleteIdentityUpdateRequest,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    _assert_admin_password(admin, body.admin_password)
+
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot update your own account via admin identity endpoint")
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.role != RoleEnum.athlete:
+        raise HTTPException(status_code=400, detail="Only athlete accounts can be edited here")
+
+    profile = user.profile
+    if profile is None:
+        profile = Profile(user_id=user.id)
+        db.add(profile)
+
+    change_parts: list[str] = []
+
+    new_email = str(body.email).strip().lower() if body.email else None
+    if new_email and new_email != user.email:
+        change_parts.append("email")
+        user.email = new_email
+        user.email_verified = False
+
+    if body.first_name is not None and body.first_name != (profile.first_name or ""):
+        change_parts.append("first_name")
+        profile.first_name = body.first_name.strip() or None
+
+    if body.last_name is not None and body.last_name != (profile.last_name or ""):
+        change_parts.append("last_name")
+        profile.last_name = body.last_name.strip() or None
+
+    if not change_parts:
+        return {
+            "id": user.id,
+            "email": user.email,
+            "first_name": profile.first_name,
+            "last_name": profile.last_name,
+            "updated": False,
+        }
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Email is already in use")
+
+    await _write_admin_audit_log(
+        db=db,
+        admin=admin,
+        action="update_identity",
+        status="ok",
+        message=f"Updated athlete_id={user.id}; fields={','.join(change_parts)}",
+    )
+
+    return {
+        "id": user.id,
+        "email": user.email,
+        "first_name": profile.first_name,
+        "last_name": profile.last_name,
+        "updated": True,
+    }
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_athlete_password(
+    user_id: int,
+    body: AdminAthletePasswordResetRequest,
+    admin: User = Depends(_require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    _assert_admin_password(admin, body.admin_password)
+    _validate_strong_password(body.new_password)
+
+    if admin.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot reset your own password via admin reset endpoint")
+
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.role != RoleEnum.athlete:
+        raise HTTPException(status_code=400, detail="Only athlete account passwords can be reset here")
+
+    user.password_hash = get_password_hash(body.new_password)
+    await db.commit()
+
+    await _write_admin_audit_log(
+        db=db,
+        admin=admin,
+        action="reset_password",
+        status="ok",
+        message=f"Reset athlete password athlete_id={user.id}",
+    )
+
+    return {"id": user.id, "reset": True}
+
+
 @router.get("/audit-logs", response_model=list[AdminAuditLogOut])
 async def list_audit_logs(
     skip: int = Query(0, ge=0),
@@ -169,9 +344,30 @@ async def get_stats(
         ) or 0
 
     total_activities = await db.scalar(select(func.count(Activity.id))) or 0
+    current_rss_mb, peak_rss_mb = _read_process_memory_mb()
+
+    host_total_mb: float | None = None
+    host_available_mb: float | None = None
+    try:
+        pages = os.sysconf("SC_PHYS_PAGES")
+        page_size = os.sysconf("SC_PAGE_SIZE")
+        host_total_mb = (pages * page_size) / (1024.0 * 1024.0)
+        with open("/proc/meminfo", "r", encoding="utf-8") as meminfo:
+            for line in meminfo:
+                if line.startswith("MemAvailable:"):
+                    host_available_mb = int(line.split()[1]) / 1024.0
+                    break
+    except Exception:
+        pass
 
     return {
         "users": user_counts,
         "total_activities": total_activities,
         "db": "ok",
+        "memory": {
+            "process_rss_mb": current_rss_mb,
+            "process_peak_mb": peak_rss_mb,
+            "host_total_mb": host_total_mb,
+            "host_available_mb": host_available_mb,
+        },
     }

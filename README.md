@@ -44,6 +44,44 @@ Notes:
 - `AUTO_SEED_DEMO` should remain `false` in production unless you intentionally want demo data.
 - A root-level [Dockerfile](Dockerfile) is included as a fallback so a default Render Docker web service can still build the backend from the repo root.
 
+## Hostinger VPS production deployment
+
+This repo now includes a production-ready Docker Compose stack for a single-host VPS deployment:
+
+- [docker-compose.prod.yml](docker-compose.prod.yml)
+- [deployment/nginx/edge.conf](deployment/nginx/edge.conf)
+- [frontend/Dockerfile.prod](frontend/Dockerfile.prod)
+- [frontend/nginx.conf](frontend/nginx.conf)
+- [env.production.template](env.production.template)
+
+Recommended topology:
+
+- Cloudflare (TLS/WAF/CDN) in front of your VPS
+- Nginx edge container as reverse proxy
+- Frontend static container (Nginx)
+- Backend FastAPI container (Uvicorn workers)
+- Managed PostgreSQL (external service)
+
+Quick start on VPS:
+
+1. Copy `env.production.template` to `.env.production` and fill real values.
+2. Build and start:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+```
+
+3. Validate health:
+
+- `http://<server-ip>/healthz` (edge)
+- `http://<server-ip>/api/health` (backend via edge)
+
+Notes:
+
+- The backend is not published directly to the internet in production compose.
+- Frontend calls API through `/api` to keep a single public origin.
+- For strict HTTPS to origin, terminate TLS at Cloudflare and/or add certificates on the edge Nginx layer.
+
 ## Safe GitHub publishing
 
 Before creating your first public commit/push, follow `PUBLISHING_CHECKLIST.md`.

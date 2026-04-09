@@ -104,6 +104,22 @@ const LoginPage = () => {
     onSuccess: async (data) => {
       markAuthSessionActive(data.access_token);
       queryClient.clear();
+      
+      // Additional protection: clear any remaining localStorage snapshots from previous session
+      const snapshotPrefixes = [
+        "zone-summary:",
+        "activity:",
+        "activities:",
+        "week-view:",
+      ];
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && snapshotPrefixes.some(prefix => key.startsWith(prefix))) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => window.localStorage.removeItem(key));
 
       // Wait briefly to ensure cookies are processed by browser
       await new Promise(res => setTimeout(res, 100));

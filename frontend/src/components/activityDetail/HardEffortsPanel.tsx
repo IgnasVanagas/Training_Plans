@@ -3,6 +3,7 @@ import { IconBolt, IconFlame, IconMinus } from "@tabler/icons-react";
 import { useEffect, useMemo } from "react";
 import { formatDuration } from "./formatters";
 import { ActivityDetail, EffortSegmentMeta, HardEffort, HardEffortRest } from "../../types/activityDetail";
+import { HardEffortsChart } from "./HardEffortsChart";
 
 type UiTokens = {
     surface: string;
@@ -430,26 +431,35 @@ export const HardEffortsPanel = ({
             const restStart = hardEfforts[i].endIndex + 1;
             const restEnd = hardEfforts[i + 1].startIndex - 1;
             if (restEnd < restStart) {
-                rests.push({ durationSeconds: 0, avgHr: null, avgPower: null, avgSpeedKmh: null, zone: 1 });
+                rests.push({ durationSeconds: 0, avgHr: null, maxHr: null, avgPower: null, wap: null, maxPower: null, pctRef: null, avgSpeedKmh: null, zone: 1 });
                 continue;
             }
             const n = restEnd - restStart + 1;
-            let sumPow = 0, sumHr = 0, sumSpd = 0, hrCnt = 0, spdCnt = 0;
+            let sumPow = 0, sumHr = 0, sumSpd = 0, sumPowFourth = 0;
+            let hrCnt = 0, spdCnt = 0, powCnt = 0;
+            let maxPow = 0, maxHrVal = 0;
             for (let j = restStart; j <= restEnd; j++) {
                 const p = streamPoints[j];
                 if (!p) continue;
-                sumPow += Number(p?.power ?? p?.watts ?? 0);
+                const pow = Number(p?.power ?? p?.watts ?? 0);
                 const hr = Number(p?.heart_rate ?? 0);
                 const spd = Number(p?.speed ?? 0);
-                if (hr > 0) { sumHr += hr; hrCnt++; }
+                sumPow += pow;
+                if (pow > 0) { powCnt++; sumPowFourth += Math.pow(pow, 4); if (pow > maxPow) maxPow = pow; }
+                if (hr > 0) { sumHr += hr; hrCnt++; if (hr > maxHrVal) maxHrVal = hr; }
                 if (spd > 0.1) { sumSpd += spd; spdCnt++; }
             }
             const avgPower = sumPow > 0 ? sumPow / n : null;
+            const wap = powCnt > 0 ? Math.pow(sumPowFourth / powCnt, 0.25) : null;
             const ratio = (ftp > 0 && avgPower != null) ? avgPower / ftp : 0;
             rests.push({
                 durationSeconds: n,
                 avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
+                maxHr: maxHrVal > 0 ? maxHrVal : null,
                 avgPower,
+                wap,
+                maxPower: maxPow > 0 ? maxPow : null,
+                pctRef: ftp > 0 && avgPower != null ? (avgPower / ftp) * 100 : null,
                 avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
                 zone: getZone(ratio),
             });
@@ -495,6 +505,21 @@ export const HardEffortsPanel = ({
         onMetaChange?.(hardEffortMetaByKey);
     }, [hardEffortMetaByKey, onMetaChange]);
 
+    const cyclingBoundsMemo = useMemo((): number[] => {
+        const ftp = Number((zoneProfile as any)?.zone_settings?.cycling?.power?.lt2 ?? (zoneProfile as any)?.ftp ?? 0);
+        const raw = (zoneProfile as any)?.zone_settings?.cycling?.power?.upper_bounds;
+        if (Array.isArray(raw) && raw.length > 0) {
+            const parsed = raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0);
+            if (parsed.length === raw.length) {
+                let valid = true;
+                for (let i = 1; i < parsed.length; i++) if (parsed[i] <= parsed[i - 1]) { valid = false; break; }
+                if (valid) return parsed;
+            }
+        }
+        if (ftp > 0) return [0.55, 0.75, 0.90, 1.05, 1.20, 1.50, 2.00].map(p => ftp * p);
+        return [];
+    }, [zoneProfile]);
+
     if (hardEfforts.length === 0) {
         return (
             <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
@@ -516,6 +541,18 @@ export const HardEffortsPanel = ({
                     </Group>
                 ))}
             </Group>
+            {streamPoints.length > 60 && (
+                <HardEffortsChart
+                    streamPoints={streamPoints}
+                    hardEfforts={hardEfforts}
+                    isCyclingActivity={isCyclingActivity}
+                    isRunningActivity={isRunningActivity}
+                    cyclingBounds={cyclingBoundsMemo}
+                    activityId={activity.id}
+                    isDark={isDark}
+                    ui={ui}
+                />
+            )}
             <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <Table striped highlightOnHover withTableBorder withColumnBorders style={{ whiteSpace: 'nowrap' }}>
                 <Table.Thead>
@@ -602,13 +639,13 @@ export const HardEffortsPanel = ({
                                     </Table.Td>
                                     <Table.Td><Text size="xs" c="dimmed">{formatDuration(rest.durationSeconds)}</Text></Table.Td>
                                     {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgPower != null ? `${Math.round(rest.avgPower)} W` : '-'}</Text></Table.Td>}
-                                    {isCyclingActivity && <Table.Td>-</Table.Td>}
-                                    {isCyclingActivity && <Table.Td>-</Table.Td>}
-                                    {isCyclingActivity && <Table.Td>-</Table.Td>}
+                                    {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.wap != null ? `${Math.round(rest.wap)} W` : '-'}</Text></Table.Td>}
+                                    {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.maxPower != null ? `${Math.round(rest.maxPower)} W` : '-'}</Text></Table.Td>}
+                                    {isCyclingActivity && <Table.Td><Text size="xs" c="dimmed">{rest.pctRef != null ? `${Math.round(rest.pctRef)}%` : '-'}</Text></Table.Td>}
                                     {isRunningActivity && <Table.Td><Text size="xs" c="dimmed">{rest.avgSpeedKmh && rest.avgSpeedKmh > 0 ? (() => { const p = 60 / rest.avgSpeedKmh!; const m = Math.floor(p); const s = Math.round((p - m) * 60); return `${m}:${s.toString().padStart(2, '0')} /km`; })() : '-'}</Text></Table.Td>}
-                                    {isRunningActivity && <Table.Td>-</Table.Td>}
+                                    {isRunningActivity && <Table.Td><Text size="xs" c="dimmed">{rest.pctRef != null ? `${Math.round(rest.pctRef)}%` : '-'}</Text></Table.Td>}
                                     <Table.Td><Text size="xs" c="dimmed">{rest.avgHr != null ? `${Math.round(rest.avgHr)} bpm` : '-'}</Text></Table.Td>
-                                    <Table.Td>-</Table.Td>
+                                    <Table.Td><Text size="xs" c="dimmed">{rest.maxHr != null ? `${Math.round(rest.maxHr)} bpm` : '-'}</Text></Table.Td>
                                 </Table.Tr>
                             ) : null,
                         ];

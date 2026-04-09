@@ -34,6 +34,27 @@ export const clearAuthSession = (): void => {
   }
   window.localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
   window.localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  
+  // Clear all localStorage snapshots from previous user (zone-summary, activity, etc.)
+  // This prevents calendar/activity data from the previous account showing after logout/login
+  const snapshotPrefixes = [
+    "zone-summary:",
+    "activity:",
+    "activities:",
+    "week-view:",
+  ];
+  
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const key = window.localStorage.key(i);
+    if (key && snapshotPrefixes.some(prefix => key.startsWith(prefix))) {
+      keysToRemove.push(key);
+    }
+  }
+  
+  keysToRemove.forEach(key => {
+    window.localStorage.removeItem(key);
+  });
 };
 
 const buildLogoutUrl = (apiBaseUrl?: string): string => {

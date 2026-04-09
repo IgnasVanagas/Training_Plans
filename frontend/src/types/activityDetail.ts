@@ -136,7 +136,11 @@ export type HardEffort = {
 export type HardEffortRest = {
     durationSeconds: number;
     avgHr: number | null;
+    maxHr: number | null;
     avgPower: number | null;
+    wap: number | null;
+    maxPower: number | null;
+    pctRef: number | null;
     avgSpeedKmh: number | null;
     zone: number;           // 1–7
 };

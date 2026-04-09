@@ -1,10 +1,13 @@
 import { useState } from "react";
 import {
   Badge,
+  Button,
   Box,
   Card,
   Group,
   Loader,
+  Modal,
+  PasswordInput,
   Select,
   SimpleGrid,
   Stack,
@@ -17,7 +20,9 @@ import {
 } from "@mantine/core";
 import {
   IconActivity,
+  IconCpu,
   IconDatabase,
+  IconEdit,
   IconFileSearch,
   IconShieldHalf,
   IconSearch,
@@ -30,6 +35,8 @@ import {
   getAdminAuditLogs,
   getAdminStats,
   getAdminUsers,
+  resetAthletePassword,
+  updateAthleteIdentity,
 } from "../../api/admin";
 import { extractApiErrorMessage } from "./utils";
 import { QueryErrorAlert } from "../../components/common/QueryErrorAlert";
@@ -72,6 +79,13 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [adminPasswordForIdentity, setAdminPasswordForIdentity] = useState("");
+  const [adminPasswordForReset, setAdminPasswordForReset] = useState("");
 
   const usersQuery = useQuery({
     queryKey: ["admin-users", search, roleFilter],
@@ -120,7 +134,92 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
     },
   });
 
+  const identityUpdateMutation = useMutation({
+    mutationFn: (payload: {
+      userId: number;
+      email?: string;
+      first_name?: string;
+      last_name?: string;
+      admin_password: string;
+    }) =>
+      updateAthleteIdentity(payload.userId, {
+        email: payload.email,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
+        admin_password: payload.admin_password,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      notifications.show({
+        title: "Athlete updated",
+        message: "Athlete identity updated successfully.",
+        color: "green",
+        position: "bottom-right",
+      });
+      setAdminPasswordForIdentity("");
+    },
+    onError: (err) => {
+      notifications.show({
+        title: "Update failed",
+        message: extractApiErrorMessage(err),
+        color: "red",
+        position: "bottom-right",
+      });
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (payload: {
+      userId: number;
+      admin_password: string;
+      new_password: string;
+    }) =>
+      resetAthletePassword(payload.userId, {
+        admin_password: payload.admin_password,
+        new_password: payload.new_password,
+      }),
+    onSuccess: () => {
+      notifications.show({
+        title: "Password reset",
+        message: "Athlete password reset successfully.",
+        color: "green",
+        position: "bottom-right",
+      });
+      setAdminPasswordForReset("");
+      setResetPasswordValue("");
+    },
+    onError: (err) => {
+      notifications.show({
+        title: "Password reset failed",
+        message: extractApiErrorMessage(err),
+        color: "red",
+        position: "bottom-right",
+      });
+    },
+  });
+
   const stats = statsQuery.data;
+  const users = usersQuery.data ?? [];
+  const editingUser = users.find((u) => u.id === editingUserId) ?? null;
+
+  const openEditModal = (userId: number) => {
+    const user = users.find((u) => u.id === userId);
+    if (!user) return;
+    setEditingUserId(user.id);
+    setEditEmail(user.email || "");
+    setEditFirstName(user.first_name || "");
+    setEditLastName(user.last_name || "");
+    setResetPasswordValue("");
+    setAdminPasswordForIdentity("");
+    setAdminPasswordForReset("");
+  };
+
+  const closeEditModal = () => {
+    setEditingUserId(null);
+    setResetPasswordValue("");
+    setAdminPasswordForIdentity("");
+    setAdminPasswordForReset("");
+  };
 
   return (
     <Box maw={1200} mx="auto" py="md">
@@ -133,18 +232,18 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
 
       <Tabs
         value={activeTab ? TAB_MAP[activeTab] : undefined}
-        defaultValue="users"
+        defaultValue="health"
         onChange={(val) => val && onTabChange?.(TAB_MAP_REVERSE[val])}
       >
         <Tabs.List mb="md">
+          <Tabs.Tab value="health" leftSection={<IconDatabase size={16} />}>
+            System Health
+          </Tabs.Tab>
           <Tabs.Tab value="users" leftSection={<IconUsers size={16} />}>
             Users
           </Tabs.Tab>
           <Tabs.Tab value="logs" leftSection={<IconFileSearch size={16} />}>
             Audit Logs
-          </Tabs.Tab>
-          <Tabs.Tab value="health" leftSection={<IconDatabase size={16} />}>
-            System Health
           </Tabs.Tab>
         </Tabs.List>
 
@@ -186,6 +285,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     <Table.Th>Verified</Table.Th>
                     <Table.Th>Activities</Table.Th>
                     <Table.Th>Change Role</Table.Th>
+                    <Table.Th>Actions</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -237,11 +337,22 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                           w={110}
                         />
                       </Table.Td>
+                      <Table.Td>
+                        <Button
+                          size="xs"
+                          variant="light"
+                          leftSection={<IconEdit size={14} />}
+                          disabled={user.role !== "athlete"}
+                          onClick={() => openEditModal(user.id)}
+                        >
+                          Edit Athlete
+                        </Button>
+                      </Table.Td>
                     </Table.Tr>
                   ))}
                   {usersQuery.data.length === 0 && (
                     <Table.Tr>
-                      <Table.Td colSpan={7}>
+                      <Table.Td colSpan={8}>
                         <Text c="dimmed" ta="center" size="sm" py="md">
                           No users found.
                         </Text>
@@ -415,10 +526,118 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                   </Stack>
                 </Group>
               </Card>
+
+              <Card withBorder radius="md" p="lg" maw={380}>
+                <Group align="start">
+                  <ThemeIcon
+                    size={40}
+                    radius="md"
+                    color={(stats.memory?.process_rss_mb ?? 0) > 900 ? "orange" : "cyan"}
+                    variant="light"
+                  >
+                    <IconCpu size={22} />
+                  </ThemeIcon>
+                  <Stack gap={2}>
+                    <Text fw={600}>Memory Usage</Text>
+                    <Text size="sm" c="dimmed">
+                      Process RSS: {stats.memory?.process_rss_mb != null ? `${Math.round(stats.memory.process_rss_mb)} MB` : "n/a"}
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      Process Peak: {stats.memory?.process_peak_mb != null ? `${Math.round(stats.memory.process_peak_mb)} MB` : "n/a"}
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      Host Available: {stats.memory?.host_available_mb != null ? `${Math.round(stats.memory.host_available_mb)} MB` : "n/a"}
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      Host Total: {stats.memory?.host_total_mb != null ? `${Math.round(stats.memory.host_total_mb)} MB` : "n/a"}
+                    </Text>
+                  </Stack>
+                </Group>
+              </Card>
             </Stack>
           )}
         </Tabs.Panel>
       </Tabs>
+
+      <Modal
+        opened={editingUserId !== null}
+        onClose={closeEditModal}
+        title={editingUser ? `Edit athlete #${editingUser.id}` : "Edit athlete"}
+        centered
+      >
+        {editingUser ? (
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">
+              For security, admin password confirmation is required for every sensitive action.
+            </Text>
+
+            <TextInput
+              label="Email"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.currentTarget.value)}
+            />
+            <TextInput
+              label="First name"
+              value={editFirstName}
+              onChange={(e) => setEditFirstName(e.currentTarget.value)}
+            />
+            <TextInput
+              label="Last name"
+              value={editLastName}
+              onChange={(e) => setEditLastName(e.currentTarget.value)}
+            />
+            <PasswordInput
+              label="Confirm with admin password"
+              value={adminPasswordForIdentity}
+              onChange={(e) => setAdminPasswordForIdentity(e.currentTarget.value)}
+            />
+            <Button
+              onClick={() =>
+                identityUpdateMutation.mutate({
+                  userId: editingUser.id,
+                  email: editEmail.trim(),
+                  first_name: editFirstName.trim(),
+                  last_name: editLastName.trim(),
+                  admin_password: adminPasswordForIdentity,
+                })
+              }
+              loading={identityUpdateMutation.isPending}
+            >
+              Save athlete identity
+            </Button>
+
+            <Box mt="sm" pt="sm" style={{ borderTop: "1px solid var(--mantine-color-gray-3)" }}>
+              <Stack gap="sm">
+                <PasswordInput
+                  label="New athlete password"
+                  description="Minimum 12 chars with uppercase, lowercase, number, and symbol"
+                  value={resetPasswordValue}
+                  onChange={(e) => setResetPasswordValue(e.currentTarget.value)}
+                />
+                <PasswordInput
+                  label="Confirm with admin password"
+                  value={adminPasswordForReset}
+                  onChange={(e) => setAdminPasswordForReset(e.currentTarget.value)}
+                />
+                <Button
+                  color="red"
+                  variant="light"
+                  onClick={() =>
+                    resetPasswordMutation.mutate({
+                      userId: editingUser.id,
+                      admin_password: adminPasswordForReset,
+                      new_password: resetPasswordValue,
+                    })
+                  }
+                  loading={resetPasswordMutation.isPending}
+                >
+                  Reset athlete password
+                </Button>
+              </Stack>
+            </Box>
+          </Stack>
+        ) : null}
+      </Modal>
     </Box>
   );
 }

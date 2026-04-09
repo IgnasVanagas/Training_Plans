@@ -194,7 +194,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (didDefaultTab || !meQuery.data) return;
     if (meQuery.data.role === "admin" && activeTab === "dashboard" && !searchParams.get("tab") && !navigationState.activeTab) {
-      setActiveTab("admin-users");
+      setActiveTab("admin-health");
     } else if (meQuery.data.role !== "coach" && activeTab === "dashboard" && !searchParams.get("tab") && !navigationState.activeTab) {
       setActiveTab("plan");
     }
