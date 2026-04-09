@@ -295,10 +295,50 @@ export const HardEffortsPanel = ({
             !mainEfforts.some(s => s.start <= sp.end && sp.start <= s.end)
         );
 
+        // === SUSTAINED Z3 DETECTION (>=5min) ===
+        // Include longer tempo blocks that may never cross Z4 but are still key efforts.
+        const zone3LowerThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 2)
+            ? cyclingBounds[1]
+            : ref * 0.75;
+        const zone3UpperThreshold = effortThreshold;
+        const minZone3Duration = 300; // 5 minutes
+        const zone3RawSegs: { start: number; end: number }[] = [];
+        {
+            let segStart = -1;
+            for (let i = 0; i <= smoothed31.length; i++) {
+                const v = i < smoothed31.length ? smoothed31[i] : null;
+                const inZone3 = v != null && v >= zone3LowerThreshold && v < zone3UpperThreshold;
+                if (inZone3 && segStart === -1) segStart = i;
+                else if (!inZone3 && segStart !== -1) {
+                    zone3RawSegs.push({ start: segStart, end: i - 1 });
+                    segStart = -1;
+                }
+            }
+        }
+        const zone3Merged: { start: number; end: number }[] = [];
+        for (const seg of zone3RawSegs) {
+            if (zone3Merged.length === 0) { zone3Merged.push({ ...seg }); continue; }
+            const last = zone3Merged[zone3Merged.length - 1];
+            const gapLen = seg.start - last.end - 1;
+            if (gapLen <= 20) last.end = seg.end;
+            else zone3Merged.push({ ...seg });
+        }
+        const zone3Efforts = zone3Merged
+            .map(seg => {
+                let { start, end } = seg;
+                while (start < end && (smoothed7[start] == null || (smoothed7[start] as number) < zone3LowerThreshold)) start++;
+                while (end > start && (smoothed7[end] == null || (smoothed7[end] as number) >= zone3UpperThreshold || (smoothed7[end] as number) < zone3LowerThreshold)) end--;
+                return { start, end };
+            })
+            .filter(s => s.end - s.start + 1 >= minZone3Duration)
+            .filter(s => !mainEfforts.some(m => m.start <= s.end && s.start <= m.end))
+            .filter(s => !standaloneSprints.some(sp => sp.start <= s.end && s.start <= sp.end));
+
         // Combine and sort chronologically
         type RawEntry = { start: number; end: number; isSprint: boolean };
         const allSegs: RawEntry[] = [
             ...mainEfforts.map(s => ({ ...s, isSprint: false })),
+            ...zone3Efforts.map(s => ({ ...s, isSprint: false })),
             ...standaloneSprints.map(s => ({ ...s, isSprint: true })),
         ].sort((a, b) => a.start - b.start);
 
