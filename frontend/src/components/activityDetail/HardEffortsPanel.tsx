@@ -58,6 +58,22 @@ export const HardEffortsPanel = ({
             return parsed;
         })();
 
+        // Running speed bounds stored as ratios of LT2 speed (100/zone.low for each zone).
+        // Default derived from RUNNING_PACE_ZONES: Z1=0.6667, Z2=0.8333, Z3=0.9524, Z4=1.0526, Z5=1.2048
+        const RUNNING_DEFAULT_SPEED_BOUNDS = [0.6667, 0.8333, 0.9524, 1.0526, 1.2048];
+        const configuredRunningSpeedBounds = (() => {
+            if (!isRunningActivity) return [] as number[];
+            const raw = (zoneProfile as any)?.zone_settings?.running?.pace?.upper_bounds;
+            if (!Array.isArray(raw) || raw.length === 0) return [] as number[];
+            const parsed = raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0);
+            if (parsed.length !== raw.length) return [] as number[];
+            for (let i = 1; i < parsed.length; i++) if (parsed[i] <= parsed[i - 1]) return [] as number[];
+            return parsed;
+        })();
+        const runningBounds = isRunningActivity
+            ? (configuredRunningSpeedBounds.length > 0 ? configuredRunningSpeedBounds : RUNNING_DEFAULT_SPEED_BOUNDS)
+            : [] as number[];
+
         let refValue: number | null = null;
         let getMetric: (p: any) => number | null;
         let isHrFallback = false;
@@ -118,6 +134,11 @@ export const HardEffortsPanel = ({
                     for (let z = 0; z < parsed.length; z++) if (value < parsed[z]) return z + 1;
                     return parsed.length + 1;
                 }
+            }
+            if (isRunningActivity && !isHrFallback && runningBounds.length > 0) {
+                // value is speed ratio (speed / LT2_speed)
+                for (let z = 0; z < runningBounds.length; z++) if (value < runningBounds[z]) return z + 1;
+                return runningBounds.length + 1;
             }
             const ratio = value;
             for (let z = 0; z < zoneBounds.length; z++) if (ratio < zoneBounds[z]) return z + 1;
@@ -210,6 +231,8 @@ export const HardEffortsPanel = ({
         // Step 1: raw above-threshold streaks using 31-pt smoothing
         const effortThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 3)
             ? cyclingBounds[2]
+            : (isRunningActivity && !isHrFallback && runningBounds.length >= 3)
+            ? ref * runningBounds[2]
             : ref * 0.90;
         const rawSegs: { start: number; end: number }[] = [];
         {
@@ -231,6 +254,8 @@ export const HardEffortsPanel = ({
         // 85% keeps intra-interval rests at 87-93% FTP merged while transitions at <85% split cleanly.
         const activeRestThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 3)
             ? ((cyclingBounds[1] ?? cyclingBounds[2]) + cyclingBounds[2]) / 2
+            : (isRunningActivity && !isHrFallback && runningBounds.length >= 3)
+            ? ref * ((runningBounds[1] + runningBounds[2]) / 2)
             : ref * 0.85;
         const mergeGapActive = 240;
         const mergeGapEasy = 25;
@@ -265,6 +290,8 @@ export const HardEffortsPanel = ({
         // Use shorter (7-pt) smoothing so brief power spikes aren't washed out.
         const sprintThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 5)
             ? cyclingBounds[4]
+            : (isRunningActivity && !isHrFallback && runningBounds.length >= 4)
+            ? ref * runningBounds[3]
             : ref * 1.20;
         const minSprintDuration = 8; // seconds
         const sprintSegs: { start: number; end: number }[] = [];
@@ -283,6 +310,8 @@ export const HardEffortsPanel = ({
                         const avgRaw = avgMetricInRange(segStart, i - 1);
                         const minSprintAvg = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 4)
                             ? cyclingBounds[3]
+                            : (isRunningActivity && !isHrFallback && runningBounds.length >= 3)
+                            ? ref * runningBounds[2]
                             : ref * 1.10;
                         if (avgRaw >= minSprintAvg) sprintSegs.push({ start: segStart, end: i - 1 });
                     }
@@ -299,6 +328,8 @@ export const HardEffortsPanel = ({
         // Include longer tempo blocks that may never cross Z4 but are still key efforts.
         const zone3LowerThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 2)
             ? cyclingBounds[1]
+            : (isRunningActivity && !isHrFallback && runningBounds.length >= 2)
+            ? ref * runningBounds[1]
             : ref * 0.75;
         const zone3UpperThreshold = effortThreshold;
         const minZone3Duration = 300; // 5 minutes

@@ -248,12 +248,16 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
         upper_bounds: upperBounds,
       };
     } else {
-      // Running pace is stored as min/km threshold; bounds are derived from that threshold.
+      // Running/swimming pace is stored as min/km threshold; zone upper bounds stored as
+      // speed ratios relative to LT2 speed (100 / zone.low, where zone.low is the lower
+      // pace-% of the zone = the faster/upper speed boundary of that zone).
       const thresholdMinutes = paceCol.threshold && paceCol.threshold > 0
         ? Number((paceCol.threshold / 60).toFixed(4))
         : null;
+      const upperBounds = paceCol.zones.map((z) => parseFloat((100 / z.low).toFixed(4)));
       (sportCfg as any)[metric] = {
         lt2: thresholdMinutes,
+        upper_bounds: upperBounds,
       };
     }
     onSubmit({
