@@ -114,7 +114,13 @@ const LoginPage = () => {
 
       while (verificationAttempts < maxAttempts) {
         try {
-          const meResponse = await api.get<{ email?: string | null }>("/users/me");
+          const meResponse = await api.get<{ email?: string | null }>("/users/me", {
+            params: { _: Date.now() },
+            headers: {
+              "Cache-Control": "no-cache",
+              Pragma: "no-cache",
+            },
+          });
           const authenticatedEmail = String(meResponse.data?.email || "").trim().toLowerCase();
           
           if (authenticatedEmail && authenticatedEmail === data.requestedEmail) {

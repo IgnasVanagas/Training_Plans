@@ -295,7 +295,10 @@ async def get_me(
     response: Response = None,
 ) -> UserOut:
     if response is not None:
-        response.headers["Cache-Control"] = "private, max-age=300"
+        # Never cache identity payloads across account switches.
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
     # Need to load organization_memberships eagerly or lazy load will trigger.
     # get_current_user implementation might need check.
     _normalize_user_for_response(current_user)
