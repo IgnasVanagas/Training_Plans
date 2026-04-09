@@ -332,8 +332,15 @@ export const HardEffortsPanel = ({
         for (const seg of zone3RawSegs) {
             if (zone3Merged.length === 0) { zone3Merged.push({ ...seg }); continue; }
             const last = zone3Merged[zone3Merged.length - 1];
-            const gapLen = seg.start - last.end - 1;
-            if (gapLen <= 20) last.end = seg.end;
+            const gapS = last.end + 1;
+            const gapE = seg.start - 1;
+            if (gapS > gapE) { last.end = seg.end; continue; }
+            const gapLen = gapE - gapS + 1;
+            const gapAvg = avgMetricInRange(gapS, gapE);
+            // Gap still in Z3 range → smoothing artifact; merge up to 300s.
+            // Gap dropped below Z3 → genuine break; only bridge short smoothing halos (20s).
+            const maxGap = gapAvg >= zone3LowerThreshold ? 300 : 20;
+            if (gapLen <= maxGap) last.end = seg.end;
             else zone3Merged.push({ ...seg });
         }
         const zone3Efforts = zone3Merged
