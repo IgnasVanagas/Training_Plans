@@ -184,6 +184,7 @@ export const ActivityDetailPage = () => {
         onMutate: async () => {
             await queryClient.cancelQueries({ queryKey: ['activity', id] });
             await queryClient.cancelQueries({ queryKey: ['activities'] });
+            await queryClient.cancelQueries({ queryKey: ['calendar'] });
             const previousActivity = queryClient.getQueryData(['activity', id]);
             const previousActivitiesQueries: [unknown[], unknown][] = [];
             queryClient.getQueriesData<unknown[]>({ queryKey: ['activities'] }).forEach(([qk, qd]) => {
@@ -192,17 +193,25 @@ export const ActivityDetailPage = () => {
                     old ? old.filter((a) => a.id !== Number(id)) : old
                 );
             });
+            const previousCalendarQueries: [unknown[], unknown][] = [];
+            queryClient.getQueriesData<unknown[]>({ queryKey: ['calendar'] }).forEach(([qk, qd]) => {
+                previousCalendarQueries.push([qk as unknown[], qd]);
+                queryClient.setQueryData(qk as unknown[], (old: any[]) =>
+                    old ? old.filter((e: any) => (e.matched_activity_id ?? e.resource?.matched_activity_id) !== Number(id)) : old
+                );
+            });
             queryClient.removeQueries({ queryKey: ['activity', id] });
-            navigate(-1);
-            return { previousActivity, previousActivitiesQueries };
+            return { previousActivity, previousActivitiesQueries, previousCalendarQueries };
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['activities'] });
             queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            navigate(-1);
         },
         onError: (_err, _vars, context) => {
             if (context?.previousActivity) queryClient.setQueryData(['activity', id], context.previousActivity);
             context?.previousActivitiesQueries?.forEach(([qk, qd]) => queryClient.setQueryData(qk as unknown[], qd as any));
+            context?.previousCalendarQueries?.forEach(([qk, qd]) => queryClient.setQueryData(qk as unknown[], qd as any));
             notifications.show({ color: 'red', title: 'Delete failed', message: 'Could not delete activity. Please try again.', position: 'bottom-right' });
         },
     });
