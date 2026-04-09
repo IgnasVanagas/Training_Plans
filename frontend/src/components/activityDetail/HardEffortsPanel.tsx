@@ -45,15 +45,49 @@ export const HardEffortsPanel = ({
     const hardEfforts = useMemo((): HardEffort[] => {
         if (!activity || streamPoints.length < 2) return [];
 
+        const configuredCyclingPowerBounds = (() => {
+            const raw = (zoneProfile as any)?.zone_settings?.cycling?.power?.upper_bounds;
+            if (!Array.isArray(raw) || raw.length === 0) return [] as number[];
+            const parsed = raw
+                .map((v: any) => Number(v))
+                .filter((v: number) => Number.isFinite(v) && v > 0);
+            if (parsed.length !== raw.length) return [] as number[];
+            for (let i = 1; i < parsed.length; i++) {
+                if (parsed[i] <= parsed[i - 1]) return [] as number[];
+            }
+            return parsed;
+        })();
+
         let refValue: number | null = null;
         let getMetric: (p: any) => number | null;
         let isHrFallback = false;
 
         if (isCyclingActivity) {
-            const ftp = Number(activity.ftp_at_time ?? (zoneProfile as any)?.ftp ?? 0);
-            if (ftp > 0) {
-                refValue = ftp;
+            const trainingZoneFtp = Number((zoneProfile as any)?.zone_settings?.cycling?.power?.lt2 ?? (zoneProfile as any)?.ftp ?? 0);
+
+            const fallbackPowerBounds = trainingZoneFtp > 0
+                ? [trainingZoneFtp * 0.55, trainingZoneFtp * 0.75, trainingZoneFtp * 0.90, trainingZoneFtp * 1.05, trainingZoneFtp * 1.20, trainingZoneFtp * 1.50]
+                : [];
+            const cyclingPowerBounds = configuredCyclingPowerBounds.length > 0 ? configuredCyclingPowerBounds : fallbackPowerBounds;
+
+            const powerSampleCount = streamPoints.reduce((count: number, p: any) => {
+                const v = Number(p?.power ?? p?.watts ?? 0);
+                return v > 0 ? count + 1 : count;
+            }, 0);
+            const hasUsablePower = powerSampleCount >= Math.max(30, Math.floor(streamPoints.length * 0.1));
+
+            if (cyclingPowerBounds.length > 0 && hasUsablePower) {
+                // Reference value is only for display (% FTP) and merge behavior tuning.
+                refValue = trainingZoneFtp > 0 ? trainingZoneFtp : null;
                 getMetric = (p: any) => { const v = Number(p?.power ?? p?.watts ?? 0); return v > 0 ? v : null; };
+            } else {
+                // Some accounts have sparse/empty power streams; use HR as a fallback.
+                const cyclingLthr = Number((zoneProfile as any)?.zone_settings?.cycling?.hr?.lt2 ?? 0);
+                if (cyclingLthr > 0) {
+                    refValue = cyclingLthr;
+                    isHrFallback = true;
+                    getMetric = (p: any) => { const v = Number(p?.heart_rate ?? 0); return v > 0 ? v : null; };
+                }
             }
         } else if (isRunningActivity) {
             const lt2Raw = Number((zoneProfile as any)?.zone_settings?.running?.pace?.lt2 ?? (zoneProfile as any)?.lt2 ?? 0);
@@ -74,10 +108,30 @@ export const HardEffortsPanel = ({
         const ref = refValue;
 
         const zoneBounds = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50];
-        const getZone = (ratio: number): number => {
+        const getZone = (value: number): number => {
+            if (isCyclingActivity && !isHrFallback) {
+                const raw = (zoneProfile as any)?.zone_settings?.cycling?.power?.upper_bounds;
+                const parsed = Array.isArray(raw)
+                    ? raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0)
+                    : [];
+                if (parsed.length > 0) {
+                    for (let z = 0; z < parsed.length; z++) if (value < parsed[z]) return z + 1;
+                    return parsed.length + 1;
+                }
+            }
+            const ratio = value;
             for (let z = 0; z < zoneBounds.length; z++) if (ratio < zoneBounds[z]) return z + 1;
             return 7;
         };
+
+        const cyclingBounds = (() => {
+            const raw = (zoneProfile as any)?.zone_settings?.cycling?.power?.upper_bounds;
+            if (!Array.isArray(raw) || raw.length === 0) return [] as number[];
+            const parsed = raw
+                .map((v: any) => Number(v))
+                .filter((v: number) => Number.isFinite(v) && v > 0);
+            return parsed.length === raw.length ? parsed : [];
+        })();
 
         // 31-point rolling average (±15 samples, ~30s) — main effort detection
         const smoothed31: (number | null)[] = streamPoints.map((_: any, i: number) => {
@@ -154,7 +208,9 @@ export const HardEffortsPanel = ({
 
         // === MAIN EFFORT DETECTION (Z4+, ≥60s) ===
         // Step 1: raw above-threshold streaks using 31-pt smoothing
-        const effortThreshold = ref * 0.90;
+        const effortThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 3)
+            ? cyclingBounds[2]
+            : ref * 0.90;
         const rawSegs: { start: number; end: number }[] = [];
         {
             let segStart = -1;
@@ -173,7 +229,9 @@ export const HardEffortsPanel = ({
         // Gap avg metric >= 85% FTP: active rest → bridge up to 240s.
         // Gap avg metric <  85% FTP: easy section → bridge only 25s (smoothing artifact tolerance).
         // 85% keeps intra-interval rests at 87-93% FTP merged while transitions at <85% split cleanly.
-        const activeRestThreshold = ref * 0.85;
+        const activeRestThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 3)
+            ? ((cyclingBounds[1] ?? cyclingBounds[2]) + cyclingBounds[2]) / 2
+            : ref * 0.85;
         const mergeGapActive = 240;
         const mergeGapEasy = 25;
         const merged: { start: number; end: number }[] = [];
@@ -205,7 +263,9 @@ export const HardEffortsPanel = ({
 
         // === SPRINT DETECTION (Z6+ = ≥120% FTP, brief) ===
         // Use shorter (7-pt) smoothing so brief power spikes aren't washed out.
-        const sprintThreshold = ref * 1.20;
+        const sprintThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 5)
+            ? cyclingBounds[4]
+            : ref * 1.20;
         const minSprintDuration = 8; // seconds
         const sprintSegs: { start: number; end: number }[] = [];
         {
@@ -221,7 +281,10 @@ export const HardEffortsPanel = ({
                         // The 7-pt smoothed window "halos" around real peaks, creating edge segments
                         // where the segment average is much lower than the smoothed threshold.
                         const avgRaw = avgMetricInRange(segStart, i - 1);
-                        if (avgRaw >= ref * 1.10) sprintSegs.push({ start: segStart, end: i - 1 });
+                        const minSprintAvg = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 4)
+                            ? cyclingBounds[3]
+                            : ref * 1.10;
+                        if (avgRaw >= minSprintAvg) sprintSegs.push({ start: segStart, end: i - 1 });
                     }
                     segStart = -1;
                 }
@@ -243,16 +306,19 @@ export const HardEffortsPanel = ({
             const stats = calcSegmentStats(seg.start, seg.end);
             const refForPct = isHrFallback ? stats.avgHr : (isCyclingActivity ? stats.avgPower : (stats.avgSpeedKmh != null ? stats.avgSpeedKmh / 3.6 : null));
             const ratio = refForPct != null ? refForPct / ref : 0;
+            const zoneInput = (isCyclingActivity && !isHrFallback)
+                ? (stats.avgPower ?? 0)
+                : ratio;
             return {
                 key: `effort_${idx}`,
-                zone: getZone(ratio),
+                zone: getZone(zoneInput),
                 isSprint: seg.isSprint,
                 startIndex: seg.start,
                 endIndex: seg.end,
                 centerIndex: Math.round((seg.start + seg.end) / 2),
                 durationSeconds: seg.end - seg.start + 1,
                 ...stats,
-                pctRef: ratio * 100,
+                pctRef: ref > 0 && refForPct != null ? ratio * 100 : null,
             };
         });
 
@@ -272,16 +338,19 @@ export const HardEffortsPanel = ({
             const wStats = calcSegmentStats(0, wEnd);
             const wRefForPct = isHrFallback ? wStats.avgHr : (isCyclingActivity ? wStats.avgPower : (wStats.avgSpeedKmh != null ? wStats.avgSpeedKmh / 3.6 : null));
             const wRatio = wRefForPct != null ? wRefForPct / ref : 0;
+            const wZoneInput = (isCyclingActivity && !isHrFallback)
+                ? (wStats.avgPower ?? 0)
+                : wRatio;
             kept2.unshift({
                 key: 'warmup',
-                zone: getZone(wRatio),
+                zone: getZone(wZoneInput),
                 isWarmup: true,
                 startIndex: 0,
                 endIndex: wEnd,
                 centerIndex: Math.floor(wEnd / 2),
                 durationSeconds: kept2[0].startIndex,
                 ...wStats,
-                pctRef: wRatio * 100,
+                pctRef: ref > 0 && wRefForPct != null ? wRatio * 100 : null,
             });
         }
 
