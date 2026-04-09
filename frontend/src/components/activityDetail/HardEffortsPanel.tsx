@@ -45,59 +45,54 @@ export const HardEffortsPanel = ({
     const hardEfforts = useMemo((): HardEffort[] => {
         if (!activity || streamPoints.length < 2) return [];
 
-        const configuredCyclingPowerBounds = (() => {
+        // Cycling: use stored upper_bounds (absolute watts) or fall back to FTP × default zone %
+        const cyclingFtp = Number((zoneProfile as any)?.zone_settings?.cycling?.power?.lt2 ?? (zoneProfile as any)?.ftp ?? 0);
+        const cyclingBounds = (() => {
             const raw = (zoneProfile as any)?.zone_settings?.cycling?.power?.upper_bounds;
-            if (!Array.isArray(raw) || raw.length === 0) return [] as number[];
-            const parsed = raw
-                .map((v: any) => Number(v))
-                .filter((v: number) => Number.isFinite(v) && v > 0);
-            if (parsed.length !== raw.length) return [] as number[];
-            for (let i = 1; i < parsed.length; i++) {
-                if (parsed[i] <= parsed[i - 1]) return [] as number[];
+            if (Array.isArray(raw) && raw.length > 0) {
+                const parsed = raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0);
+                if (parsed.length === raw.length) {
+                    let valid = true;
+                    for (let i = 1; i < parsed.length; i++) if (parsed[i] <= parsed[i - 1]) { valid = false; break; }
+                    if (valid) return parsed;
+                }
             }
-            return parsed;
+            if (cyclingFtp > 0) return [0.55, 0.75, 0.90, 1.05, 1.20, 1.50, 2.00].map(p => cyclingFtp * p);
+            return [] as number[];
         })();
 
-        // Running speed bounds stored as ratios of LT2 speed (100/zone.low for each zone).
+        // Running: use stored upper_bounds (speed ratios vs LT2) or fall back to default 5-zone ratios
         // Default derived from RUNNING_PACE_ZONES: Z1=0.6667, Z2=0.8333, Z3=0.9524, Z4=1.0526, Z5=1.2048
-        const RUNNING_DEFAULT_SPEED_BOUNDS = [0.6667, 0.8333, 0.9524, 1.0526, 1.2048];
-        const configuredRunningSpeedBounds = (() => {
+        const runningBounds = (() => {
             if (!isRunningActivity) return [] as number[];
             const raw = (zoneProfile as any)?.zone_settings?.running?.pace?.upper_bounds;
-            if (!Array.isArray(raw) || raw.length === 0) return [] as number[];
-            const parsed = raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0);
-            if (parsed.length !== raw.length) return [] as number[];
-            for (let i = 1; i < parsed.length; i++) if (parsed[i] <= parsed[i - 1]) return [] as number[];
-            return parsed;
+            if (Array.isArray(raw) && raw.length > 0) {
+                const parsed = raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0);
+                if (parsed.length === raw.length) {
+                    let valid = true;
+                    for (let i = 1; i < parsed.length; i++) if (parsed[i] <= parsed[i - 1]) { valid = false; break; }
+                    if (valid) return parsed;
+                }
+            }
+            return [0.6667, 0.8333, 0.9524, 1.0526, 1.2048];
         })();
-        const runningBounds = isRunningActivity
-            ? (configuredRunningSpeedBounds.length > 0 ? configuredRunningSpeedBounds : RUNNING_DEFAULT_SPEED_BOUNDS)
-            : [] as number[];
 
         let refValue: number | null = null;
         let getMetric: (p: any) => number | null;
         let isHrFallback = false;
 
         if (isCyclingActivity) {
-            const trainingZoneFtp = Number((zoneProfile as any)?.zone_settings?.cycling?.power?.lt2 ?? (zoneProfile as any)?.ftp ?? 0);
-
-            const fallbackPowerBounds = trainingZoneFtp > 0
-                ? [trainingZoneFtp * 0.55, trainingZoneFtp * 0.75, trainingZoneFtp * 0.90, trainingZoneFtp * 1.05, trainingZoneFtp * 1.20, trainingZoneFtp * 1.50]
-                : [];
-            const cyclingPowerBounds = configuredCyclingPowerBounds.length > 0 ? configuredCyclingPowerBounds : fallbackPowerBounds;
-
             const powerSampleCount = streamPoints.reduce((count: number, p: any) => {
                 const v = Number(p?.power ?? p?.watts ?? 0);
                 return v > 0 ? count + 1 : count;
             }, 0);
             const hasUsablePower = powerSampleCount >= Math.max(30, Math.floor(streamPoints.length * 0.1));
 
-            if (cyclingPowerBounds.length > 0 && hasUsablePower) {
-                // Reference value is only for display (% FTP) and merge behavior tuning.
-                refValue = trainingZoneFtp > 0 ? trainingZoneFtp : null;
+            if (cyclingBounds.length > 0 && hasUsablePower) {
+                refValue = cyclingFtp > 0 ? cyclingFtp : null;
                 getMetric = (p: any) => { const v = Number(p?.power ?? p?.watts ?? 0); return v > 0 ? v : null; };
             } else {
-                // Some accounts have sparse/empty power streams; use HR as a fallback.
+                // Sparse/no power stream: fall back to HR
                 const cyclingLthr = Number((zoneProfile as any)?.zone_settings?.cycling?.hr?.lt2 ?? 0);
                 if (cyclingLthr > 0) {
                     refValue = cyclingLthr;
@@ -125,34 +120,21 @@ export const HardEffortsPanel = ({
 
         const zoneBounds = [0.55, 0.75, 0.90, 1.05, 1.20, 1.50];
         const getZone = (value: number): number => {
-            if (isCyclingActivity && !isHrFallback) {
-                const raw = (zoneProfile as any)?.zone_settings?.cycling?.power?.upper_bounds;
-                const parsed = Array.isArray(raw)
-                    ? raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0)
-                    : [];
-                if (parsed.length > 0) {
-                    for (let z = 0; z < parsed.length; z++) if (value < parsed[z]) return z + 1;
-                    return parsed.length + 1;
-                }
+            if (isCyclingActivity && !isHrFallback && cyclingBounds.length > 0) {
+                // value is absolute watts; cyclingBounds are absolute watts
+                for (let z = 0; z < cyclingBounds.length; z++) if (value < cyclingBounds[z]) return z + 1;
+                return cyclingBounds.length + 1;
             }
             if (isRunningActivity && !isHrFallback && runningBounds.length > 0) {
-                // value is speed ratio (speed / LT2_speed)
+                // value is speed ratio (speed / LT2_speed); runningBounds are speed ratios
                 for (let z = 0; z < runningBounds.length; z++) if (value < runningBounds[z]) return z + 1;
                 return runningBounds.length + 1;
             }
+            // HR fallback: value is already a ratio
             const ratio = value;
             for (let z = 0; z < zoneBounds.length; z++) if (ratio < zoneBounds[z]) return z + 1;
             return 7;
         };
-
-        const cyclingBounds = (() => {
-            const raw = (zoneProfile as any)?.zone_settings?.cycling?.power?.upper_bounds;
-            if (!Array.isArray(raw) || raw.length === 0) return [] as number[];
-            const parsed = raw
-                .map((v: any) => Number(v))
-                .filter((v: number) => Number.isFinite(v) && v > 0);
-            return parsed.length === raw.length ? parsed : [];
-        })();
 
         // 31-point rolling average (±15 samples, ~30s) — main effort detection
         const smoothed31: (number | null)[] = streamPoints.map((_: any, i: number) => {
