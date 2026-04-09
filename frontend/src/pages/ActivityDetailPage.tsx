@@ -2430,6 +2430,7 @@ export const ActivityDetailPage = () => {
                     shareText={[
                         `${activity.filename} — ${activity.sport || 'activity'}`,
                         `Distance: ${(activity.distance / 1000).toFixed(2)} km  |  Duration: ${formatDuration(activity.duration)}${activity.average_hr ? `  |  Avg HR: ${Math.round(activity.average_hr)} bpm` : ''}${activity.average_watts ? `  |  Avg Power: ${Math.round(activity.average_watts)} W` : ''}`,
+                        `/dashboard/activities/${activity.id}`,
                     ].join('\n')}
                 />
 

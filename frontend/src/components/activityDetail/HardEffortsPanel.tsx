@@ -233,13 +233,15 @@ export const HardEffortsPanel = ({
 
         // Step 2: Adaptive-gap merge.
         // Gap avg metric >= 85% FTP: active rest → bridge up to 240s.
-        // Gap avg metric <  85% FTP: easy section → bridge only 25s (smoothing artifact tolerance).
-        // 85% keeps intra-interval rests at 87-93% FTP merged while transitions at <85% split cleanly.
-        const activeRestThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 3)
-            ? ((cyclingBounds[1] ?? cyclingBounds[2]) + cyclingBounds[2]) / 2
-            : (isRunningActivity && !isHrFallback && runningBounds.length >= 3)
-            ? ref * ((runningBounds[1] + runningBounds[2]) / 2)
-            : ref * 0.85;
+        // Gap avg metric >= Z2/Z3 boundary (≥75% FTP): active rest → bridge up to 240s.
+        // Gap avg metric <  Z2/Z3 boundary: easy section → bridge only 25s (smoothing artifact tolerance).
+        // Using the Z2/Z3 boundary keeps Z3 inter-interval rests (78-84% FTP) merged while
+        // genuinely easy transitions (<75% FTP) still split cleanly.
+        const activeRestThreshold = (isCyclingActivity && !isHrFallback && cyclingBounds.length >= 2)
+            ? cyclingBounds[1]
+            : (isRunningActivity && !isHrFallback && runningBounds.length >= 2)
+            ? ref * runningBounds[1]
+            : ref * 0.75;
         const mergeGapActive = 240;
         const mergeGapEasy = 25;
         const merged: { start: number; end: number }[] = [];
@@ -634,7 +636,7 @@ export const HardEffortsPanel = ({
                                     <Table.Td>
                                         <Group gap={4}>
                                             <Badge size="xs" color={ZONE_COLORS[Math.max(0, Math.min(6, (rest.zone ?? 1) - 1))]} variant="light">Z{rest.zone ?? 1}</Badge>
-                                            <Text size="xs" c="dimmed" fs="italic">recovery</Text>
+                                            {(rest.zone ?? 1) <= 2 && <Text size="xs" c="dimmed" fs="italic">Recovery</Text>}
                                         </Group>
                                     </Table.Td>
                                     <Table.Td><Text size="xs" c="dimmed">{formatDuration(rest.durationSeconds)}</Text></Table.Td>

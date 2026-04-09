@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Anchor,
   Avatar,
   Badge,
   Box,
@@ -51,7 +52,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@mantine/hooks";
-import { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import React, { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   discoverOrganizations,
   leaveOrganization,
@@ -73,6 +74,7 @@ import {
   setMemberAdmin,
   resolveOrgPictureUrl,
 } from "../../api/organizations";
+import { useNavigate } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
 import { OrganizationDirectMessage, OrganizationCoachMessage, OrganizationGroupMessage, User } from "./types";
 import { extractApiErrorMessage } from "./utils";
@@ -107,6 +109,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
   const { t } = useI18n();
   const isDark = useComputedColorScheme("light") === "dark";
   const isMobile = useMediaQuery("(max-width: 62em)");
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [threadSearch, setThreadSearch] = useState("");
   const [groupBody, setGroupBody] = useState("");
@@ -604,6 +607,40 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
     }
   };
 
+  const renderMessageBody = (body: string) => {
+    const activityLinkPattern = /(\/dashboard\/activities\/(\d+))/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = activityLinkPattern.exec(body)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(body.slice(lastIndex, match.index));
+      }
+      const path = match[1];
+      const activityId = match[2];
+      parts.push(
+        <Anchor
+          key={match.index}
+          size="sm"
+          fw={600}
+          onClick={() => navigate(path)}
+          style={{ cursor: "pointer" }}
+        >
+          View Activity #{activityId}
+        </Anchor>
+      );
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < body.length) {
+      parts.push(body.slice(lastIndex));
+    }
+    return (
+      <Text size="sm" c={isDark ? "gray.1" : "dark.8"} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+        {parts}
+      </Text>
+    );
+  };
+
   const renderAttachment = (url?: string | null, name?: string | null) => {
     if (!url) return null;
     const fullUrl = resolveAttachmentUrl(url);
@@ -1015,11 +1052,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                                   {senderName}
                                 </Text>
                               )}
-                              {message.body && (
-                                <Text size="sm" c={isDark ? "gray.1" : "dark.8"} style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                                  {message.body}
-                                </Text>
-                              )}
+                              {message.body && renderMessageBody(message.body)}
                               {renderAttachment(message.attachment_url, message.attachment_name)}
                               <Text size="10px" ta="right" c="dimmed">
                                 {formatMessageTime(message.created_at)}

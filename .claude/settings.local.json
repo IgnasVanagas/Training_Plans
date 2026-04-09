@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -E \"\\(activities|calendar\\)/\\(\\\\\"\\)?$|activities/{|calendar/{\")"
+      "Bash(grep -E \"\\(activities|calendar\\)/\\(\\\\\"\\)?$|activities/{|calendar/{\")",
+      "Bash(npx tsc:*)"
     ]
   }
 }
