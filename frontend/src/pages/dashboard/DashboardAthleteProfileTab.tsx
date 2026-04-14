@@ -193,6 +193,9 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
 
   const handleSave = () => {
     const payload: Profile = { ...profile };
+    // Strip fields managed by other tabs to avoid accidental overwrites
+    delete payload.zone_settings;
+    delete payload.auto_sync_integrations;
     if (payload.sports && Array.isArray(payload.sports)) {
       payload.sports = payload.sports.map((s) => (typeof s === "string" ? s.toLowerCase() : s));
       if (payload.sports.length === 0) payload.sports = null;

@@ -1168,7 +1168,7 @@ async def update_profile(
     await db.commit()
     await db.refresh(current_user)
     _normalize_user_for_response(current_user)
-    return current_user
+    return UserOut.model_validate(current_user)
 
 
 _USER_UPLOADS_DIR = pathlib.Path("uploads/user")

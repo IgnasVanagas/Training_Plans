@@ -88,7 +88,10 @@ async def get_athlete_permissions(
     # - If athlete has no active org/coaching relationship, do not block self actions.
     # - If athlete has active coach relationship(s), enforce org permission settings.
     if coach_id is None and not org_ids:
-        return {key: True for key in PERMISSION_KEYS}
+        return {
+            key: (False if key in RESTRICTIVE_ANY_TRUE_KEYS else True)
+            for key in PERMISSION_KEYS
+        }
 
     if coach_id is not None and not org_ids:
         return DEFAULT_PERMISSIONS.copy()
@@ -102,7 +105,10 @@ async def get_athlete_permissions(
         has_active_coach_res = await db.execute(has_active_coach_stmt)
         has_active_coach = has_active_coach_res.scalar_one_or_none() is not None
         if not has_active_coach:
-            return {key: True for key in PERMISSION_KEYS}
+            return {
+                key: (False if key in RESTRICTIVE_ANY_TRUE_KEYS else True)
+                for key in PERMISSION_KEYS
+            }
 
     orgs_stmt = select(Organization).where(Organization.id.in_(org_ids))
     orgs_res = await db.execute(orgs_stmt)
