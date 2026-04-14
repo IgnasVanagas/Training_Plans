@@ -86,7 +86,7 @@ const parseTarget = (raw: string, sportType: string): TargetConfig | null => {
 
   if ((m = s.match(POWER_RE))) {
     const watts = parseInt(m[1], 10);
-    return { type: 'power', value: watts, min: watts, max: watts, unit: 'W' };
+    return { type: 'power', metric: 'watts', value: watts, min: watts, max: watts, unit: 'W' };
   }
   if ((m = s.match(PACE_RE))) {
     const totalSec = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);

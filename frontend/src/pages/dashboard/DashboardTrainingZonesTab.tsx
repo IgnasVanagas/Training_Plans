@@ -189,8 +189,7 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
     setHrCol(nextHr);
     setPaceCol(nextPace);
     setPaceRawText(nextPace.threshold ? fmtPace(nextPace.threshold) : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sport]);
+  }, [sport, user.profile?.zone_settings, buildInitialHR, buildInitialPace]);
 
   const hrThreshold = hrCol.threshold ?? user.profile?.max_hr ?? null;
   const paceThreshold = paceCol.threshold ?? (sport === "cycling" ? (user.profile?.ftp ?? null) : (user.profile?.lt2 ? user.profile.lt2 * 60 : null));
