@@ -371,3 +371,15 @@ async def get_stats(
             "host_available_mb": host_available_mb,
         },
     }
+
+
+@router.post("/backfill-duplicates")
+async def backfill_duplicates(
+    _admin: User = Depends(_require_admin),
+) -> dict:
+    """Re-scan all activities and link undetected duplicates."""
+    from ..database import engine
+    from ..services.activity_dedupe import _backfill_duplicates
+
+    marked = await _backfill_duplicates(engine)
+    return {"marked": marked}

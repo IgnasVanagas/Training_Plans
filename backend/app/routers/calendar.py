@@ -631,7 +631,26 @@ async def get_calendar_events(
         return created_by_user_id, created_by_name, email
 
     events = []
-    
+
+    # Strip stale approval from workouts where approval is no longer required.
+    # This handles workouts created before the permissions fix was deployed.
+    workouts_with_approval = [w for w in workouts if _approval_from_planning_context(w.planning_context)]
+    if workouts_with_approval:
+        approval_user_ids = {w.user_id for w in workouts_with_approval}
+        approval_required_by_user: dict[int, bool] = {}
+        for uid in approval_user_ids:
+            perms = await get_athlete_permissions(db, uid)
+            approval_required_by_user[uid] = perms.get("require_workout_approval", False)
+
+        stale_workouts = [
+            w for w in workouts_with_approval
+            if not approval_required_by_user.get(w.user_id, False)
+        ]
+        if stale_workouts:
+            for w in stale_workouts:
+                w.planning_context = _strip_approval_context(w.planning_context)
+            await db.commit()
+
     # Map Workouts
     for w in workouts:
         if w.matched_activity_id is not None and w.matched_activity_id in visible_activity_ids:

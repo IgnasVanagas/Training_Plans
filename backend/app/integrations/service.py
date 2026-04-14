@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..auth import ALGORITHM, SECRET_KEY
@@ -85,23 +85,33 @@ async def get_or_create_sync_state(db: AsyncSession, *, user_id: int, provider: 
     if state:
         return state
 
-    state = ProviderSyncState(user_id=user_id, provider=provider, cursor={})
-    db.add(state)
-    try:
-        await db.commit()
-        await db.refresh(state)
-        return state
-    except IntegrityError:
-        await db.rollback()
-        existing = await db.scalar(
-            select(ProviderSyncState).where(
-                ProviderSyncState.user_id == user_id,
-                ProviderSyncState.provider == provider,
-            )
+    # Use ON CONFLICT DO NOTHING to avoid IntegrityError + rollback which
+    # would expire every object in the request-scoped session (including
+    # current_user), causing MissingGreenlet on subsequent attribute access.
+    stmt = pg_insert(ProviderSyncState).values(
+        user_id=user_id,
+        provider=provider,
+        cursor={},
+        sync_status="idle",
+        sync_progress=0,
+        sync_total=0,
+        updated_at=datetime.utcnow(),
+    ).on_conflict_do_nothing(
+        constraint="uq_provider_sync_state_provider_user",
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+    # Re-fetch ORM instance (whether we inserted or the row already existed)
+    state = await db.scalar(
+        select(ProviderSyncState).where(
+            ProviderSyncState.user_id == user_id,
+            ProviderSyncState.provider == provider,
         )
-        if existing:
-            return existing
-        raise
+    )
+    if state:
+        return state
+    raise RuntimeError("Failed to get or create provider sync state")
 
 
 async def get_connection(db: AsyncSession, *, user_id: int, provider: str) -> ProviderConnection | None:

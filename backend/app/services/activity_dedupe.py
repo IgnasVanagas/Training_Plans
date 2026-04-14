@@ -15,7 +15,7 @@ from ..models import Activity
 # Thresholds — single source of truth for all matching tiers
 # ---------------------------------------------------------------------------
 
-_FUZZY_WINDOW_S: int = 900              # ±15 minutes
+_FUZZY_WINDOW_S: int = 2700             # ±45 minutes
 _INDOOR_DURATION_TOLERANCE_S: int = 3600  # 60 min — treadmill/trainer drift
 _OUTDOOR_DURATION_TOLERANCE_S: int = 600  # 10 min — GPS drift
 _OUTDOOR_DISTANCE_TOLERANCE_M: int = 500  # 500 m
@@ -328,7 +328,8 @@ async def _backfill_duplicates(engine) -> int:
     async with engine.connect() as conn:
         result = await conn.execute(text(
             "SELECT id, athlete_id, sport, created_at, duration, distance, streams "
-            "FROM activities WHERE duplicate_of_id IS NULL ORDER BY athlete_id, id"
+            "FROM activities WHERE duplicate_of_id IS NULL AND is_deleted = false "
+            "ORDER BY athlete_id, id"
         ))
         rows = [dict(r) for r in result.mappings().fetchall()]
 

@@ -96,6 +96,60 @@ async def ingest_provider_activity(
         existing_points = existing_streams.get("data") if isinstance(existing_streams.get("data"), list) else []
         existing_meta = existing_streams.get("_meta") if isinstance(existing_streams.get("_meta"), dict) else {}
 
+        # Check if this is a true re-sync (same provider + same activity ID)
+        existing_provider = str(existing_meta.get("source_provider", "")).strip().lower()
+        existing_source_id = str(existing_meta.get("source_activity_id", "")).strip()
+        is_same_source = (
+            existing_provider == provider.strip().lower()
+            and existing_source_id == provider_activity_id.strip()
+        ) if existing_provider and existing_source_id else False
+
+        # Cross-source match (e.g. file upload + Strava, or two different devices):
+        # create a secondary recording so the user can choose which to keep.
+        if not is_same_source:
+            secondary = Activity(
+                athlete_id=user_id,
+                filename=name,
+                file_path=f"provider://{provider}/{provider_activity_id}",
+                file_type="provider",
+                sport=sport,
+                created_at=ts,
+                duration=duration_s,
+                distance=distance_m,
+                avg_speed=average_speed,
+                average_hr=average_hr,
+                average_watts=average_watts,
+                local_date=_local_date_from_payload(payload, ts),
+                moving_time=_moving_time_from_parts(stats, payload),
+                duplicate_of_id=duplicate.id,
+                streams={
+                    "data": stream_points,
+                    "power_curve": power_curve,
+                    "hr_zones": hr_zones,
+                    "pace_curve": pace_curve,
+                    "laps": laps,
+                    "splits_metric": splits_metric,
+                    "best_efforts": best_efforts,
+                    "provider_payload": payload or {},
+                    "stats": stats,
+                    "_meta": {
+                        "deleted": False,
+                        "source_provider": provider,
+                        "source_activity_id": provider_activity_id,
+                        "fingerprint_v1": fingerprint,
+                        "import_channel": "integration_sync",
+                    },
+                },
+            )
+            db.add(secondary)
+            if auto_commit:
+                await db.commit()
+                await db.refresh(secondary)
+            else:
+                await db.flush()
+            return secondary, True
+
+        # Same-source re-sync: enrich the existing activity
         should_enrich = (
             getattr(duplicate, "file_type", None) == "provider"
             and (

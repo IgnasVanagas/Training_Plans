@@ -1187,6 +1187,9 @@ const findFirstStructuredZone = (steps: any[]): number | null => {
       if (nested) return nested;
       continue;
     }
+    // Skip recovery/warmup/cooldown — their default zone:1 is not meaningful
+    const cat = step?.category;
+    if (cat === 'recovery' || cat === 'warmup' || cat === 'cooldown') continue;
     const zone = Number(step?.target?.zone);
     if (Number.isFinite(zone) && zone > 0) return zone;
   }

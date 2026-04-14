@@ -325,7 +325,8 @@ export const WorkoutEditor = ({
 	};
 
 	const absoluteHint = (target: TargetConfig) => {
-		const metric = (target.metric as IntensityMetric | undefined) || 'percent_ftp';
+		let metric = (target.metric as IntensityMetric | undefined) || 'percent_ftp';
+		if (metric === 'percent_ftp' && target.unit === 'W') metric = 'watts';
 		const pct = target.value || target.max || 0;
 		if (metric === 'percent_ftp' && athleteProfile?.ftp) return `${Math.round((athleteProfile.ftp * pct) / 100)}W`;
 		if ((metric === 'percent_max_hr' || metric === 'percent_lthr') && athleteProfile?.max_hr) return `${Math.round((athleteProfile.max_hr * pct) / 100)}bpm`;
@@ -352,8 +353,12 @@ export const WorkoutEditor = ({
 	};
 
 	const resolveTargetDisplay = (target: TargetConfig, mode: 'power' | 'heart_rate_zone' | 'pace') => {
-		const metric = (target.metric as IntensityMetric | undefined)
+		let metric = (target.metric as IntensityMetric | undefined)
 			|| (mode === 'power' ? 'percent_ftp' : mode === 'pace' ? 'percent_threshold_pace' : 'hr_zone');
+		// Detect absolute watts from legacy data that lacks metric field
+		if (metric === 'percent_ftp' && target.unit === 'W') {
+			metric = 'watts';
+		}
 		const value = typeof target.value === 'number' && Number.isFinite(target.value) ? target.value : null;
 		const min = typeof target.min === 'number' && Number.isFinite(target.min) ? target.min : null;
 		const max = typeof target.max === 'number' && Number.isFinite(target.max) ? target.max : null;
@@ -488,7 +493,8 @@ export const WorkoutEditor = ({
 	}, [athleteProfile, blocks, hZones, normalizedSport, pZones, paceZones, t]);
 
 	const renderMetricInput = (step: ConcreteStep, update: (next: ConcreteStep) => void) => {
-		const metric = (step.target.metric as IntensityMetric | undefined) || 'percent_ftp';
+		let metric = (step.target.metric as IntensityMetric | undefined) || 'percent_ftp';
+		if (metric === 'percent_ftp' && step.target.unit === 'W') metric = 'watts';
 		const hint = absoluteHint(step.target);
 		if (metric === 'hr_zone') {
 			return (
@@ -675,7 +681,7 @@ export const WorkoutEditor = ({
 								size="xs"
 								w={220}
 								placeholder="Intensity & target"
-								value={(step.target.metric as string) || 'percent_ftp'}
+								value={((step.target.metric as string) || 'percent_ftp') === 'percent_ftp' && step.target.unit === 'W' ? 'watts' : (step.target.metric as string) || 'percent_ftp'}
 								data={metricOptions}
 								onChange={(value) => {
 									if (!value) return;

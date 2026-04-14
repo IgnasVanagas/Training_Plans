@@ -134,6 +134,10 @@ def _zone_from_workout(workout: PlannedWorkout) -> int | None:
                 for _ in range(repeats):
                     walk(nested)
                 continue
+            # Skip recovery/warmup/cooldown blocks — their default zone:1 is not meaningful
+            category = str(node.get("category") or "work")
+            if category in ("recovery", "warmup", "cooldown"):
+                continue
             target = node.get("target") if isinstance(node.get("target"), dict) else {}
             zone_raw = target.get("zone")
             zone_value = int(_safe_float(zone_raw, default=0.0))
