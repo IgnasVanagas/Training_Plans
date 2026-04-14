@@ -1,8 +1,4 @@
-{
-    email {$ACME_EMAIL}
-}
-
-{$APP_HOST} {
+{$APP_HOST:localhost} {
     encode gzip zstd
     reverse_proxy edge:80
 }

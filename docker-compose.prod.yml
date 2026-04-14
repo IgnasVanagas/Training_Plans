@@ -9,8 +9,8 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      APP_HOST: ${APP_HOST}
-      ACME_EMAIL: ${ACME_EMAIL}
+      APP_HOST: ${APP_HOST:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./deployment/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
