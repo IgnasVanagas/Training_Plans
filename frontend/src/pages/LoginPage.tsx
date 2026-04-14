@@ -2,12 +2,11 @@ import { useEffect, useState, FormEvent } from "react";
 import {
   Anchor,
   Alert,
+  Box,
   Button,
   Center,
-  Container,
   Group,
   SegmentedControl,
-  Paper,
   PasswordInput,
   Select,
   Stack,
@@ -15,12 +14,14 @@ import {
   TextInput,
   Title,
   rem,
-  List
+  List,
+  useComputedColorScheme,
+  Transition,
 } from "@mantine/core";
 import { DateInput } from '@mantine/dates';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { IconAt, IconLock, IconUser, IconBuilding } from "@tabler/icons-react";
+import { IconAt, IconLock, IconUser, IconBuilding, IconRun, IconBike, IconSwimming, IconHeartRateMonitor } from "@tabler/icons-react";
 import api from "../api/client";
 import SupportContactButton from "../components/common/SupportContactButton";
 import { useI18n } from "../i18n/I18nProvider";
@@ -289,14 +290,108 @@ const LoginPage = () => {
   };
 
   const isLoading = loginMutation.isPending || registerMutation.isPending || forgotPasswordMutation.isPending || resetPasswordMutation.isPending;
+  const isDark = useComputedColorScheme("light") === "dark";
+
+  const featureItems = [
+    { icon: IconRun, text: t("Track activities & compliance") },
+    { icon: IconBike, text: t("Plan training with drag & drop") },
+    { icon: IconSwimming, text: t("Multi-sport support") },
+    { icon: IconHeartRateMonitor, text: t("Wearable integrations") },
+  ];
 
   return (
-    <Center style={{ width: "100%", height: "100vh", backgroundColor: "var(--mantine-color-body)" }}>
-      <Container size={640} w="100%">
-        <Center mb="xl">
-            <img src={appLogo} alt="Origami Plans" width={88} height={88} />
-        </Center>
-        <Group justify="center" mb="sm" gap="sm">
+    <Box
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        width: "100%",
+        backgroundColor: "var(--mantine-color-body)",
+      }}
+    >
+      {/* ── Hero / branding panel ── */}
+      <Box
+        visibleFrom="md"
+        style={{
+          flex: "0 0 44%",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: rem(48),
+          background: isDark
+            ? "linear-gradient(160deg, var(--mantine-color-dark-8) 0%, var(--mantine-color-cyan-9) 100%)"
+            : "linear-gradient(160deg, var(--mantine-color-cyan-6) 0%, var(--mantine-color-cyan-4) 50%, var(--mantine-color-teal-3) 100%)",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        {/* Decorative circles */}
+        <Box
+          style={{
+            position: "absolute",
+            width: 340,
+            height: 340,
+            borderRadius: "50%",
+            background: "rgba(255,255,255,0.06)",
+            top: -60,
+            left: -80,
+          }}
+        />
+        <Box
+          style={{
+            position: "absolute",
+            width: 200,
+            height: 200,
+            borderRadius: "50%",
+            background: "rgba(255,255,255,0.04)",
+            bottom: 60,
+            right: -40,
+          }}
+        />
+
+        <img
+          src={appLogo}
+          alt="Origami Plans"
+          width={96}
+          height={96}
+          style={{ marginBottom: rem(24), filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.2))" }}
+        />
+        <Title order={2} c="white" ta="center" mb="xs" style={{ fontSize: rem(32), letterSpacing: -0.5 }}>
+          Origami Plans
+        </Title>
+        <Text c="rgba(255,255,255,0.85)" size="lg" ta="center" maw={340} mb="xl">
+          {t("Endurance coaching platform for athletes and coaches")}
+        </Text>
+
+        <Stack gap="md" mt="md">
+          {featureItems.map((item, i) => (
+            <Group key={i} gap="sm" wrap="nowrap">
+              <item.icon size={22} color="rgba(255,255,255,0.9)" stroke={1.5} />
+              <Text c="rgba(255,255,255,0.9)" size="sm">{item.text}</Text>
+            </Group>
+          ))}
+        </Stack>
+      </Box>
+
+      {/* ── Form panel ── */}
+      <Box
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: `${rem(32)} ${rem(24)}`,
+          overflowY: "auto",
+        }}
+      >
+        {/* Top-right controls */}
+        <Group
+          justify="flex-end"
+          gap="sm"
+          mb="lg"
+          style={{ width: "100%", maxWidth: 480 }}
+        >
           <SegmentedControl
             size="xs"
             value={language}
@@ -313,169 +408,202 @@ const LoginPage = () => {
             name={`${firstName} ${lastName}`.trim() || null}
           />
         </Group>
-        <Title ta="center" order={1} mb="sm" style={{ fontFamily: "greycliff cf, sans-serif", fontSize: rem(28) }}>
-          Origami Plans
-        </Title>
-        <Text c="dimmed" size="md" ta="center" mb="xl">
-            Manage your athletes and training plans efficiently
-        </Text>
-        
-        <Paper shadow="xl" p={40} radius="md" withBorder>
-          <Text size="lg" fw={500} mb="lg" ta="center">
-            {isRegister ? t("Create an account") : t("Welcome back")}
-          </Text>
+
+        {/* Mobile-only compact branding */}
+        <Center hiddenFrom="md" mb="lg">
+          <Group gap="sm" align="center">
+            <img src={appLogo} alt="Origami Plans" width={48} height={48} />
+            <Title order={3} style={{ letterSpacing: -0.5 }}>Origami Plans</Title>
+          </Group>
+        </Center>
+
+        <Box style={{ width: "100%", maxWidth: 480 }}>
+          <Transition mounted transition="fade" duration={200}>
+            {(styles) => (
+              <div style={styles}>
+                <Title order={2} mb={4} style={{ fontSize: rem(26) }}>
+                  {isRegister ? t("Create an account") : resetToken ? t("Reset password") : isForgotPassword ? t("Forgot password?") : t("Welcome back")}
+                </Title>
+                <Text c="dimmed" size="sm" mb="xl">
+                  {isRegister
+                    ? t("Fill in your details to get started")
+                    : resetToken
+                    ? t("Choose a new password for your account")
+                    : isForgotPassword
+                    ? t("Enter your email to receive reset instructions")
+                    : t("Sign in to continue to your dashboard")}
+                </Text>
+              </div>
+            )}
+          </Transition>
 
           <form onSubmit={handleSubmit}>
-            <Stack>
-                {error && (
-                <Alert variant="light" color="red" title="Error">
-                    <Stack gap="xs">
-                      <Text size="sm">{error}</Text>
-                      <SupportContactButton
-                        size="xs"
-                        buttonText={t("Contact support")}
-                        email={email || null}
-                        name={`${firstName} ${lastName}`.trim() || null}
-                        pageLabel="Login"
-                        errorMessage={error}
-                      />
-                    </Stack>
+            <Stack gap="sm">
+              {error && (
+                <Alert variant="light" color="red" radius="md" title="Error">
+                  <Stack gap="xs">
+                    <Text size="sm">{error}</Text>
+                    <SupportContactButton
+                      size="xs"
+                      buttonText={t("Contact support")}
+                      email={email || null}
+                      name={`${firstName} ${lastName}`.trim() || null}
+                      pageLabel="Login"
+                      errorMessage={error}
+                    />
+                  </Stack>
                 </Alert>
-                )}
+              )}
 
-                {info && (
-                  <Alert variant="light" color="blue" title="Info">
-                    {info}
-                  </Alert>
-                )}
+              {info && (
+                <Alert variant="light" color="blue" radius="md" title="Info">
+                  {info}
+                </Alert>
+              )}
 
-                {inviteCode && (
-                  <Alert variant="light" color="blue" title="Team invite detected">
-                    Sign in to join this coach&apos;s team, or create an athlete account to join directly.
-                  </Alert>
-                )}
+              {inviteCode && (
+                <Alert variant="light" color="cyan" radius="md" title={t("Team invite detected")}>
+                  {t("Sign in to join this coach's team, or create an athlete account to join directly.")}
+                </Alert>
+              )}
 
-                <TextInput
+              <TextInput
                 label="Email"
                 placeholder="you@example.com"
-                leftSection={<IconAt style={{ width: rem(20), height: rem(20) }} />}
+                leftSection={<IconAt style={{ width: rem(18), height: rem(18) }} />}
                 value={email}
                 onChange={(event) => setEmail(event.currentTarget.value)}
                 required
-                size="lg"
+                size="md"
                 autoComplete="email"
-                />
-                
-                {!isForgotPassword && !resetToken && (
+                radius="md"
+              />
+
+              {!isForgotPassword && !resetToken && (
                 <PasswordInput
-                label="Password"
-                placeholder="Your password"
-                leftSection={<IconLock style={{ width: rem(20), height: rem(20) }} />}
-                value={password}
-                onChange={(event) => setPassword(event.currentTarget.value)}
-                required
-                size="lg"
-                autoComplete={isRegister ? "new-password" : "current-password"}
+                  label="Password"
+                  placeholder="Your password"
+                  leftSection={<IconLock style={{ width: rem(18), height: rem(18) }} />}
+                  value={password}
+                  onChange={(event) => setPassword(event.currentTarget.value)}
+                  required
+                  size="md"
+                  autoComplete={isRegister ? "new-password" : "current-password"}
+                  radius="md"
                 />
-                )}
+              )}
 
-                {resetToken && (
-                  <>
-                    <PasswordInput
-                      label="New password"
-                      placeholder="New password"
-                      leftSection={<IconLock style={{ width: rem(20), height: rem(20) }} />}
-                      value={newPassword}
-                      onChange={(event) => setNewPassword(event.currentTarget.value)}
-                      required
-                      size="lg"
-                    />
-                    <PasswordInput
-                      label="Confirm new password"
-                      placeholder="Confirm new password"
-                      leftSection={<IconLock style={{ width: rem(20), height: rem(20) }} />}
-                      value={confirmPassword}
-                      onChange={(event) => setConfirmPassword(event.currentTarget.value)}
-                      required
-                      size="lg"
-                    />
-                  </>
-                )}
-
-                {isRegister && !resetToken && !isForgotPassword && (
+              {resetToken && (
                 <>
-                    <List size="xs" spacing={2} mb={4}>
-                      <List.Item><Text c={password.length >= 10 ? "teal" : "dimmed"}>At least 10 characters</Text></List.Item>
-                      <List.Item><Text c={/[A-Z]/.test(password) ? "teal" : "dimmed"}>One uppercase letter</Text></List.Item>
-                      <List.Item><Text c={/[a-z]/.test(password) ? "teal" : "dimmed"}>One lowercase letter</Text></List.Item>
-                      <List.Item><Text c={/\d/.test(password) ? "teal" : "dimmed"}>One number</Text></List.Item>
-                      <List.Item><Text c={/[^A-Za-z0-9]/.test(password) ? "teal" : "dimmed"}>One symbol</Text></List.Item>
-                    </List>
-                    <Group grow>
-                        <TextInput 
-                            label="First Name" 
-                            placeholder="John" 
-                            value={firstName} 
-                            onChange={(e) => setFirstName(e.currentTarget.value)}
-                            required 
-                            size="md"
-                        />
-                        <TextInput 
-                            label="Last Name" 
-                            placeholder="Doe" 
-                            value={lastName} 
-                            onChange={(e) => setLastName(e.currentTarget.value)} 
-                            required 
-                            size="md"
-                        />
-                    </Group>
-                    <Group grow>
-                        <Select
-                            label="Gender"
-                            placeholder="Select"
-                            data={['Male', 'Female']}
-                            value={gender}
-                            onChange={setGender}
-                            required
-                            size="md"
-                        />
-                        <DateInput
-                            label="Birth Date"
-                            placeholder="YYYY-MM-DD"
-                            value={birthDate}
-                            onChange={setBirthDate}
-                            required
-                            size="md"
-                        />
-                    </Group>
-                    
-                    <Select
-                        label={t("I am a")}
-                        value={role}
-                        leftSection={<IconUser style={{ width: rem(20), height: rem(20) }} />}
-                        data={[
-                            { value: "athlete", label: t("Athlete") || "Athlete" },
-                            { value: "coach", label: t("Coach") || "Coach" }
-                        ]}
-                        onChange={(value) => setRole(value || "athlete")}
-                        size="md"
-                        disabled={!!inviteCode}
+                  <PasswordInput
+                    label="New password"
+                    placeholder="New password"
+                    leftSection={<IconLock style={{ width: rem(18), height: rem(18) }} />}
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.currentTarget.value)}
+                    required
+                    size="md"
+                    radius="md"
+                  />
+                  <PasswordInput
+                    label="Confirm new password"
+                    placeholder="Confirm new password"
+                    leftSection={<IconLock style={{ width: rem(18), height: rem(18) }} />}
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.currentTarget.value)}
+                    required
+                    size="md"
+                    radius="md"
+                  />
+                </>
+              )}
+
+              {isRegister && !resetToken && !isForgotPassword && (
+                <>
+                  <List size="xs" spacing={2} mb={4}>
+                    <List.Item><Text size="xs" c={password.length >= 10 ? "teal" : "dimmed"}>At least 10 characters</Text></List.Item>
+                    <List.Item><Text size="xs" c={/[A-Z]/.test(password) ? "teal" : "dimmed"}>One uppercase letter</Text></List.Item>
+                    <List.Item><Text size="xs" c={/[a-z]/.test(password) ? "teal" : "dimmed"}>One lowercase letter</Text></List.Item>
+                    <List.Item><Text size="xs" c={/\d/.test(password) ? "teal" : "dimmed"}>One number</Text></List.Item>
+                    <List.Item><Text size="xs" c={/[^A-Za-z0-9]/.test(password) ? "teal" : "dimmed"}>One symbol</Text></List.Item>
+                  </List>
+                  <Group grow>
+                    <TextInput
+                      label="First Name"
+                      placeholder="John"
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.currentTarget.value)}
+                      required
+                      size="md"
+                      radius="md"
                     />
                     <TextInput
+                      label="Last Name"
+                      placeholder="Doe"
+                      value={lastName}
+                      onChange={(e) => setLastName(e.currentTarget.value)}
+                      required
+                      size="md"
+                      radius="md"
+                    />
+                  </Group>
+                  <Group grow>
+                    <Select
+                      label="Gender"
+                      placeholder="Select"
+                      data={['Male', 'Female']}
+                      value={gender}
+                      onChange={setGender}
+                      required
+                      size="md"
+                      radius="md"
+                    />
+                    <DateInput
+                      label="Birth Date"
+                      placeholder="YYYY-MM-DD"
+                      value={birthDate}
+                      onChange={setBirthDate}
+                      required
+                      size="md"
+                    />
+                  </Group>
+                  <Select
+                    label={t("I am a")}
+                    value={role}
+                    leftSection={<IconUser style={{ width: rem(18), height: rem(18) }} />}
+                    data={[
+                      { value: "athlete", label: t("Athlete") || "Athlete" },
+                      { value: "coach", label: t("Coach") || "Coach" }
+                    ]}
+                    onChange={(value) => setRole(value || "athlete")}
+                    size="md"
+                    radius="md"
+                    disabled={!!inviteCode}
+                  />
+                  <TextInput
                     label="Organization Name"
                     placeholder="e.g. Iron Team"
                     description="Optional"
-                    leftSection={<IconBuilding style={{ width: rem(20), height: rem(20) }} />}
+                    leftSection={<IconBuilding style={{ width: rem(18), height: rem(18) }} />}
                     value={organizationName}
                     onChange={(event) => setOrganizationName(event.currentTarget.value)}
-                    size="lg"
-                    />
+                    size="md"
+                    radius="md"
+                  />
                 </>
-                )}
+              )}
             </Stack>
 
-            <Button fullWidth mt="xl" size="lg" type="submit" loading={isLoading}>
-                {resetToken ? "Reset password" : isForgotPassword ? "Send reset instructions" : isRegister ? "Register" : "Sign in"}
+            <Button
+              fullWidth
+              mt="xl"
+              size="md"
+              radius="md"
+              type="submit"
+              loading={isLoading}
+              style={{ fontWeight: 600, letterSpacing: 0.3 }}
+            >
+              {resetToken ? t("Reset password") : isForgotPassword ? t("Send reset instructions") : isRegister ? t("Register") : t("Sign in")}
             </Button>
           </form>
 
@@ -485,12 +613,12 @@ const LoginPage = () => {
                 setIsForgotPassword(!isForgotPassword);
                 setError(null);
               }}>
-                {isForgotPassword ? "Back to login" : "Forgot password?"}
+                {isForgotPassword ? t("Back to login") : t("Forgot password?")}
               </Anchor>
             </Group>
           )}
 
-          <Group justify="center" mt="md">
+          <Group justify="center" mt="lg">
             <Text size="sm" c="dimmed">
               {isRegister ? t("Have an account?") : t("Don't have an account yet?")}
             </Text>
@@ -503,9 +631,9 @@ const LoginPage = () => {
               {isRegister ? t("Login") : t("Create account")}
             </Anchor>
           </Group>
-        </Paper>
-      </Container>
-    </Center>
+        </Box>
+      </Box>
+    </Box>
   );
 };
 
