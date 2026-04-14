@@ -147,7 +147,15 @@ interface RepeatBlock {
   recoveryDuration: DurationConfig | null;
 }
 
-type Segment = SimpleBlock | RepeatBlock;
+interface SetRepeatBlock {
+  kind: 'setRepeat';
+  sets: number;
+  reps: number;
+  repSteps: Array<{ duration: DurationConfig; target: TargetConfig | null }>;
+  setRecovery: DurationConfig | null;
+}
+
+type Segment = SimpleBlock | RepeatBlock | SetRepeatBlock;
 
 const splitDurationAndTarget = (raw: string): { durationRaw: string; targetRaw: string | null } | null => {
   const source = raw.trim();
@@ -181,6 +189,40 @@ const parseSegment = (raw: string, sportType: string): Segment | null => {
   const cleaned = stripCategoryKeyword(trimmed);
 
   // Check for repeat prefix
+  const setRepeatMatch = cleaned.match(/^(\d+)\s*[xX×]\s*(\d+)\s*[xX×]\s*(.+)$/);
+  if (setRepeatMatch) {
+    const sets = parseInt(setRepeatMatch[1], 10);
+    const reps = parseInt(setRepeatMatch[2], 10);
+    const tail = setRepeatMatch[3].trim();
+    if (!tail) return null;
+
+    const rawParts = tail.split(RECOVERY_SEP).map((p) => p.trim()).filter(Boolean);
+    if (rawParts.length < 2) return null;
+
+    const parsedParts = rawParts.map((part) => {
+      const split = splitDurationAndTarget(part);
+      if (!split) return null;
+      const duration = parseDuration(split.durationRaw);
+      if (!duration) return null;
+      const target = split.targetRaw ? parseTarget(split.targetRaw, sportType) : null;
+      return { duration, target };
+    });
+    if (parsedParts.some((p) => p == null)) return null;
+
+    const resolvedParts = parsedParts as Array<{ duration: DurationConfig; target: TargetConfig | null }>;
+    const hasExplicitSetRecovery = resolvedParts.length > 2 && resolvedParts[resolvedParts.length - 1].target == null;
+    const repSteps = hasExplicitSetRecovery ? resolvedParts.slice(0, -1) : resolvedParts;
+    const setRecovery = hasExplicitSetRecovery ? resolvedParts[resolvedParts.length - 1].duration : null;
+
+    return {
+      kind: 'setRepeat',
+      sets,
+      reps,
+      repSteps,
+      setRecovery,
+    };
+  }
+
   const repeatMatch = cleaned.match(REPEAT_RE);
   if (repeatMatch) {
     const repeats = parseInt(repeatMatch[1], 10);
@@ -289,7 +331,7 @@ const buildNodes = (segments: Segment[], sportType: string): WorkoutNode[] => {
         target,
       };
       nodes.push(step);
-    } else {
+    } else if (seg.kind === 'repeat') {
       // Repeat
       const workStep: ConcreteStep = {
         id: uid(),
@@ -315,6 +357,36 @@ const buildNodes = (segments: Segment[], sportType: string): WorkoutNode[] => {
         steps,
       };
       nodes.push(repeat);
+    } else {
+      const steps: ConcreteStep[] = [];
+      for (let repIdx = 0; repIdx < seg.reps; repIdx++) {
+        for (const repStep of seg.repSteps) {
+          steps.push({
+            id: uid(),
+            type: 'block',
+            category: 'work',
+            duration: repStep.duration,
+            target: repStep.target || { type: 'open' as const },
+          });
+        }
+      }
+      if (seg.setRecovery) {
+        steps.push({
+          id: uid(),
+          type: 'block',
+          category: 'recovery',
+          duration: seg.setRecovery,
+          target: defaultTarget(sportType),
+        });
+      }
+
+      const setRepeat: RepeatStep = {
+        id: uid(),
+        type: 'repeat',
+        repeats: seg.sets,
+        steps,
+      };
+      nodes.push(setRepeat);
     }
   }
 
@@ -370,7 +442,7 @@ const formatTargetShort = (t: TargetConfig): string => {
 
 const generateTitle = (segments: Segment[]): string => {
   // Find the most interesting repeat(s)
-  const repeats = segments.filter((s): s is RepeatBlock => s.kind === 'repeat');
+  const repeats = segments.filter((s): s is RepeatBlock | SetRepeatBlock => s.kind === 'repeat' || s.kind === 'setRepeat');
   if (repeats.length === 0) {
     // No intervals — just summarise the blocks
     const blocks = segments.filter((s): s is SimpleBlock => s.kind === 'block');
@@ -383,6 +455,13 @@ const generateTitle = (segments: Segment[]): string => {
   }
 
   const parts = repeats.map(r => {
+    if (r.kind === 'setRepeat') {
+      const pattern = r.repSteps
+        .map((step) => `${formatDurationShort(step.duration)}${step.target ? ` ${formatTargetShort(step.target)}` : ''}`.trim())
+        .join('/');
+      const setRecovery = r.setRecovery ? `/${formatDurationShort(r.setRecovery)}` : '';
+      return `${r.sets}×${r.reps}×${pattern}${setRecovery}`;
+    }
     const tgt = r.workTarget ? ' ' + formatTargetShort(r.workTarget) : '';
     return `${r.repeats}×${formatDurationShort(r.workDuration)}${tgt}`;
   });

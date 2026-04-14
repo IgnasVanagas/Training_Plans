@@ -235,6 +235,38 @@ describe('parseWorkoutText', () => {
     if (r.structure[3].type === 'block') expect(r.structure[3].category).toBe('cooldown');
   });
 
+  it('parses nested set over-under syntax: 3x4x2min@270w/1min@315w/5min', () => {
+    const r = ok('3x4x2min@270w/1min@315w/5min', 'Cycling');
+    expect(r.structure).toHaveLength(1);
+
+    const setRepeat = r.structure[0];
+    expect(setRepeat.type).toBe('repeat');
+    if (setRepeat.type === 'repeat') {
+      expect(setRepeat.repeats).toBe(3);
+      // 4 reps x (2 work steps) + 1 set recovery step
+      expect(setRepeat.steps).toHaveLength(9);
+
+      const firstOver = setRepeat.steps[0];
+      const firstUnder = setRepeat.steps[1];
+      const setRecovery = setRepeat.steps[8];
+
+      if (firstOver.type === 'block') {
+        expect(firstOver.duration).toEqual({ type: 'time', value: 120 });
+        expect(firstOver.target.type).toBe('power');
+        expect(firstOver.target.value).toBe(270);
+      }
+      if (firstUnder.type === 'block') {
+        expect(firstUnder.duration).toEqual({ type: 'time', value: 60 });
+        expect(firstUnder.target.type).toBe('power');
+        expect(firstUnder.target.value).toBe(315);
+      }
+      if (setRecovery.type === 'block') {
+        expect(setRecovery.category).toBe('recovery');
+        expect(setRecovery.duration).toEqual({ type: 'time', value: 300 });
+      }
+    }
+  });
+
   it('supports semicolon as delimiter', () => {
     const r = ok('15min; 3x5min@200w/4min; 10min');
     expect(r.structure).toHaveLength(3);
