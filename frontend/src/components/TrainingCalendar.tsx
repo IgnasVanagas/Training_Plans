@@ -728,7 +728,6 @@ export const TrainingCalendar = ({
                     message: t('Workout change has been sent for coach approval.') || 'Workout change has been sent for coach approval.',
                 });
             }
-            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['recent-coach-workouts'] });
         },

@@ -329,11 +329,17 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
       </Text>
       <Group gap={4} align="center" wrap="nowrap">
         <Text size="sm" fw={700}>
-          {isFirst
-            ? <>{t("less than")} {highAbs} {unit}</>
-            : isLast
-              ? <>{t("more than")} {lowAbs} {unit}</>
-              : <>{lowAbs} {t("to")} {highAbs} {unit}</>
+          {lowAbs === "—" && highAbs === "—"
+            ? (isFirst
+              ? <>{t("less than")} {highPct}%</>
+              : isLast
+                ? <>{t("more than")} {lowPct}%</>
+                : <>{lowPct}% {t("to")} {highPct}%</>)
+            : (isFirst
+              ? <>{t("less than")} {highAbs} {unit}</>
+              : isLast
+                ? <>{t("more than")} {lowAbs} {unit}</>
+                : <>{lowAbs} {t("to")} {highAbs} {unit}</>)
           }
         </Text>
       </Group>
@@ -443,6 +449,12 @@ const DashboardTrainingZonesTab = ({ user, onSubmit, isSaving }: Props) => {
                 hideControls
               />
             </Box>
+          )}
+
+          {!hrCol.editing && !hrThreshold && (
+            <Text size="xs" c="dimmed" mb="xs">
+              {t("Set your max HR in Profile or click Adjust zones to enter a threshold for absolute values.")}
+            </Text>
           )}
 
           <Stack gap={6}>
