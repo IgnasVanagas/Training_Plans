@@ -1,4 +1,8 @@
-{$APP_HOST:localhost} {
+{$ROOT_HOST:origamiplans.com}, {$WWW_HOST:www.origamiplans.com} {
+    redir https://{$APP_HOST:app.origamiplans.com}{uri} permanent
+}
+
+{$APP_HOST:app.origamiplans.com} {
     encode gzip zstd
     reverse_proxy edge:80
 }

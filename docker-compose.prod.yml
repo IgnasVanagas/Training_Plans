@@ -11,6 +11,8 @@ services:
     environment:
       APP_HOST: ${APP_HOST:-localhost}
       ACME_EMAIL: ${ACME_EMAIL:-}
+      ROOT_HOST: ${ROOT_HOST:-origamiplans.com}
+      WWW_HOST: ${WWW_HOST:-www.origamiplans.com}
     volumes:
       - ./deployment/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
