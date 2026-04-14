@@ -56,7 +56,7 @@ This repo now includes a production-ready Docker Compose stack for a single-host
 
 Recommended topology:
 
-- Cloudflare (TLS/WAF/CDN) in front of your VPS
+- Caddy (automatic Let's Encrypt TLS) in front of your VPS
 - Nginx edge container as reverse proxy
 - Frontend static container (Nginx)
 - Backend FastAPI container (Uvicorn workers)
@@ -65,22 +65,26 @@ Recommended topology:
 Quick start on VPS:
 
 1. Copy `env.production.template` to `.env.production` and fill real values.
-2. Build and start:
+2. Point your `APP_HOST` DNS `A` record to your VPS public IP.
+3. Make sure inbound ports `80` and `443` are open in Hetzner Firewall/UFW.
+4. Build and start:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 
-3. Validate health:
+5. Validate health:
 
 - `http://<server-ip>/healthz` (edge)
 - `http://<server-ip>/api/health` (backend via edge)
+- `https://<APP_HOST>/healthz` (public HTTPS via Caddy)
 
 Notes:
 
 - The backend is not published directly to the internet in production compose.
 - Frontend calls API through `/api` to keep a single public origin.
-- For strict HTTPS to origin, terminate TLS at Cloudflare and/or add certificates on the edge Nginx layer.
+- The production stack obtains and renews Let's Encrypt certificates automatically through Caddy.
+- `APP_HOST` must be a public DNS hostname that resolves to your VPS. Let's Encrypt will not issue certificates for raw IP addresses.
 
 ## Safe GitHub publishing
 
