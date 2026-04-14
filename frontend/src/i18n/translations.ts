@@ -925,7 +925,6 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"to": "iki"
     ,"less than": "mažiau nei"
     ,"more than": "daugiau nei"
-    ,"Set your max HR in Profile or click Adjust zones to enter a threshold for absolute values.": "Nurodykite maksimalų širdies ritmą profilyje arba paspauskite 'Koreguoti zonas', kad įvestumėte slenkstį absoliučioms reikšmėms."
   }
 };
 
