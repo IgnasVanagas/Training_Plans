@@ -1,4 +1,4 @@
-const CACHE_NAME = "origami-plans-v2";
+const CACHE_NAME = "origami-plans-v3";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -19,38 +19,6 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// StaleWhileRevalidate: return cached response immediately, update cache in background
-function staleWhileRevalidate(event) {
-  const { request } = event;
-  const cachePromise = caches.open(CACHE_NAME);
-  const fetchPromise = fetch(request).then((response) => {
-    if (response && response.ok) {
-      cachePromise.then((cache) => cache.put(request, response.clone())).catch(() => undefined);
-    }
-    return response;
-  }).catch(() => null);
-
-  event.respondWith(
-    cachePromise.then((cache) =>
-      cache.match(request).then((cached) => {
-        if (cached) {
-          // Serve from cache immediately, revalidate in background
-          event.waitUntil(fetchPromise);
-          return cached;
-        }
-        // No cache — wait for network
-        return fetchPromise.then((response) => {
-          if (response) return response;
-          return new Response(JSON.stringify({ detail: "offline" }), {
-            status: 503,
-            headers: { "Content-Type": "application/json" }
-          });
-        });
-      })
-    )
-  );
-}
-
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
@@ -61,11 +29,16 @@ self.addEventListener("fetch", (event) => {
   const isSameOrigin = url.origin === self.location.origin;
 
   const isHtmlNavigation = request.mode === "navigate";
+
+  // Let API requests (both /api/* and direct backend paths) pass through
+  // to the network without SW interception. React Query handles caching.
   const isApiRequest =
+    url.pathname.startsWith("/api/") ||
     url.pathname.startsWith("/calendar") ||
     url.pathname.startsWith("/activities") ||
     url.pathname.startsWith("/communications") ||
-    url.pathname.startsWith("/users/me");
+    url.pathname.startsWith("/users/");
+  if (isApiRequest) return;
 
   if (isHtmlNavigation) {
     event.respondWith(
@@ -85,11 +58,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (isApiRequest) {
-    staleWhileRevalidate(event);
-    return;
-  }
-
+  // Static assets: cache-first with network fallback
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
@@ -100,7 +69,8 @@ self.addEventListener("fetch", (event) => {
             caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone)).catch(() => undefined);
           }
           return response;
-        });
+        })
+        .catch(() => new Response("", { status: 503, statusText: "Offline" }));
     })
   );
 });
