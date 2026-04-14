@@ -18,6 +18,11 @@ const resolveApiBaseUrl = () => {
     return defaultLanApiUrl;
   }
 
+  // Support relative API bases (for example "/api") in single-origin deployments.
+  if (envUrl.startsWith("/")) {
+    return envUrl;
+  }
+
   try {
     const parsed = new URL(envUrl);
     const isLocalTarget = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";

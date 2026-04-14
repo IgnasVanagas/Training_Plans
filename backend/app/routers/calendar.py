@@ -727,34 +727,38 @@ async def recent_coach_workouts(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the coach's most recently planned workouts, deduplicated by title."""
-    if current_user.role != RoleEnum.coach:
-        raise HTTPException(status_code=403, detail="Only coaches can access this endpoint")
+    """Return the most recently planned workouts, deduplicated by title.
 
-    # Include legacy rows where created_by_user_id is null but the workout
-    # belongs to an athlete currently linked to this coach.
-    coach_orgs_subq = select(OrganizationMember.organization_id).where(
-        OrganizationMember.user_id == current_user.id,
-        OrganizationMember.role == RoleEnum.coach.value,
-        OrganizationMember.status == 'active',
-    )
-    athlete_ids_subq = select(OrganizationMember.user_id).where(
-        OrganizationMember.organization_id.in_(coach_orgs_subq),
-        OrganizationMember.role == RoleEnum.athlete.value,
-        OrganizationMember.status == 'active',
-    )
+    Coaches see workouts they created (across all their athletes).
+    Athletes see their own planned workouts.
+    """
+    if current_user.role == RoleEnum.coach:
+        # Include legacy rows where created_by_user_id is null but the workout
+        # belongs to an athlete currently linked to this coach.
+        coach_orgs_subq = select(OrganizationMember.organization_id).where(
+            OrganizationMember.user_id == current_user.id,
+            OrganizationMember.role == RoleEnum.coach.value,
+            OrganizationMember.status == 'active',
+        )
+        athlete_ids_subq = select(OrganizationMember.user_id).where(
+            OrganizationMember.organization_id.in_(coach_orgs_subq),
+            OrganizationMember.role == RoleEnum.athlete.value,
+            OrganizationMember.status == 'active',
+        )
+        where_clause = or_(
+            PlannedWorkout.created_by_user_id == current_user.id,
+            and_(
+                PlannedWorkout.created_by_user_id.is_(None),
+                PlannedWorkout.user_id.in_(athlete_ids_subq),
+            ),
+        )
+    else:
+        # Athletes see their own workouts
+        where_clause = PlannedWorkout.user_id == current_user.id
 
     stmt = (
         select(PlannedWorkout)
-        .where(
-            or_(
-                PlannedWorkout.created_by_user_id == current_user.id,
-                and_(
-                    PlannedWorkout.created_by_user_id.is_(None),
-                    PlannedWorkout.user_id.in_(athlete_ids_subq),
-                ),
-            )
-        )
+        .where(where_clause)
         .order_by(PlannedWorkout.id.desc())
         .limit(limit * 8)  # fetch extra to account for dedup + fallback rows
     )

@@ -1,0 +1,48 @@
+#cloud-config
+package_update: true
+package_upgrade: false
+
+users:
+  - default
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - git
+  - ufw
+  - fail2ban
+
+write_files:
+  - path: /usr/local/sbin/install-docker.sh
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      ARCH="$(dpkg --print-architecture)"
+      CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME}")"
+      echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME} stable" > /etc/apt/sources.list.d/docker.list
+      apt-get update
+      apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+      USERNAME="ubuntu"
+      if id "${USERNAME}" >/dev/null 2>&1; then
+        usermod -aG docker "${USERNAME}" || true
+      fi
+      systemctl enable docker
+      systemctl restart docker
+
+runcmd:
+  - [bash, -lc, /usr/local/sbin/install-docker.sh]
+  - [bash, -lc, ufw default deny incoming]
+  - [bash, -lc, ufw default allow outgoing]
+  - [bash, -lc, ufw allow OpenSSH]
+  - [bash, -lc, ufw allow 80/tcp]
+  - [bash, -lc, ufw allow 443/tcp]
+  - [bash, -lc, ufw --force enable]
+  - [bash, -lc, systemctl enable fail2ban]
+  - [bash, -lc, systemctl restart fail2ban]
+
+final_message: "cloud-init complete: Docker, firewall, and fail2ban are configured."
