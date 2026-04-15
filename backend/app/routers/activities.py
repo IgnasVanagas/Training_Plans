@@ -437,7 +437,9 @@ def _flatten_planned_time_steps(structure) -> list[dict]:
 
 
 def _extract_actual_split_rows(splits_metric, laps) -> list[dict]:
-    source = splits_metric if isinstance(splits_metric, list) and splits_metric else laps if isinstance(laps, list) else []
+    # Prefer laps (device-recorded intervals) over splits_metric (auto per-km splits).
+    # Laps reflect user-pressed interval markers, which align with structured workouts.
+    source = laps if isinstance(laps, list) and laps else splits_metric if isinstance(splits_metric, list) and splits_metric else []
     out: list[dict] = []
     for idx, item in enumerate(source):
         if not isinstance(item, dict):
@@ -632,6 +634,10 @@ def _workout_target_zone(workout: PlannedWorkout) -> int | None:
                 for _ in range(repeats):
                     walk(nested)
                 continue
+            # Skip recovery/warmup/cooldown — their default zone:1 is not meaningful
+            category = str(node.get("category") or "work")
+            if category in ("recovery", "warmup", "cooldown"):
+                continue
             target = node.get("target") if isinstance(node.get("target"), dict) else {}
             value = int(_safe_number(target.get("zone"), default=0.0))
             if value > 0:
@@ -663,6 +669,9 @@ def _is_steady_zone_workout(workout: PlannedWorkout) -> bool:
                 repeats = max(1, int(node.get("repeats") or 1))
                 for _ in range(repeats):
                     walk(nested)
+                continue
+            category = str(node.get("category") or "work")
+            if category in ("recovery", "warmup", "cooldown"):
                 continue
             target = node.get("target") if isinstance(node.get("target"), dict) else {}
             value = int(_safe_number(target.get("zone"), default=0.0))
@@ -827,6 +836,52 @@ def _intensity_assessment(workout: PlannedWorkout, activity: Activity, profile: 
     return None
 
 
+def _structured_intensity_assessment(planned_steps: list[dict], actual_splits: list[dict]) -> dict | None:
+    """Per-split intensity scoring for structured workouts with specific watt targets."""
+    split_scores: list[dict] = []
+    compare_len = min(len(planned_steps), len(actual_splits))
+    if compare_len == 0:
+        return None
+
+    scored_count = 0
+    total_match = 0.0
+
+    for idx in range(compare_len):
+        planned = planned_steps[idx]
+        actual = actual_splits[idx]
+        target = planned.get("target") if isinstance(planned.get("target"), dict) else {}
+        metric = target.get("metric") or ""
+        planned_value = _safe_number(target.get("value"), default=0.0)
+        unit = target.get("unit") or ""
+
+        actual_power = _safe_number(actual.get("avg_power"), default=0.0)
+
+        # Score watts-based targets
+        if (metric == "watts" or unit == "W") and planned_value > 0 and actual_power > 0:
+            error_pct = abs(actual_power - planned_value) / planned_value * 100.0
+            match_pct = max(0.0, 100.0 - error_pct)
+            total_match += match_pct
+            scored_count += 1
+            split_scores.append({"split": idx + 1, "match_pct": round(match_pct, 1)})
+
+    if scored_count == 0:
+        return None
+
+    overall_match = total_match / scored_count
+    status = "green" if overall_match >= 78 else "yellow" if overall_match >= 58 else "red"
+    return {
+        "sport": "structured",
+        "zone": None,
+        "match_pct": round(overall_match, 1),
+        "status": status,
+        "metrics": {
+            "scored_splits": scored_count,
+            "total_splits": compare_len,
+        },
+        "note": "Structured intensity compares planned vs actual power per interval split.",
+    }
+
+
 def _build_planned_comparison_payload(
     workout: PlannedWorkout,
     activity: Activity,
@@ -844,12 +899,24 @@ def _build_planned_comparison_payload(
     planned_steps = _flatten_planned_time_steps(workout.structure)
     actual_splits = _extract_actual_split_rows(splits_metric, laps)
     used_planned_template_splits = False
-    if planned_steps and (not actual_splits or len(actual_splits) != len(planned_steps)):
+    # When actual split count is close to planned (within ±5), trim/use as-is.
+    # Only fall to proportional derivation when splits are far off or unavailable.
+    if planned_steps and actual_splits:
+        count_delta = abs(len(actual_splits) - len(planned_steps))
+        if count_delta > 5:
+            derived_splits = _extract_actual_split_rows_from_planned_template(activity, planned_steps)
+            if len(derived_splits) == len(planned_steps):
+                actual_splits = derived_splits
+                used_planned_template_splits = True
+    elif planned_steps and not actual_splits:
         derived_splits = _extract_actual_split_rows_from_planned_template(activity, planned_steps)
         if len(derived_splits) == len(planned_steps):
             actual_splits = derived_splits
             used_planned_template_splits = True
     intensity = _intensity_assessment(workout, activity, profile, stats)
+    # For structured workouts with per-step targets, compute per-split intensity
+    if intensity is None and planned_steps and actual_splits:
+        intensity = _structured_intensity_assessment(planned_steps, actual_splits)
 
     steady_zone_workout = _is_steady_zone_workout(workout)
     split_importance = "high"
