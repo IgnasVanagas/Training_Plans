@@ -1,4 +1,4 @@
-import client from "./client";
+import client, { apiBaseUrl } from "./client";
 import {
   OrgMember,
   OrganizationCoachMessage,
@@ -16,9 +16,10 @@ export const discoverOrganizations = async (query?: string): Promise<Organizatio
   return response.data;
 };
 
-export const requestOrganizationJoin = async (organizationId: number): Promise<{ message: string; status: string }> => {
+export const requestOrganizationJoin = async (organizationId: number, message?: string): Promise<{ message: string; status: string }> => {
   const response = await client.post<{ message: string; status: string }>("/users/organization/request-join", {
     organization_id: organizationId,
+    message: message || undefined,
   });
   return response.data;
 };
@@ -174,13 +175,9 @@ export const resolveOrgPictureUrl = (filename?: string | null): string | null =>
   if (!filename) return null;
     if (/^https?:\/\//i.test(filename)) return filename;
     if (filename.startsWith("/uploads/org/")) {
-      const base = (import.meta as unknown as Record<string, unknown> & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL
-        ?? "http://localhost:8000";
-      return `${base.replace(/\/$/, "")}${filename}`;
+      return `${apiBaseUrl.replace(/\/$/, "")}${filename}`;
     }
-  const base = (import.meta as unknown as Record<string, unknown> & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL
-    ?? "http://localhost:8000";
-  return `${base.replace(/\/$/, "")}/uploads/org/${filename}`;
+  return `${apiBaseUrl.replace(/\/$/, "")}/uploads/org/${filename}`;
 };
 
 export const uploadProfilePicture = async (file: File): Promise<unknown> => {
@@ -195,6 +192,5 @@ export const uploadProfilePicture = async (file: File): Promise<unknown> => {
 export const resolveUserPictureUrl = (filename?: string | null): string | null => {
   if (!filename) return null;
   if (/^https?:\/\//i.test(filename)) return filename;
-  const base = (import.meta as unknown as Record<string, unknown> & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL ?? "http://localhost:8000";
-  return `${base.replace(/\/$/, "")}/uploads/user/${filename}`;
+  return `${apiBaseUrl.replace(/\/$/, "")}/uploads/user/${filename}`;
 };

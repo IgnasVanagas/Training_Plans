@@ -472,7 +472,7 @@ async def get_calendar_events(
     response: Response = None,
 ):
     if response is not None:
-        response.headers["Cache-Control"] = "private, max-age=60"
+        response.headers["Cache-Control"] = "private, no-store"
     workouts = []
     activities = []
     

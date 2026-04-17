@@ -14,6 +14,7 @@ import {
   Table,
   Text,
   TextInput,
+  Textarea,
   ThemeIcon,
   Title,
   useComputedColorScheme,
@@ -51,6 +52,8 @@ type Props = {
   inviteUrl: string | null;
   inviteEmail: string;
   onInviteEmailChange: (value: string) => void;
+  inviteMessage: string;
+  onInviteMessageChange: (value: string) => void;
   onInviteByEmail: () => void;
   invitingByEmail: boolean;
   onGenerateInvite: () => void;
@@ -74,6 +77,8 @@ const DashboardCoachHome = ({
   inviteUrl,
   inviteEmail,
   onInviteEmailChange,
+  inviteMessage,
+  onInviteMessageChange,
   onInviteByEmail,
   invitingByEmail,
   onGenerateInvite,
@@ -486,6 +491,18 @@ const DashboardCoachHome = ({
             Invite by Email
           </Button>
         </Group>
+
+        <Textarea
+          label={t("Message (optional)")}
+          placeholder={t("Write a short message to the athlete...")}
+          value={inviteMessage}
+          onChange={(e) => onInviteMessageChange(e.currentTarget.value)}
+          maxLength={500}
+          autosize
+          minRows={2}
+          maxRows={4}
+          mt="xs"
+        />
 
         {inviteUrl && (
           <Paper

@@ -477,7 +477,6 @@ export const TrainingCalendar = ({
         staleTime: 1000 * 60 * 5,
         gcTime: 1000 * 60 * 30,
         placeholderData: (prev) => prev,
-        refetchOnMount: 'always',
     });
 
     const buildCalendarDisplayResource = useCallback((resource: CalendarEvent): CalendarEvent => {
@@ -743,6 +742,10 @@ export const TrainingCalendar = ({
                 message,
             });
         },
+        onSettled: () => {
+            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
+        },
     });
 
     const updateMutation = useMutation({
@@ -781,6 +784,10 @@ export const TrainingCalendar = ({
                 message,
             });
         },
+        onSettled: () => {
+            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
+        },
     });
 
     const deleteMutation = useMutation({
@@ -818,6 +825,10 @@ export const TrainingCalendar = ({
                 message: error?.response?.data?.detail || error?.message || 'Please try again.',
             });
         },
+        onSettled: () => {
+            void queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
+        },
     });
 
     const planningActionMutation = useMutation({
@@ -846,6 +857,7 @@ export const TrainingCalendar = ({
             void queryClient.invalidateQueries({ queryKey: ['season-plan', input.targetAthleteId] });
             void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
             notifications.show({
                 color: 'green',
                 title: t('Saved to season plan') || 'Saved to season plan',
@@ -891,6 +903,7 @@ export const TrainingCalendar = ({
             void queryClient.invalidateQueries({ queryKey: ['season-plan', calendarSeasonPlanAthleteId] });
             void queryClient.invalidateQueries({ queryKey: ['calendar'] });
             void queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
+            void queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
             notifications.show({ color: 'green', title: t('Season plan updated') || 'Season plan updated', message: '' });
         },
         onError: (error: any) => {
@@ -1630,6 +1643,8 @@ export const TrainingCalendar = ({
             }));
 
             await queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            await queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
+            await queryClient.invalidateQueries({ queryKey: ['dashboard-calendar'] });
             setBulkEditOpened(false);
             setSaveError(null);
         } catch {

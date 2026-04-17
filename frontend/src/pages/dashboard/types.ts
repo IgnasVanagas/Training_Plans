@@ -54,6 +54,7 @@ export type User = {
     role: string;
     status: string;
     is_admin: boolean;
+    message?: string | null;
   }>;
   profile?: Profile | null;
 };

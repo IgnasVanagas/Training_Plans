@@ -22,6 +22,7 @@ class OrganizationMemberOut(BaseModel):
     role: str
     status: str
     is_admin: bool = False
+    message: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -97,6 +98,7 @@ class JoinOrganization(BaseModel):
 
 class JoinOrganizationRequest(BaseModel):
     organization_id: int = Field(gt=0)
+    message: Optional[str] = Field(default=None, max_length=500)
 
 
 class InvitationRespondRequest(BaseModel):
@@ -253,6 +255,7 @@ class InviteLinkResponse(BaseModel):
 
 class InviteByEmailRequest(BaseModel):
     email: EmailStr
+    message: Optional[str] = Field(default=None, max_length=500)
 
     @field_validator("email")
     @classmethod
@@ -355,6 +358,7 @@ class AthleteOut(BaseModel):
     profile: Optional[ProfileOut] = None
     has_upcoming_coach_workout: bool = False
     next_coach_workout_date: Optional[dt_date] = None
+    pending_message: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -925,6 +925,11 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"to": "iki"
     ,"less than": "mažiau nei"
     ,"more than": "daugiau nei"
+    ,"Join Organization": "Prisijungti prie organizacijos"
+    ,"Message (optional)": "Žinutė (neprivaloma)"
+    ,"Write a short message to the coach...": "Parašykite trumpą žinutę treneriui..."
+    ,"Write a short message to the athlete...": "Parašykite trumpą žinutę sportininkui..."
+    ,"Send Request": "Siųsti užklausą"
   }
 };
 

@@ -623,20 +623,27 @@ async def get_pending_athletes(
         return []
 
     stmt = (
-        select(User)
+        select(User, OrganizationMember.message)
         .join(OrganizationMember, OrganizationMember.user_id == User.id)
         .where(
             OrganizationMember.organization_id.in_(my_org_ids),
             OrganizationMember.status.in_(["pending", "pending_approval"])
         )
-        .distinct()
         .options(selectinload(User.profile))
     )
 
     result = await db.execute(stmt)
-    athletes = result.scalars().all()
-    for athlete in athletes:
-        _normalize_user_for_response(athlete)
+    rows = result.all()
+    seen: set[int] = set()
+    athletes: list[AthleteOut] = []
+    for user, pending_msg in rows:
+        if user.id in seen:
+            continue
+        seen.add(user.id)
+        _normalize_user_for_response(user)
+        out = AthleteOut.model_validate(user)
+        out.pending_message = pending_msg
+        athletes.append(out)
     return athletes
 
 
@@ -957,6 +964,7 @@ async def invite_existing_athlete_by_email(
         if existing_membership.status in {"pending", "pending_approval", "rejected"}:
             existing_membership.status = "pending"
             existing_membership.role = RoleEnum.athlete.value
+            existing_membership.message = payload.message
             await db.commit()
             return InviteByEmailResponse(
                 email=target_email,
@@ -972,6 +980,7 @@ async def invite_existing_athlete_by_email(
             organization_id=org.id,
             role=RoleEnum.athlete.value,
             status="pending",
+            message=payload.message,
         )
     )
     await db.commit()
@@ -1139,6 +1148,7 @@ async def request_join_organization(
         if membership.status == "active":
             return {"message": "You are already an active member", "status": "active"}
         membership.status = "pending_approval"
+        membership.message = payload.message
     else:
         db.add(
             OrganizationMember(
@@ -1146,6 +1156,7 @@ async def request_join_organization(
                 organization_id=org.id,
                 role=RoleEnum.athlete.value,
                 status="pending_approval",
+                message=payload.message,
             )
         )
 

@@ -125,6 +125,7 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
       context?.snapshots?.forEach(([qk, qd]) => queryClient.setQueryData(qk, qd));
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
       setUploadProgress(100);
       setStage('done');
       setUploadedResult(data);
@@ -206,6 +207,7 @@ export default function ActivityUploadPanel({ onUploaded }: Props) {
       context?.snapshots?.forEach(([qk, qd]: [readonly unknown[], any]) => queryClient.setQueryData(qk, qd));
       queryClient.invalidateQueries({ queryKey: ['activities'] });
       queryClient.invalidateQueries({ queryKey: ['calendar'] });
+      queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
       setManualError(null);
       setManualDone(true);
       notifications.show({

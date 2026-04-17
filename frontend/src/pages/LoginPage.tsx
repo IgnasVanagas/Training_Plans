@@ -21,7 +21,7 @@ import {
 import { DateInput } from '@mantine/dates';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { IconAt, IconLock, IconUser, IconBuilding, IconRun, IconBike, IconSwimming, IconHeartRateMonitor } from "@tabler/icons-react";
+import { IconAt, IconLock, IconUser, IconRun, IconBike, IconSwimming, IconHeartRateMonitor } from "@tabler/icons-react";
 import api from "../api/client";
 import SupportContactButton from "../components/common/SupportContactButton";
 import { useI18n } from "../i18n/I18nProvider";
@@ -54,7 +54,6 @@ const LoginPage = () => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState("athlete");
-  const [organizationName, setOrganizationName] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState<string | null>(null);
@@ -187,7 +186,6 @@ const LoginPage = () => {
         email: email.trim().toLowerCase(),
         password,
         role: inviteCode ? "athlete" : role,
-        organization_name: organizationName || undefined,
         organization_code: inviteCode || undefined,
         first_name: firstName,
         last_name: lastName,
@@ -579,16 +577,6 @@ const LoginPage = () => {
                     size="md"
                     radius="md"
                     disabled={!!inviteCode}
-                  />
-                  <TextInput
-                    label="Organization Name"
-                    placeholder="e.g. Iron Team"
-                    description="Optional"
-                    leftSection={<IconBuilding style={{ width: rem(18), height: rem(18) }} />}
-                    value={organizationName}
-                    onChange={(event) => setOrganizationName(event.currentTarget.value)}
-                    size="md"
-                    radius="md"
                   />
                 </>
               )}

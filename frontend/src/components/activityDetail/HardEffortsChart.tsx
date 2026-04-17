@@ -1,6 +1,6 @@
 import { Badge, Box, Stack, Text } from "@mantine/core";
 import { useMemo } from "react";
-import { Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
+import { Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { HardEffort } from "../../types/activityDetail";
 import { formatDuration } from "./formatters";
 
@@ -196,11 +196,37 @@ export const HardEffortsChart = ({
     if (chartData.length === 0) return null;
 
     const xDomain: [number, number] = [chartData[0].time_min, chartData[chartData.length - 1].time_min];
+    const totalMinutes = xDomain[1] - xDomain[0];
     const refLineStroke = isDark ? 'rgba(148,163,184,0.3)' : 'rgba(15,23,42,0.18)';
     const gridStroke = isDark ? 'rgba(148,163,184,0.07)' : 'rgba(15,23,42,0.05)';
 
+    // Compute highlighted regions for sprint efforts with minimum visual width
+    const sprintAreas = useMemo(() => {
+        if (hardEfforts.length === 0 || streamPoints.length === 0) return [];
+        const startTs = new Date(streamPoints[0]?.timestamp).getTime();
+        const toMin = (idx: number): number => {
+            const s = streamPoints[Math.min(idx, streamPoints.length - 1)];
+            return s?.timestamp ? (new Date(s.timestamp).getTime() - startTs) / 60000 : idx / 60;
+        };
+        const minWidth = totalMinutes * 0.008; // at least 0.8% of chart width
+        return hardEfforts
+            .filter(e => e.isSprint)
+            .map(e => {
+                const x1 = toMin(e.startIndex);
+                const x2Raw = toMin(e.endIndex + 1);
+                const width = x2Raw - x1;
+                const x2 = width < minWidth ? x1 + minWidth : x2Raw;
+                const color = ZONE_HEX[Math.min(e.zone - 1, ZONE_HEX.length - 1)];
+                return { x1, x2, color, key: e.key };
+            });
+    }, [hardEfforts, streamPoints, totalMinutes]);
+
     const refLines = boundaries.map(t => (
         <ReferenceLine key={t} x={t} stroke={refLineStroke} strokeWidth={1} />
+    ));
+
+    const sprintHighlights = sprintAreas.map(s => (
+        <ReferenceArea key={`sprint-${s.key}`} x1={s.x1} x2={s.x2} fill={s.color} fillOpacity={isDark ? 0.18 : 0.14} stroke={s.color} strokeOpacity={0.5} strokeWidth={1} />
     ));
 
     return (
@@ -267,6 +293,7 @@ export const HardEffortsChart = ({
                             <XAxis dataKey="time_min" type="number" domain={xDomain} hide />
                             <YAxis hide domain={[0, 'auto']} />
                             <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={gridStroke} />
+                            {sprintHighlights}
                             {refLines}
                             <Line dataKey="power_raw" stroke="#a855f7" strokeWidth={1} dot={false} isAnimationActive={false} connectNulls />
                         </LineChart>
@@ -296,6 +323,7 @@ export const HardEffortsChart = ({
                             <XAxis dataKey="time_min" type="number" domain={xDomain} hide />
                             <YAxis hide domain={[0, 'auto']} />
                             <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={gridStroke} />
+                            {sprintHighlights}
                             {refLines}
                             <Area
                                 dataKey="power_30s"
@@ -318,6 +346,7 @@ export const HardEffortsChart = ({
                         <XAxis dataKey="time_min" type="number" domain={xDomain} hide />
                         <YAxis hide domain={['auto', 'auto']} />
                         <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={gridStroke} />
+                        {sprintHighlights}
                         {refLines}
                         <Area
                             dataKey="heart_rate"
@@ -349,6 +378,7 @@ export const HardEffortsChart = ({
                         />
                         <YAxis hide domain={[0, 'auto']} />
                         <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={gridStroke} />
+                        {sprintHighlights}
                         {refLines}
                         <Area
                             dataKey="cadence"

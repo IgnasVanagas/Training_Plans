@@ -76,6 +76,7 @@ class OrganizationMember(Base):
     organization_id = Column(Integer, ForeignKey("organizations.id"), primary_key=True)
     role = Column(String(20), nullable=False)  # coach, athlete, admin
     status = Column(String(20), default="active", nullable=False) # active, pending, pending_approval, rejected
+    message = Column(Text, nullable=True)  # optional note from join request or invitation
 
     user = relationship("User", back_populates="organization_memberships")
     organization = relationship("Organization", back_populates="members")

@@ -74,14 +74,19 @@ const DashboardAthleteHome = ({
                 if (!orgId) return null;
                 const orgName = membership.organization?.name || `Team #${orgId}`;
                 return (
-                  <Group key={orgId} gap={6}>
-                    <Button size="xs" variant="light" loading={respondingInvitation} onClick={() => onRespondInvitation(orgId, "accept")}>
-                      Accept {orgName}
-                    </Button>
-                    <Button size="xs" color="red" variant="subtle" loading={respondingInvitation} onClick={() => onRespondInvitation(orgId, "decline")}>
-                      Decline
-                    </Button>
-                  </Group>
+                  <Stack key={orgId} gap={4}>
+                    {membership.message && (
+                      <Text size="xs" fs="italic" c="dimmed">"{membership.message}"</Text>
+                    )}
+                    <Group gap={6}>
+                      <Button size="xs" variant="light" loading={respondingInvitation} onClick={() => onRespondInvitation(orgId, "accept")}>
+                        Accept {orgName}
+                      </Button>
+                      <Button size="xs" color="red" variant="subtle" loading={respondingInvitation} onClick={() => onRespondInvitation(orgId, "decline")}>
+                        Decline
+                      </Button>
+                    </Group>
+                  </Stack>
                 );
               })}
             </Group>

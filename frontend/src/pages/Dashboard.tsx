@@ -87,6 +87,7 @@ const Dashboard = () => {
   const [opened, { toggle }] = useDisclosure();
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
 
   // Resolve initial tab: navigation state > URL ?tab= > default "dashboard"
   type DashboardTab = "dashboard" | "activities" | "athletes" | "plan" | "dual-calendar" | "organizations" | "notifications" | "settings" | "races" | "insights" | "zones" | "trackers" | "profile" | "macrocycle" | "admin-users" | "admin-logs" | "admin-health" | "comparison";
@@ -288,11 +289,13 @@ const Dashboard = () => {
     mutationFn: async (email: string) => {
       const response = await api.post<InviteByEmailResponse>("/users/invite-by-email", {
         email,
+        message: inviteMessage || undefined,
       });
       return response.data;
     },
     onSuccess: (data) => {
       setInviteUrl(data.invite_url);
+      setInviteMessage("");
       notifications.show({
         color: data.status === "already_active" ? "blue" : "green",
         title: "Invite status",
@@ -1055,6 +1058,8 @@ const Dashboard = () => {
             inviteUrl={inviteUrl}
             inviteEmail={inviteEmail}
             onInviteEmailChange={setInviteEmail}
+            inviteMessage={inviteMessage}
+            onInviteMessageChange={setInviteMessage}
             onInviteByEmail={() => {
               const normalized = inviteEmail.trim().toLowerCase();
               if (!normalized) {

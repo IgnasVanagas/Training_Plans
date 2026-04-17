@@ -52,6 +52,12 @@ api.interceptors.request.use((config) => {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
+  // Prevent browser HTTP cache from serving stale GET responses that can
+  // overwrite optimistic React Query cache updates after mutations.
+  if (config.method === 'get' || !config.method) {
+    config.headers = config.headers || {};
+    config.headers['Cache-Control'] = 'no-cache';
+  }
   return config;
 });
 
@@ -171,4 +177,5 @@ api.interceptors.response.use(
   }
 );
 
+export const apiBaseUrl = resolveApiBaseUrl();
 export default api;

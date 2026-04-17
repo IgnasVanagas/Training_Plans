@@ -426,7 +426,8 @@ async def match_and_score(db: AsyncSession, user_id: int, target_date: date):
         and_(
             Activity.athlete_id == user_id,
             Activity.created_at >= start_of_day,
-            Activity.created_at <= end_of_day
+            Activity.created_at <= end_of_day,
+            Activity.duplicate_of_id.is_(None),  # only primary recordings
         )
     )
 

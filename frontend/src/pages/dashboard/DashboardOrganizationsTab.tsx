@@ -67,6 +67,7 @@ import {
   requestOrganizationJoin,
   uploadChatAttachment,
 } from "../../api/organizations";
+import { apiBaseUrl } from "../../api/client";
 import {
   getOrgSettings,
   updateOrganization,
@@ -94,9 +95,7 @@ type Props = {
 
 // Resolve backend attachment URL → full URL served by the backend
 const resolveAttachmentUrl = (url: string): string => {
-  const base = (import.meta as unknown as Record<string, unknown> & { env?: Record<string, string> })?.env?.VITE_API_BASE_URL
-    ?? "http://localhost:8000";
-  return `${base.replace(/\/$/, "")}/uploads/chat/${url}`;
+  return `${apiBaseUrl.replace(/\/$/, "")}/uploads/chat/${url}`;
 };
 
 const isImageAttachment = (name?: string | null) => {
@@ -138,6 +137,10 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
   const [orgEditName, setOrgEditName] = useState("");
   const [orgEditDescription, setOrgEditDescription] = useState("");
   const [orgPictureFile, setOrgPictureFile] = useState<File | null>(null);
+
+  // ── Join request message state ──
+  const [joinModalOrgId, setJoinModalOrgId] = useState<number | null>(null);
+  const [joinMessage, setJoinMessage] = useState("");
 
   const discoverQuery = useQuery({
     queryKey: ["organization-discover", search],
@@ -370,11 +373,13 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
   const activeParticipantId = activeThread?.participantId ?? null;
 
   const joinMutation = useMutation({
-    mutationFn: (organizationId: number) => requestOrganizationJoin(organizationId),
+    mutationFn: ({ organizationId, message }: { organizationId: number; message?: string }) => requestOrganizationJoin(organizationId, message || undefined),
     onSuccess: (data) => {
       notifications.show({ color: "green", title: t("Request sent"), message: data.message });
       queryClient.invalidateQueries({ queryKey: ["organization-discover"] });
       queryClient.invalidateQueries({ queryKey: ["me"] });
+      setJoinModalOrgId(null);
+      setJoinMessage("");
     },
     onError: (error) => {
       notifications.show({ color: "red", title: t("Could not send request"), message: extractApiErrorMessage(error) });
@@ -804,8 +809,8 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                       <Button
                         size="compact-xs"
                         variant="light"
-                        onClick={() => joinMutation.mutate(item.id)}
-                        loading={joinMutation.isPending}
+                        onClick={() => { setJoinModalOrgId(item.id); setJoinMessage(""); }}
+                        loading={joinMutation.isPending && joinModalOrgId === item.id}
                         disabled={item.my_membership_status === "active" || item.my_membership_status === "pending_approval"}
                       >
                         {item.my_membership_status === "active" ? t("Joined") : item.my_membership_status === "pending_approval" ? t("Pending") : t("Join")}
@@ -821,6 +826,31 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
           </Stack>
         </Paper>
       )}
+
+      {/* ── Join Request Message Modal ── */}
+      <Modal opened={joinModalOrgId !== null} onClose={() => setJoinModalOrgId(null)} title={t("Join Organization")} size="sm">
+        <Stack gap="sm">
+          <Textarea
+            label={t("Message (optional)")}
+            placeholder={t("Write a short message to the coach...")}
+            value={joinMessage}
+            onChange={(e) => setJoinMessage(e.currentTarget.value)}
+            maxLength={500}
+            autosize
+            minRows={2}
+            maxRows={5}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setJoinModalOrgId(null)}>{t("Cancel")}</Button>
+            <Button
+              loading={joinMutation.isPending}
+              onClick={() => joinModalOrgId && joinMutation.mutate({ organizationId: joinModalOrgId, message: joinMessage || undefined })}
+            >
+              {t("Send Request")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       {/* ── Active Org: Members + Leave ── */}
       {selectedActiveOrganizationId && (

@@ -177,6 +177,7 @@ async def on_startup() -> None:
             await conn.execute(text("ALTER TABLE organization_group_messages ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255)"))
             await conn.execute(text("ALTER TABLE organization_coach_messages ADD COLUMN IF NOT EXISTS attachment_url VARCHAR(500)"))
             await conn.execute(text("ALTER TABLE organization_coach_messages ADD COLUMN IF NOT EXISTS attachment_name VARCHAR(255)"))
+            await conn.execute(text("ALTER TABLE organization_members ADD COLUMN IF NOT EXISTS message TEXT"))
             # Denormalized columns to avoid JSONB scanning on hot calendar/list paths
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS aerobic_load FLOAT"))
             await conn.execute(text("ALTER TABLE activities ADD COLUMN IF NOT EXISTS anaerobic_load FLOAT"))

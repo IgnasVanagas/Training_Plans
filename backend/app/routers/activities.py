@@ -3008,6 +3008,13 @@ async def make_activity_primary(
 
     await db.commit()
 
+    # Re-trigger compliance scoring so the planned workout re-matches
+    # against the new primary instead of the old one.
+    from ..services.compliance import match_and_score
+    activity_date = activity.created_at.date() if activity.created_at else None
+    if activity_date:
+        await match_and_score(db, activity.athlete_id, activity_date)
+
 
 @router.post("/{activity_id1}/check-duplicate-with/{activity_id2}")
 async def check_duplicate_diagnostic(

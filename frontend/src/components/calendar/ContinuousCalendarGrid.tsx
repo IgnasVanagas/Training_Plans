@@ -529,34 +529,6 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                     const monthLabel = monthHeaders.get(weekIdx);
                     return (
                         <Box key={week.key} ref={setWeekRowRef(week.key)}>
-                            {/* Month boundary label */}
-                            {monthLabel && (
-                                <Box
-                                    style={{
-                                        padding: '8px 12px 4px',
-                                        position: 'sticky',
-                                        top: 0,
-                                        zIndex: 10,
-                                        background: palette.panelBg || palette.background,
-                                        backdropFilter: 'blur(12px)',
-                                        borderBottom: `1px solid ${palette.dayCellBorder || palette.headerBorder}`,
-                                    }}
-                                >
-                                    <Text
-                                        size="xs"
-                                        fw={800}
-                                        c={palette.textMain}
-                                        style={{
-                                            letterSpacing: '0.08em',
-                                            textTransform: 'uppercase',
-                                            fontFamily: '"Inter", sans-serif',
-                                        }}
-                                    >
-                                        {monthLabel}
-                                    </Text>
-                                </Box>
-                            )}
-
                             {/* Week row — 7 day cells + optional suffix */}
                             <Box style={{ display: 'flex', borderBottom: `1px solid ${palette.dayCellBorder || palette.headerBorder}` }}>
                             <Box
@@ -628,7 +600,7 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                                             fontFamily: '"Inter", sans-serif',
                                                         }}
                                                     >
-                                                        {getDate(day) === 1 ? format(day, 'MMM d') : format(day, 'd')}
+                                                        {getDate(day) === 1 ? format(day, 'MMMM d') : format(day, 'd')}
                                                     </Text>
                                                     {dayNotes && dayNotes.length > 0 && shownNotes.length === 0 && (
                                                         <MessageSquareText size={12} style={{ color: isDark ? '#60A5FA' : '#3B82F6', flexShrink: 0, opacity: 0.8 }} />

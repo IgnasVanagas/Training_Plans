@@ -206,6 +206,7 @@ export const ActivityDetailPage = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['activities'] });
             queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
             navigate(-1);
         },
         onError: (_err, _vars, context) => {
@@ -231,6 +232,7 @@ export const ActivityDetailPage = () => {
             queryClient.setQueryData(['activity', id], updated);
             queryClient.invalidateQueries({ queryKey: ['activities'] });
             queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
         },
         onError: (_err, _vars, context) => {
             if (context?.previous) queryClient.setQueryData(['activity', id], context.previous);
@@ -246,6 +248,8 @@ export const ActivityDetailPage = () => {
             queryClient.removeQueries({ queryKey: ['activity', id] });
             queryClient.refetchQueries({ queryKey: ['activity', id] });
             queryClient.invalidateQueries({ queryKey: ['activities'] });
+            queryClient.invalidateQueries({ queryKey: ['calendar'] });
+            queryClient.invalidateQueries({ queryKey: ['zone-summary'] });
         },
         onError: (error) => {
             notifications.show({ color: 'red', title: 'Re-parse failed', message: extractApiErrorMessage(error) });
