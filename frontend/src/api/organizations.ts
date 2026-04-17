@@ -16,6 +16,11 @@ export const discoverOrganizations = async (query?: string): Promise<Organizatio
   return response.data;
 };
 
+export const createOrganization = async (data: { name: string; description?: string }): Promise<{ id: number; name: string; description?: string | null; picture?: string | null; code?: string | null }> => {
+  const response = await client.post("/users/organization", data);
+  return response.data;
+};
+
 export const requestOrganizationJoin = async (organizationId: number, message?: string): Promise<{ message: string; status: string }> => {
   const response = await client.post<{ message: string; status: string }>("/users/organization/request-join", {
     organization_id: organizationId,

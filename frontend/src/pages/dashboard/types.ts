@@ -189,6 +189,7 @@ export type OrganizationDiscoverItem = {
   picture?: string | null;
   coaches: OrganizationCoach[];
   my_membership_status?: string | null;
+  member_count?: number;
 };
 
 export type OrganizationDiscoverResponse = {

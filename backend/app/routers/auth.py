@@ -75,15 +75,6 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
         org_id = existing_org.id
         # If user joins via code, status is pending
         org_status = "pending"
-    else:
-        # Create new organization
-        org_name = payload.organization_name or "Default Organization"
-        new_org_code = str(uuid.uuid4())[:8]
-        organization = Organization(name=org_name, code=new_org_code, settings_json={})
-        db.add(organization)
-        await db.flush()
-        org_id = organization.id
-        org_status = "active"
 
     user = User(
         email=email,
@@ -94,14 +85,15 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
     db.add(user)
     await db.flush()
 
-    # Create Organization Membership
-    member = OrganizationMember(
-        user_id=user.id,
-        organization_id=org_id,
-        role=payload.role.value,  # Assuming role string matches
-        status=org_status
-    )
-    db.add(member)
+    # Create Organization Membership only if joining via code
+    if org_id is not None:
+        member = OrganizationMember(
+            user_id=user.id,
+            organization_id=org_id,
+            role=payload.role.value,
+            status=org_status
+        )
+        db.add(member)
 
     profile = Profile(
         user_id=user.id,

@@ -31,6 +31,7 @@ import {
   IconMessages,
   IconPaperclip,
   IconPhoto,
+  IconPlus,
   IconSearch,
   IconSend,
   IconUserMinus,
@@ -55,6 +56,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import React, { ChangeEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   discoverOrganizations,
+  createOrganization,
   leaveOrganization,
   listOrgDirectMessages,
   listOrganizationInbox,
@@ -141,6 +143,11 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
   // ── Join request message state ──
   const [joinModalOrgId, setJoinModalOrgId] = useState<number | null>(null);
   const [joinMessage, setJoinMessage] = useState("");
+
+  // ── Create organization state ──
+  const [createOrgOpen, setCreateOrgOpen] = useState(false);
+  const [createOrgName, setCreateOrgName] = useState("");
+  const [createOrgDescription, setCreateOrgDescription] = useState("");
 
   const discoverQuery = useQuery({
     queryKey: ["organization-discover", search],
@@ -395,6 +402,20 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
     },
     onError: (error) => {
       notifications.show({ color: "red", title: t("Could not leave"), message: extractApiErrorMessage(error) });
+    },
+  });
+
+  const createOrgMutation = useMutation({
+    mutationFn: (data: { name: string; description?: string }) => createOrganization(data),
+    onSuccess: () => {
+      notifications.show({ color: "green", title: t("Clan created"), message: t("Your clan has been created!") });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      setCreateOrgOpen(false);
+      setCreateOrgName("");
+      setCreateOrgDescription("");
+    },
+    onError: (error) => {
+      notifications.show({ color: "red", title: t("Could not create clan"), message: extractApiErrorMessage(error) });
     },
   });
 
@@ -676,9 +697,62 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
           <ThemeIcon size="lg" radius="xl" variant="light" color="indigo">
             <IconUsersGroup size={18} />
           </ThemeIcon>
-          <Title order={3}>{t("Organizations")}</Title>
+          <Title order={3}>{t("Clans")}</Title>
         </Group>
+        <Button
+          leftSection={<IconPlus size={16} />}
+          variant="light"
+          color="indigo"
+          size="compact-sm"
+          onClick={() => setCreateOrgOpen(true)}
+        >
+          {t("Create Clan")}
+        </Button>
       </Group>
+
+      {/* ── No Clan Lobby ── */}
+      {activeMemberships.length === 0 && (
+        <Paper
+          withBorder
+          p="xl"
+          radius="md"
+          style={{
+            borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)",
+            textAlign: "center",
+            background: isDark ? "rgba(99,102,241,0.05)" : "rgba(99,102,241,0.02)",
+          }}
+        >
+          <Stack align="center" gap="md">
+            <ThemeIcon size={64} radius="xl" variant="light" color="indigo">
+              <IconUsersGroup size={32} />
+            </ThemeIcon>
+            <Stack gap={4}>
+              <Text fw={700} size="lg">{t("No Clan Yet")}</Text>
+              <Text size="sm" c="dimmed" maw={400} style={{ margin: "0 auto" }}>
+                {t("Create your own clan or search for an existing one to join. Clans let you chat with coaches and teammates.")}
+              </Text>
+            </Stack>
+            <Group>
+              <Button
+                leftSection={<IconPlus size={16} />}
+                variant="filled"
+                color="indigo"
+                onClick={() => setCreateOrgOpen(true)}
+              >
+                {t("Create Clan")}
+              </Button>
+              <Button
+                leftSection={<IconSearch size={16} />}
+                variant="light"
+                color="indigo"
+                onClick={() => setSearch(" ")}
+              >
+                {t("Find a Clan")}
+              </Button>
+            </Group>
+          </Stack>
+        </Paper>
+      )}
 
       {/* ── My Organizations ── */}
       {activeMemberships.length > 0 && (
@@ -753,82 +827,85 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
         </SimpleGrid>
       )}
 
-      {/* ── Discover section (athlete only) ── */}
-      {me.role === "athlete" && (
-        <Paper withBorder p="md" radius="md" style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)" }}>
-          <Stack gap="sm">
-            <Group gap="xs">
-              <IconSearch size={16} />
-              <Text fw={600} size="sm">{t("Discover clubs")}</Text>
-            </Group>
-            <TextInput
-              size="sm"
-              placeholder={t("Search clubs")}
-              leftSection={<IconSearch size={14} />}
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-            />
-            {search.trim().length === 0 && (
-              <Text size="sm" c="dimmed">{t("Start typing to find clubs.")}</Text>
-            )}
-            {search.trim().length > 0 && (discoverQuery.data?.items || []).length > 0 && (
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                {(discoverQuery.data?.items || []).map((item) => (
-                  <Paper
-                    key={item.id}
-                    withBorder
-                    p="sm"
-                    radius="md"
-                    style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)" }}
-                  >
-                    <Group justify="space-between" align="flex-start" wrap="nowrap">
-                      <Group gap="sm" align="flex-start" style={{ flex: 1 }} wrap="nowrap">
-                        <Avatar
-                          radius="xl"
-                          size="md"
-                          src={resolveOrgPictureUrl(item.picture) || undefined}
-                          color="indigo"
-                        >
-                          {item.name.slice(0, 1).toUpperCase()}
-                        </Avatar>
-                        <Stack gap={2} style={{ flex: 1 }}>
-                        <Group gap="xs">
-                          <Text fw={600} size="sm">{item.name}</Text>
-                          {item.my_membership_status && (
-                            <Badge size="xs" variant="light" color={item.my_membership_status === "active" ? "green" : "yellow"}>
-                              {item.my_membership_status === "active" ? t("Active") : item.my_membership_status === "pending_approval" ? t("Pending") : item.my_membership_status}
-                            </Badge>
-                          )}
-                        </Group>
-                        {item.description && <Text size="xs" c="dimmed" lineClamp={2}>{item.description}</Text>}
-                        <Text size="xs" c="dimmed">
-                          {item.coaches.map((c) => `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.email).join(", ") || t("No coaches")}
-                        </Text>
-                        </Stack>
-                      </Group>
-                      <Button
-                        size="compact-xs"
-                        variant="light"
-                        onClick={() => { setJoinModalOrgId(item.id); setJoinMessage(""); }}
-                        loading={joinMutation.isPending && joinModalOrgId === item.id}
-                        disabled={item.my_membership_status === "active" || item.my_membership_status === "pending_approval"}
+      {/* ── Discover Clans ── */}
+      <Paper withBorder p="md" radius="md" style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)" }}>
+        <Stack gap="sm">
+          <Group gap="xs">
+            <IconSearch size={16} />
+            <Text fw={600} size="sm">{t("Find Clans")}</Text>
+          </Group>
+          <TextInput
+            size="sm"
+            placeholder={t("Search clans by name...")}
+            leftSection={<IconSearch size={14} />}
+            value={search}
+            onChange={(e) => setSearch(e.currentTarget.value)}
+          />
+          {search.trim().length === 0 && (
+            <Text size="sm" c="dimmed">{t("Start typing to find clans.")}</Text>
+          )}
+          {search.trim().length > 0 && (discoverQuery.data?.items || []).length > 0 && (
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+              {(discoverQuery.data?.items || []).map((item) => (
+                <Paper
+                  key={item.id}
+                  withBorder
+                  p="sm"
+                  radius="md"
+                  style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.18)" }}
+                >
+                  <Group justify="space-between" align="flex-start" wrap="nowrap">
+                    <Group gap="sm" align="flex-start" style={{ flex: 1 }} wrap="nowrap">
+                      <Avatar
+                        radius="xl"
+                        size="md"
+                        src={resolveOrgPictureUrl(item.picture) || undefined}
+                        color="indigo"
                       >
-                        {item.my_membership_status === "active" ? t("Joined") : item.my_membership_status === "pending_approval" ? t("Pending") : t("Join")}
-                      </Button>
+                        {item.name.slice(0, 1).toUpperCase()}
+                      </Avatar>
+                      <Stack gap={2} style={{ flex: 1 }}>
+                      <Group gap="xs">
+                        <Text fw={600} size="sm">{item.name}</Text>
+                        {item.member_count != null && (
+                          <Badge size="xs" variant="light" color="gray">
+                            {item.member_count} {t("members")}
+                          </Badge>
+                        )}
+                        {item.my_membership_status && (
+                          <Badge size="xs" variant="light" color={item.my_membership_status === "active" ? "green" : "yellow"}>
+                            {item.my_membership_status === "active" ? t("Active") : item.my_membership_status === "pending_approval" ? t("Pending") : item.my_membership_status}
+                          </Badge>
+                        )}
+                      </Group>
+                      {item.description && <Text size="xs" c="dimmed" lineClamp={2}>{item.description}</Text>}
+                      <Text size="xs" c="dimmed">
+                        {item.coaches.map((c) => `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.email).join(", ") || t("No coaches")}
+                      </Text>
+                      </Stack>
                     </Group>
-                  </Paper>
-                ))}
-              </SimpleGrid>
-            )}
-            {search.trim().length > 0 && (discoverQuery.data?.items || []).length === 0 && !discoverQuery.isLoading && (
-              <Text size="sm" c="dimmed">{t("No organizations found.")}</Text>
-            )}
-          </Stack>
-        </Paper>
-      )}
+                    <Button
+                      size="compact-xs"
+                      variant="light"
+                      onClick={() => { setJoinModalOrgId(item.id); setJoinMessage(""); }}
+                      loading={joinMutation.isPending && joinModalOrgId === item.id}
+                      disabled={item.my_membership_status === "active" || item.my_membership_status === "pending_approval"}
+                    >
+                      {item.my_membership_status === "active" ? t("Joined") : item.my_membership_status === "pending_approval" ? t("Pending") : t("Join")}
+                    </Button>
+                  </Group>
+                </Paper>
+              ))}
+            </SimpleGrid>
+          )}
+          {search.trim().length > 0 && (discoverQuery.data?.items || []).length === 0 && !discoverQuery.isLoading && (
+            <Text size="sm" c="dimmed">{t("No clans found.")}</Text>
+          )}
+        </Stack>
+      </Paper>
 
       {/* ── Join Request Message Modal ── */}
-      <Modal opened={joinModalOrgId !== null} onClose={() => setJoinModalOrgId(null)} title={t("Join Organization")} size="sm">
+      <Modal opened={joinModalOrgId !== null} onClose={() => setJoinModalOrgId(null)} title={t("Join Clan")} size="sm">
         <Stack gap="sm">
           <Textarea
             label={t("Message (optional)")}
@@ -847,6 +924,40 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
               onClick={() => joinModalOrgId && joinMutation.mutate({ organizationId: joinModalOrgId, message: joinMessage || undefined })}
             >
               {t("Send Request")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* ── Create Clan Modal ── */}
+      <Modal opened={createOrgOpen} onClose={() => setCreateOrgOpen(false)} title={t("Create Clan")} size="sm">
+        <Stack gap="sm">
+          <TextInput
+            label={t("Clan Name")}
+            placeholder={t("Enter clan name...")}
+            value={createOrgName}
+            onChange={(e) => setCreateOrgName(e.currentTarget.value)}
+            maxLength={100}
+            required
+          />
+          <Textarea
+            label={t("Description (optional)")}
+            placeholder={t("What is your clan about?")}
+            value={createOrgDescription}
+            onChange={(e) => setCreateOrgDescription(e.currentTarget.value)}
+            maxLength={500}
+            autosize
+            minRows={2}
+            maxRows={5}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setCreateOrgOpen(false)}>{t("Cancel")}</Button>
+            <Button
+              loading={createOrgMutation.isPending}
+              disabled={!createOrgName.trim()}
+              onClick={() => createOrgMutation.mutate({ name: createOrgName.trim(), description: createOrgDescription.trim() || undefined })}
+            >
+              {t("Create Clan")}
             </Button>
           </Group>
         </Stack>
@@ -922,7 +1033,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
             <ThemeIcon size="xl" radius="xl" variant="light" color="gray">
               <IconMessages size={24} />
             </ThemeIcon>
-            <Text c="dimmed">{t("Join an organization to use group and coach chat.")}</Text>
+            <Text c="dimmed">{t("Join or create a clan to use group and coach chat.")}</Text>
           </Stack>
         </Paper>
       ) : (

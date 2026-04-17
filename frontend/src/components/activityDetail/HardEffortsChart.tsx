@@ -102,6 +102,7 @@ export const HardEffortsChart = ({
         const segments: Array<{
             key: string;
             isRest: boolean;
+            isSprint: boolean;
             widthPct: number;
             durationSeconds: number;
             zone: number;
@@ -116,6 +117,7 @@ export const HardEffortsChart = ({
                 segments.push({
                     key: `gap_before_${e.key}`,
                     isRest: true,
+                    isSprint: false,
                     widthPct: ((e.startIndex - cursor) / total) * 100,
                     durationSeconds: e.startIndex - cursor,
                     zone: 1,
@@ -128,6 +130,7 @@ export const HardEffortsChart = ({
             segments.push({
                 key: e.key,
                 isRest: false,
+                isSprint: !!e.isSprint,
                 widthPct: (e.durationSeconds / total) * 100,
                 durationSeconds: e.durationSeconds,
                 zone: e.zone,
@@ -142,6 +145,7 @@ export const HardEffortsChart = ({
             segments.push({
                 key: 'tail',
                 isRest: true,
+                isSprint: false,
                 widthPct: ((total - cursor) / total) * 100,
                 durationSeconds: total - cursor,
                 zone: 1,
@@ -208,14 +212,18 @@ export const HardEffortsChart = ({
             const s = streamPoints[Math.min(idx, streamPoints.length - 1)];
             return s?.timestamp ? (new Date(s.timestamp).getTime() - startTs) / 60000 : idx / 60;
         };
-        const minWidth = totalMinutes * 0.008; // at least 0.8% of chart width
+        // Ensure sprints are at least 1.5% of chart width so they're clearly visible
+        const minWidth = totalMinutes * 0.015;
         return hardEfforts
             .filter(e => e.isSprint)
             .map(e => {
-                const x1 = toMin(e.startIndex);
-                const x2Raw = toMin(e.endIndex + 1);
-                const width = x2Raw - x1;
-                const x2 = width < minWidth ? x1 + minWidth : x2Raw;
+                const rawX1 = toMin(e.startIndex);
+                const rawX2 = toMin(e.endIndex + 1);
+                const width = rawX2 - rawX1;
+                // Center the expanded area around the original sprint midpoint
+                const pad = width < minWidth ? (minWidth - width) / 2 : 0;
+                const x1 = rawX1 - pad;
+                const x2 = rawX2 + pad;
                 const color = ZONE_HEX[Math.min(e.zone - 1, ZONE_HEX.length - 1)];
                 return { x1, x2, color, key: e.key };
             });
@@ -226,23 +234,28 @@ export const HardEffortsChart = ({
     ));
 
     const sprintHighlights = sprintAreas.map(s => (
-        <ReferenceArea key={`sprint-${s.key}`} x1={s.x1} x2={s.x2} fill={s.color} fillOpacity={isDark ? 0.18 : 0.14} stroke={s.color} strokeOpacity={0.5} strokeWidth={1} />
+        <ReferenceArea key={`sprint-${s.key}`} x1={s.x1} x2={s.x2} fill={s.color} fillOpacity={isDark ? 0.22 : 0.18} stroke={s.color} strokeOpacity={0.6} strokeWidth={1.5} />
     ));
 
     return (
         <Box mb="md">
             {/* Segment header row */}
             <div style={{ display: 'flex', paddingLeft: 5, paddingRight: 5, marginBottom: 2 }}>
-                {headerSegments.map(seg => (
+                {headerSegments.map(seg => {
+                    const zoneColor = ZONE_HEX[Math.max(0, Math.min(6, seg.zone - 1))];
+                    return (
                     <div
                         key={seg.key}
                         style={{
                             width: `${seg.widthPct}%`,
-                            minWidth: 0,
+                            minWidth: seg.isSprint ? 4 : 0,
                             overflow: 'hidden',
                             borderLeft: `1px solid ${ui.border}`,
                             padding: '1px 3px',
-                            flexShrink: 0,
+                            flexShrink: seg.isSprint ? 0 : 1,
+                            background: seg.isSprint ? zoneColor : undefined,
+                            opacity: seg.isSprint && seg.widthPct <= 3 ? 0.7 : 1,
+                            borderRadius: seg.isSprint ? 2 : 0,
                         }}
                     >
                         {!seg.isRest && seg.widthPct > 3 && (
@@ -281,7 +294,8 @@ export const HardEffortsChart = ({
                             </Stack>
                         )}
                     </div>
-                ))}
+                    );
+                })}
             </div>
 
             {/* Panel 1 — Raw Power */}
@@ -344,7 +358,7 @@ export const HardEffortsChart = ({
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={chartData} margin={CHART_MARGIN} syncId="hardEffortsChart">
                         <XAxis dataKey="time_min" type="number" domain={xDomain} hide />
-                        <YAxis hide domain={['auto', 'auto']} />
+                        <YAxis hide domain={[0, 'auto']} />
                         <CartesianGrid strokeDasharray="2 4" vertical={false} stroke={gridStroke} />
                         {sprintHighlights}
                         {refLines}

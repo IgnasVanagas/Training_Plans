@@ -951,6 +951,7 @@ class OrganizationDiscoverItemOut(BaseModel):
     picture: Optional[str] = None
     coaches: list[OrganizationCoachOut] = []
     my_membership_status: Optional[str] = None
+    member_count: int = 0
 
 
 class OrganizationDiscoverOut(BaseModel):

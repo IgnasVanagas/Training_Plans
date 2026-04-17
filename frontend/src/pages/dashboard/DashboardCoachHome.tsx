@@ -3,27 +3,24 @@ import {
   Avatar,
   Badge,
   Button,
-  Checkbox,
+  Card,
   CopyButton,
-  Divider,
   Group,
   Paper,
-  Select,
   SimpleGrid,
   Stack,
-  Table,
   Text,
   TextInput,
   Textarea,
   ThemeIcon,
   Title,
   useComputedColorScheme,
-  ScrollArea,
 } from "@mantine/core";
 import {
   IconAlertTriangle,
   IconBolt,
   IconCheck,
+  IconClipboardCheck,
   IconCopy,
   IconHeart,
   IconMessageCircle,
@@ -31,13 +28,26 @@ import {
   IconRun,
   IconUsers,
   IconAt,
+  IconArrowRight,
+  IconBell,
+  IconChartBar,
 } from "@tabler/icons-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMediaQuery } from "@mantine/hooks";
 import { ActivityFeedRow, CalendarApprovalItem, CoachOperationsPayload, DashboardCalendarEvent, User } from "./types";
 import { formatDuration } from "./utils";
 import { useI18n } from "../../i18n/I18nProvider";
+
+type FeedItem = {
+  key: string;
+  type: "compliance" | "approval" | "feedback" | "exception";
+  icon: React.ReactNode;
+  color: string;
+  title: string;
+  subtitle: string;
+  actions?: React.ReactNode;
+  onClick?: () => void;
+};
 
 type Props = {
   me: User;
@@ -70,7 +80,6 @@ const DashboardCoachHome = ({
   complianceAlerts,
   coachFeedbackRows,
   coachOperations,
-  coachOperationsLoading,
   approvalQueue,
   reviewingApproval,
   onReviewApproval,
@@ -83,42 +92,43 @@ const DashboardCoachHome = ({
   invitingByEmail,
   onGenerateInvite,
   generatingInvite,
-  onOpenPlan,
-  onOpenActivities,
-  onOpenOrganizations,
   onOpenComparison,
 }: Props) => {
   const navigate = useNavigate();
   const isDark = useComputedColorScheme("light") === "dark";
-  const isMobile = useMediaQuery("(max-width: 48em)");
   const { t } = useI18n();
-  const [operationsSport, setOperationsSport] = useState<string | null>(null);
-  const [operationsRisk, setOperationsRisk] = useState<string | null>(null);
-  const [operationsSearch, setOperationsSearch] = useState("");
-  const [exceptionsOnly, setExceptionsOnly] = useState(false);
-  const [atRiskOnly, setAtRiskOnly] = useState(false);
 
-  const operationsRows = useMemo(() => {
-    const rows = coachOperations?.athletes || [];
-    return rows.filter((row) => {
-      if (operationsSport && (row.main_sport || "").toLowerCase() !== operationsSport.toLowerCase()) return false;
-      if (operationsRisk && row.risk_level !== operationsRisk) return false;
-      if (exceptionsOnly && row.exception_reasons.length === 0) return false;
-      if (atRiskOnly && !row.at_risk) return false;
-      if (operationsSearch.trim()) {
-        const needle = operationsSearch.trim().toLowerCase();
-        const haystack = `${row.athlete_name} ${row.athlete_email}`.toLowerCase();
-        if (!haystack.includes(needle)) return false;
-      }
-      return true;
-    });
-  }, [atRiskOnly, coachOperations?.athletes, exceptionsOnly, operationsRisk, operationsSearch, operationsSport]);
+  const cardBg = isDark ? "rgba(22, 34, 58, 0.62)" : "rgba(255, 255, 255, 0.92)";
+  const cardBorder = isDark ? "rgba(148, 163, 184, 0.26)" : "rgba(15, 23, 42, 0.14)";
+
+  const atRiskCount = coachOperations?.at_risk_athletes?.length || 0;
+  const exceptionCount = coachOperations?.exception_queue?.length || 0;
+  const actionItemCount = complianceAlerts.length + approvalQueue.length + coachFeedbackRows.length + exceptionCount;
 
   const openAthletePlan = (athleteId: number) => {
     navigate("/dashboard", {
+      state: { activeTab: "plan", selectedAthleteId: String(athleteId) },
+    });
+  };
+
+  const openComplianceAlert = (row: DashboardCalendarEvent) => {
+    const activityId = row.is_planned ? row.matched_activity_id : row.id;
+    if (activityId) {
+      navigate(`/dashboard/activities/${activityId}`, {
+        state: {
+          returnTo: "/dashboard",
+          activeTab: "dashboard",
+          selectedAthleteId: row.user_id ? String(row.user_id) : null,
+          calendarDate: row.date,
+        },
+      });
+      return;
+    }
+    navigate("/dashboard", {
       state: {
         activeTab: "plan",
-        selectedAthleteId: String(athleteId),
+        selectedAthleteId: row.user_id ? String(row.user_id) : null,
+        calendarDate: row.date,
       },
     });
   };
@@ -138,488 +148,354 @@ const DashboardCoachHome = ({
       workload_delta_high: t("Workload allocation is far from team median") || "Workload allocation is far from team median",
       missing_threshold_metrics: t("Missing threshold metrics (FTP/LT2/Max HR)") || "Missing threshold metrics (FTP/LT2/Max HR)",
     };
-
     return labels[reasonCode] || reasonCode;
   };
 
-  const openComplianceAlert = (row: DashboardCalendarEvent) => {
-    const activityId = row.is_planned ? row.matched_activity_id : row.id;
+  const getAthleteName = (athleteId: number | undefined): string => {
+    if (!athleteId) return "Athlete";
+    const athlete = athletes.find((a) => a.id === athleteId);
+    if (!athlete) return "Athlete";
+    return (athlete.profile?.first_name || athlete.profile?.last_name)
+      ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
+      : athlete.email;
+  };
 
-    if (activityId) {
-      navigate(`/dashboard/activities/${activityId}`, {
-        state: {
-          returnTo: "/dashboard",
-          activeTab: "dashboard",
-          selectedAthleteId: row.user_id ? String(row.user_id) : null,
-          calendarDate: row.date,
-        },
+  const feedItems = useMemo((): FeedItem[] => {
+    const items: FeedItem[] = [];
+
+    complianceAlerts.forEach((row, i) => {
+      const label = row.compliance_status === "missed" ? t("Missed") || "Missed"
+        : row.compliance_status === "completed_red" ? t("Critical") || "Critical"
+        : row.is_planned ? t("Overdue") || "Overdue" : t("Needs Review") || "Needs Review";
+      items.push({
+        key: `c-${row.id || i}-${row.date}`,
+        type: "compliance",
+        icon: <IconAlertTriangle size={16} />,
+        color: row.compliance_status === "completed_red" || row.compliance_status === "missed" ? "red" : "yellow",
+        title: `${getAthleteName(row.user_id)} · ${label}`,
+        subtitle: `${row.date} · ${row.title}`,
+        onClick: () => openComplianceAlert(row),
       });
-      return;
-    }
-
-    navigate("/dashboard", {
-      state: {
-        activeTab: "plan",
-        selectedAthleteId: row.user_id ? String(row.user_id) : null,
-        calendarDate: row.date,
-      },
     });
+
+    approvalQueue.forEach((item) => {
+      items.push({
+        key: `a-${item.workout_id}`,
+        type: "approval",
+        icon: <IconClipboardCheck size={16} />,
+        color: "orange",
+        title: `${item.athlete_name} · ${item.request_type}`,
+        subtitle: `${item.date} · ${item.title}`,
+        actions: (
+          <Group gap={6}>
+            <Button size="compact-xs" variant="light" color="green" loading={reviewingApproval} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onReviewApproval(item.workout_id, "approve"); }}>
+              {t("Approve") || "Approve"}
+            </Button>
+            <Button size="compact-xs" variant="light" color="red" loading={reviewingApproval} onClick={(e: React.MouseEvent) => { e.stopPropagation(); onReviewApproval(item.workout_id, "reject"); }}>
+              {t("Reject") || "Reject"}
+            </Button>
+          </Group>
+        ),
+      });
+    });
+
+    coachFeedbackRows.forEach((row) => {
+      items.push({
+        key: `f-${row.id}`,
+        type: "feedback",
+        icon: <IconMessageCircle size={16} />,
+        color: "blue",
+        title: `${getAthleteName(row.athlete_id)} · ${t("New session") || "New session"}`,
+        subtitle: `${row.sport || "activity"} · ${new Date(row.created_at).toLocaleString()}`,
+        onClick: () => navigate(`/dashboard/activities/${row.id}`),
+      });
+    });
+
+    (coachOperations?.exception_queue || []).slice(0, 4).forEach((row) => {
+      items.push({
+        key: `e-${row.athlete_id}`,
+        type: "exception",
+        icon: <IconAlertTriangle size={16} />,
+        color: row.risk_level === "high" ? "red" : "yellow",
+        title: `${row.athlete_name} · ${row.risk_level}`,
+        subtitle: describeExceptionReason(row.exception_reasons[0] || ""),
+        actions: (
+          <Button size="compact-xs" variant="light" onClick={(e: React.MouseEvent) => { e.stopPropagation(); openAthletePlan(row.athlete_id); }}>
+            {t("Open plan") || "Open plan"}
+          </Button>
+        ),
+        onClick: () => openAthletePlan(row.athlete_id),
+      });
+    });
+
+    return items;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [complianceAlerts, approvalQueue, coachFeedbackRows, coachOperations?.exception_queue, athletes, reviewingApproval]);
+
+  const getThreshold = (athlete: User) => {
+    const p = athlete.profile;
+    if (p?.main_sport === "running" && p.lt2) {
+      const isImp = me.profile?.preferred_units === "imperial";
+      const val = isImp ? p.lt2 * 1.60934 : p.lt2;
+      return (
+        <Group gap={4}>
+          <IconRun size={14} color="green" />
+          <Text size="xs">{formatDuration(val)} {isImp ? "/mi" : "/km"}</Text>
+        </Group>
+      );
+    }
+    if (p?.ftp) {
+      return (
+        <Group gap={4}>
+          <IconBolt size={14} color="orange" />
+          <Text size="xs">{p.ftp} W</Text>
+        </Group>
+      );
+    }
+    if (p?.lt2) {
+      const isImp = me.profile?.preferred_units === "imperial";
+      const val = isImp ? p.lt2 * 1.60934 : p.lt2;
+      return (
+        <Group gap={4}>
+          <IconRun size={14} color="green" />
+          <Text size="xs">{formatDuration(val)} {isImp ? "/mi" : "/km"}</Text>
+        </Group>
+      );
+    }
+    return <Text size="xs" c="dimmed">-</Text>;
+  };
+
+  const getAthleteRisk = (athleteId: number) => {
+    return (coachOperations?.athletes || []).find((a) => a.athlete_id === athleteId);
   };
 
   return (
-    <Stack gap="lg">
-      <SimpleGrid cols={{ base: 1, lg: 2 }}>
-        <Paper withBorder p="md" radius="md" shadow="sm">
+    <Stack gap="lg" style={{ fontFamily: '"Inter", sans-serif' }}>
+      {/* Quick Stats */}
+      <SimpleGrid cols={{ base: 2, sm: 4 }}>
+        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ borderColor: cardBorder }}>
           <Group justify="space-between" mb="xs">
-            <Group gap="xs">
-              <ThemeIcon color="red" variant="light" radius="xl"><IconAlertTriangle size={16} /></ThemeIcon>
-              <Title order={4}>Compliance Alerts</Title>
-            </Group>
-            <Badge color="red" variant="light">{complianceAlerts.length}</Badge>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>{t("Athletes") || "Athletes"}</Text>
+            <IconUsers size={20} color="#2563eb" />
           </Group>
-          {complianceAlerts.length === 0 ? (
-            <Text size="sm" c="dimmed">No urgent compliance flags. Athletes are currently on track.</Text>
-          ) : (
-            <Stack gap={6}>
-              {complianceAlerts.map((row, index) => {
-                const athlete = athletes.find((item) => item.id === row.user_id);
-                const athleteName = athlete
-                  ? ((athlete.profile?.first_name || athlete.profile?.last_name)
-                    ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
-                    : athlete.email)
-                  : "Athlete";
-                return (
-                  <Paper
-                    key={`${row.id || index}-${row.date}`}
-                    withBorder
-                    p="xs"
-                    radius="sm"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => openComplianceAlert(row)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        openComplianceAlert(row);
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <Group justify="space-between" align="flex-start" wrap="nowrap">
-                      <Stack gap={0}>
-                        <Text size="sm" fw={600}>{athleteName}</Text>
-                        <Text size="xs" c="dimmed">{row.date} · {row.title}</Text>
-                      </Stack>
-                      <Badge color={row.compliance_status === "completed_red" || row.compliance_status === "missed" ? "red" : "yellow"}>
-                        {row.compliance_status === "missed" ? "Missed" : row.compliance_status === "completed_red" ? "Critical" : row.is_planned ? "Overdue" : "Needs Review"}
-                      </Badge>
-                    </Group>
-                  </Paper>
-                );
-              })}
-            </Stack>
-          )}
-        </Paper>
+          <Text fw={700} size="xl">{athletes.length}</Text>
+          <Text size="xs" c="dimmed" mt="xs">{t("Total roster") || "Total roster"}</Text>
+        </Card>
 
-        <Paper withBorder p="md" radius="md" shadow="sm">
+        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ borderColor: cardBorder }}>
           <Group justify="space-between" mb="xs">
-            <Group gap="xs">
-              <ThemeIcon color="blue" variant="light" radius="xl"><IconMessageCircle size={16} /></ThemeIcon>
-              <Title order={4}>Coach-to-Athlete Loop</Title>
-            </Group>
-            <Badge variant="light" color="blue">24h</Badge>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>{t("At-Risk") || "At-Risk"}</Text>
+            <IconAlertTriangle size={20} color={atRiskCount > 0 ? "#ef4444" : "#94a3b8"} />
           </Group>
-          <Text size="sm" c="dimmed" mb="sm">Recent completed sessions waiting for coach acknowledgement.</Text>
-          {coachFeedbackRows.length === 0 ? (
-            <Text size="sm" c="dimmed">No new completed activities in the last 24 hours.</Text>
-          ) : (
-            <Stack gap={6}>
-              {coachFeedbackRows.map((row) => {
-                const athlete = athletes.find((item) => item.id === row.athlete_id);
-                const athleteName = athlete
-                  ? ((athlete.profile?.first_name || athlete.profile?.last_name)
-                    ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
-                    : athlete.email)
-                  : "Athlete";
-                return (
-                  <Group key={row.id} justify="space-between" wrap="nowrap">
-                    <Stack gap={0}>
-                      <Text size="sm" fw={600}>{athleteName}</Text>
-                      <Text size="xs" c="dimmed">{row.sport || "activity"} · {new Date(row.created_at).toLocaleString()}</Text>
-                    </Stack>
-                    <Group gap={6}>
-                      <Button size="compact-xs" variant="subtle">Approve</Button>
-                      <Button size="compact-xs" variant="subtle">Adjust Next</Button>
-                    </Group>
-                  </Group>
-                );
-              })}
-            </Stack>
-          )}
-        </Paper>
+          <Text fw={700} size="xl" c={atRiskCount > 0 ? "red" : undefined}>{atRiskCount}</Text>
+          <Text size="xs" c="dimmed" mt="xs">{t("Need attention") || "Need attention"}</Text>
+        </Card>
 
-        <Paper withBorder p="md" radius="md" shadow="sm">
+        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ borderColor: cardBorder }}>
           <Group justify="space-between" mb="xs">
-            <Group gap="xs">
-              <ThemeIcon color="orange" variant="light" radius="xl"><IconAlertTriangle size={16} /></ThemeIcon>
-              <Title order={4}>{t("Approval queue") || "Approval queue"}</Title>
-            </Group>
-            <Badge variant="light" color="orange">{approvalQueue.length}</Badge>
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>{t("Action Items") || "Action Items"}</Text>
+            <IconBell size={20} color={actionItemCount > 0 ? "#f59e0b" : "#94a3b8"} />
           </Group>
-          <Text size="sm" c="dimmed" mb="sm">{t("Athlete-requested calendar changes waiting for coach review.") || "Athlete-requested calendar changes waiting for coach review."}</Text>
-          {approvalQueue.length === 0 ? (
-            <Text size="sm" c="dimmed">{t("No pending calendar approvals.") || "No pending calendar approvals."}</Text>
-          ) : (
-            <Stack gap={6}>
-              {approvalQueue.slice(0, 6).map((item) => (
-                <Paper key={item.workout_id} withBorder p="xs" radius="sm">
-                  <Group justify="space-between" wrap="nowrap" align="flex-start">
-                    <Stack gap={0}>
-                      <Text size="sm" fw={600}>{item.athlete_name}</Text>
-                      <Text size="xs" c="dimmed">{item.date} · {item.title}</Text>
-                      <Text size="xs" c="dimmed">{(t("Request") || "Request") + `: ${item.request_type}` + (item.requested_by_name ? ` • ${item.requested_by_name}` : "")}</Text>
-                    </Stack>
-                    <Group gap={6}>
-                      <Button size="compact-xs" variant="light" color="green" loading={reviewingApproval} onClick={() => onReviewApproval(item.workout_id, "approve")}>
-                        {t("Approve") || "Approve"}
-                      </Button>
-                      <Button size="compact-xs" variant="light" color="red" loading={reviewingApproval} onClick={() => onReviewApproval(item.workout_id, "reject")}>
-                        {t("Reject") || "Reject"}
-                      </Button>
-                    </Group>
-                  </Group>
-                </Paper>
-              ))}
-            </Stack>
-          )}
-        </Paper>
+          <Text fw={700} size="xl" c={actionItemCount > 0 ? "yellow.7" : undefined}>{actionItemCount}</Text>
+          <Text size="xs" c="dimmed" mt="xs">{t("Pending review") || "Pending review"}</Text>
+        </Card>
+
+        <Card shadow="sm" radius="md" withBorder padding="lg" bg={cardBg} style={{ borderColor: cardBorder }}>
+          <Group justify="space-between" mb="xs">
+            <Text size="xs" c="dimmed" tt="uppercase" fw={700}>{t("Weekly Load") || "Weekly Load"}</Text>
+            <IconChartBar size={20} color="#6E4BF3" />
+          </Group>
+          <Text fw={700} size="xl">{Math.round(coachOperations?.workload_balance?.target_weekly_minutes || 0)}</Text>
+          <Text size="xs" c="dimmed" mt="xs">{t("Target min/week") || "Target min/week"}</Text>
+        </Card>
       </SimpleGrid>
 
-      <Paper withBorder p="md" radius="md" shadow="sm">
+      {/* Unified Action Feed */}
+      <Paper withBorder p="md" radius="md" shadow="sm" bg={cardBg} style={{ borderColor: cardBorder }}>
         <Group justify="space-between" mb="sm">
-          <div>
-            <Title order={4}>{t("Multi-athlete operations") || "Multi-athlete operations"}</Title>
-            <Text size="sm" c="dimmed">{t("Filter cohorts, balance weekly load, and clear risk queues quickly.") || "Filter cohorts, balance weekly load, and clear risk queues quickly."}</Text>
-          </div>
-          {coachOperationsLoading ? <Badge variant="light">{t("Refreshing") || "Refreshing"}</Badge> : null}
+          <Group gap="xs">
+            <ThemeIcon color="orange" variant="light" radius="xl"><IconBell size={16} /></ThemeIcon>
+            <Title order={4}>{t("Action Feed") || "Action Feed"}</Title>
+          </Group>
+          {actionItemCount > 0 && <Badge variant="light" color="orange">{actionItemCount}</Badge>}
         </Group>
 
-        <SimpleGrid cols={{ base: 1, md: 3 }} mb="md">
-          <Paper withBorder p="sm" radius="sm">
-            <Text size="xs" c="dimmed">{t("Target weekly minutes") || "Target weekly minutes"}</Text>
-            <Text fw={700} size="xl">{Math.round(coachOperations?.workload_balance?.target_weekly_minutes || 0)}</Text>
-          </Paper>
-          <Paper withBorder p="sm" radius="sm">
-            <Text size="xs" c="dimmed">{t("At-risk athletes") || "At-risk athletes"}</Text>
-            <Text fw={700} size="xl">{coachOperations?.at_risk_athletes?.length || 0}</Text>
-          </Paper>
-          <Paper withBorder p="sm" radius="sm">
-            <Text size="xs" c="dimmed">{t("Exception queue") || "Exception queue"}</Text>
-            <Text fw={700} size="xl">{coachOperations?.exception_queue?.length || 0}</Text>
-          </Paper>
-        </SimpleGrid>
-
-        <SimpleGrid cols={{ base: 1, lg: 5 }} mb="sm">
-          <TextInput
-            label={t("Search athlete") || "Search athlete"}
-            placeholder={t("Name or email") || "Name or email"}
-            value={operationsSearch}
-            onChange={(event) => setOperationsSearch(event.currentTarget.value)}
-          />
-          <Select
-            label={t("Sport") || "Sport"}
-            data={[
-              { value: "", label: t("All") || "All" },
-              { value: "running", label: t("Running") || "Running" },
-              { value: "cycling", label: t("Cycling") || "Cycling" },
-              { value: "triathlon", label: t("Triathlon") || "Triathlon" },
-            ]}
-            value={operationsSport || ""}
-            onChange={(value) => setOperationsSport(value || null)}
-          />
-          <Select
-            label={t("Risk level") || "Risk level"}
-            data={[
-              { value: "", label: t("All") || "All" },
-              { value: "high", label: t("High") || "High" },
-              { value: "moderate", label: t("Moderate") || "Moderate" },
-              { value: "low", label: t("Low") || "Low" },
-            ]}
-            value={operationsRisk || ""}
-            onChange={(value) => setOperationsRisk(value || null)}
-          />
-          <Checkbox
-            mt={26}
-            label={t("Exceptions only") || "Exceptions only"}
-            checked={exceptionsOnly}
-            onChange={(event) => setExceptionsOnly(event.currentTarget.checked)}
-          />
-          <Checkbox
-            mt={26}
-            label={t("At-risk only") || "At-risk only"}
-            checked={atRiskOnly}
-            onChange={(event) => setAtRiskOnly(event.currentTarget.checked)}
-          />
-        </SimpleGrid>
-
-        <SimpleGrid cols={{ base: 1, lg: 2 }}>
-          <Paper withBorder p="sm" radius="sm">
-            <Group justify="space-between" mb="xs">
-              <Text fw={600}>{t("Exception queue") || "Exception queue"}</Text>
-              <Badge color="red" variant="light">{operationsRows.filter((row) => row.exception_reasons.length > 0).length}</Badge>
-            </Group>
-            <Stack gap={8}>
-              {operationsRows.filter((row) => row.exception_reasons.length > 0).slice(0, 8).map((row) => (
-                <Paper key={row.athlete_id} withBorder p="xs" radius="sm">
-                  <Group justify="space-between" align="flex-start" wrap="nowrap">
-                    <Stack gap={2}>
-                      <Text size="sm" fw={600}>{row.athlete_name}</Text>
-                      <Text size="xs" c="dimmed">{describeExceptionReason(row.exception_reasons[0])}</Text>
+        {feedItems.length === 0 ? (
+          <Text size="sm" c="dimmed" ta="center" py="md">
+            {t("All clear — no pending actions.") || "All clear — no pending actions."}
+          </Text>
+        ) : (
+          <Stack gap={6}>
+            {feedItems.slice(0, 10).map((item) => (
+              <Paper
+                key={item.key}
+                withBorder
+                p="xs"
+                radius="sm"
+                style={{ cursor: item.onClick ? "pointer" : undefined }}
+                onClick={item.onClick}
+                onKeyDown={item.onClick ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.onClick?.(); } } : undefined}
+                role={item.onClick ? "button" : undefined}
+                tabIndex={item.onClick ? 0 : undefined}
+              >
+                <Group justify="space-between" align="center" wrap="nowrap">
+                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+                    <ThemeIcon color={item.color} variant="light" size="sm" radius="xl">
+                      {item.icon}
+                    </ThemeIcon>
+                    <Stack gap={0} style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={600} truncate="end">{item.title}</Text>
+                      <Text size="xs" c="dimmed" truncate="end">{item.subtitle}</Text>
                     </Stack>
-                    <Group gap={6}>
-                      <Badge color={row.risk_level === "high" ? "red" : row.risk_level === "moderate" ? "yellow" : "gray"}>
-                        {row.risk_level}
+                  </Group>
+                  {item.actions || (
+                    item.onClick && <IconArrowRight size={14} color="gray" style={{ flexShrink: 0 }} />
+                  )}
+                </Group>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+      </Paper>
+
+      {/* Athletes Grid */}
+      <Paper withBorder p="md" radius="md" shadow="sm" bg={cardBg} style={{ borderColor: cardBorder }}>
+        <Group justify="space-between" mb="md">
+          <Group gap="xs">
+            <ThemeIcon color="blue" variant="light" radius="xl"><IconUsers size={16} /></ThemeIcon>
+            <Title order={4}>{t("Your Athletes") || "Your Athletes"}</Title>
+          </Group>
+          <Group gap="xs">
+            <Button variant="light" size="compact-sm" onClick={onOpenComparison} leftSection={<IconChartBar size={14} />}>
+              {t("Compare") || "Compare"}
+            </Button>
+          </Group>
+        </Group>
+
+        {athletes.length > 0 ? (
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+            {athletes.map((athlete) => {
+              const risk = getAthleteRisk(athlete.id);
+              const name = (athlete.profile?.first_name || athlete.profile?.last_name)
+                ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
+                : athlete.email;
+              return (
+                <Card
+                  key={athlete.id}
+                  withBorder
+                  radius="md"
+                  padding="md"
+                  style={{ cursor: "pointer", borderColor: cardBorder }}
+                  onClick={() => navigate(`/dashboard/athlete/${athlete.id}`)}
+                >
+                  <Group gap="sm" mb="xs">
+                    <Avatar color="blue" radius="xl" size="md">
+                      {athlete.profile?.first_name ? athlete.profile.first_name[0].toUpperCase() : athlete.email[0].toUpperCase()}
+                    </Avatar>
+                    <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
+                      <Text size="sm" fw={600} truncate="end">{name}</Text>
+                      {(athlete.profile?.first_name || athlete.profile?.last_name) && (
+                        <Text size="xs" c="dimmed" truncate="end">{athlete.email}</Text>
+                      )}
+                    </Stack>
+                    {risk?.at_risk && (
+                      <Badge color={risk.risk_level === "high" ? "red" : "yellow"} size="xs" variant="light">
+                        {risk.risk_level}
                       </Badge>
-                      <Button size="compact-xs" variant="light" onClick={() => openAthletePlan(row.athlete_id)}>
-                        {t("Open plan") || "Open plan"}
-                      </Button>
+                    )}
+                  </Group>
+
+                  <Group justify="space-between" mt="xs">
+                    {getThreshold(athlete)}
+                    <Group gap={4}>
+                      <IconHeart size={14} color="red" />
+                      <Text size="xs">{athlete.profile?.max_hr ?? "-"} bpm</Text>
                     </Group>
                   </Group>
-                </Paper>
-              ))}
-              {operationsRows.filter((row) => row.exception_reasons.length > 0).length === 0 ? (
-                <Text size="sm" c="dimmed">{t("No current exceptions in this filter set.") || "No current exceptions in this filter set."}</Text>
-              ) : null}
-            </Stack>
-          </Paper>
 
-          <Paper withBorder p="sm" radius="sm">
-            <Group justify="space-between" mb="xs">
-              <Text fw={600}>{t("At-risk athlete view") || "At-risk athlete view"}</Text>
-              <Badge color="orange" variant="light">{operationsRows.filter((row) => row.at_risk).length}</Badge>
-            </Group>
-            <Stack gap={8}>
-              {operationsRows.filter((row) => row.at_risk).slice(0, 8).map((row) => (
-                <Group key={row.athlete_id} justify="space-between" wrap="nowrap">
-                  <Stack gap={0}>
-                    <Text size="sm" fw={600}>{row.athlete_name}</Text>
-                    <Text size="xs" c="dimmed">
-                      {(t("ACWR") || "ACWR") + ` ${row.acwr.toFixed(2)} • ` + (t("Overdue") || "Overdue") + ` ${row.overdue_planned_count}`}
-                    </Text>
-                  </Stack>
-                  <Badge color={row.risk_level === "high" ? "red" : "yellow"}>{row.risk_score}</Badge>
-                </Group>
-              ))}
-              {operationsRows.filter((row) => row.at_risk).length === 0 ? (
-                <Text size="sm" c="dimmed">{t("No at-risk athletes under current filters.") || "No at-risk athletes under current filters."}</Text>
-              ) : null}
-            </Stack>
-          </Paper>
-        </SimpleGrid>
-
-        <Divider my="md" />
-        <Text fw={600} mb="xs">{t("Workload balancing") || "Workload balancing"}</Text>
-        <ScrollArea type="auto" offsetScrollbars>
-          <Table striped highlightOnHover verticalSpacing="sm" miw={780}>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>{t("Athlete") || "Athlete"}</Table.Th>
-                <Table.Th>{t("Planned 7d (min)") || "Planned 7d (min)"}</Table.Th>
-                <Table.Th>{t("Completed 7d (min)") || "Completed 7d (min)"}</Table.Th>
-                <Table.Th>{t("Load delta") || "Load delta"}</Table.Th>
-                <Table.Th>{t("Recommendation") || "Recommendation"}</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {operationsRows.map((row) => (
-                <Table.Tr key={`op-${row.athlete_id}`}>
-                  <Table.Td>
-                    <Text size="sm" fw={600}>{row.athlete_name}</Text>
-                  </Table.Td>
-                  <Table.Td>{Math.round(row.planned_7d_minutes)}</Table.Td>
-                  <Table.Td>{Math.round(row.completed_7d_minutes)}</Table.Td>
-                  <Table.Td>
-                    <Badge color={row.workload_delta_minutes > 120 ? "red" : row.workload_delta_minutes < -120 ? "blue" : "teal"} variant="light">
-                      {row.workload_delta_minutes > 0 ? "+" : ""}{Math.round(row.workload_delta_minutes)}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="xs" c="dimmed">{row.workload_recommendation || (t("Balanced") || "Balanced")}</Text>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
+                  <Group justify="space-between" mt="xs">
+                    {athlete.has_upcoming_coach_workout ? (
+                      <Badge color="teal" variant="light" size="xs">
+                        {athlete.next_coach_workout_date ? `${t("Planned") || "Planned"} ${athlete.next_coach_workout_date}` : (t("Planned") || "Planned")}
+                      </Badge>
+                    ) : (
+                      <Badge color="orange" variant="light" size="xs">
+                        {t("Needs Plan") || "Needs Plan"}
+                      </Badge>
+                    )}
+                    {risk && (
+                      <Text size="xs" c="dimmed">ACWR {risk.acwr.toFixed(2)}</Text>
+                    )}
+                  </Group>
+                </Card>
+              );
+            })}
+          </SimpleGrid>
+        ) : (
+          <Stack align="center" py="xl" c="dimmed">
+            <IconUsers size={48} stroke={1} />
+            <Text>{t("No athletes found. Invite some athletes to get started.") || "No athletes found. Invite some athletes to get started."}</Text>
+          </Stack>
+        )}
       </Paper>
 
-      <Paper withBorder p="md" radius="md" shadow="sm">
-        <Group justify="space-between" align="flex-start" wrap="wrap" gap="sm">
-          <div>
-            <Title order={4}>{t("Coach Split-Screen Analysis") || "Coach Split-Screen Analysis"}</Title>
-            <Text size="sm" c="dimmed">
-              {t("Compare two workouts, weeks, or months side by side with the same analysis model.") || "Compare two workouts, weeks, or months side by side with the same analysis model."}
-            </Text>
-          </div>
-          <Button variant="light" onClick={onOpenComparison}>
-            {t("Comparison") || "Comparison"}
-          </Button>
-        </Group>
-      </Paper>
-
-      <Paper withBorder p="md" radius="md" shadow="sm">
-        <Group justify="space-between" mb="xs">
-          <div>
-            <Title order={4}>Invite Athlete</Title>
-            <Text c="dimmed" size="sm">Invite existing athletes by email, or share a join link for new signups.</Text>
-          </div>
-          <Button leftSection={<IconPlus size={16} />} onClick={onGenerateInvite} loading={generatingInvite}>
-            Generate Link
+      {/* Invite Athlete */}
+      <Paper withBorder p="md" radius="md" shadow="sm" bg={cardBg} style={{ borderColor: cardBorder }}>
+        <Group justify="space-between" mb="sm">
+          <Group gap="xs">
+            <ThemeIcon color="teal" variant="light" radius="xl"><IconPlus size={16} /></ThemeIcon>
+            <Title order={4}>{t("Invite Athlete") || "Invite Athlete"}</Title>
+          </Group>
+          <Button size="compact-sm" variant="light" onClick={onGenerateInvite} loading={generatingInvite}>
+            {t("Generate Link") || "Generate Link"}
           </Button>
         </Group>
 
-        <Group align="end" mt="sm" wrap="wrap">
+        <Group align="end" wrap="wrap">
           <TextInput
-            label="Existing athlete email"
             placeholder="athlete@example.com"
             value={inviteEmail}
             onChange={(event) => onInviteEmailChange(event.currentTarget.value)}
             leftSection={<IconAt size={16} />}
             style={{ flex: 1 }}
+            size="sm"
           />
-          <Button onClick={onInviteByEmail} loading={invitingByEmail}>
-            Invite by Email
+          <Button size="sm" onClick={onInviteByEmail} loading={invitingByEmail}>
+            {t("Invite") || "Invite"}
           </Button>
         </Group>
 
         <Textarea
-          label={t("Message (optional)")}
-          placeholder={t("Write a short message to the athlete...")}
+          placeholder={t("Write a short message to the athlete...") || "Write a short message to the athlete..."}
           value={inviteMessage}
           onChange={(e) => onInviteMessageChange(e.currentTarget.value)}
           maxLength={500}
           autosize
-          minRows={2}
-          maxRows={4}
+          minRows={1}
+          maxRows={3}
           mt="xs"
+          size="sm"
         />
 
         {inviteUrl && (
           <Paper
             bg={isDark ? "dark.6" : "gray.1"}
-            p="sm"
+            p="xs"
             radius="sm"
-            mt="md"
+            mt="sm"
             style={{ border: `1px solid ${isDark ? "var(--mantine-color-dark-4)" : "var(--mantine-color-gray-3)"}` }}
           >
-            <Group justify="space-between">
-              <Text size="sm" ff="monospace" c={isDark ? "gray.1" : "dark.8"} style={{ wordBreak: "break-all" }}>{inviteUrl}</Text>
+            <Group justify="space-between" gap="xs">
+              <Text size="xs" ff="monospace" c={isDark ? "gray.1" : "dark.8"} style={{ wordBreak: "break-all", flex: 1 }}>{inviteUrl}</Text>
               <CopyButton value={inviteUrl}>
                 {({ copied, copy }) => (
-                  <ActionIcon color={copied ? "teal" : "blue"} onClick={copy} variant="filled">
-                    {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                  <ActionIcon color={copied ? "teal" : "blue"} onClick={copy} variant="filled" size="sm">
+                    {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
                   </ActionIcon>
                 )}
               </CopyButton>
             </Group>
           </Paper>
-        )}
-      </Paper>
-
-      <Paper withBorder p="md" radius="md" shadow="sm">
-        <Title order={4} mb="md">Your Athletes</Title>
-        {athletes.length > 0 ? (
-          <ScrollArea type="auto" offsetScrollbars>
-            <Table striped highlightOnHover verticalSpacing="sm" miw={620}>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Athlete</Table.Th>
-                  <Table.Th>Threshold</Table.Th>
-                  <Table.Th>Max HR (bpm)</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {athletes.map((athlete) => (
-                  <Table.Tr key={athlete.id} style={{ cursor: "pointer" }} onClick={() => navigate(`/dashboard/athlete/${athlete.id}`)}>
-                    <Table.Td>
-                      <Group gap="sm">
-                        <Avatar color="blue" radius="xl">
-                          {athlete.profile?.first_name ? athlete.profile.first_name[0].toUpperCase() : athlete.email[0].toUpperCase()}
-                        </Avatar>
-                        <Stack gap={0}>
-                          <Text size="sm" fw={500}>
-                            {(athlete.profile?.first_name || athlete.profile?.last_name)
-                              ? `${athlete.profile.first_name || ""} ${athlete.profile.last_name || ""}`.trim()
-                              : athlete.email}
-                          </Text>
-                          {(athlete.profile?.first_name || athlete.profile?.last_name) && (
-                            <Text size="xs" c="dimmed">{athlete.email}</Text>
-                          )}
-                        </Stack>
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      {(() => {
-                        const p = athlete.profile;
-                        if (p?.main_sport === "running" && p.lt2) {
-                          const isImp = me.profile?.preferred_units === "imperial";
-                          const val = isImp ? p.lt2 * 1.60934 : p.lt2;
-                          return (
-                            <Group gap={4}>
-                              <IconRun size={14} color="green" />
-                              <Text size="sm">{formatDuration(val)} {isImp ? "/mi" : "/km"}</Text>
-                            </Group>
-                          );
-                        }
-                        if (p?.ftp) {
-                          return (
-                            <Group gap={4}>
-                              <IconBolt size={14} color="orange" />
-                              <Text size="sm">{p.ftp} W</Text>
-                            </Group>
-                          );
-                        }
-                        if (p?.lt2) {
-                          const isImp = me.profile?.preferred_units === "imperial";
-                          const val = isImp ? p.lt2 * 1.60934 : p.lt2;
-                          return (
-                            <Group gap={4}>
-                              <IconRun size={14} color="green" />
-                              <Text size="sm">{formatDuration(val)} {isImp ? "/mi" : "/km"}</Text>
-                            </Group>
-                          );
-                        }
-                        return <Text size="sm">-</Text>;
-                      })()}
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap={4}>
-                        <IconHeart size={14} color="red" />
-                        <Text size="sm">{athlete.profile?.max_hr ?? "-"}</Text>
-                      </Group>
-                    </Table.Td>
-                    <Table.Td>
-                      {athlete.has_upcoming_coach_workout ? (
-                        <Badge color="teal" variant="light">
-                          {athlete.next_coach_workout_date ? `${t("Planned") || "Planned"} ${athlete.next_coach_workout_date}` : (t("Planned") || "Planned")}
-                        </Badge>
-                      ) : (
-                        <Badge color="orange" variant="light">
-                          {t("Needs Plan") || "Needs Plan"}
-                        </Badge>
-                      )}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </ScrollArea>
-        ) : (
-          <Stack align="center" py="xl" c="dimmed">
-            <IconUsers size={48} stroke={1} />
-            <Text>No athletes found. Invite some athletes to get started.</Text>
-          </Stack>
         )}
       </Paper>
     </Stack>

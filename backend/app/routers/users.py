@@ -5,7 +5,7 @@ from collections import defaultdict
 from statistics import median
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select, and_, or_
+from sqlalchemy import select, and_, or_, func as sa_func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1049,8 +1049,6 @@ async def discover_organizations(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> OrganizationDiscoverOut:
-    if current_user.role != RoleEnum.athlete:
-        raise HTTPException(status_code=403, detail="Only athletes can discover organizations")
 
     org_query = select(Organization).order_by(Organization.name.asc())
     if query:
@@ -1064,6 +1062,19 @@ async def discover_organizations(
         return OrganizationDiscoverOut(items=[])
 
     org_ids = [org.id for org in organizations]
+
+    # Count active members per org
+    member_count_rows = (
+        await db.execute(
+            select(OrganizationMember.organization_id, sa_func.count())
+            .where(
+                OrganizationMember.organization_id.in_(org_ids),
+                OrganizationMember.status == "active",
+            )
+            .group_by(OrganizationMember.organization_id)
+        )
+    ).all()
+    member_count_by_org: dict[int, int] = {org_id: cnt for org_id, cnt in member_count_rows}
 
     membership_rows = (
         await db.execute(
@@ -1115,6 +1126,7 @@ async def discover_organizations(
             picture=org.picture,
             coaches=coaches_by_org.get(org.id, []),
             my_membership_status=my_status_by_org.get(org.id),
+            member_count=member_count_by_org.get(org.id, 0),
         )
         for org in organizations
     ]
@@ -1275,8 +1287,6 @@ async def create_organization(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> OrganizationOut:
-    if current_user.role != RoleEnum.coach:
-        raise HTTPException(status_code=403, detail="Only coaches can create organizations")
 
     # Generate code
     new_code = str(uuid.uuid4())[:8]
