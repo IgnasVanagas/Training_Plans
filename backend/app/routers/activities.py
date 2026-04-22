@@ -370,14 +370,24 @@ async def _resolve_provider_access_token(
 
     now = datetime.utcnow()
     if connection.token_expires_at and connection.token_expires_at <= (now + timedelta(minutes=2)) and refresh_token:
-        refreshed = await connector.refresh_token(refresh_token)
-        access_token = refreshed.access_token
-        connection.encrypted_access_token = encrypt_token(refreshed.access_token)
-        if refreshed.refresh_token:
-            connection.encrypted_refresh_token = encrypt_token(refreshed.refresh_token)
-        connection.token_expires_at = refreshed.expires_at
-        connection.scopes = refreshed.scopes
-        await db.commit()
+        try:
+            refreshed = await connector.refresh_token(refresh_token)
+            access_token = refreshed.access_token
+            connection.encrypted_access_token = encrypt_token(refreshed.access_token)
+            if refreshed.refresh_token:
+                connection.encrypted_refresh_token = encrypt_token(refreshed.refresh_token)
+            connection.token_expires_at = refreshed.expires_at
+            connection.scopes = refreshed.scopes
+            await db.commit()
+        except Exception:
+            # Concurrent sync may have already rotated tokens; keep request resilient.
+            logger.warning(
+                "Token refresh failed for user_id=%s provider=%s (possible concurrent refresh)",
+                user_id,
+                provider,
+                exc_info=True,
+            )
+            await db.rollback()
 
     return access_token
 
@@ -3215,8 +3225,16 @@ async def get_activity(
         stored_data, time_fields_changed = _normalize_activity_time_fields(stored_data)
         if time_fields_changed:
             activity.streams = stored_data
-            await db.commit()
-            await db.refresh(activity)
+            try:
+                await db.commit()
+                await db.refresh(activity)
+            except Exception:
+                logger.warning(
+                    "Failed to persist normalized time fields for activity %s",
+                    activity.id,
+                    exc_info=True,
+                )
+                await db.rollback()
 
         streams_list = stored_data.get("data", [])
         power_curve = stored_data.get("power_curve")

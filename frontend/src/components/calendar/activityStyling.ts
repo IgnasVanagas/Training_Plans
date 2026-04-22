@@ -14,17 +14,34 @@ type ActivityStyleRow = {
     title?: string;
 };
 
-export const resolveActivityBrandType = (sportType?: string, title?: string): ActivityBrandType => {
-    const token = `${sportType || ''} ${title || ''}`.toLowerCase();
-    if (token.includes('rest')) return 'rest';
-    if (token.includes('virtualride') || token.includes('virtual ride') || token.includes('virtual') || token.includes('indoor') || token.includes('trainer') || token.includes('zwift')) return 'virtual';
-    if (token.includes('gym') || token.includes('strength') || token.includes('workout')) return 'workout';
-    if (token.includes('swim')) return 'swim';
-    if (token.includes('hike') || token.includes('trek') || token.includes('trail walk')) return 'hike';
-    if (token.includes('walk') || token.includes('walking')) return 'walk';
-    if (token.includes('run')) return 'run';
-    if (token.includes('cycl') || token.includes('bike') || token.includes('ride') || token.includes('gravel')) return 'cycling';
+const hasToken = (value: string, token: string): boolean => {
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(`(^|[^a-z])${escaped}([^a-z]|$)`);
+    return pattern.test(value);
+};
+
+const classifyFromText = (value: string): ActivityBrandType => {
+    if (!value) return 'default';
+    if (value.includes('rest')) return 'rest';
+    if (value.includes('virtualride') || value.includes('virtual ride') || value.includes('virtual') || value.includes('indoor') || value.includes('trainer') || value.includes('zwift')) return 'virtual';
+    if (value.includes('gym') || value.includes('strength') || value.includes('workout')) return 'workout';
+    if (value.includes('swim')) return 'swim';
+    if (value.includes('hike') || value.includes('trek') || value.includes('trail walk')) return 'hike';
+    if (hasToken(value, 'walk') || hasToken(value, 'walking')) return 'walk';
+    if (hasToken(value, 'run') || hasToken(value, 'running')) return 'run';
+    if (value.includes('cycl') || value.includes('bike') || hasToken(value, 'ride') || value.includes('gravel')) return 'cycling';
     return 'default';
+};
+
+export const resolveActivityBrandType = (sportType?: string, title?: string): ActivityBrandType => {
+    const sportToken = (sportType || '').toLowerCase();
+    const titleToken = (title || '').toLowerCase();
+
+    // Prefer canonical sport metadata over title heuristics.
+    const fromSport = classifyFromText(sportToken);
+    if (fromSport !== 'default') return fromSport;
+
+    return classifyFromText(titleToken);
 };
 
 export const resolveActivityAccentColor = (activityColors: Record<ActivityBrandType, string>, sportType?: string, title?: string) => {

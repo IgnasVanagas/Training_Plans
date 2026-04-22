@@ -1,4 +1,4 @@
-import { Badge, Box, Stack, Text } from "@mantine/core";
+import { Badge, Box, Stack, Text, Tooltip } from "@mantine/core";
 import { useMemo } from "react";
 import { Area, AreaChart, CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { HardEffort } from "../../types/activityDetail";
@@ -158,20 +158,28 @@ export const HardEffortsChart = ({
         return segments;
     }, [hardEfforts, streamPoints.length]);
 
+    // Shared index-to-chart-time conversion — single source of truth for overlays
+    const actStartTs = useMemo(() => {
+        if (streamPoints.length === 0) return 0;
+        return new Date(streamPoints[0]?.timestamp).getTime() || 0;
+    }, [streamPoints]);
+
+    const toMin = useMemo(() => {
+        return (idx: number): number => {
+            const s = streamPoints[Math.min(idx, streamPoints.length - 1)];
+            return s?.timestamp ? (new Date(s.timestamp).getTime() - actStartTs) / 60000 : idx / 60;
+        };
+    }, [streamPoints, actStartTs]);
+
     const boundaries = useMemo(() => {
         if (hardEfforts.length === 0 || streamPoints.length === 0) return [];
-        const startTs = new Date(streamPoints[0]?.timestamp).getTime();
-        const toMin = (idx: number): number => {
-            const s = streamPoints[Math.min(idx, streamPoints.length - 1)];
-            return s?.timestamp ? (new Date(s.timestamp).getTime() - startTs) / 60000 : idx / 60;
-        };
         const set = new Set<number>();
         for (const e of hardEfforts) {
             if (!e.isWarmup) set.add(toMin(e.startIndex));
             set.add(toMin(e.endIndex + 1));
         }
         return Array.from(set).sort((a, b) => a - b);
-    }, [hardEfforts, streamPoints]);
+    }, [hardEfforts, streamPoints, toMin]);
 
     const gradientStops = useMemo(() => {
         if (!isCyclingActivity || cyclingBounds.length === 0 || chartData.length === 0) return null;
@@ -204,15 +212,10 @@ export const HardEffortsChart = ({
     const refLineStroke = isDark ? 'rgba(148,163,184,0.3)' : 'rgba(15,23,42,0.18)';
     const gridStroke = isDark ? 'rgba(148,163,184,0.07)' : 'rgba(15,23,42,0.05)';
 
-    // Compute highlighted regions for sprint efforts with minimum visual width
+    // Compute highlighted regions for sprint efforts with minimum visual width.
+    // Expand rightward from the true start so the left edge stays anchored.
     const sprintAreas = useMemo(() => {
         if (hardEfforts.length === 0 || streamPoints.length === 0) return [];
-        const startTs = new Date(streamPoints[0]?.timestamp).getTime();
-        const toMin = (idx: number): number => {
-            const s = streamPoints[Math.min(idx, streamPoints.length - 1)];
-            return s?.timestamp ? (new Date(s.timestamp).getTime() - startTs) / 60000 : idx / 60;
-        };
-        // Ensure sprints are at least 1.5% of chart width so they're clearly visible
         const minWidth = totalMinutes * 0.015;
         return hardEfforts
             .filter(e => e.isSprint)
@@ -220,14 +223,21 @@ export const HardEffortsChart = ({
                 const rawX1 = toMin(e.startIndex);
                 const rawX2 = toMin(e.endIndex + 1);
                 const width = rawX2 - rawX1;
-                // Center the expanded area around the original sprint midpoint
-                const pad = width < minWidth ? (minWidth - width) / 2 : 0;
-                const x1 = rawX1 - pad;
-                const x2 = rawX2 + pad;
+                let x1 = rawX1;
+                let x2 = rawX2;
+                if (width < minWidth) {
+                    // Expand right from true start boundary
+                    x2 = rawX1 + minWidth;
+                    // If that overshoots the chart end, pull both edges back
+                    if (x2 > xDomain[1]) {
+                        x2 = xDomain[1];
+                        x1 = Math.max(xDomain[0], x2 - minWidth);
+                    }
+                }
                 const color = ZONE_HEX[Math.min(e.zone - 1, ZONE_HEX.length - 1)];
                 return { x1, x2, color, key: e.key };
             });
-    }, [hardEfforts, streamPoints, totalMinutes]);
+    }, [hardEfforts, streamPoints, totalMinutes, toMin, xDomain]);
 
     const refLines = boundaries.map(t => (
         <ReferenceLine key={t} x={t} stroke={refLineStroke} strokeWidth={1} />
@@ -244,56 +254,88 @@ export const HardEffortsChart = ({
                 {headerSegments.map(seg => {
                     const zoneColor = ZONE_HEX[Math.max(0, Math.min(6, seg.zone - 1))];
                     return (
-                    <div
+                    <Tooltip
                         key={seg.key}
-                        style={{
-                            width: `${seg.widthPct}%`,
-                            minWidth: seg.isSprint ? 4 : 0,
-                            overflow: 'hidden',
-                            borderLeft: `1px solid ${ui.border}`,
-                            padding: '1px 3px',
-                            flexShrink: seg.isSprint ? 0 : 1,
-                            background: seg.isSprint ? zoneColor : undefined,
-                            opacity: seg.isSprint && seg.widthPct <= 3 ? 0.7 : 1,
-                            borderRadius: seg.isSprint ? 2 : 0,
-                        }}
-                    >
-                        {!seg.isRest && seg.widthPct > 3 && (
-                            <Stack gap={0}>
-                                <Text size="9px" fw={700} c={ui.textDim} style={{ lineHeight: 1.3 }}>
-                                    {formatDuration(seg.durationSeconds)}
-                                </Text>
+                        disabled={seg.isRest}
+                        withinPortal
+                        label={
+                            <Stack gap={2} style={{ minWidth: 70 }}>
+                                <Text size="xs" fw={700}>{formatDuration(seg.durationSeconds)}</Text>
                                 {seg.avgWatts != null && (
-                                    <Text size="9px" c={ui.textDim} style={{ lineHeight: 1.3 }}>
-                                        {Math.round(seg.avgWatts)}w
-                                    </Text>
+                                    <Text size="xs" c={ui.textDim}>{Math.round(seg.avgWatts)}w</Text>
                                 )}
                                 {seg.avgHr != null && (
-                                    <Text size="9px" c="#fa5252" style={{ lineHeight: 1.3 }}>
-                                        {Math.round(seg.avgHr)}bpm
-                                    </Text>
+                                    <Text size="xs" c="#fa5252">{Math.round(seg.avgHr)}bpm</Text>
                                 )}
                                 <Badge
                                     size="xs"
                                     color={ZONE_COLORS[Math.max(0, Math.min(6, seg.zone - 1))]}
                                     variant="filled"
-                                    style={{ fontSize: 8, padding: '0 2px', height: 11, width: 'fit-content' }}
+                                    style={{ fontSize: 10, width: 'fit-content' }}
                                 >
                                     Z{seg.zone}
                                 </Badge>
                                 {seg.pctRef != null && (
-                                    <Text size="9px" c={seg.pctRef >= 90 ? '#f97316' : ui.textDim} style={{ lineHeight: 1.3 }}>
-                                        {Math.round(seg.pctRef)}%
-                                    </Text>
+                                    <Text size="xs" c={seg.pctRef >= 90 ? '#f97316' : ui.textDim}>{Math.round(seg.pctRef)}%</Text>
                                 )}
                                 {seg.avgSpeedKmh != null && (
-                                    <Text size="9px" c="#60a5fa" style={{ lineHeight: 1.3 }}>
-                                        {seg.avgSpeedKmh.toFixed(1)}km/h
-                                    </Text>
+                                    <Text size="xs" c="#60a5fa">{seg.avgSpeedKmh.toFixed(1)}km/h</Text>
                                 )}
                             </Stack>
-                        )}
-                    </div>
+                        }
+                        styles={{ tooltip: { background: isDark ? '#1e293b' : '#fff', border: `1px solid ${ui.border}`, color: ui.textMain } }}
+                    >
+                        <div
+                            style={{
+                                width: `${seg.widthPct}%`,
+                                minWidth: seg.isSprint ? 4 : 0,
+                                overflow: 'hidden',
+                                borderLeft: `1px solid ${ui.border}`,
+                                padding: '1px 3px',
+                                flexShrink: seg.isSprint ? 0 : 1,
+                                background: seg.isSprint ? zoneColor : undefined,
+                                opacity: seg.isSprint && seg.widthPct <= 3 ? 0.7 : 1,
+                                borderRadius: seg.isSprint ? 2 : 0,
+                                cursor: seg.isRest ? 'default' : 'default',
+                            }}
+                        >
+                            {!seg.isRest && seg.widthPct > 3 && (
+                                <Stack gap={0}>
+                                    <Text size="9px" fw={700} c={ui.textDim} style={{ lineHeight: 1.3 }}>
+                                        {formatDuration(seg.durationSeconds)}
+                                    </Text>
+                                    {seg.avgWatts != null && (
+                                        <Text size="9px" c={ui.textDim} style={{ lineHeight: 1.3 }}>
+                                            {Math.round(seg.avgWatts)}w
+                                        </Text>
+                                    )}
+                                    {seg.avgHr != null && (
+                                        <Text size="9px" c="#fa5252" style={{ lineHeight: 1.3 }}>
+                                            {Math.round(seg.avgHr)}bpm
+                                        </Text>
+                                    )}
+                                    <Badge
+                                        size="xs"
+                                        color={ZONE_COLORS[Math.max(0, Math.min(6, seg.zone - 1))]}
+                                        variant="filled"
+                                        style={{ fontSize: 8, padding: '0 2px', height: 11, width: 'fit-content' }}
+                                    >
+                                        Z{seg.zone}
+                                    </Badge>
+                                    {seg.pctRef != null && (
+                                        <Text size="9px" c={seg.pctRef >= 90 ? '#f97316' : ui.textDim} style={{ lineHeight: 1.3 }}>
+                                            {Math.round(seg.pctRef)}%
+                                        </Text>
+                                    )}
+                                    {seg.avgSpeedKmh != null && (
+                                        <Text size="9px" c="#60a5fa" style={{ lineHeight: 1.3 }}>
+                                            {seg.avgSpeedKmh.toFixed(1)}km/h
+                                        </Text>
+                                    )}
+                                </Stack>
+                            )}
+                        </div>
+                    </Tooltip>
                     );
                 })}
             </div>
