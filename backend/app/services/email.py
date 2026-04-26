@@ -37,14 +37,14 @@ async def send_email_via_resend(*, to_email: str, subject: str, html: str) -> bo
         return False
 
 
-async def send_verification_email(*, to_email: str, verify_url: str) -> bool:
+async def send_verification_email(*, to_email: str, code: str, expires_minutes: int) -> bool:
     subject = "Verify your email"
     html = (
         "<div style='font-family:Arial,sans-serif;line-height:1.5;color:#111'>"
         "<h2 style='margin:0 0 12px'>Verify your email</h2>"
-        "<p style='margin:0 0 12px'>Thanks for creating your account. Please verify your email to finish setup.</p>"
-        f"<p style='margin:0 0 16px'><a href='{verify_url}' style='background:#0ea5e9;color:#fff;padding:10px 14px;text-decoration:none;border-radius:6px;display:inline-block'>Verify email</a></p>"
-        f"<p style='margin:0 0 8px'>If the button does not work, copy this link:</p><p style='margin:0;word-break:break-all'>{verify_url}</p>"
+        "<p style='margin:0 0 12px'>Thanks for creating your account. Enter this 6-digit verification code in the app to finish setup.</p>"
+        f"<div style='font-size:32px;font-weight:700;letter-spacing:6px;margin:8px 0 16px;color:#0f172a'>{code}</div>"
+        f"<p style='margin:0 0 8px'>This code expires in {expires_minutes} minutes.</p>"
         "</div>"
     )
     return await send_email_via_resend(to_email=to_email, subject=subject, html=html)

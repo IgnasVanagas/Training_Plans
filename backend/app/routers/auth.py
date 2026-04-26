@@ -1,6 +1,8 @@
 import uuid
 import os
 import asyncio
+import secrets
+from datetime import datetime, timedelta, UTC
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Response
@@ -12,7 +14,7 @@ from jose import JWTError
 from ..auth import create_access_token, create_refresh_token, decode_refresh_token, create_action_token, decode_action_token, get_current_user, get_password_hash, verify_password, REFRESH_TOKEN_EXPIRE_DAYS
 from ..database import get_db
 from ..models import Organization, Profile, User, OrganizationMember
-from ..schemas import EmailTokenRequest, ForgotPasswordRequest, LoginRequest, ResetPasswordRequest, TokenResponse, UserCreate
+from ..schemas import EmailCodeVerificationRequest, ForgotPasswordRequest, LoginRequest, MessageResponse, ResetPasswordRequest, TokenResponse, UserCreate
 from ..services.email import send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -24,6 +26,15 @@ def _should_expose_auth_debug_links() -> bool:
 
 def _require_email_verification() -> bool:
     return os.getenv("REQUIRE_EMAIL_VERIFICATION", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def _generate_email_verification_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _email_verification_expiry() -> datetime:
+    minutes = int(os.getenv("EMAIL_CONFIRM_CODE_EXPIRE_MINUTES", "15"))
+    return datetime.now(UTC) + timedelta(minutes=max(1, minutes))
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -60,8 +71,8 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
     )
 
 
-@router.post("/register", response_model=TokenResponse)
-async def register(payload: UserCreate, response: Response, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+@router.post("/register", response_model=MessageResponse)
+async def register(payload: UserCreate, response: Response, db: AsyncSession = Depends(get_db)) -> MessageResponse:
     email = str(payload.email).strip().lower()
 
     result = await db.execute(select(User).where(User.email == email))
@@ -85,6 +96,8 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
         email=email,
         password_hash=get_password_hash(payload.password),
         email_verified=False,
+        email_verification_code=_generate_email_verification_code(),
+        email_verification_expires_at=_email_verification_expiry(),
         role=payload.role,
     )
     db.add(user)
@@ -115,19 +128,19 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
         await db.rollback()
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    verify_token = create_action_token(
-        subject=user.email,
-        purpose="email_confirm",
-        expires_minutes=int(os.getenv("EMAIL_CONFIRM_TOKEN_EXPIRE_MINUTES", "1440")),
+    await send_verification_email(
+        to_email=user.email,
+        code=user.email_verification_code or "",
+        expires_minutes=int(os.getenv("EMAIL_CONFIRM_CODE_EXPIRE_MINUTES", "15")),
     )
-    verify_url = _build_frontend_action_url(route="/login?verify=", token=verify_token)
-    await send_verification_email(to_email=user.email, verify_url=verify_url)
 
-    token = create_access_token(subject=str(user.id))
-    refresh = create_refresh_token(subject=str(user.id))
-    _set_auth_cookie(response, token)
-    _set_refresh_cookie(response, refresh)
-    return TokenResponse(access_token=token)
+    secure_cookie = os.getenv("AUTH_COOKIE_SECURE", "false").lower() in {"1", "true", "yes", "on"}
+    same_site_cookie = (os.getenv("AUTH_COOKIE_SAMESITE") or "lax").strip().lower()
+    if same_site_cookie not in {"lax", "strict", "none"}:
+        same_site_cookie = "lax"
+    response.delete_cookie(key="access_token", path="/", secure=secure_cookie, samesite=same_site_cookie)
+    response.delete_cookie(key="refresh_token", path="/", secure=secure_cookie, samesite=same_site_cookie)
+    return MessageResponse(message="Account created. Enter the 6-digit verification code sent to your email.")
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -201,18 +214,18 @@ def _build_frontend_action_url(*, route: str, token: str) -> str:
 @router.post("/request-email-confirmation")
 async def request_email_confirmation(
     current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
-    token = create_action_token(
-        subject=current_user.email,
-        purpose="email_confirm",
-        expires_minutes=int(os.getenv("EMAIL_CONFIRM_TOKEN_EXPIRE_MINUTES", "1440")),
-    )
+    current_user.email_verification_code = _generate_email_verification_code()
+    current_user.email_verification_expires_at = _email_verification_expiry()
     message = "Verification email queued"
     response = {"message": message}
-    verify_url = _build_frontend_action_url(route="/login?verify=", token=token)
-    await send_verification_email(to_email=current_user.email, verify_url=verify_url)
-    if _should_expose_auth_debug_links():
-        response["verify_url"] = verify_url
+    await send_verification_email(
+        to_email=current_user.email,
+        code=current_user.email_verification_code or "",
+        expires_minutes=int(os.getenv("EMAIL_CONFIRM_CODE_EXPIRE_MINUTES", "15")),
+    )
+    await db.commit()
     return response
 
 
@@ -227,30 +240,41 @@ async def resend_email_confirmation(payload: ForgotPasswordRequest, db: AsyncSes
     if user.email_verified:
         return {"message": "Email is already verified."}
 
-    token = create_action_token(
-        subject=user.email,
-        purpose="email_confirm",
-        expires_minutes=int(os.getenv("EMAIL_CONFIRM_TOKEN_EXPIRE_MINUTES", "1440")),
+    user.email_verification_code = _generate_email_verification_code()
+    user.email_verification_expires_at = _email_verification_expiry()
+    await send_verification_email(
+        to_email=user.email,
+        code=user.email_verification_code or "",
+        expires_minutes=int(os.getenv("EMAIL_CONFIRM_CODE_EXPIRE_MINUTES", "15")),
     )
-    verify_url = _build_frontend_action_url(route="/login?verify=", token=token)
-    await send_verification_email(to_email=user.email, verify_url=verify_url)
-    if _should_expose_auth_debug_links():
-        response["verify_url"] = verify_url
+    await db.commit()
     return response
 
 
 @router.post("/verify-email")
-async def verify_email(payload: EmailTokenRequest, db: AsyncSession = Depends(get_db)) -> dict:
-    try:
-        email = decode_action_token(token=payload.token, purpose="email_confirm").strip().lower()
-    except JWTError:
-        raise HTTPException(status_code=400, detail="Invalid or expired verification token")
-
+async def verify_email(payload: EmailCodeVerificationRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    email = str(payload.email).strip().lower()
     user = await db.scalar(select(User).where(User.email == email))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    if user.email_verified:
+        return {"message": "Email confirmed"}
+
+    if user.email_verification_code != payload.code:
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    expires_at = user.email_verification_expires_at
+    if not expires_at:
+        raise HTTPException(status_code=400, detail="Verification code expired")
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at < datetime.now(UTC):
+        raise HTTPException(status_code=400, detail="Verification code expired")
+
     user.email_verified = True
+    user.email_verification_code = None
+    user.email_verification_expires_at = None
     await db.commit()
     return {"message": "Email confirmed"}
 

@@ -110,6 +110,8 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     email_verified = Column(Boolean, nullable=False, default=False)
+    email_verification_code = Column(String(6), nullable=True)
+    email_verification_expires_at = Column(DateTime, nullable=True)
     role = Column(Enum(RoleEnum), nullable=False, default=RoleEnum.athlete)
     
     # Relationships

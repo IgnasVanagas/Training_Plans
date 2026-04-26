@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, UTC
 
 import pytest
 from fastapi import HTTPException, Response
@@ -13,7 +13,7 @@ from app.routers import auth as auth_router
 from app.routers import users as users_router
 from app.schemas import (
     ChangePasswordRequest,
-    EmailTokenRequest,
+    EmailCodeVerificationRequest,
     ForgotPasswordRequest,
     InviteByEmailRequest,
     LoginRequest,
@@ -101,6 +101,32 @@ async def test_register_handles_integrity_error_duplicate_email():
 
 
 @pytest.mark.asyncio
+async def test_register_returns_message_and_does_not_authenticate(monkeypatch):
+    async def _fake_send_verification_email(**_kwargs):
+        return True
+
+    monkeypatch.setattr(auth_router, "send_verification_email", _fake_send_verification_email)
+    payload = UserCreate(
+        email="fresh@example.com",
+        password="StrongPass1!",
+        role=RoleEnum.athlete,
+        first_name="Fresh",
+        last_name="User",
+        gender="Male",
+        birth_date=date(1991, 1, 1),
+    )
+    response = Response()
+    db = _FakeDB(execute_results=[_FakeResult(None)])
+
+    out = await auth_router.register(payload, response, db)
+
+    assert out.message.startswith("Account created")
+    set_cookie = response.headers.get("set-cookie", "")
+    assert 'access_token=""' in set_cookie
+    assert "Max-Age=0" in set_cookie
+
+
+@pytest.mark.asyncio
 async def test_invite_existing_athlete_by_email_creates_pending_membership():
     coach = User(id=1, email="coach@example.com", password_hash="x", role=RoleEnum.coach, email_verified=True)
     coach.organization_memberships = [
@@ -174,11 +200,18 @@ async def test_change_password_requires_valid_current_and_updates_hash():
 
 @pytest.mark.asyncio
 async def test_verify_email_and_reset_password_flows():
-    user = User(id=7, email="flow@example.com", password_hash=get_password_hash("OldPass1!"), role=RoleEnum.athlete, email_verified=False)
+    user = User(
+        id=7,
+        email="flow@example.com",
+        password_hash=get_password_hash("OldPass1!"),
+        role=RoleEnum.athlete,
+        email_verified=False,
+        email_verification_code="123456",
+        email_verification_expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
 
-    verify_token = create_action_token(subject=user.email, purpose="email_confirm", expires_minutes=5)
     db_verify = _FakeDB(scalar_results=[user])
-    verify_response = await auth_router.verify_email(EmailTokenRequest(token=verify_token), db_verify)
+    verify_response = await auth_router.verify_email(EmailCodeVerificationRequest(email=user.email, code="123456"), db_verify)
     assert verify_response["message"] == "Email confirmed"
     assert user.email_verified is True
 

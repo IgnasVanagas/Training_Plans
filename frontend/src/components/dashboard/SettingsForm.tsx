@@ -120,15 +120,6 @@ const SettingsForm = ({
                 {t("Confirm your email to improve account recovery and security.") || "Confirm your email to improve account recovery and security."}
               </Alert>
             )}
-
-            <Button
-              variant="light"
-              onClick={() => onRequestEmailConfirmation && onRequestEmailConfirmation()}
-              loading={requestingEmailConfirmation}
-              disabled={!onRequestEmailConfirmation}
-            >
-              {t("Send verification email") || "Send verification email"}
-            </Button>
           </Stack>
 
           <Divider />

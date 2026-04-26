@@ -37,6 +37,11 @@ type GenericMessageResponse = {
   message: string;
 };
 
+type EmailVerificationPayload = {
+  email: string;
+  code: string;
+};
+
 type LoginResult = AuthResponse & {
   requestedEmail: string;
 };
@@ -49,7 +54,6 @@ const LoginPage = () => {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const inviteCode = searchParams.get("invite");
-  const verifyToken = searchParams.get("verify");
   const resetToken = searchParams.get("reset");
   const [isRegister, setIsRegister] = useState(false);
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -62,6 +66,8 @@ const LoginPage = () => {
   const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState<string | null>(null);
   const [birthDate, setBirthDate] = useState<Date | null>(null);
+  const [verificationCode, setVerificationCode] = useState("");
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
@@ -186,7 +192,7 @@ const LoginPage = () => {
 
   const registerMutation = useMutation({
     mutationFn: async () => {
-      const response = await api.post<AuthResponse>("/auth/register", {
+      const response = await api.post<GenericMessageResponse>("/auth/register", {
         email: email.trim().toLowerCase(),
         password,
         role: inviteCode ? "athlete" : role,
@@ -198,13 +204,15 @@ const LoginPage = () => {
       });
       return response.data;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       await api.post("/auth/logout").catch(() => {});
       clearAuthSession();
       queryClient.clear();
       setIsRegister(false);
       setPassword("");
-      setInfo(t("Account created. Check your email and verify your account before signing in."));
+      setPendingVerificationEmail(email.trim().toLowerCase());
+      setVerificationCode("");
+      setInfo(data.message || t("Account created. Enter the 6-digit verification code sent to your email."));
     },
     onError: (err) => setError(getErrorMessage(err))
   });
@@ -219,10 +227,15 @@ const LoginPage = () => {
   });
 
   const verifyEmailMutation = useMutation({
-    mutationFn: async (token: string) => {
-      await api.post("/auth/verify-email", { token });
+    mutationFn: async (payload: EmailVerificationPayload) => {
+      await api.post("/auth/verify-email", payload);
     },
-    onSuccess: () => setInfo("Email verified successfully. You can now sign in."),
+    onSuccess: () => {
+      setPendingVerificationEmail(null);
+      setVerificationCode("");
+      setInfo("Email verified successfully. You can now sign in.");
+    },
+    onError: (err) => setError(getErrorMessage(err)),
   });
 
   const forgotPasswordMutation = useMutation({
@@ -250,11 +263,6 @@ const LoginPage = () => {
     },
     onError: (err) => setError(getErrorMessage(err)),
   });
-
-  useEffect(() => {
-    if (!verifyToken) return;
-    verifyEmailMutation.mutate(verifyToken);
-  }, [verifyToken]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -284,6 +292,16 @@ const LoginPage = () => {
       return;
     }
 
+    if (pendingVerificationEmail) {
+      const cleanedCode = verificationCode.trim();
+      if (cleanedCode.length !== 6 || !/^\d{6}$/.test(cleanedCode)) {
+        setError("Enter the 6-digit verification code.");
+        return;
+      }
+      verifyEmailMutation.mutate({ email: pendingVerificationEmail, code: cleanedCode });
+      return;
+    }
+
     if (isRegister) {
       if (!firstName.trim() || !lastName.trim() || !birthDate) {
         setError("First Name, Last Name, and Date of Birth are required.");
@@ -303,7 +321,7 @@ const LoginPage = () => {
     }
   };
 
-  const isLoading = loginMutation.isPending || registerMutation.isPending || forgotPasswordMutation.isPending || resetPasswordMutation.isPending || resendVerificationMutation.isPending;
+  const isLoading = loginMutation.isPending || registerMutation.isPending || forgotPasswordMutation.isPending || resetPasswordMutation.isPending || resendVerificationMutation.isPending || verifyEmailMutation.isPending;
   const isDark = useComputedColorScheme("light") === "dark";
 
   const featureItems = [
@@ -468,6 +486,7 @@ const LoginPage = () => {
                               setError("Email is required.");
                               return;
                             }
+                            setPendingVerificationEmail(normalizedEmail);
                             resendVerificationMutation.mutate(normalizedEmail);
                           }}
                           loading={resendVerificationMutation.isPending}
@@ -510,6 +529,7 @@ const LoginPage = () => {
                 size="md"
                 autoComplete="email"
                 radius="md"
+                disabled={Boolean(pendingVerificationEmail)}
               />
 
               {!isForgotPassword && !resetToken && (
@@ -523,7 +543,47 @@ const LoginPage = () => {
                   size="md"
                   autoComplete={isRegister ? "new-password" : "current-password"}
                   radius="md"
+                  disabled={Boolean(pendingVerificationEmail)}
                 />
+              )}
+
+              {pendingVerificationEmail && !resetToken && !isForgotPassword && (
+                <>
+                  <Alert variant="light" color="blue" radius="md" title={t("Email verification") || "Email verification"}>
+                    {t("Enter the 6-digit verification code sent to your email.") || "Enter the 6-digit verification code sent to your email."}
+                  </Alert>
+                  <TextInput
+                    label={t("Verification code") || "Verification code"}
+                    placeholder="123456"
+                    value={verificationCode}
+                    onChange={(event) => setVerificationCode(event.currentTarget.value.replace(/\D/g, "").slice(0, 6))}
+                    required
+                    size="md"
+                    radius="md"
+                    autoComplete="one-time-code"
+                  />
+                  <Group justify="space-between">
+                    <Button
+                      variant="light"
+                      onClick={() => resendVerificationMutation.mutate(pendingVerificationEmail)}
+                      loading={resendVerificationMutation.isPending}
+                    >
+                      {t("Resend verification email") || "Resend verification email"}
+                    </Button>
+                    <Anchor
+                      component="button"
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setPendingVerificationEmail(null);
+                        setVerificationCode("");
+                        setInfo(null);
+                      }}
+                    >
+                      {t("Use different email") || "Use different email"}
+                    </Anchor>
+                  </Group>
+                </>
               )}
 
               {resetToken && (
@@ -626,11 +686,19 @@ const LoginPage = () => {
               loading={isLoading}
               style={{ fontWeight: 600, letterSpacing: 0.3 }}
             >
-              {resetToken ? t("Reset password") : isForgotPassword ? t("Send reset instructions") : isRegister ? t("Register") : t("Sign in")}
+              {resetToken
+                ? t("Reset password")
+                : isForgotPassword
+                ? t("Send reset instructions")
+                : pendingVerificationEmail
+                ? (t("Verify email") || "Verify email")
+                : isRegister
+                ? t("Register")
+                : t("Sign in")}
             </Button>
           </form>
 
-          {!isRegister && !resetToken && (
+          {!isRegister && !resetToken && !pendingVerificationEmail && (
             <Group justify="center" mt="md">
               <Anchor component="button" type="button" size="sm" fw={500} onClick={() => {
                 setIsForgotPassword(!isForgotPassword);
@@ -643,15 +711,17 @@ const LoginPage = () => {
 
           <Group justify="center" mt="lg">
             <Text size="sm" c="dimmed">
-              {isRegister ? t("Have an account?") : t("Don't have an account yet?")}
+              {pendingVerificationEmail ? (t("Need another account?") || "Need another account?") : isRegister ? t("Have an account?") : t("Don't have an account yet?")}
             </Text>
             <Anchor component="button" type="button" size="sm" fw={600} onClick={() => {
+              setPendingVerificationEmail(null);
+              setVerificationCode("");
               setIsRegister(!isRegister);
               setIsForgotPassword(false);
               setError(null);
               setPassword("");
             }}>
-              {isRegister ? t("Login") : t("Create account")}
+              {pendingVerificationEmail ? (t("Start over") || "Start over") : isRegister ? t("Login") : t("Create account")}
             </Anchor>
           </Group>
         </Box>

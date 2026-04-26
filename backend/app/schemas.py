@@ -248,6 +248,28 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class MessageResponse(BaseModel):
+    message: str
+
+
+class EmailCodeVerificationRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+    @field_validator("code")
+    @classmethod
+    def normalize_code(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned.isdigit():
+            raise ValueError("verification code must contain only digits")
+        return cleaned
+
+
 class InviteLinkResponse(BaseModel):
     invite_token: str
     invite_url: str
