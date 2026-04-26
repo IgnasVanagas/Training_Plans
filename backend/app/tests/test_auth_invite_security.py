@@ -16,6 +16,7 @@ from app.schemas import (
     EmailTokenRequest,
     ForgotPasswordRequest,
     InviteByEmailRequest,
+    LoginRequest,
     ResetPasswordRequest,
     UserCreate,
 )
@@ -218,6 +219,30 @@ async def test_forgot_password_can_expose_debug_link_when_opted_in(monkeypatch):
     assert out_existing["message"].startswith("If that email exists")
     assert out_existing["reset_url"] is not None
     assert "/login?reset=" in out_existing["reset_url"]
+
+
+@pytest.mark.asyncio
+async def test_login_blocks_unverified_when_required(monkeypatch):
+    monkeypatch.setenv("REQUIRE_EMAIL_VERIFICATION", "true")
+    user = User(id=33, email="needverify@example.com", password_hash=get_password_hash("SecurePass1!"), role=RoleEnum.athlete, email_verified=False)
+    db = _FakeDB(execute_results=[_FakeResult(user)])
+
+    with pytest.raises(HTTPException) as exc:
+        await auth_router.login(
+            LoginRequest(email="needverify@example.com", password="SecurePass1!"),
+            Response(),
+            db,
+        )
+
+    assert exc.value.status_code == 403
+    assert "Email not verified" in str(exc.value.detail)
+
+
+@pytest.mark.asyncio
+async def test_resend_email_confirmation_generic_for_unknown_email():
+    db = _FakeDB(scalar_results=[None])
+    response = await auth_router.resend_email_confirmation(ForgotPasswordRequest(email="missing@example.com"), db)
+    assert response["message"].startswith("If that email exists")
 
 
 def test_action_token_decode_rejects_wrong_purpose():

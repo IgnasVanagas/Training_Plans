@@ -26,8 +26,8 @@ interface ChartsPanelProps {
     me: any;
     visibleSeries: VisibleSeries;
     setVisibleSeries: Dispatch<SetStateAction<VisibleSeries>>;
-    powerChartMode: 'raw' | 'avg5s';
-    setPowerChartMode: (m: 'raw' | 'avg5s') => void;
+    powerChartMode: 'raw' | 'avg5s' | 'avg30s';
+    setPowerChartMode: (m: 'raw' | 'avg5s' | 'avg30s') => void;
     focusMode: boolean;
     setFocusMode: (v: boolean) => void;
     focusObjective: 'pacing' | 'cardio' | 'efficiency';
@@ -103,10 +103,11 @@ export const ChartsPanel = ({
                     <SegmentedControl
                         size="xs"
                         value={powerChartMode}
-                        onChange={(v) => setPowerChartMode(v as 'raw' | 'avg5s')}
+                        onChange={(v) => setPowerChartMode(v as 'raw' | 'avg5s' | 'avg30s')}
                         data={[
                             { label: t('Power'), value: 'raw' },
                             { label: t('5s Power avg'), value: 'avg5s' },
+                            { label: t('30s Power avg'), value: 'avg30s' },
                         ]}
                     />
                     {focusMode && (
@@ -181,7 +182,7 @@ export const ChartsPanel = ({
                                         const paceText = Number.isFinite(paceValue)
                                             ? `${Math.floor(paceValue)}:${Math.floor((paceValue - Math.floor(paceValue)) * 60).toString().padStart(2, '0')}${me?.profile?.preferred_units === 'imperial' ? '/mi' : '/km'}`
                                             : '-';
-                                        const powerValue = powerChartMode === 'avg5s' ? Number(point.power_5s) : Number(point.power_raw);
+                                        const powerValue = powerChartMode === 'avg5s' ? Number(point.power_5s) : powerChartMode === 'avg30s' ? Number(point.power_30s) : Number(point.power_raw);
                                         const tooltipRows: { label: string; value: string; color: string }[] = [];
                                         if (focusSeries.heart_rate) tooltipRows.push({ label: t('HR'), value: Number.isFinite(Number(point.heart_rate)) ? `${Math.round(Number(point.heart_rate))} bpm` : '-', color: '#fa5252' });
                                         if (focusSeries.power) tooltipRows.push({ label: t('Power'), value: Number.isFinite(powerValue) ? `${Math.round(powerValue)} W` : '-', color: '#fd7e14' });
@@ -219,7 +220,7 @@ export const ChartsPanel = ({
                                     }}
                                 />
                                 {focusSeries.heart_rate && <Line yAxisId="hr" type="monotone" dataKey="heart_rate" stroke="#fa5252" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#fa5252', style: { filter: 'drop-shadow(0 0 5px #fa5252)' } }} name="HR" isAnimationActive={false} connectNulls />}
-                                {focusSeries.power && <Line yAxisId="power" type="monotone" dataKey={powerChartMode === 'avg5s' ? 'power_5s' : 'power_raw'} stroke="#fd7e14" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#fd7e14', style: { filter: 'drop-shadow(0 0 5px #fd7e14)' } }} name="Power" isAnimationActive={false} connectNulls />}
+                                {focusSeries.power && <Line yAxisId="power" type="monotone" dataKey={powerChartMode === 'avg5s' ? 'power_5s' : powerChartMode === 'avg30s' ? 'power_30s' : 'power_raw'} stroke="#fd7e14" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#fd7e14', style: { filter: 'drop-shadow(0 0 5px #fd7e14)' } }} name="Power" isAnimationActive={false} connectNulls />}
                                 {focusSeries.pace && <Line yAxisId="pace" type="monotone" dataKey="pace" stroke="#228be6" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#228be6', style: { filter: 'drop-shadow(0 0 5px #228be6)' } }} name="Pace" isAnimationActive={false} connectNulls={false} />}
                                 {focusSeries.speed && <Line yAxisId="speed" type="monotone" dataKey="speed_display" stroke="#12b886" strokeWidth={1.8} dot={false} activeDot={{ r: 4, strokeWidth: 2, stroke: '#fff', fill: '#12b886', style: { filter: 'drop-shadow(0 0 5px #12b886)' } }} name="Speed" isAnimationActive={false} connectNulls />}
                                 {focusSeries.cadence && <Line yAxisId="cadence" type="monotone" dataKey="cadence" stroke="#40c057" strokeWidth={1.5} dot={false} activeDot={{ r: 3, strokeWidth: 2, stroke: '#fff', fill: '#40c057' }} name="Cadence" isAnimationActive={false} connectNulls />}

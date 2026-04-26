@@ -121,6 +121,8 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "First Name, Last Name, and Date of Birth are required.": "Vardas, pavardė ir gimimo data yra privalomi.",
     "Password must be at least 10 characters and include upper, lower, number, and symbol.": "Slaptažodis turi būti bent 10 simbolių ir turėti didžiąją, mažąją raidę, skaičių bei simbolį.",
     "Email verified successfully. You can now sign in.": "El. paštas sėkmingai patvirtintas. Dabar galite prisijungti.",
+    "Resend verification email": "Siųsti patvirtinimo el. laišką dar kartą",
+    "Account created. Check your email and verify your account before signing in.": "Paskyra sukurta. Patikrinkite el. paštą ir patvirtinkite paskyrą prieš prisijungdami.",
     "An unexpected error occurred.": "Įvyko netikėta klaida.",
     "Unable to accept invitation.": "Nepavyko priimti kvietimo.",
     "Accept the invite to send a pending request to the coach's team.": "Priimkite kvietimą, kad išsiųstumėte laukiančią užklausą trenerio komandai.",

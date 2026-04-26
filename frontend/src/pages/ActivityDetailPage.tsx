@@ -99,7 +99,7 @@ export const ActivityDetailPage = () => {
         cadence: false,
         altitude: false,
     });
-    const [powerChartMode, setPowerChartMode] = useState<'raw' | 'avg5s'>('raw');
+    const [powerChartMode, setPowerChartMode] = useState<'raw' | 'avg5s' | 'avg30s'>('raw');
     const [activityRpe, setActivityRpe] = useState<number | null>(null);
     const [activityNotes, setActivityNotes] = useState('');
     const [mapFullscreen, setMapFullscreen] = useState(false);

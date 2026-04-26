@@ -33,6 +33,10 @@ type AuthResponse = {
   access_token: string;
 };
 
+type GenericMessageResponse = {
+  message: string;
+};
+
 type LoginResult = AuthResponse & {
   requestedEmail: string;
 };
@@ -194,12 +198,24 @@ const LoginPage = () => {
       });
       return response.data;
     },
-    onSuccess: (data) => {
-      markAuthSessionActive(data.access_token);
+    onSuccess: async () => {
+      await api.post("/auth/logout").catch(() => {});
+      clearAuthSession();
       queryClient.clear();
-      navigate("/dashboard", { replace: true });
+      setIsRegister(false);
+      setPassword("");
+      setInfo(t("Account created. Check your email and verify your account before signing in."));
     },
     onError: (err) => setError(getErrorMessage(err))
+  });
+
+  const resendVerificationMutation = useMutation({
+    mutationFn: async (emailValue: string) => {
+      const response = await api.post<GenericMessageResponse>("/auth/resend-email-confirmation", { email: emailValue });
+      return response.data;
+    },
+    onSuccess: (data) => setInfo(data.message),
+    onError: (err) => setError(getErrorMessage(err)),
   });
 
   const verifyEmailMutation = useMutation({
@@ -287,7 +303,7 @@ const LoginPage = () => {
     }
   };
 
-  const isLoading = loginMutation.isPending || registerMutation.isPending || forgotPasswordMutation.isPending || resetPasswordMutation.isPending;
+  const isLoading = loginMutation.isPending || registerMutation.isPending || forgotPasswordMutation.isPending || resetPasswordMutation.isPending || resendVerificationMutation.isPending;
   const isDark = useComputedColorScheme("light") === "dark";
 
   const featureItems = [
@@ -441,6 +457,25 @@ const LoginPage = () => {
                 <Alert variant="light" color="red" radius="md" title="Error">
                   <Stack gap="xs">
                     <Text size="sm">{error}</Text>
+                    {!isRegister && error.includes("Email not verified") && (
+                      <Group>
+                        <Button
+                          size="xs"
+                          variant="light"
+                          onClick={() => {
+                            const normalizedEmail = email.trim().toLowerCase();
+                            if (!normalizedEmail) {
+                              setError("Email is required.");
+                              return;
+                            }
+                            resendVerificationMutation.mutate(normalizedEmail);
+                          }}
+                          loading={resendVerificationMutation.isPending}
+                        >
+                          {t("Resend verification email") || "Resend verification email"}
+                        </Button>
+                      </Group>
+                    )}
                     <SupportContactButton
                       size="xs"
                       buttonText={t("Contact support")}

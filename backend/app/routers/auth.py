@@ -13,12 +13,17 @@ from ..auth import create_access_token, create_refresh_token, decode_refresh_tok
 from ..database import get_db
 from ..models import Organization, Profile, User, OrganizationMember
 from ..schemas import EmailTokenRequest, ForgotPasswordRequest, LoginRequest, ResetPasswordRequest, TokenResponse, UserCreate
+from ..services.email import send_verification_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _should_expose_auth_debug_links() -> bool:
     return os.getenv("EXPOSE_AUTH_DEBUG_LINKS", "false").lower() in {"1", "true", "yes", "on"}
+
+
+def _require_email_verification() -> bool:
+    return os.getenv("REQUIRE_EMAIL_VERIFICATION", "false").lower() in {"1", "true", "yes", "on"}
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -110,6 +115,14 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
         await db.rollback()
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    verify_token = create_action_token(
+        subject=user.email,
+        purpose="email_confirm",
+        expires_minutes=int(os.getenv("EMAIL_CONFIRM_TOKEN_EXPIRE_MINUTES", "1440")),
+    )
+    verify_url = _build_frontend_action_url(route="/login?verify=", token=verify_token)
+    await send_verification_email(to_email=user.email, verify_url=verify_url)
+
     token = create_access_token(subject=str(user.id))
     refresh = create_refresh_token(subject=str(user.id))
     _set_auth_cookie(response, token)
@@ -125,6 +138,8 @@ async def login(payload: LoginRequest, response: Response, db: AsyncSession = De
     if not user or not verify_password(payload.password, user.password_hash):
         await asyncio.sleep(0.35)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    if _require_email_verification() and not user.email_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email not verified. Please verify your email.")
 
     token = create_access_token(subject=str(user.id))
     refresh = create_refresh_token(subject=str(user.id))
@@ -194,8 +209,33 @@ async def request_email_confirmation(
     )
     message = "Verification email queued"
     response = {"message": message}
+    verify_url = _build_frontend_action_url(route="/login?verify=", token=token)
+    await send_verification_email(to_email=current_user.email, verify_url=verify_url)
     if _should_expose_auth_debug_links():
-        response["verify_url"] = _build_frontend_action_url(route="/login?verify=", token=token)
+        response["verify_url"] = verify_url
+    return response
+
+
+@router.post("/resend-email-confirmation")
+async def resend_email_confirmation(payload: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)) -> dict:
+    email = str(payload.email).strip().lower()
+    user = await db.scalar(select(User).where(User.email == email))
+
+    response = {"message": "If that email exists, a verification email has been sent."}
+    if not user:
+        return response
+    if user.email_verified:
+        return {"message": "Email is already verified."}
+
+    token = create_action_token(
+        subject=user.email,
+        purpose="email_confirm",
+        expires_minutes=int(os.getenv("EMAIL_CONFIRM_TOKEN_EXPIRE_MINUTES", "1440")),
+    )
+    verify_url = _build_frontend_action_url(route="/login?verify=", token=token)
+    await send_verification_email(to_email=user.email, verify_url=verify_url)
+    if _should_expose_auth_debug_links():
+        response["verify_url"] = verify_url
     return response
 
 
