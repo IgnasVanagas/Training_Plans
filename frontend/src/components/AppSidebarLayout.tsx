@@ -8,7 +8,6 @@ import {
   IconLayoutDashboard,
   IconLogout,
   IconSettings,
-  IconUser,
   IconSun,
   IconMoon
 } from '@tabler/icons-react';
@@ -16,6 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import SupportContactButton from './common/SupportContactButton';
 import { optimisticSignOut } from '../utils/authSession';
+import { resolveUserPictureUrl } from '../api/organizations';
 
 const appLogo = '/origami-logo.png';
 
@@ -45,6 +45,8 @@ export const AppSidebarLayout = ({
   const meDisplayName = (me?.profile?.first_name || me?.profile?.last_name)
     ? `${me?.profile?.first_name || ''} ${me?.profile?.last_name || ''}`.trim()
     : (me?.email || '...');
+  const meAvatarSrc = resolveUserPictureUrl(me?.profile?.picture) || undefined;
+  const meAvatarInitial = (me?.profile?.first_name || me?.email || '?').slice(0, 1).toUpperCase();
 
   return (
     <AppShell
@@ -73,7 +75,7 @@ export const AppSidebarLayout = ({
               email={me?.email ?? null}
               name={meDisplayName}
             />
-            <Avatar color="blue" radius="xl"><IconUser size="1rem" /></Avatar>
+            <Avatar color="blue" radius="xl" src={meAvatarSrc}>{meAvatarInitial}</Avatar>
             <div>
               <Text size="sm" fw={500}>{meDisplayName}</Text>
             </div>

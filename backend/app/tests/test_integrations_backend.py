@@ -209,6 +209,24 @@ async def test_ingest_provider_activity_dedupe(monkeypatch):
 
     class _Existing:
         id = 42
+        file_type = "provider"
+        streams = {
+            "data": [],
+            "_meta": {
+                "source_provider": "strava",
+                "source_activity_id": "abc",
+            },
+        }
+        filename = "old.fit"
+        sport = "running"
+        created_at = None
+        duration = 1200
+        distance = 5000
+        avg_speed = 4.1
+        average_hr = 150
+        average_watts = None
+        local_date = None
+        moving_time = None
 
     async def _dup(*args, **kwargs):
         return _Existing()
@@ -233,7 +251,9 @@ async def test_ingest_provider_activity_dedupe(monkeypatch):
     )
 
     assert created is False
-    assert len(db.added) == 0
+    # The existing duplicate is re-added to the session during same-source enrichment update.
+    # Assert no *new* activity object was created: the added item must be the existing duplicate.
+    assert all(getattr(item, "id", None) == 42 for item in db.added)
 
 
 @pytest.mark.asyncio

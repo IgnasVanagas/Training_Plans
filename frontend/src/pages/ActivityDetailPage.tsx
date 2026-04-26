@@ -585,13 +585,40 @@ export const ActivityDetailPage = () => {
     const chartSelectionStats = useMemo(() => {
         if (!chartSelection) return null;
         const { startIdx, endIdx } = chartSelection;
-        const slice = chartRenderData.slice(startIdx, endIdx + 1);
+        const startStreamIndex = Number(chartRenderData[startIdx]?.stream_index);
+        const endStreamIndex = Number(chartRenderData[endIdx]?.stream_index);
+        if (!Number.isFinite(startStreamIndex) || !Number.isFinite(endStreamIndex)) return null;
+
+        const fromStreamIndex = Math.min(startStreamIndex, endStreamIndex);
+        const toStreamIndex = Math.max(startStreamIndex, endStreamIndex);
+        const slice = visibleChartData.filter((point: any) => {
+            const idx = Number(point?.stream_index);
+            return Number.isFinite(idx) && idx >= fromStreamIndex && idx <= toStreamIndex;
+        });
         if (slice.length < 2) return null;
 
-        const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((s, v) => s + v, 0) / arr.length : null;
-        const maximum = (arr: number[]) => arr.length > 0 ? Math.max(...arr) : null;
+        const maximum = (arr: number[]) => (arr.length > 0 ? Math.max(...arr) : null);
 
-        const powers = slice.map((p: any) => Number(p.power_raw)).filter((v: number) => v > 0 && Number.isFinite(v));
+        const weightedAverage = (
+            accessor: (point: any) => number,
+            isValid: (value: number) => boolean,
+        ) => {
+            let weightedSum = 0;
+            let weightTotal = 0;
+            for (let i = 0; i < slice.length - 1; i += 1) {
+                const value = accessor(slice[i]);
+                if (!isValid(value)) continue;
+                const currTime = Number(slice[i]?.time_min);
+                const nextTime = Number(slice[i + 1]?.time_min);
+                let dtMin = Number.isFinite(currTime) && Number.isFinite(nextTime) ? (nextTime - currTime) : (1 / 60);
+                if (!Number.isFinite(dtMin) || dtMin <= 0) dtMin = 1 / 60;
+                weightedSum += value * dtMin;
+                weightTotal += dtMin;
+            }
+            return weightTotal > 0 ? weightedSum / weightTotal : null;
+        };
+
+        const powers = slice.map((p: any) => Number(p.power_raw)).filter((v: number) => v >= 0 && Number.isFinite(v));
         const hrs = slice.map((p: any) => Number(p.heart_rate)).filter((v: number) => v > 0 && Number.isFinite(v));
         const paces = slice.map((p: any) => Number(p.pace)).filter((v: number) => v > 0 && Number.isFinite(v));
         const speeds = slice.map((p: any) => Number(p.speed_display)).filter((v: number) => v > 0 && Number.isFinite(v));
@@ -599,9 +626,41 @@ export const ActivityDetailPage = () => {
         const altitudes = slice.map((p: any) => Number(p.altitude)).filter((v: number) => Number.isFinite(v));
         const gradients = slice.map((p: any) => Number(p.gradient_pct)).filter((v: number) => Number.isFinite(v));
 
-        const wap = powers.length > 0
-            ? Math.pow(powers.map((p: number) => Math.pow(p, 4)).reduce((s: number, v: number) => s + v, 0) / powers.length, 0.25)
-            : null;
+        const avgPower = weightedAverage(
+            (point) => Number(point?.power_raw),
+            (value) => Number.isFinite(value) && value >= 0,
+        );
+        const avgHr = weightedAverage(
+            (point) => Number(point?.heart_rate),
+            (value) => Number.isFinite(value) && value > 0,
+        );
+        const avgPace = weightedAverage(
+            (point) => Number(point?.pace),
+            (value) => Number.isFinite(value) && value > 0,
+        );
+        const avgSpeed = weightedAverage(
+            (point) => Number(point?.speed_display),
+            (value) => Number.isFinite(value) && value > 0,
+        );
+        const avgCadence = weightedAverage(
+            (point) => Number(point?.cadence),
+            (value) => Number.isFinite(value) && value > 0,
+        );
+
+        let durationMin = 0;
+        for (let i = 0; i < slice.length - 1; i += 1) {
+            const currTime = Number(slice[i]?.time_min);
+            const nextTime = Number(slice[i + 1]?.time_min);
+            let dtMin = Number.isFinite(currTime) && Number.isFinite(nextTime) ? (nextTime - currTime) : (1 / 60);
+            if (!Number.isFinite(dtMin) || dtMin <= 0) dtMin = 1 / 60;
+            durationMin += dtMin;
+        }
+
+        const wap = calculateNormalizedPower(
+            slice
+                .map((point: any) => Number(point?.power_raw))
+                .filter((value: number) => Number.isFinite(value) && value >= 0),
+        );
 
         const elevGain = altitudes.length > 1
             ? altitudes.slice(1).reduce((sum: number, alt: number, i: number) => {
@@ -610,28 +669,29 @@ export const ActivityDetailPage = () => {
             }, 0)
             : null;
 
-        const durationMin = (slice[slice.length - 1]?.time_min ?? 0) - (slice[0]?.time_min ?? 0);
-
-        const avgGradient = avg(gradients);
+        const avgGradient = weightedAverage(
+            (point) => Number(point?.gradient_pct),
+            (value) => Number.isFinite(value),
+        );
         const maxGradient = maximum(gradients);
 
         return {
             durationMin,
-            avgPower: avg(powers),
+            avgPower,
             maxPower: maximum(powers),
             wap,
-            avgHr: avg(hrs),
+            avgHr,
             maxHr: maximum(hrs),
-            avgPace: avg(paces),
+            avgPace,
             minPace: paces.length > 0 ? Math.min(...paces) : null,
-            avgSpeed: avg(speeds),
+            avgSpeed,
             maxSpeed: maximum(speeds),
-            avgCadence: avg(cadences),
+            avgCadence,
             elevGain,
             avgGradient,
             maxGradient,
         };
-    }, [chartSelection, chartRenderData]);
+    }, [chartSelection, chartRenderData, visibleChartData]);
 
     const interactiveMapRoutePoints = useMemo<RouteInteractivePoint[]>(() => {
         return chartRenderData
@@ -1452,8 +1512,37 @@ export const ActivityDetailPage = () => {
         const tss = durationSec > 0 ? (durationSec * np * intensityFactor) / (ftp * 3600) * 100 : null;
         const avgWatts = activity.average_watts;
         const vi = avgWatts && avgWatts > 0 ? np / avgWatts : null;
-        return { intensityFactor, tss, vi };
+        const avgHr = activity.average_hr;
+        const ef = avgHr && avgHr > 0 ? np / avgHr : null;
+        return { intensityFactor, tss, vi, ef };
     }, [activity, overallNormalizedPower, me?.profile?.ftp]);
+
+    const runningPerfMetrics = useMemo(() => {
+        if (!activity) return null;
+        const sport = (activity.sport || '').toLowerCase();
+        const isRunning = sport.includes('run');
+        if (!isRunning) return null;
+        // Pace Intensity (PI): LT2 pace / avg pace (both in min/km, lower = faster so invert)
+        // PI > 1 means faster than threshold, PI < 1 means easier
+        const lt2MinPerKm = Number(me?.profile?.lt2) || null;  // lt2 stored as min/km
+        const avgSpeedMs = activity.avg_speed;  // m/s
+        const avgPaceMinPerKm = avgSpeedMs && avgSpeedMs > 0 ? (1000 / avgSpeedMs) / 60 : null;
+        const pi = (lt2MinPerKm && lt2MinPerKm > 0 && avgPaceMinPerKm && avgPaceMinPerKm > 0)
+            ? lt2MinPerKm / avgPaceMinPerKm  // >1 means faster than threshold
+            : null;
+        // Run Load: open formula analogous to TSS — (duration_sec × PI²) / 3600 × 100
+        // At LT2 pace for 1 hour = 100. Scales with intensity squared × duration.
+        const durationSec = activity.duration ?? 0;
+        const runLoad = (pi != null && durationSec > 0)
+            ? (durationSec * pi * pi) / 3600 * 100
+            : null;
+        // Aerobic Efficiency (AE): avg speed (km/h) per avg HR beat
+        // Higher = more economical/fit. Open metric from exercise physiology literature.
+        const avgHr = activity.average_hr;
+        const speedKmh = avgSpeedMs ? avgSpeedMs * 3.6 : null;
+        const ae = (speedKmh && speedKmh > 0 && avgHr && avgHr > 0) ? speedKmh / avgHr : null;
+        return { pi, runLoad, ae };
+    }, [activity, me?.profile?.lt2]);
 
     useEffect(() => {
         if (!activity) return;
@@ -1890,6 +1979,50 @@ export const ActivityDetailPage = () => {
                                                           </MantineTooltip>
                                                         </Group>
                                                         <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.vi.toFixed(2)}</Text>
+                                                     </Group>
+                                                 )}
+                                                 {isCyclingActivity && cyclingPerfMetrics?.ef != null && (
+                                                     <Group justify="space-between">
+                                                        <Group gap={4} align="center">
+                                                          <Text size="sm" c={ui.textDim}>Efficiency Factor (EF)</Text>
+                                                          <MantineTooltip label="WAP ÷ Avg Heart Rate (watts per bpm). Measures aerobic efficiency — how much power your cardiovascular system produces per heartbeat. A rising EF over weeks signals improving aerobic fitness." multiline maw={280} withArrow>
+                                                            <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
+                                                          </MantineTooltip>
+                                                        </Group>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{cyclingPerfMetrics.ef.toFixed(2)} W/bpm</Text>
+                                                     </Group>
+                                                 )}
+                                                 {isRunningActivity && runningPerfMetrics?.pi != null && (
+                                                     <Group justify="space-between">
+                                                        <Group gap={4} align="center">
+                                                          <Text size="sm" c={ui.textDim}>Pace Intensity (PI)</Text>
+                                                          <MantineTooltip label="LT2 pace ÷ avg pace. 1.0 = you ran exactly at threshold. &lt;0.85: Easy/recovery run. 0.85–0.97: Aerobic endurance. 0.97–1.03: Threshold session. &gt;1.1: VO2max / interval work. Requires LT2 pace set in your profile." multiline maw={280} withArrow>
+                                                            <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
+                                                          </MantineTooltip>
+                                                        </Group>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{runningPerfMetrics.pi.toFixed(2)}</Text>
+                                                     </Group>
+                                                 )}
+                                                 {isRunningActivity && runningPerfMetrics?.runLoad != null && (
+                                                     <Group justify="space-between">
+                                                        <Group gap={4} align="center">
+                                                          <Text size="sm" c={ui.textDim}>Run Load (RL)</Text>
+                                                          <MantineTooltip label="(Duration × PI²) / 3600 × 100. An open-formula training stress score for running: 100 = running at LT2 pace for 1 hour. Scales with both duration and intensity squared, allowing comparison across easy long runs and hard short sessions." multiline maw={280} withArrow>
+                                                            <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
+                                                          </MantineTooltip>
+                                                        </Group>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{runningPerfMetrics.runLoad.toFixed(0)}</Text>
+                                                     </Group>
+                                                 )}
+                                                 {isRunningActivity && runningPerfMetrics?.ae != null && (
+                                                     <Group justify="space-between">
+                                                        <Group gap={4} align="center">
+                                                          <Text size="sm" c={ui.textDim}>Aerobic Efficiency (AE)</Text>
+                                                          <MantineTooltip label="Avg speed (km/h) ÷ avg heart rate (bpm). Measures running economy from a cardiovascular perspective — how fast you move per heartbeat. A rising AE over weeks signals improving aerobic fitness or reduced fatigue." multiline maw={280} withArrow>
+                                                            <IconHelpCircle size={13} style={{ cursor: 'help', opacity: 0.55 }} />
+                                                          </MantineTooltip>
+                                                        </Group>
+                                                        <Text size="sm" fw={700} c={ui.textMain}>{runningPerfMetrics.ae.toFixed(3)} km/h/bpm</Text>
                                                      </Group>
                                                  )}
                                                  {activity.avg_cadence != null && (

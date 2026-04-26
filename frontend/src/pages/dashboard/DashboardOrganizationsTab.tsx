@@ -76,6 +76,7 @@ import {
   uploadOrgPicture,
   setMemberAdmin,
   resolveOrgPictureUrl,
+  resolveUserPictureUrl,
 } from "../../api/organizations";
 import { useNavigate } from "react-router-dom";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -104,6 +105,8 @@ const isImageAttachment = (name?: string | null) => {
   if (!name) return false;
   return /\.(png|jpe?g|gif|webp|svg|bmp)$/i.test(name);
 };
+
+const resolveMemberAvatarUrl = (picture?: string | null): string | undefined => resolveUserPictureUrl(picture) || undefined;
 
 const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrganizationId = null, initialCoachAthleteId = null }: Props) => {
   const queryClient = useQueryClient();
@@ -313,6 +316,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
         label,
         subtitle,
         participantId: item.participant_id ?? null,
+        participantPicture: item.participant_picture ?? null,
         lastMessageAt: item.created_at || null,
         unread: Boolean(item.sender_id && item.sender_id !== me.id),
       };
@@ -336,6 +340,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
           label,
           subtitle: t("Direct athlete conversation"),
           participantId: athlete.id,
+          participantPicture: athlete.profile?.picture ?? null,
           lastMessageAt: null,
           unread: false,
         };
@@ -408,14 +413,14 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
   const createOrgMutation = useMutation({
     mutationFn: (data: { name: string; description?: string }) => createOrganization(data),
     onSuccess: () => {
-      notifications.show({ color: "green", title: t("Clan created"), message: t("Your clan has been created!") });
+      notifications.show({ color: "green", title: t("Organization created"), message: t("Your organization has been created!") });
       queryClient.invalidateQueries({ queryKey: ["me"] });
       setCreateOrgOpen(false);
       setCreateOrgName("");
       setCreateOrgDescription("");
     },
     onError: (error) => {
-      notifications.show({ color: "red", title: t("Could not create clan"), message: extractApiErrorMessage(error) });
+      notifications.show({ color: "red", title: t("Could not create organization"), message: extractApiErrorMessage(error) });
     },
   });
 
@@ -697,7 +702,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
           <ThemeIcon size="lg" radius="xl" variant="light" color="indigo">
             <IconUsersGroup size={18} />
           </ThemeIcon>
-          <Title order={3}>{t("Clans")}</Title>
+          <Title order={3}>{t("Organizations")}</Title>
         </Group>
         <Button
           leftSection={<IconPlus size={16} />}
@@ -706,11 +711,11 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
           size="compact-sm"
           onClick={() => setCreateOrgOpen(true)}
         >
-          {t("Create Clan")}
+          {t("Create Organization")}
         </Button>
       </Group>
 
-      {/* ── No Clan Lobby ── */}
+      {/* ── No Organization Lobby ── */}
       {activeMemberships.length === 0 && (
         <Paper
           withBorder
@@ -727,9 +732,9 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
               <IconUsersGroup size={32} />
             </ThemeIcon>
             <Stack gap={4}>
-              <Text fw={700} size="lg">{t("No Clan Yet")}</Text>
+              <Text fw={700} size="lg">{t("No Organization Yet")}</Text>
               <Text size="sm" c="dimmed" maw={400} style={{ margin: "0 auto" }}>
-                {t("Create your own clan or search for an existing one to join. Clans let you chat with coaches and teammates.")}
+                {t("Create your own organization or search for an existing one to join. Organizations let you chat with coaches and teammates.")}
               </Text>
             </Stack>
             <Group>
@@ -739,7 +744,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                 color="indigo"
                 onClick={() => setCreateOrgOpen(true)}
               >
-                {t("Create Clan")}
+                {t("Create Organization")}
               </Button>
               <Button
                 leftSection={<IconSearch size={16} />}
@@ -747,7 +752,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                 color="indigo"
                 onClick={() => setSearch(" ")}
               >
-                {t("Find a Clan")}
+                {t("Find an Organization")}
               </Button>
             </Group>
           </Stack>
@@ -827,22 +832,22 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
         </SimpleGrid>
       )}
 
-      {/* ── Discover Clans ── */}
+      {/* ── Discover Organizations ── */}
       <Paper withBorder p="md" radius="md" style={{ borderColor: isDark ? "var(--mantine-color-dark-4)" : "rgba(148,163,184,0.26)" }}>
         <Stack gap="sm">
           <Group gap="xs">
             <IconSearch size={16} />
-            <Text fw={600} size="sm">{t("Find Clans")}</Text>
+            <Text fw={600} size="sm">{t("Find Organizations")}</Text>
           </Group>
           <TextInput
             size="sm"
-            placeholder={t("Search clans by name...")}
+            placeholder={t("Search organizations by name...")}
             leftSection={<IconSearch size={14} />}
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
           />
           {search.trim().length === 0 && (
-            <Text size="sm" c="dimmed">{t("Start typing to find clans.")}</Text>
+            <Text size="sm" c="dimmed">{t("Start typing to find organizations.")}</Text>
           )}
           {search.trim().length > 0 && (discoverQuery.data?.items || []).length > 0 && (
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -899,13 +904,13 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
             </SimpleGrid>
           )}
           {search.trim().length > 0 && (discoverQuery.data?.items || []).length === 0 && !discoverQuery.isLoading && (
-            <Text size="sm" c="dimmed">{t("No clans found.")}</Text>
+            <Text size="sm" c="dimmed">{t("No organizations found.")}</Text>
           )}
         </Stack>
       </Paper>
 
       {/* ── Join Request Message Modal ── */}
-      <Modal opened={joinModalOrgId !== null} onClose={() => setJoinModalOrgId(null)} title={t("Join Clan")} size="sm">
+      <Modal opened={joinModalOrgId !== null} onClose={() => setJoinModalOrgId(null)} title={t("Join Organization")} size="sm">
         <Stack gap="sm">
           <Textarea
             label={t("Message (optional)")}
@@ -929,12 +934,12 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
         </Stack>
       </Modal>
 
-      {/* ── Create Clan Modal ── */}
-      <Modal opened={createOrgOpen} onClose={() => setCreateOrgOpen(false)} title={t("Create Clan")} size="sm">
+      {/* ── Create Organization Modal ── */}
+      <Modal opened={createOrgOpen} onClose={() => setCreateOrgOpen(false)} title={t("Create Organization")} size="sm">
         <Stack gap="sm">
           <TextInput
-            label={t("Clan Name")}
-            placeholder={t("Enter clan name...")}
+            label={t("Organization Name")}
+            placeholder={t("Enter organization name...")}
             value={createOrgName}
             onChange={(e) => setCreateOrgName(e.currentTarget.value)}
             maxLength={100}
@@ -942,7 +947,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
           />
           <Textarea
             label={t("Description (optional)")}
-            placeholder={t("What is your clan about?")}
+            placeholder={t("What is your organization about?")}
             value={createOrgDescription}
             onChange={(e) => setCreateOrgDescription(e.currentTarget.value)}
             maxLength={500}
@@ -957,7 +962,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
               disabled={!createOrgName.trim()}
               onClick={() => createOrgMutation.mutate({ name: createOrgName.trim(), description: createOrgDescription.trim() || undefined })}
             >
-              {t("Create Clan")}
+              {t("Create Organization")}
             </Button>
           </Group>
         </Stack>
@@ -998,7 +1003,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                 return (
                   <Group key={athlete.id} justify="space-between" py={2}>
                     <Group gap="xs">
-                      <Avatar radius="xl" size="sm" color="blue">
+                      <Avatar radius="xl" size="sm" color="blue" src={resolveMemberAvatarUrl(athlete.profile?.picture)}>
                         {name.slice(0, 1).toUpperCase()}
                       </Avatar>
                       <Text size="sm">{name}</Text>
@@ -1033,7 +1038,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
             <ThemeIcon size="xl" radius="xl" variant="light" color="gray">
               <IconMessages size={24} />
             </ThemeIcon>
-            <Text c="dimmed">{t("Join or create a clan to use group and coach chat.")}</Text>
+            <Text c="dimmed">{t("Join or create an organization to use group and coach chat.")}</Text>
           </Stack>
         </Paper>
       ) : (
@@ -1095,7 +1100,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                               }}
                               onClick={() => openThread(thread.key)}
                             >
-                              <Avatar radius="xl" size="md" color={thread.type === "group" ? "indigo" : "blue"}>
+                              <Avatar radius="xl" size="md" color={thread.type === "group" ? "indigo" : "blue"} src={thread.type === "group" ? undefined : resolveMemberAvatarUrl(thread.participantPicture)}>
                                 {thread.type === "group" ? <IconUsersGroup size={14} /> : thread.label.slice(0, 1).toUpperCase()}
                               </Avatar>
                               <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
@@ -1152,7 +1157,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                           <IconArrowLeft size={16} />
                         </Button>
                       )}
-                      <Avatar radius="xl" size="sm" color={activeThread?.type === "group" ? "indigo" : "blue"}>
+                      <Avatar radius="xl" size="sm" color={activeThread?.type === "group" ? "indigo" : "blue"} src={activeThread?.type === "group" ? undefined : resolveMemberAvatarUrl(activeThread?.participantPicture)}>
                         {activeThread?.type === "group" ? <IconUsersGroup size={14} /> : (activeThread?.label || "?").slice(0, 1).toUpperCase()}
                       </Avatar>
                       <Stack gap={0}>
@@ -1173,7 +1178,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                         return (
                           <Group key={message.id} justify={mine ? "flex-end" : "flex-start"} align="flex-end" wrap="nowrap" gap="xs">
                             {!mine && (
-                              <Avatar radius="xl" size="sm" color="blue" style={{ flexShrink: 0 }}>
+                              <Avatar radius="xl" size="sm" color="blue" src={resolveMemberAvatarUrl(message.sender_picture)} style={{ flexShrink: 0 }}>
                                 {senderName.slice(0, 1).toUpperCase()}
                               </Avatar>
                             )}
@@ -1419,7 +1424,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                       return (
                         <Group key={member.id} justify="space-between" wrap="nowrap">
                           <Group gap="xs" wrap="nowrap">
-                            <Avatar size="sm" radius="xl" color="blue">{fullName.slice(0, 1).toUpperCase()}</Avatar>
+                            <Avatar size="sm" radius="xl" color="blue" src={resolveMemberAvatarUrl(member.picture)}>{fullName.slice(0, 1).toUpperCase()}</Avatar>
                             <Stack gap={0}>
                               <Group gap={6}>
                                 <Text size="sm" fw={600}>{fullName}</Text>

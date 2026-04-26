@@ -46,7 +46,6 @@ import {
   IconSortDescendingLetters,
   IconSortAscendingNumbers,
   IconSun,
-  IconUserCircle,
   IconUsersGroup,
 } from "@tabler/icons-react";
 import { useI18n } from "../../i18n/I18nProvider";
@@ -54,6 +53,7 @@ import OfflineNotice from "../../components/common/OfflineNotice";
 import SupportContactButton from "../../components/common/SupportContactButton";
 import { optimisticSignOut } from "../../utils/authSession";
 import api from "../../api/client";
+import { resolveUserPictureUrl } from "../../api/organizations";
 
 const appLogo = "/origami-logo.png";
 
@@ -62,7 +62,7 @@ type DashboardTab = "dashboard" | "activities" | "athletes" | "plan" | "dual-cal
 type SidebarAthlete = {
   id: number;
   email: string;
-  profile?: { first_name?: string | null; last_name?: string | null } | null;
+  profile?: { first_name?: string | null; last_name?: string | null; picture?: string | null } | null;
   has_upcoming_coach_workout?: boolean;
   next_coach_workout_date?: string | null;
 };
@@ -71,6 +71,7 @@ type Props = {
   opened: boolean;
   toggle: () => void;
   meDisplayName: string;
+  mePicture?: string | null;
   activeTab: DashboardTab;
   setActiveTab: (tab: DashboardTab) => void;
   headerRight: ReactNode;
@@ -89,6 +90,7 @@ const DashboardLayoutShell = ({
   opened,
   toggle,
   meDisplayName,
+  mePicture,
   activeTab,
   setActiveTab,
   headerRight,
@@ -183,6 +185,9 @@ const DashboardLayoutShell = ({
     : athleteSort === "za" ? "Z → A"
     : t("Recent");
 
+  const meAvatarSrc = resolveUserPictureUrl(mePicture) || undefined;
+  const meAvatarInitial = meDisplayName[0]?.toUpperCase() || "U";
+
   const Header = () => (
     <Group h="100%" px="md" justify="space-between" style={{ fontFamily: '"Inter", sans-serif' }}>
       <Group>
@@ -252,13 +257,15 @@ const DashboardLayoutShell = ({
                   color: isDark ? '#E2E8F0' : '#1E293B'
                 }}
               >
-                <IconUserCircle size={18} />
+                <Avatar size={22} radius="xl" src={meAvatarSrc} color={role === "coach" ? "orange" : role === "admin" ? "red" : "blue"}>
+                  {meAvatarInitial}
+                </Avatar>
               </ActionIcon>
             ) : (
               <Button
                 variant="subtle"
                 size="compact-sm"
-                leftSection={<IconUserCircle size={18} />}
+                leftSection={<Avatar size={22} radius="xl" src={meAvatarSrc} color={role === "coach" ? "orange" : role === "admin" ? "red" : "blue"}>{meAvatarInitial}</Avatar>}
                 aria-label="Account menu"
                 styles={{
                   root: {
@@ -319,8 +326,13 @@ const DashboardLayoutShell = ({
           {/* Profile section at top of sidebar */}
           {(isCoachDesktop || isAthleteDesktop || isAdminDesktop) && (
             <Group gap="sm" px={4} pt={4} pb={0}>
-              <Avatar color={role === "coach" ? "orange" : role === "admin" ? "red" : "blue"} radius="xl" size="md">
-                {meDisplayName[0]?.toUpperCase() || "U"}
+              <Avatar
+                src={meAvatarSrc}
+                color={role === "coach" ? "orange" : role === "admin" ? "red" : "blue"}
+                radius="xl"
+                size="md"
+              >
+                {meAvatarInitial}
               </Avatar>
               <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
                 <Text size="sm" fw={700} c={isDark ? "#E2E8F0" : "#1E293B"} lineClamp={1}>{meDisplayName}</Text>
@@ -506,7 +518,7 @@ const DashboardLayoutShell = ({
                           key={athlete.id}
                           label={name}
                           leftSection={
-                            <Avatar size="sm" radius="xl" color={isSelected ? "orange" : "blue"}>
+                            <Avatar size="sm" radius="xl" color={isSelected ? "orange" : "blue"} src={resolveUserPictureUrl(athlete.profile?.picture) || undefined}>
                               {initial}
                             </Avatar>
                           }

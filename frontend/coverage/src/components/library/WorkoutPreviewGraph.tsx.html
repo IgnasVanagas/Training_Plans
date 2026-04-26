@@ -1,0 +1,520 @@
+
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Code coverage report for src/components/library/WorkoutPreviewGraph.tsx</title>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="../../../prettify.css" />
+    <link rel="stylesheet" href="../../../base.css" />
+    <link rel="shortcut icon" type="image/x-icon" href="../../../favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style type='text/css'>
+        .coverage-summary .sorter {
+            background-image: url(../../../sort-arrow-sprite.png);
+        }
+    </style>
+</head>
+    
+<body>
+<div class='wrapper'>
+    <div class='pad1'>
+        <h1><a href="../../../index.html">All files</a> / <a href="index.html">src/components/library</a> WorkoutPreviewGraph.tsx</h1>
+        <div class='clearfix'>
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Statements</span>
+                <span class='fraction'>0/98</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>0/1</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">0% </span>
+                <span class="quiet">Lines</span>
+                <span class='fraction'>0/98</span>
+            </div>
+        
+            
+        </div>
+        <p class="quiet">
+            Press <em>n</em> or <em>j</em> to go to the next uncovered block, <em>b</em>, <em>p</em> or <em>k</em> for the previous block.
+        </p>
+        <template id="filterTemplate">
+            <div class="quiet">
+                Filter:
+                <input type="search" id="fileSearch">
+            </div>
+        </template>
+    </div>
+    <div class='status-line low'></div>
+    <pre><table class="coverage">
+<tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
+<a name='L2'></a><a href='#L2'>2</a>
+<a name='L3'></a><a href='#L3'>3</a>
+<a name='L4'></a><a href='#L4'>4</a>
+<a name='L5'></a><a href='#L5'>5</a>
+<a name='L6'></a><a href='#L6'>6</a>
+<a name='L7'></a><a href='#L7'>7</a>
+<a name='L8'></a><a href='#L8'>8</a>
+<a name='L9'></a><a href='#L9'>9</a>
+<a name='L10'></a><a href='#L10'>10</a>
+<a name='L11'></a><a href='#L11'>11</a>
+<a name='L12'></a><a href='#L12'>12</a>
+<a name='L13'></a><a href='#L13'>13</a>
+<a name='L14'></a><a href='#L14'>14</a>
+<a name='L15'></a><a href='#L15'>15</a>
+<a name='L16'></a><a href='#L16'>16</a>
+<a name='L17'></a><a href='#L17'>17</a>
+<a name='L18'></a><a href='#L18'>18</a>
+<a name='L19'></a><a href='#L19'>19</a>
+<a name='L20'></a><a href='#L20'>20</a>
+<a name='L21'></a><a href='#L21'>21</a>
+<a name='L22'></a><a href='#L22'>22</a>
+<a name='L23'></a><a href='#L23'>23</a>
+<a name='L24'></a><a href='#L24'>24</a>
+<a name='L25'></a><a href='#L25'>25</a>
+<a name='L26'></a><a href='#L26'>26</a>
+<a name='L27'></a><a href='#L27'>27</a>
+<a name='L28'></a><a href='#L28'>28</a>
+<a name='L29'></a><a href='#L29'>29</a>
+<a name='L30'></a><a href='#L30'>30</a>
+<a name='L31'></a><a href='#L31'>31</a>
+<a name='L32'></a><a href='#L32'>32</a>
+<a name='L33'></a><a href='#L33'>33</a>
+<a name='L34'></a><a href='#L34'>34</a>
+<a name='L35'></a><a href='#L35'>35</a>
+<a name='L36'></a><a href='#L36'>36</a>
+<a name='L37'></a><a href='#L37'>37</a>
+<a name='L38'></a><a href='#L38'>38</a>
+<a name='L39'></a><a href='#L39'>39</a>
+<a name='L40'></a><a href='#L40'>40</a>
+<a name='L41'></a><a href='#L41'>41</a>
+<a name='L42'></a><a href='#L42'>42</a>
+<a name='L43'></a><a href='#L43'>43</a>
+<a name='L44'></a><a href='#L44'>44</a>
+<a name='L45'></a><a href='#L45'>45</a>
+<a name='L46'></a><a href='#L46'>46</a>
+<a name='L47'></a><a href='#L47'>47</a>
+<a name='L48'></a><a href='#L48'>48</a>
+<a name='L49'></a><a href='#L49'>49</a>
+<a name='L50'></a><a href='#L50'>50</a>
+<a name='L51'></a><a href='#L51'>51</a>
+<a name='L52'></a><a href='#L52'>52</a>
+<a name='L53'></a><a href='#L53'>53</a>
+<a name='L54'></a><a href='#L54'>54</a>
+<a name='L55'></a><a href='#L55'>55</a>
+<a name='L56'></a><a href='#L56'>56</a>
+<a name='L57'></a><a href='#L57'>57</a>
+<a name='L58'></a><a href='#L58'>58</a>
+<a name='L59'></a><a href='#L59'>59</a>
+<a name='L60'></a><a href='#L60'>60</a>
+<a name='L61'></a><a href='#L61'>61</a>
+<a name='L62'></a><a href='#L62'>62</a>
+<a name='L63'></a><a href='#L63'>63</a>
+<a name='L64'></a><a href='#L64'>64</a>
+<a name='L65'></a><a href='#L65'>65</a>
+<a name='L66'></a><a href='#L66'>66</a>
+<a name='L67'></a><a href='#L67'>67</a>
+<a name='L68'></a><a href='#L68'>68</a>
+<a name='L69'></a><a href='#L69'>69</a>
+<a name='L70'></a><a href='#L70'>70</a>
+<a name='L71'></a><a href='#L71'>71</a>
+<a name='L72'></a><a href='#L72'>72</a>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a>
+<a name='L85'></a><a href='#L85'>85</a>
+<a name='L86'></a><a href='#L86'>86</a>
+<a name='L87'></a><a href='#L87'>87</a>
+<a name='L88'></a><a href='#L88'>88</a>
+<a name='L89'></a><a href='#L89'>89</a>
+<a name='L90'></a><a href='#L90'>90</a>
+<a name='L91'></a><a href='#L91'>91</a>
+<a name='L92'></a><a href='#L92'>92</a>
+<a name='L93'></a><a href='#L93'>93</a>
+<a name='L94'></a><a href='#L94'>94</a>
+<a name='L95'></a><a href='#L95'>95</a>
+<a name='L96'></a><a href='#L96'>96</a>
+<a name='L97'></a><a href='#L97'>97</a>
+<a name='L98'></a><a href='#L98'>98</a>
+<a name='L99'></a><a href='#L99'>99</a>
+<a name='L100'></a><a href='#L100'>100</a>
+<a name='L101'></a><a href='#L101'>101</a>
+<a name='L102'></a><a href='#L102'>102</a>
+<a name='L103'></a><a href='#L103'>103</a>
+<a name='L104'></a><a href='#L104'>104</a>
+<a name='L105'></a><a href='#L105'>105</a>
+<a name='L106'></a><a href='#L106'>106</a>
+<a name='L107'></a><a href='#L107'>107</a>
+<a name='L108'></a><a href='#L108'>108</a>
+<a name='L109'></a><a href='#L109'>109</a>
+<a name='L110'></a><a href='#L110'>110</a>
+<a name='L111'></a><a href='#L111'>111</a>
+<a name='L112'></a><a href='#L112'>112</a>
+<a name='L113'></a><a href='#L113'>113</a>
+<a name='L114'></a><a href='#L114'>114</a>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a>
+<a name='L118'></a><a href='#L118'>118</a>
+<a name='L119'></a><a href='#L119'>119</a>
+<a name='L120'></a><a href='#L120'>120</a>
+<a name='L121'></a><a href='#L121'>121</a>
+<a name='L122'></a><a href='#L122'>122</a>
+<a name='L123'></a><a href='#L123'>123</a>
+<a name='L124'></a><a href='#L124'>124</a>
+<a name='L125'></a><a href='#L125'>125</a>
+<a name='L126'></a><a href='#L126'>126</a>
+<a name='L127'></a><a href='#L127'>127</a>
+<a name='L128'></a><a href='#L128'>128</a>
+<a name='L129'></a><a href='#L129'>129</a>
+<a name='L130'></a><a href='#L130'>130</a>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a>
+<a name='L134'></a><a href='#L134'>134</a>
+<a name='L135'></a><a href='#L135'>135</a>
+<a name='L136'></a><a href='#L136'>136</a>
+<a name='L137'></a><a href='#L137'>137</a>
+<a name='L138'></a><a href='#L138'>138</a>
+<a name='L139'></a><a href='#L139'>139</a>
+<a name='L140'></a><a href='#L140'>140</a>
+<a name='L141'></a><a href='#L141'>141</a>
+<a name='L142'></a><a href='#L142'>142</a>
+<a name='L143'></a><a href='#L143'>143</a>
+<a name='L144'></a><a href='#L144'>144</a>
+<a name='L145'></a><a href='#L145'>145</a>
+<a name='L146'></a><a href='#L146'>146</a></td><td class="line-coverage quiet"><span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js"><span class="cstat-no" title="statement not covered" >import React, { useMemo } from 'react';<span class="fstat-no" title="function not covered" ><span class="branch-0 cbranch-no" title="branch not covered" ></span></span></span>
+import { Box, useMantineTheme, Tooltip } from '@mantine/core';
+import { ConcreteStep, RepeatStep, WorkoutNode } from '../../types/workout';
+&nbsp;
+interface WorkoutPreviewGraphProps {
+    structure: WorkoutNode[];
+    sportType?: string;
+    height?: number;
+    showGrid?: boolean;
+}
+&nbsp;
+type GraphSegment = {
+    duration: number; // seconds
+    intensity: number; // 0.0 to 1.0+
+    type: 'warmup' | 'work' | 'recovery' | 'cooldown';
+    description?: string;
+    label: string;
+};
+&nbsp;
+<span class="cstat-no" title="statement not covered" >const resolveIntensityAndDuration = (step: any): { intensity: number, duration: number, label: string } =&gt; {</span>
+    // Default safe values
+<span class="cstat-no" title="statement not covered" >    let intensity = 0.5;</span>
+<span class="cstat-no" title="statement not covered" >    let duration = 300; </span>
+<span class="cstat-no" title="statement not covered" >    let label = "Step";</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    if (!step) return { intensity, duration, label };</span>
+&nbsp;
+    // Duration
+<span class="cstat-no" title="statement not covered" >    if (step.duration) {</span>
+<span class="cstat-no" title="statement not covered" >        if (step.duration.type === 'time' &amp;&amp; typeof step.duration.value === 'number') {</span>
+<span class="cstat-no" title="statement not covered" >            duration = step.duration.value;</span>
+<span class="cstat-no" title="statement not covered" >            label = `${Math.round(duration/60)}m`;</span>
+<span class="cstat-no" title="statement not covered" >        } else if (step.duration.type === 'distance' &amp;&amp; typeof step.duration.value === 'number') {</span>
+            // Rough estimate: 5:00/km run, 30km/h bike
+            // Just use a multiplier to visualize relative size
+<span class="cstat-no" title="statement not covered" >            duration = step.duration.value; </span>
+<span class="cstat-no" title="statement not covered" >            label = `${(step.duration.value/1000).toFixed(1)}km`;</span>
+<span class="cstat-no" title="statement not covered" >        } else if (step.duration.type === 'lap_button') {</span>
+<span class="cstat-no" title="statement not covered" >            duration = 0; // flexible</span>
+<span class="cstat-no" title="statement not covered" >            label = "Lap";</span>
+<span class="cstat-no" title="statement not covered" >        }</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+&nbsp;
+    // Intensity
+<span class="cstat-no" title="statement not covered" >    if (step.target) {</span>
+<span class="cstat-no" title="statement not covered" >        const t = step.target;</span>
+        
+        // Handle explicit metrics (percent_ftp, percent_max_hr, percent_threshold_pace)
+<span class="cstat-no" title="statement not covered" >        if (t.metric === 'percent_ftp' &amp;&amp; t.value) {</span>
+<span class="cstat-no" title="statement not covered" >            intensity = t.value / 100;</span>
+<span class="cstat-no" title="statement not covered" >        } else if (t.metric === 'percent_max_hr' &amp;&amp; t.value) {</span>
+<span class="cstat-no" title="statement not covered" >            intensity = t.value / 100; // Rough proxy</span>
+<span class="cstat-no" title="statement not covered" >        } else if (t.metric === 'percent_threshold_pace' &amp;&amp; t.value) {</span>
+            // For pace, higher % usually means FASTER, which is higher intensity.
+            // 100% threshold pace is high intensity (1.0).
+<span class="cstat-no" title="statement not covered" >            intensity = t.value / 100;</span>
+<span class="cstat-no" title="statement not covered" >        } else if (t.type === 'heart_rate_zone' || t.type === 'power_zone' || t.type === 'power') {</span>
+            // Map zone 1-5+ to 0.4-1.0+
+<span class="cstat-no" title="statement not covered" >            const z = t.zone || (t.min ? 3 : 1); // fallback</span>
+<span class="cstat-no" title="statement not covered" >            if (z &lt;= 1) intensity = 0.5;</span>
+<span class="cstat-no" title="statement not covered" >            else if (z &lt;= 2) intensity = 0.65;</span>
+<span class="cstat-no" title="statement not covered" >            else if (z &lt;= 3) intensity = 0.8;</span>
+<span class="cstat-no" title="statement not covered" >            else if (z &lt;= 4) intensity = 0.95;</span>
+<span class="cstat-no" title="statement not covered" >            else intensity = 1.0 + (z - 5) * 0.1;</span>
+<span class="cstat-no" title="statement not covered" >        } else if (t.type === 'rpe') {</span>
+<span class="cstat-no" title="statement not covered" >            intensity = (t.value || 5) / 10;</span>
+<span class="cstat-no" title="statement not covered" >        } else if (t.type === 'pace') {</span>
+            // Fast pace = high intensity. 
+            // If we have metric, we handled it above.
+            // If pure pace (min/km), we can't know absolute intensity without athlete profile.
+            // Fallback to category
+<span class="cstat-no" title="statement not covered" >            intensity = step.category === 'work' ? 0.85 : 0.5;</span>
+<span class="cstat-no" title="statement not covered" >        }</span>
+<span class="cstat-no" title="statement not covered" >    }</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    return { intensity, duration, label };</span>
+<span class="cstat-no" title="statement not covered" >};</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >const flattenStructure = (steps: WorkoutNode[]): GraphSegment[] =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    let segments: GraphSegment[] = [];</span>
+<span class="cstat-no" title="statement not covered" >    if (!steps) return segments;</span>
+    
+<span class="cstat-no" title="statement not covered" >    steps.forEach(step =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >        if (step.type === 'block') {</span>
+<span class="cstat-no" title="statement not covered" >            const { intensity, duration, label } = resolveIntensityAndDuration(step);</span>
+<span class="cstat-no" title="statement not covered" >            segments.push({</span>
+<span class="cstat-no" title="statement not covered" >                intensity,</span>
+<span class="cstat-no" title="statement not covered" >                duration: duration || 120, // visual min width</span>
+<span class="cstat-no" title="statement not covered" >                type: (step as ConcreteStep).category || 'work',</span>
+<span class="cstat-no" title="statement not covered" >                description: step.description,</span>
+<span class="cstat-no" title="statement not covered" >                label</span>
+<span class="cstat-no" title="statement not covered" >            });</span>
+<span class="cstat-no" title="statement not covered" >        } else if (step.type === 'repeat') {</span>
+<span class="cstat-no" title="statement not covered" >            const rep = step as RepeatStep;</span>
+<span class="cstat-no" title="statement not covered" >            const childSegments = flattenStructure(rep.steps);</span>
+<span class="cstat-no" title="statement not covered" >            for (let i = 0; i &lt; (rep.repeats || 1); i++) {</span>
+<span class="cstat-no" title="statement not covered" >                segments = segments.concat(childSegments);</span>
+<span class="cstat-no" title="statement not covered" >            }</span>
+<span class="cstat-no" title="statement not covered" >        }</span>
+<span class="cstat-no" title="statement not covered" >    });</span>
+<span class="cstat-no" title="statement not covered" >    return segments;</span>
+<span class="cstat-no" title="statement not covered" >};</span>
+&nbsp;
+&nbsp;
+<span class="cstat-no" title="statement not covered" >export const WorkoutPreviewGraph = ({ structure, sportType, height = 40 }: WorkoutPreviewGraphProps) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >    const theme = useMantineTheme();</span>
+    
+<span class="cstat-no" title="statement not covered" >    const segments = useMemo(() =&gt; flattenStructure(structure), [structure]);</span>
+<span class="cstat-no" title="statement not covered" >    const totalDuration = segments.reduce((sum, s) =&gt; sum + s.duration, 0) || 1;</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    const getSegmentColor = (intensity: number, type: string) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >        if (type === 'warmup' || type === 'cooldown') return theme.colors.gray[5];</span>
+<span class="cstat-no" title="statement not covered" >        if (type === 'recovery') return theme.colors.blue[2];</span>
+        
+<span class="cstat-no" title="statement not covered" >        if (intensity &lt; 0.6) return theme.colors.blue[5];</span>
+<span class="cstat-no" title="statement not covered" >        if (intensity &lt; 0.8) return theme.colors.green[6];</span>
+<span class="cstat-no" title="statement not covered" >        if (intensity &lt; 0.95) return theme.colors.yellow[7];</span>
+<span class="cstat-no" title="statement not covered" >        if (intensity &lt; 1.05) return theme.colors.orange[7];</span>
+<span class="cstat-no" title="statement not covered" >        return theme.colors.red[7];</span>
+<span class="cstat-no" title="statement not covered" >    };</span>
+&nbsp;
+<span class="cstat-no" title="statement not covered" >    return (</span>
+<span class="cstat-no" title="statement not covered" >        &lt;Box h={height} w="100%" style={{ display: 'flex', alignItems: 'flex-end', gap: 1, backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 4, padding: 2 }}&gt;</span>
+<span class="cstat-no" title="statement not covered" >            {segments.map((seg, i) =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >                const widthPct = (seg.duration / totalDuration) * 100;</span>
+<span class="cstat-no" title="statement not covered" >                const heightPct = Math.min(Math.max(seg.intensity * 100, 15), 100);</span>
+                
+<span class="cstat-no" title="statement not covered" >                return (</span>
+<span class="cstat-no" title="statement not covered" >                    &lt;Tooltip key={i} label={`${seg.type} | ${seg.label}`} withArrow fz="xs"&gt;</span>
+<span class="cstat-no" title="statement not covered" >                        &lt;Box</span>
+<span class="cstat-no" title="statement not covered" >                            w={`${widthPct}%`}</span>
+<span class="cstat-no" title="statement not covered" >                            h={`${heightPct}%`}</span>
+<span class="cstat-no" title="statement not covered" >                            bg={getSegmentColor(seg.intensity, seg.type)}</span>
+<span class="cstat-no" title="statement not covered" >                            style={{ </span>
+<span class="cstat-no" title="statement not covered" >                                borderRadius: '2px 2px 0 0',</span>
+<span class="cstat-no" title="statement not covered" >                                opacity: 0.85,</span>
+<span class="cstat-no" title="statement not covered" >                                minWidth: 2 // Ensure visible even if short</span>
+<span class="cstat-no" title="statement not covered" >                            }}</span>
+<span class="cstat-no" title="statement not covered" >                        /&gt;</span>
+<span class="cstat-no" title="statement not covered" >                    &lt;/Tooltip&gt;</span>
+                );
+<span class="cstat-no" title="statement not covered" >            })}</span>
+<span class="cstat-no" title="statement not covered" >        &lt;/Box&gt;</span>
+    );
+<span class="cstat-no" title="statement not covered" >};</span>
+&nbsp;</pre></td></tr></table></pre>
+
+                <div class='push'></div><!-- for sticky footer -->
+            </div><!-- /wrapper -->
+            <div class='footer quiet pad2 space-top1 center small'>
+                Code coverage generated by
+                <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
+                at 2026-04-22T12:27:22.654Z
+            </div>
+        <script src="../../../prettify.js"></script>
+        <script>
+            window.onload = function () {
+                prettyPrint();
+            };
+        </script>
+        <script src="../../../sorter.js"></script>
+        <script src="../../../block-navigation.js"></script>
+    </body>
+</html>
+    

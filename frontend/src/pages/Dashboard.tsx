@@ -822,6 +822,7 @@ const Dashboard = () => {
       opened={opened}
       toggle={toggle}
       meDisplayName={meDisplayName}
+      mePicture={me.profile?.picture ?? null}
       activeTab={activeTab}
       setActiveTab={setActiveTab}
       headerRight={headerRight}

@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from app.models import RoleEnum, User
+from app.models import Profile, RoleEnum, User
 from app.routers import communications as communications_router
 from app.schemas import OrganizationChatMessageCreate
 
@@ -25,7 +25,7 @@ class _RecordingDB:
         value.created_at = datetime(2026, 4, 1, 12, 0, 0)
 
     async def scalar(self, _stmt):
-        return None
+        return Profile(user_id=7, picture="coach.png")
 
 
 @pytest.mark.asyncio
@@ -64,3 +64,4 @@ async def test_group_message_allows_attachment_without_text(monkeypatch):
     assert response.attachment_url == "abc123.png"
     assert response.attachment_name == "photo.png"
     assert response.sender_id == current_user.id
+    assert response.sender_picture == "coach.png"

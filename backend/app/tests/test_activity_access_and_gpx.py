@@ -132,7 +132,7 @@ async def test_get_activity_blocks_unrelated_athlete_access():
     db = _FakeDB(execute_results=[_ExecuteResult(_activity_for_user(athlete_id=2))])
 
     with pytest.raises(HTTPException) as exc:
-        await activities_router.get_activity(42, current_user, db)
+        await activities_router.get_activity(42, current_user=current_user, db=db)
 
     assert exc.value.status_code == 403
 
@@ -151,7 +151,7 @@ async def test_get_activity_blocks_unlinked_coach_access():
     )
 
     with pytest.raises(HTTPException) as exc:
-        await activities_router.get_activity(42, current_user, db)
+        await activities_router.get_activity(42, current_user=current_user, db=db)
 
     assert exc.value.status_code == 403
 
@@ -223,13 +223,16 @@ def test_planned_comparison_derives_actual_splits_when_provider_splits_missing()
 
 
 def test_planned_comparison_replaces_mismatched_provider_splits_with_template_extraction():
+    # Provider splits count must differ from planned steps by more than 5 to trigger template derivation.
+    # Planned workout has 3 steps; pass 9 provider splits so delta = 6 > 5.
+    many_provider_splits = [
+        {"duration": 200, "distance": 400, "avg_hr": 148 + i}
+        for i in range(9)
+    ]
     comparison = activities_router._build_planned_comparison_payload(
         _comparison_workout(),
         _comparison_activity(),
-        splits_metric=[
-            {"duration": 1200, "distance": 2500, "avg_hr": 148},
-            {"duration": 600, "distance": 1500, "avg_hr": 154},
-        ],
+        splits_metric=many_provider_splits,
         laps=[],
         profile=None,
         stats={},

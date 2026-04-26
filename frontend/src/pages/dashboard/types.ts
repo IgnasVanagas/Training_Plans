@@ -202,6 +202,7 @@ export type OrgMember = {
   role: string;
   first_name?: string | null;
   last_name?: string | null;
+  picture?: string | null;
 };
 
 export type OrgMemberWithAdmin = {
@@ -211,6 +212,7 @@ export type OrgMemberWithAdmin = {
   status: string;
   first_name?: string | null;
   last_name?: string | null;
+  picture?: string | null;
   is_admin: boolean;
 };
 
@@ -230,6 +232,7 @@ export type OrganizationInboxThread = {
   participant_id?: number | null;
   participant_role?: string | null;
   participant_name?: string | null;
+  participant_picture?: string | null;
   body_preview?: string | null;
   attachment_name?: string | null;
   sender_id?: number | null;
@@ -246,6 +249,7 @@ export type OrganizationGroupMessage = {
   sender_id: number;
   sender_role: string;
   sender_name?: string | null;
+  sender_picture?: string | null;
   body: string;
   attachment_url?: string | null;
   attachment_name?: string | null;
@@ -260,6 +264,7 @@ export type OrganizationCoachMessage = {
   sender_id: number;
   sender_role: string;
   sender_name?: string | null;
+  sender_picture?: string | null;
   body: string;
   attachment_url?: string | null;
   attachment_name?: string | null;
@@ -273,6 +278,7 @@ export type OrganizationDirectMessage = {
   recipient_id: number;
   sender_role: string;
   sender_name?: string | null;
+  sender_picture?: string | null;
   body: string;
   attachment_url?: string | null;
   attachment_name?: string | null;

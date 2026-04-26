@@ -31,7 +31,7 @@ def clear_support_rate_limit_state():
 async def test_submit_support_request_sends_email(monkeypatch):
     captured: dict[str, str | None] = {}
 
-    async def _fake_send(payload, *, client_host, user_agent):
+    async def _fake_send(payload, *, client_host, user_agent, attachments=None):
         captured["email"] = payload.email
         captured["host"] = client_host
         captured["user_agent"] = user_agent
@@ -39,6 +39,7 @@ async def test_submit_support_request_sends_email(monkeypatch):
     monkeypatch.setattr(communications_router, "send_support_email", _fake_send)
 
     response = await communications_router.submit_support_request(
+        _make_request(),
         SupportRequestCreate(
             name="Alex Runner",
             email="alex@example.com",
@@ -48,7 +49,7 @@ async def test_submit_support_request_sends_email(monkeypatch):
             error_message="Unable to load dashboard.",
             client_elapsed_ms=3200,
         ),
-        _make_request(),
+        photos=[],
     )
 
     assert response.message == "Support request sent."
@@ -63,13 +64,14 @@ async def test_submit_support_request_sends_email(monkeypatch):
 async def test_submit_support_request_rejects_bot_trap():
     with pytest.raises(HTTPException) as exc:
         await communications_router.submit_support_request(
+            _make_request(),
             SupportRequestCreate(
                 email="alex@example.com",
                 message="I need help with my account access.",
                 bot_trap="spam",
                 client_elapsed_ms=3200,
             ),
-            _make_request(),
+            photos=[],
         )
 
     assert exc.value.status_code == 400
@@ -85,12 +87,13 @@ async def test_submit_support_request_surfaces_delivery_failure(monkeypatch):
 
     with pytest.raises(HTTPException) as exc:
         await communications_router.submit_support_request(
+            _make_request(),
             SupportRequestCreate(
                 email="alex@example.com",
                 message="Please help me recover my access to the app.",
                 client_elapsed_ms=3200,
             ),
-            _make_request(),
+            photos=[],
         )
 
     assert exc.value.status_code == 503

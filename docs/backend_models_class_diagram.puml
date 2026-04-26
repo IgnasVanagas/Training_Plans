@@ -1,0 +1,412 @@
+@startuml Backend_Models_Class_Diagram
+
+hide empty members
+hide circle
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam shadowing false
+skinparam defaultFontSize 10
+
+enum RoleEnum {
+  coach
+  athlete
+  admin
+}
+
+enum ComplianceStatusEnum {
+  planned
+  completed_green
+  completed_yellow
+  completed_red
+  missed
+}
+
+class PlannedWorkout {
+  +id: Integer
+  +user_id: Integer
+  +created_by_user_id: Integer?
+  +matched_activity_id: Integer?
+  +date: Date
+  +title: String(200)
+  +description: Text?
+  +sport_type: String(50)
+  +planned_duration: Integer
+  +planned_distance: Float?
+  +planned_intensity: String(50)?
+  +structure: JSONB?
+  +season_plan_id: Integer?
+  +planning_context: JSONB?
+  +rpe: Float?
+  +notes: Text?
+  +compliance_status: ComplianceStatusEnum
+}
+
+class PlannedWorkoutVersion {
+  +id: Integer
+  +workout_id: Integer
+  +workout_user_id: Integer
+  +version_number: Integer
+  +action: String(50)
+  +changed_by_user_id: Integer?
+  +changed_at: DateTime
+  +before_snapshot: JSONB?
+  +after_snapshot: JSONB?
+  +diff_json: JSONB?
+  +note: Text?
+}
+
+class OrganizationMember {
+  +user_id: Integer
+  +organization_id: Integer
+  +role: String(20)
+  +status: String(20)
+  +message: Text?
+  +is_admin(): bool
+}
+
+class Organization {
+  +id: Integer
+  +name: String(200)
+  +code: String(50)?
+  +description: Text?
+  +picture: String(255)?
+  +settings_json: JSONB?
+}
+
+class User {
+  +id: Integer
+  +email: String(255)
+  +password_hash: String(255)
+  +email_verified: Boolean
+  +role: RoleEnum
+}
+
+class Profile {
+  +user_id: Integer
+  +first_name: String(100)?
+  +last_name: String(100)?
+  +gender: String(10)?
+  +birth_date: Date?
+  +weight: Float?
+  +hrv_ms: Float?
+  +ftp: Float?
+  +lt2: Float?
+  +max_hr: Float?
+  +resting_hr: Float?
+  +sports: JSONB?
+  +country: String(100)?
+  +contact_email: String(255)?
+  +contact_number: String(50)?
+  +menstruation_available_to_coach: Boolean?
+  +training_days: JSONB?
+  +main_sport: String(50)?
+  +timezone: String(50)?
+  +preferred_language: String(10)?
+  +preferred_units: String(20)?
+  +week_start_day: String(20)?
+  +picture: String(255)?
+}
+
+class ProfileMetricHistory {
+  +id: Integer
+  +user_id: Integer
+  +metric: String(20)
+  +value: Float
+  +recorded_at: DateTime
+}
+
+class CoachAthleteLink {
+  +id: Integer
+  +coach_id: Integer
+  +athlete_id: Integer?
+  +is_active: Boolean
+  +invite_token: String(64)
+}
+
+class Activity {
+  +id: Integer
+  +athlete_id: Integer
+  +filename: String(255)
+  +file_path: String(512)
+  +file_type: String(10)
+  +sport: String(50)?
+  +created_at: DateTime?
+  +distance: Float?
+  +duration: Float?
+  +avg_speed: Float?
+  +average_hr: Float?
+  +average_watts: Float?
+  +rpe: Float?
+  +notes: Text?
+  +streams: JSONB?
+  +duplicate_of_id: Integer?
+  +is_deleted: Boolean
+  +aerobic_load: Float?
+  +anaerobic_load: Float?
+  +moving_time: Float?
+  +local_date: Date?
+}
+
+class StructuredWorkout {
+  +id: Integer
+  +coach_id: Integer
+  +title: String(200)
+  +description: String?
+  +sport_type: String(50)
+  +structure: JSONB
+  +tags: JSONB?
+  +is_favorite: Boolean
+  +created_at: DateTime?
+  +updated_at: DateTime?
+}
+
+class SeasonPlan {
+  +id: Integer
+  +athlete_id: Integer
+  +coach_id: Integer?
+  +name: String(200)
+  +sport_type: String(50)
+  +season_start: Date
+  +season_end: Date
+  +notes: Text?
+  +target_metrics: JSONB?
+  +goal_races: JSONB?
+  +constraints: JSONB?
+  +periodization: JSONB?
+  +generated_summary: JSONB?
+  +created_at: DateTime
+  +updated_at: DateTime
+}
+
+class ProviderConnection {
+  +id: Integer
+  +user_id: Integer
+  +provider: String(50)
+  +external_athlete_id: String(128)?
+  +encrypted_access_token: Text?
+  +encrypted_refresh_token: Text?
+  +token_expires_at: DateTime?
+  +scopes: JSONB?
+  +status: String(30)
+  +last_sync_at: DateTime?
+  +last_error: Text?
+  +created_at: DateTime
+  +updated_at: DateTime
+}
+
+class ProviderSyncState {
+  +id: Integer
+  +provider: String(50)
+  +user_id: Integer
+  +cursor: JSONB?
+  +last_success: DateTime?
+  +last_error: Text?
+  +updated_at: DateTime
+  +sync_status: String(20)
+  +sync_progress: Integer
+  +sync_total: Integer
+  +sync_message: Text?
+}
+
+class ProviderWebhookEvent {
+  +id: Integer
+  +provider: String(50)
+  +event_key: String(255)
+  +payload: JSONB
+  +received_at: DateTime
+  +processed_at: DateTime?
+  +status: String(30)
+  +last_error: Text?
+}
+
+class IntegrationAuditLog {
+  +id: Integer
+  +user_id: Integer
+  +provider: String(50)
+  +action: String(50)
+  +status: String(30)
+  +message: Text?
+  +created_at: DateTime
+}
+
+class HRVDaily {
+  +id: Integer
+  +user_id: Integer
+  +source_provider: String(50)
+  +external_record_id: String(128)?
+  +record_date: Date
+  +hrv_ms: Float
+  +created_at: DateTime
+}
+
+class RHRDaily {
+  +id: Integer
+  +user_id: Integer
+  +source_provider: String(50)
+  +external_record_id: String(128)?
+  +record_date: Date
+  +resting_hr: Float
+  +created_at: DateTime
+}
+
+class SleepSession {
+  +id: Integer
+  +user_id: Integer
+  +source_provider: String(50)
+  +external_record_id: String(128)
+  +start_time: DateTime
+  +end_time: DateTime
+  +duration_seconds: Integer
+  +quality_score: Float?
+  +created_at: DateTime
+}
+
+class StressDaily {
+  +id: Integer
+  +user_id: Integer
+  +source_provider: String(50)
+  +external_record_id: String(128)?
+  +record_date: Date
+  +stress_score: Float
+  +created_at: DateTime
+}
+
+class CommunicationThread {
+  +id: Integer
+  +entity_type: String(20)
+  +entity_id: Integer
+  +athlete_id: Integer
+  +coach_id: Integer?
+  +created_at: DateTime
+  +updated_at: DateTime
+}
+
+class CommunicationComment {
+  +id: Integer
+  +thread_id: Integer
+  +author_id: Integer
+  +body: Text
+  +created_at: DateTime
+}
+
+class CommunicationAcknowledgement {
+  +id: Integer
+  +entity_type: String(20)
+  +entity_id: Integer
+  +athlete_id: Integer
+  +actor_id: Integer
+  +action: String(40)
+  +note: Text?
+  +created_at: DateTime
+}
+
+class OrganizationGroupMessage {
+  +id: Integer
+  +organization_id: Integer
+  +sender_id: Integer
+  +body: Text
+  +attachment_url: String(500)?
+  +attachment_name: String(255)?
+  +created_at: DateTime
+}
+
+class OrganizationCoachMessage {
+  +id: Integer
+  +organization_id: Integer
+  +athlete_id: Integer
+  +coach_id: Integer
+  +sender_id: Integer
+  +body: Text
+  +attachment_url: String(500)?
+  +attachment_name: String(255)?
+  +created_at: DateTime
+}
+
+class OrganizationDirectMessage {
+  +id: Integer
+  +organization_id: Integer
+  +sender_id: Integer
+  +recipient_id: Integer
+  +body: Text
+  +attachment_url: String(500)?
+  +attachment_name: String(255)?
+  +created_at: DateTime
+}
+
+class DayNote {
+  +id: Integer
+  +athlete_id: Integer
+  +author_id: Integer
+  +date: Date
+  +content: Text
+  +created_at: DateTime
+  +updated_at: DateTime
+}
+
+RoleEnum <.. User : uses
+ComplianceStatusEnum <.. PlannedWorkout : uses
+
+User "1" -- "0..*" PlannedWorkout : user_id
+User "1" -- "0..*" PlannedWorkout : created_by_user_id
+Activity "1" -- "0..1" PlannedWorkout : matched_activity_id
+SeasonPlan "1" -- "0..*" PlannedWorkout : season_plan_id
+
+User "1" -- "0..*" PlannedWorkoutVersion : workout_user_id
+User "1" -- "0..*" PlannedWorkoutVersion : changed_by_user_id
+
+User "1" -- "0..*" OrganizationMember : user_id
+Organization "1" -- "0..*" OrganizationMember : organization_id
+
+User "1" -- "1" Profile : user_id
+User "1" -- "0..*" ProfileMetricHistory : user_id
+
+User "1" -- "0..*" CoachAthleteLink : coach_id
+User "1" -- "0..*" CoachAthleteLink : athlete_id
+
+User "1" -- "0..*" Activity : athlete_id
+Activity "1" -- "0..*" Activity : duplicate_of_id
+
+User "1" -- "0..*" StructuredWorkout : coach_id
+
+User "1" -- "0..*" SeasonPlan : athlete_id
+User "1" -- "0..*" SeasonPlan : coach_id
+
+User "1" -- "0..*" ProviderConnection : user_id
+User "1" -- "0..*" ProviderSyncState : user_id
+User "1" -- "0..*" IntegrationAuditLog : user_id
+
+User "1" -- "0..*" HRVDaily : user_id
+User "1" -- "0..*" RHRDaily : user_id
+User "1" -- "0..*" SleepSession : user_id
+User "1" -- "0..*" StressDaily : user_id
+
+User "1" -- "0..*" CommunicationThread : athlete_id
+User "1" -- "0..*" CommunicationThread : coach_id
+CommunicationThread "1" -- "0..*" CommunicationComment : thread_id
+User "1" -- "0..*" CommunicationComment : author_id
+User "1" -- "0..*" CommunicationAcknowledgement : athlete_id
+User "1" -- "0..*" CommunicationAcknowledgement : actor_id
+
+Organization "1" -- "0..*" OrganizationGroupMessage : organization_id
+Organization "1" -- "0..*" OrganizationCoachMessage : organization_id
+Organization "1" -- "0..*" OrganizationDirectMessage : organization_id
+User "1" -- "0..*" OrganizationGroupMessage : sender_id
+User "1" -- "0..*" OrganizationCoachMessage : athlete_id
+User "1" -- "0..*" OrganizationCoachMessage : coach_id
+User "1" -- "0..*" OrganizationCoachMessage : sender_id
+User "1" -- "0..*" OrganizationDirectMessage : sender_id
+User "1" -- "0..*" OrganizationDirectMessage : recipient_id
+
+User "1" -- "0..*" DayNote : athlete_id
+User "1" -- "0..*" DayNote : author_id
+
+note bottom of PlannedWorkoutVersion
+workout_id is intentionally not a ForeignKey in current model.
+end note
+
+note bottom of ProviderWebhookEvent
+No direct FK in current model.
+Unique(provider, event_key).
+end note
+
+@enduml

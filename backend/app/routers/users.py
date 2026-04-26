@@ -1339,6 +1339,7 @@ async def get_organization_settings(
                 User.email,
                 Profile.first_name,
                 Profile.last_name,
+                Profile.picture,
             )
             .join(User, User.id == OrganizationMember.user_id)
             .outerjoin(Profile, Profile.user_id == User.id)
@@ -1355,9 +1356,10 @@ async def get_organization_settings(
             status=status,
             first_name=first_name,
             last_name=last_name,
+            picture=picture,
             is_admin=uid in admin_ids,
         )
-        for uid, role, status, email, first_name, last_name in member_rows
+        for uid, role, status, email, first_name, last_name, picture in member_rows
     ]
 
     return OrgSettingsOut(

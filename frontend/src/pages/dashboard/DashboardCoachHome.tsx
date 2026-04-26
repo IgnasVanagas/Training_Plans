@@ -37,6 +37,7 @@ import { useNavigate } from "react-router-dom";
 import { ActivityFeedRow, CalendarApprovalItem, CoachOperationsPayload, DashboardCalendarEvent, User } from "./types";
 import { formatDuration } from "./utils";
 import { useI18n } from "../../i18n/I18nProvider";
+import { resolveUserPictureUrl } from "../../api/organizations";
 
 type FeedItem = {
   key: string;
@@ -389,7 +390,7 @@ const DashboardCoachHome = ({
                   onClick={() => navigate(`/dashboard/athlete/${athlete.id}`)}
                 >
                   <Group gap="sm" mb="xs">
-                    <Avatar color="blue" radius="xl" size="md">
+                    <Avatar color="blue" radius="xl" size="md" src={resolveUserPictureUrl(athlete.profile?.picture) || undefined}>
                       {athlete.profile?.first_name ? athlete.profile.first_name[0].toUpperCase() : athlete.email[0].toUpperCase()}
                     </Avatar>
                     <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>

@@ -17,6 +17,7 @@ from ..models import (
     CommunicationAcknowledgement,
     CommunicationComment,
     CommunicationThread,
+    Organization,
     OrganizationCoachMessage,
     OrganizationDirectMessage,
     OrganizationGroupMessage,
@@ -258,6 +259,7 @@ async def get_organization_inbox(
             "name": _sender_display_name(user, profile),
             "role": membership.role,
             "email": user.email,
+            "picture": profile.picture if profile else None,
         }
 
     items: list[OrganizationInboxThreadOut] = []
@@ -328,6 +330,7 @@ async def get_organization_inbox(
                     participant_id=participant_id,
                     participant_role=str(participant["role"]),
                     participant_name=(participant["name"] or participant["email"]),
+                    participant_picture=participant.get("picture"),
                     body_preview=_build_message_preview(
                         latest_row.body if latest_row else None,
                         latest_row.attachment_name if latest_row else None,
@@ -380,6 +383,7 @@ async def get_organization_inbox(
                     participant_id=participant_id,
                     participant_role=str(participant["role"]),
                     participant_name=(participant["name"] or participant["email"]),
+                    participant_picture=participant.get("picture"),
                     body_preview=_build_message_preview(
                         latest_row.body if latest_row else None,
                         latest_row.attachment_name if latest_row else None,
@@ -436,6 +440,7 @@ async def get_organization_inbox(
                 participant_id=participant_id,
                 participant_role=str(participant["role"]),
                 participant_name=(participant["name"] or participant["email"]),
+                participant_picture=participant.get("picture"),
                 body_preview=_build_message_preview(
                     latest_row.body if latest_row else None,
                     latest_row.attachment_name if latest_row else None,
@@ -756,6 +761,48 @@ async def get_notifications_feed(
                     )
                 )
 
+        if coach_org_id_set:
+            pending_join_rows = (
+                await db.execute(
+                    select(
+                        OrganizationMember,
+                        Organization.name,
+                        User.email,
+                        Profile.first_name,
+                        Profile.last_name,
+                    )
+                    .join(Organization, Organization.id == OrganizationMember.organization_id)
+                    .join(User, User.id == OrganizationMember.user_id)
+                    .outerjoin(Profile, Profile.user_id == User.id)
+                    .where(
+                        OrganizationMember.organization_id.in_(coach_org_id_set),
+                        OrganizationMember.role == RoleEnum.athlete.value,
+                        OrganizationMember.status == "pending_approval",
+                    )
+                    .limit(limit)
+                )
+            ).all()
+
+            for membership, org_name, athlete_email, first_name, last_name in pending_join_rows:
+                athlete_name = f"{(first_name or '').strip()} {(last_name or '').strip()}".strip() or athlete_email
+                request_note = (membership.message or "").strip()
+                message = f"{athlete_name} requested to join {org_name}."
+                if request_note:
+                    message = f"{message} \"{request_note}\""
+
+                items.append(
+                    NotificationItemOut(
+                        id=f"org-join-{membership.organization_id}-{membership.user_id}",
+                        type="join_request",
+                        title="Organization join request",
+                        message=message,
+                        created_at=now,
+                        organization_id=membership.organization_id,
+                        athlete_id=membership.user_id,
+                        status=membership.status,
+                    )
+                )
+
     else:
         upcoming_workouts = (
             await db.execute(
@@ -900,6 +947,7 @@ async def list_organization_group_messages(
             sender_id=message.sender_id,
             sender_role=(sender.role.value if hasattr(sender.role, "value") else str(sender.role)),
             sender_name=_sender_display_name(sender, sender_profile),
+            sender_picture=sender_profile.picture if sender_profile else None,
             body=message.body,
             attachment_url=message.attachment_url,
             attachment_name=message.attachment_name,
@@ -944,6 +992,7 @@ async def post_organization_group_message(
         sender_id=message.sender_id,
         sender_role=(current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)),
         sender_name=_sender_display_name(current_user, sender_profile),
+        sender_picture=sender_profile.picture if sender_profile else None,
         body=message.body,
         attachment_url=message.attachment_url,
         attachment_name=message.attachment_name,
@@ -1021,6 +1070,7 @@ async def list_organization_coach_chat_messages(
             sender_id=message.sender_id,
             sender_role=(sender.role.value if hasattr(sender.role, "value") else str(sender.role)),
             sender_name=_sender_display_name(sender, sender_profile),
+            sender_picture=sender_profile.picture if sender_profile else None,
             body=message.body,
             attachment_url=message.attachment_url,
             attachment_name=message.attachment_name,
@@ -1102,6 +1152,7 @@ async def post_organization_coach_chat_message(
         sender_id=message.sender_id,
         sender_role=(current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)),
         sender_name=_sender_display_name(current_user, sender_profile),
+        sender_picture=sender_profile.picture if sender_profile else None,
         body=message.body,
         attachment_url=message.attachment_url,
         attachment_name=message.attachment_name,
@@ -1140,6 +1191,7 @@ async def list_organization_members(
             role=(member.role),
             first_name=profile.first_name if profile else None,
             last_name=profile.last_name if profile else None,
+            picture=profile.picture if profile else None,
         )
         for user, profile, member in rows
     ]
@@ -1181,6 +1233,7 @@ async def list_organization_direct_messages(
             sender_id=msg.sender_id,
             recipient_id=msg.recipient_id,
             sender_name=_sender_display_name(sender, sender_profile),
+            sender_picture=sender_profile.picture if sender_profile else None,
             sender_role=(sender.role.value if hasattr(sender.role, "value") else str(sender.role)),
             body=msg.body,
             attachment_url=msg.attachment_url,
@@ -1225,6 +1278,7 @@ async def post_organization_direct_message(
         sender_id=msg.sender_id,
         recipient_id=msg.recipient_id,
         sender_name=_sender_display_name(current_user, sender_profile),
+        sender_picture=sender_profile.picture if sender_profile else None,
         sender_role=(current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)),
         body=msg.body,
         attachment_url=msg.attachment_url,

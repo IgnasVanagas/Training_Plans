@@ -30,6 +30,7 @@ import {
   IconUsersGroup,
 } from "@tabler/icons-react";
 import api from "../../api/client";
+import { resolveUserPictureUrl } from "../../api/organizations";
 import { useI18n } from "../../i18n/I18nProvider";
 import { User } from "./types";
 import { QueryErrorAlert } from "../../components/common/QueryErrorAlert";
@@ -83,6 +84,10 @@ const getAthleteName = (athlete: User): string => (
     ? `${athlete.profile?.first_name || ""} ${athlete.profile?.last_name || ""}`.trim()
     : athlete.email
 );
+
+const getAthleteAvatarSrc = (athlete: User): string | undefined => resolveUserPictureUrl(athlete.profile?.picture) || undefined;
+
+const getAthleteInitial = (athlete: User): string => getAthleteName(athlete).slice(0, 1).toUpperCase();
 
 const formatSportLabel = (sport?: string | null): string => {
   if (!sport) return "other";
@@ -255,7 +260,7 @@ const DashboardCoachAthletesPage = ({
                       >
                         <Table.Td>
                           <Group gap="sm" wrap="nowrap">
-                            <Avatar radius="xl" color="blue">{getAthleteName(athlete).slice(0, 1).toUpperCase()}</Avatar>
+                            <Avatar radius="xl" color="blue" src={getAthleteAvatarSrc(athlete)}>{getAthleteInitial(athlete)}</Avatar>
                             <Stack gap={0}>
                               <Text size="sm" fw={600}>{getAthleteName(athlete)}</Text>
                               <Text size="xs" c="dimmed">{athlete.email}</Text>
@@ -320,7 +325,7 @@ const DashboardCoachAthletesPage = ({
             <Stack gap="md">
               <Group justify="space-between" align="flex-start" wrap="wrap">
                 <Group gap="sm" wrap="nowrap">
-                  <Avatar radius="xl" size="lg" color="blue">{getAthleteName(selectedAthlete).slice(0, 1).toUpperCase()}</Avatar>
+                  <Avatar radius="xl" size="lg" color="blue" src={getAthleteAvatarSrc(selectedAthlete)}>{getAthleteInitial(selectedAthlete)}</Avatar>
                   <div>
                     <Title order={4}>{getAthleteName(selectedAthlete)}</Title>
                     <Text size="sm" c="dimmed">{selectedAthlete.email}</Text>

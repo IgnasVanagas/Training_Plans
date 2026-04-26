@@ -1,7 +1,7 @@
 import { Badge, Box, Group, Paper, Table, Text, Title } from "@mantine/core";
 import { IconBolt, IconFlame, IconMinus } from "@tabler/icons-react";
 import { useEffect, useMemo } from "react";
-import { formatDuration } from "./formatters";
+import { calculateNormalizedPower, formatDuration } from "./formatters";
 import { ActivityDetail, EffortSegmentMeta, HardEffort, HardEffortRest } from "../../types/activityDetail";
 import { HardEffortsChart } from "./HardEffortsChart";
 
@@ -170,33 +170,66 @@ export const HardEffortsPanel = ({
             pSpd.push(pSpd[i] + (Number(p?.speed ?? 0) || 0));
         }
 
+        const getIntervalSeconds = (index: number): number => {
+            const currTs = Date.parse(String(streamPoints[index]?.timestamp ?? ""));
+            const nextTs = Date.parse(String(streamPoints[index + 1]?.timestamp ?? ""));
+            const deltaSec = Number.isFinite(currTs) && Number.isFinite(nextTs) ? (nextTs - currTs) / 1000 : NaN;
+            if (Number.isFinite(deltaSec) && deltaSec > 0 && deltaSec <= 30) return deltaSec;
+            return 1;
+        };
+
         const calcSegmentStats = (start: number, end: number) => {
-            const n = end - start + 1;
-            const sumPow = pPow[end + 1] - pPow[start];
-            const sumHr = pHr[end + 1] - pHr[start];
-            const sumSpd = pSpd[end + 1] - pSpd[start];
-            let sumPowFourth = 0, maxPow = 0, maxHrVal = 0, hrCnt = 0, spdCnt = 0, powCnt = 0;
-            for (let j = start; j <= end; j++) {
+            const safeStart = Math.max(0, Math.min(start, streamPoints.length - 1));
+            const safeEnd = Math.max(safeStart, Math.min(end, streamPoints.length - 1));
+            let sumPowWeighted = 0;
+            let powWeight = 0;
+            let maxPow = 0;
+
+            let sumHrWeighted = 0;
+            let hrWeight = 0;
+            let maxHrVal = 0;
+
+            let sumSpdWeighted = 0;
+            let spdWeight = 0;
+
+            for (let j = safeStart; j <= safeEnd; j++) {
                 const p = streamPoints[j];
                 if (!p) continue;
-                const pow = Number(p?.power ?? p?.watts ?? 0);
-                const hr = Number(p?.heart_rate ?? 0);
-                const spd = Number(p?.speed ?? 0);
-                if (pow > 0) {
-                    powCnt++;
-                    sumPowFourth += Math.pow(pow, 4);
+                const dt = j < safeEnd ? getIntervalSeconds(j) : getIntervalSeconds(Math.max(safeStart, safeEnd - 1));
+
+                const pow = Number(p?.power ?? p?.watts);
+                if (Number.isFinite(pow) && pow >= 0) {
+                    sumPowWeighted += pow * dt;
+                    powWeight += dt;
                     if (pow > maxPow) maxPow = pow;
                 }
-                if (hr > 0) { hrCnt++; if (hr > maxHrVal) maxHrVal = hr; }
-                if (spd > 0.1) spdCnt++;
+
+                const hr = Number(p?.heart_rate);
+                if (Number.isFinite(hr) && hr > 0) {
+                    sumHrWeighted += hr * dt;
+                    hrWeight += dt;
+                    if (hr > maxHrVal) maxHrVal = hr;
+                }
+
+                const spd = Number(p?.speed);
+                if (Number.isFinite(spd) && spd > 0.1) {
+                    sumSpdWeighted += spd * dt;
+                    spdWeight += dt;
+                }
             }
+
+            const powerSamples = streamPoints
+                .slice(safeStart, safeEnd + 1)
+                .map((point: any) => Number(point?.power ?? point?.watts))
+                .filter((value: number) => Number.isFinite(value) && value >= 0);
+
             return {
-                avgPower: sumPow > 0 ? sumPow / n : null,
-                wap: powCnt > 0 ? Math.pow(sumPowFourth / powCnt, 0.25) : null,
+                avgPower: powWeight > 0 ? sumPowWeighted / powWeight : null,
+                wap: calculateNormalizedPower(powerSamples),
                 maxPower: maxPow > 0 ? maxPow : null,
-                avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
+                avgHr: hrWeight > 0 ? sumHrWeighted / hrWeight : null,
                 maxHr: maxHrVal > 0 ? maxHrVal : null,
-                avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
+                avgSpeedKmh: spdWeight > 0 ? (sumSpdWeighted / spdWeight) * 3.6 : null,
             };
         };
 
@@ -428,6 +461,67 @@ export const HardEffortsPanel = ({
             for (let z = 0; z < zoneBounds.length; z++) if (ratio < zoneBounds[z]) return z + 1;
             return 7;
         };
+        const getIntervalSeconds = (index: number): number => {
+            const currTs = Date.parse(String(streamPoints[index]?.timestamp ?? ""));
+            const nextTs = Date.parse(String(streamPoints[index + 1]?.timestamp ?? ""));
+            const deltaSec = Number.isFinite(currTs) && Number.isFinite(nextTs) ? (nextTs - currTs) / 1000 : NaN;
+            if (Number.isFinite(deltaSec) && deltaSec > 0 && deltaSec <= 30) return deltaSec;
+            return 1;
+        };
+        const calcRestStats = (start: number, end: number) => {
+            const safeStart = Math.max(0, Math.min(start, streamPoints.length - 1));
+            const safeEnd = Math.max(safeStart, Math.min(end, streamPoints.length - 1));
+            let sumPowWeighted = 0;
+            let powWeight = 0;
+            let maxPow = 0;
+
+            let sumHrWeighted = 0;
+            let hrWeight = 0;
+            let maxHrVal = 0;
+
+            let sumSpdWeighted = 0;
+            let spdWeight = 0;
+
+            for (let j = safeStart; j <= safeEnd; j++) {
+                const p = streamPoints[j];
+                if (!p) continue;
+                const dt = j < safeEnd ? getIntervalSeconds(j) : getIntervalSeconds(Math.max(safeStart, safeEnd - 1));
+
+                const pow = Number(p?.power ?? p?.watts);
+                if (Number.isFinite(pow) && pow >= 0) {
+                    sumPowWeighted += pow * dt;
+                    powWeight += dt;
+                    if (pow > maxPow) maxPow = pow;
+                }
+
+                const hr = Number(p?.heart_rate);
+                if (Number.isFinite(hr) && hr > 0) {
+                    sumHrWeighted += hr * dt;
+                    hrWeight += dt;
+                    if (hr > maxHrVal) maxHrVal = hr;
+                }
+
+                const spd = Number(p?.speed);
+                if (Number.isFinite(spd) && spd > 0.1) {
+                    sumSpdWeighted += spd * dt;
+                    spdWeight += dt;
+                }
+            }
+
+            const powerSamples = streamPoints
+                .slice(safeStart, safeEnd + 1)
+                .map((point: any) => Number(point?.power ?? point?.watts))
+                .filter((value: number) => Number.isFinite(value) && value >= 0);
+
+            return {
+                avgPower: powWeight > 0 ? sumPowWeighted / powWeight : null,
+                wap: calculateNormalizedPower(powerSamples),
+                maxPower: maxPow > 0 ? maxPow : null,
+                avgHr: hrWeight > 0 ? sumHrWeighted / hrWeight : null,
+                maxHr: maxHrVal > 0 ? maxHrVal : null,
+                avgSpeedKmh: spdWeight > 0 ? (sumSpdWeighted / spdWeight) * 3.6 : null,
+            };
+        };
         const rests: HardEffortRest[] = [];
         for (let i = 0; i < hardEfforts.length - 1; i++) {
             const restStart = hardEfforts[i].endIndex + 1;
@@ -436,33 +530,18 @@ export const HardEffortsPanel = ({
                 rests.push({ durationSeconds: 0, avgHr: null, maxHr: null, avgPower: null, wap: null, maxPower: null, pctRef: null, avgSpeedKmh: null, zone: 1 });
                 continue;
             }
-            const n = restEnd - restStart + 1;
-            let sumPow = 0, sumHr = 0, sumSpd = 0, sumPowFourth = 0;
-            let hrCnt = 0, spdCnt = 0, powCnt = 0;
-            let maxPow = 0, maxHrVal = 0;
-            for (let j = restStart; j <= restEnd; j++) {
-                const p = streamPoints[j];
-                if (!p) continue;
-                const pow = Number(p?.power ?? p?.watts ?? 0);
-                const hr = Number(p?.heart_rate ?? 0);
-                const spd = Number(p?.speed ?? 0);
-                sumPow += pow;
-                if (pow > 0) { powCnt++; sumPowFourth += Math.pow(pow, 4); if (pow > maxPow) maxPow = pow; }
-                if (hr > 0) { sumHr += hr; hrCnt++; if (hr > maxHrVal) maxHrVal = hr; }
-                if (spd > 0.1) { sumSpd += spd; spdCnt++; }
-            }
-            const avgPower = sumPow > 0 ? sumPow / n : null;
-            const wap = powCnt > 0 ? Math.pow(sumPowFourth / powCnt, 0.25) : null;
+            const stats = calcRestStats(restStart, restEnd);
+            const avgPower = stats.avgPower;
             const ratio = (ftp > 0 && avgPower != null) ? avgPower / ftp : 0;
             rests.push({
-                durationSeconds: n,
-                avgHr: hrCnt > 0 ? sumHr / hrCnt : null,
-                maxHr: maxHrVal > 0 ? maxHrVal : null,
+                durationSeconds: restEnd - restStart + 1,
+                avgHr: stats.avgHr,
+                maxHr: stats.maxHr,
                 avgPower,
-                wap,
-                maxPower: maxPow > 0 ? maxPow : null,
+                wap: stats.wap,
+                maxPower: stats.maxPower,
                 pctRef: ftp > 0 && avgPower != null ? (avgPower / ftp) * 100 : null,
-                avgSpeedKmh: spdCnt > 0 ? (sumSpd / spdCnt) * 3.6 : null,
+                avgSpeedKmh: stats.avgSpeedKmh,
                 zone: getZone(ratio),
             });
         }

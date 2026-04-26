@@ -970,6 +970,7 @@ class OrganizationChatMessageOut(BaseModel):
     sender_id: int
     sender_role: str
     sender_name: Optional[str] = None
+    sender_picture: Optional[str] = None
     body: str
     attachment_url: Optional[str] = None
     attachment_name: Optional[str] = None
@@ -984,6 +985,7 @@ class OrganizationCoachChatMessageOut(BaseModel):
     sender_id: int
     sender_role: str
     sender_name: Optional[str] = None
+    sender_picture: Optional[str] = None
     body: str
     attachment_url: Optional[str] = None
     attachment_name: Optional[str] = None
@@ -996,6 +998,7 @@ class OrgMemberOut(BaseModel):
     role: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    picture: Optional[str] = None
 
 
 class OrgMemberWithAdminOut(BaseModel):
@@ -1005,6 +1008,7 @@ class OrgMemberWithAdminOut(BaseModel):
     status: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    picture: Optional[str] = None
     is_admin: bool = False
 
 
@@ -1033,6 +1037,7 @@ class OrganizationInboxThreadOut(BaseModel):
     participant_id: Optional[int] = None
     participant_role: Optional[str] = None
     participant_name: Optional[str] = None
+    participant_picture: Optional[str] = None
     body_preview: Optional[str] = None
     attachment_name: Optional[str] = None
     sender_id: Optional[int] = None
@@ -1055,6 +1060,7 @@ class OrganizationDirectMessageOut(BaseModel):
     sender_id: int
     recipient_id: int
     sender_name: Optional[str] = None
+    sender_picture: Optional[str] = None
     sender_role: str
     body: str
     attachment_url: Optional[str] = None
