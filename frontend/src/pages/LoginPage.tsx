@@ -1,4 +1,4 @@
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useRef, useState, FormEvent } from "react";
 import {
   Anchor,
   Alert,
@@ -75,6 +75,7 @@ const LoginPage = () => {
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const verificationInputRefs = useRef<Array<HTMLInputElement | null>>([]);
 
   useEffect(() => {
     if (hasAuthSession()) {
@@ -349,6 +350,34 @@ const LoginPage = () => {
 
   const isLoading = loginMutation.isPending || registerMutation.isPending || forgotPasswordMutation.isPending || resetPasswordMutation.isPending || resendVerificationMutation.isPending || verifyEmailMutation.isPending;
   const isDark = useComputedColorScheme("light") === "dark";
+  const isVerificationStep = Boolean(pendingVerificationEmail) && !resetToken && !isForgotPassword;
+  const verificationDigits = Array.from({ length: 6 }, (_, index) => verificationCode[index] ?? "");
+
+  const handleVerificationDigitChange = (index: number, rawValue: string) => {
+    const digit = rawValue.replace(/\D/g, "").slice(-1);
+    const nextDigits = [...verificationDigits];
+    nextDigits[index] = digit;
+    const nextCode = nextDigits.join("").slice(0, 6);
+    setVerificationCode(nextCode);
+    if (digit && index < verificationInputRefs.current.length - 1) {
+      verificationInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleVerificationDigitKeyDown = (index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Backspace" && !verificationDigits[index] && index > 0) {
+      verificationInputRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleVerificationPaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const pasted = event.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+    if (!pasted) return;
+    setVerificationCode(pasted);
+    const focusIndex = Math.min(pasted.length, 5);
+    verificationInputRefs.current[focusIndex]?.focus();
+  };
 
   const featureItems = [
     { icon: IconRun, text: t("Track activities & compliance") },
@@ -480,10 +509,20 @@ const LoginPage = () => {
             {(styles) => (
               <div style={styles}>
                 <Title order={2} mb={4} style={{ fontSize: rem(26) }}>
-                  {isRegister ? t("Create an account") : resetToken ? t("Reset password") : isForgotPassword ? t("Forgot password?") : t("Welcome back")}
+                  {isVerificationStep
+                    ? (t("Email verification") || "Email verification")
+                    : isRegister
+                    ? t("Create an account")
+                    : resetToken
+                    ? t("Reset password")
+                    : isForgotPassword
+                    ? t("Forgot password?")
+                    : t("Welcome back")}
                 </Title>
                 <Text c="dimmed" size="sm" mb="xl">
-                  {isRegister
+                  {isVerificationStep
+                    ? (t("Enter the 6-digit verification code sent to your email.") || "Enter the 6-digit verification code sent to your email.")
+                    : isRegister
                     ? t("Fill in your details to get started")
                     : resetToken
                     ? t("Choose a new password for your account")
@@ -545,20 +584,22 @@ const LoginPage = () => {
                 </Alert>
               )}
 
-              <TextInput
-                label="Email"
-                placeholder="you@example.com"
-                leftSection={<IconAt style={{ width: rem(18), height: rem(18) }} />}
-                value={email}
-                onChange={(event) => setEmail(event.currentTarget.value)}
-                required
-                size="md"
-                autoComplete="email"
-                radius="md"
-                disabled={Boolean(pendingVerificationEmail)}
-              />
+              {!isVerificationStep && (
+                <TextInput
+                  label="Email"
+                  placeholder="you@example.com"
+                  leftSection={<IconAt style={{ width: rem(18), height: rem(18) }} />}
+                  value={email}
+                  onChange={(event) => setEmail(event.currentTarget.value)}
+                  required
+                  size="md"
+                  autoComplete="email"
+                  radius="md"
+                  disabled={Boolean(pendingVerificationEmail)}
+                />
+              )}
 
-              {!isForgotPassword && !resetToken && (
+              {!isVerificationStep && !isForgotPassword && !resetToken && (
                 <PasswordInput
                   label="Password"
                   placeholder="Your password"
@@ -573,43 +614,70 @@ const LoginPage = () => {
                 />
               )}
 
-              {pendingVerificationEmail && !resetToken && !isForgotPassword && (
-                <>
-                  <Alert variant="light" color="blue" radius="md" title={t("Email verification") || "Email verification"}>
-                    {t("Enter the 6-digit verification code sent to your email.") || "Enter the 6-digit verification code sent to your email."}
-                  </Alert>
-                  <TextInput
-                    label={t("Verification code") || "Verification code"}
-                    placeholder="123456"
-                    value={verificationCode}
-                    onChange={(event) => setVerificationCode(event.currentTarget.value.replace(/\D/g, "").slice(0, 6))}
-                    required
-                    size="md"
-                    radius="md"
-                    autoComplete="one-time-code"
-                  />
-                  <Group justify="space-between">
-                    <Button
-                      variant="light"
-                      onClick={() => resendVerificationMutation.mutate(pendingVerificationEmail)}
-                      loading={resendVerificationMutation.isPending}
-                    >
-                      {t("Resend verification email") || "Resend verification email"}
-                    </Button>
-                    <Anchor
-                      component="button"
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        setPendingVerificationEmail(null);
-                        setVerificationCode("");
-                        setInfo(null);
-                      }}
-                    >
-                      {t("Use different email") || "Use different email"}
-                    </Anchor>
-                  </Group>
-                </>
+              {isVerificationStep && (
+                <Box
+                  style={{
+                    border: `1px solid ${isDark ? "rgba(255,255,255,0.10)" : "rgba(37, 99, 235, 0.16)"}`,
+                    borderRadius: rem(16),
+                    padding: rem(20),
+                    background: isDark ? "rgba(255,255,255,0.02)" : "rgba(255,255,255,0.98)",
+                  }}
+                >
+                  <Stack gap="md">
+                    <Text size="sm" fw={600} c="dimmed" ta="center">{pendingVerificationEmail}</Text>
+                    <Group justify="center" wrap="nowrap" gap="sm">
+                      {verificationDigits.map((digit, index) => (
+                        <TextInput
+                          key={index}
+                          ref={(node) => {
+                            verificationInputRefs.current[index] = node;
+                          }}
+                          value={digit}
+                          onChange={(event) => handleVerificationDigitChange(index, event.currentTarget.value)}
+                          onKeyDown={(event) => handleVerificationDigitKeyDown(index, event)}
+                          onPaste={handleVerificationPaste}
+                          inputMode="numeric"
+                          autoComplete={index === 0 ? "one-time-code" : "off"}
+                          maxLength={1}
+                          required
+                          size="lg"
+                          radius="md"
+                          styles={{
+                            input: {
+                              width: rem(50),
+                              height: rem(56),
+                              textAlign: "center",
+                              fontSize: rem(26),
+                              fontWeight: 600,
+                              padding: 0,
+                            },
+                          }}
+                        />
+                      ))}
+                    </Group>
+                    <Group justify="space-between">
+                      <Button
+                        variant="subtle"
+                        onClick={() => pendingVerificationEmail && resendVerificationMutation.mutate(pendingVerificationEmail)}
+                        loading={resendVerificationMutation.isPending}
+                      >
+                        {t("Resend verification email") || "Resend verification email"}
+                      </Button>
+                      <Anchor
+                        component="button"
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          setPendingVerificationEmail(null);
+                          setVerificationCode("");
+                          setInfo(null);
+                        }}
+                      >
+                        {t("Use different email") || "Use different email"}
+                      </Anchor>
+                    </Group>
+                  </Stack>
+                </Box>
               )}
 
               {resetToken && (
@@ -637,7 +705,7 @@ const LoginPage = () => {
                 </>
               )}
 
-              {isRegister && !resetToken && !isForgotPassword && (
+              {isRegister && !isVerificationStep && !resetToken && !isForgotPassword && (
                 <>
                   <List size="xs" spacing={2} mb={4}>
                     <List.Item><Text size="xs" c={password.length >= 10 ? "teal" : "dimmed"}>At least 10 characters</Text></List.Item>
@@ -725,7 +793,7 @@ const LoginPage = () => {
                 </>
               )}
 
-              {inviteCode && !isRegister && !resetToken && !isForgotPassword && !pendingVerificationEmail && (
+              {inviteCode && !isRegister && !isVerificationStep && !resetToken && !isForgotPassword && !pendingVerificationEmail && (
                 <Checkbox
                   checked={athleteSharingConsentAccepted}
                   onChange={(event) => setAthleteSharingConsentAccepted(event.currentTarget.checked)}
@@ -770,21 +838,23 @@ const LoginPage = () => {
             </Group>
           )}
 
-          <Group justify="center" mt="lg">
-            <Text size="sm" c="dimmed">
-              {pendingVerificationEmail ? (t("Need another account?") || "Need another account?") : isRegister ? t("Have an account?") : t("Don't have an account yet?")}
-            </Text>
-            <Anchor component="button" type="button" size="sm" fw={600} onClick={() => {
-              setPendingVerificationEmail(null);
-              setVerificationCode("");
-              setIsRegister(!isRegister);
-              setIsForgotPassword(false);
-              setError(null);
-              setPassword("");
-            }}>
-              {pendingVerificationEmail ? (t("Start over") || "Start over") : isRegister ? t("Login") : t("Create account")}
-            </Anchor>
-          </Group>
+          {!isVerificationStep && (
+            <Group justify="center" mt="lg">
+              <Text size="sm" c="dimmed">
+                {isRegister ? t("Have an account?") : t("Don't have an account yet?")}
+              </Text>
+              <Anchor component="button" type="button" size="sm" fw={600} onClick={() => {
+                setPendingVerificationEmail(null);
+                setVerificationCode("");
+                setIsRegister(!isRegister);
+                setIsForgotPassword(false);
+                setError(null);
+                setPassword("");
+              }}>
+                {isRegister ? t("Login") : t("Create account")}
+              </Anchor>
+            </Group>
+          )}
         </Box>
       </Box>
     </Box>

@@ -185,21 +185,33 @@ async def seed_data():
             ), role
 
         # --- Admin ---
-        result = await db.execute(select(User).where(User.email == "admin@example.com"))
+        admin_email = os.getenv("SEED_ADMIN_EMAIL", "ignas@wunderbit.lt").strip().lower()
+        legacy_admin_email = "admin@example.com"
+
+        result = await db.execute(select(User).where(User.email == admin_email))
         admin = result.scalar_one_or_none()
+        if not admin and admin_email != legacy_admin_email:
+            legacy_result = await db.execute(select(User).where(User.email == legacy_admin_email))
+            admin = legacy_result.scalar_one_or_none()
+            if admin:
+                admin.email = admin_email
+                logger.info(f"Migrated admin email from {legacy_admin_email} to {admin_email}")
 
         admin_password = os.getenv("SEED_ADMIN_PASSWORD", "Adm!nTP#2024")
         if not admin:
             admin = User(
-                email="admin@example.com",
+                email=admin_email,
                 password_hash=get_password_hash(admin_password),
+                email_verified=True,
                 role=RoleEnum.admin
             )
             db.add(admin)
             await db.flush()
-            logger.info(f"Created Admin: admin@example.com / {admin_password}")
+            logger.info(f"Created Admin: {admin_email} / {admin_password}")
         else:
             admin.password_hash = get_password_hash(admin_password)
+            admin.email = admin_email
+            admin.email_verified = True
             admin.role = RoleEnum.admin
             logger.info(f"Admin already exists - reset password (SEED_ADMIN_PASSWORD or default)")
 
