@@ -37,6 +37,10 @@ def _email_verification_expiry() -> datetime:
     return (datetime.now(UTC) + timedelta(minutes=max(1, minutes))).replace(tzinfo=None)
 
 
+def _utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 def _default_privacy_policy_version() -> str:
     return os.getenv("PRIVACY_POLICY_VERSION", "2026-04-27")
 
@@ -111,7 +115,7 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
         email_verified=False,
         email_verification_code=_generate_email_verification_code(),
         email_verification_expires_at=_email_verification_expiry(),
-        privacy_policy_accepted_at=datetime.now(UTC),
+        privacy_policy_accepted_at=_utcnow_naive(),
         privacy_policy_version=payload.privacy_policy_version or _default_privacy_policy_version(),
         privacy_policy_url=payload.privacy_policy_url or _default_privacy_policy_url(),
         role=payload.role,
@@ -127,7 +131,7 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
             role=payload.role.value,
             status=org_status,
             athlete_data_sharing_consent=(payload.role == RoleEnum.athlete and payload.athlete_data_sharing_consent),
-            athlete_data_sharing_consented_at=(datetime.now(UTC) if payload.role == RoleEnum.athlete and payload.athlete_data_sharing_consent else None),
+            athlete_data_sharing_consented_at=(_utcnow_naive() if payload.role == RoleEnum.athlete and payload.athlete_data_sharing_consent else None),
             athlete_data_sharing_consent_version=(
                 payload.athlete_data_sharing_consent_version or _default_athlete_data_sharing_consent_version()
             ) if payload.role == RoleEnum.athlete and payload.athlete_data_sharing_consent else None,
