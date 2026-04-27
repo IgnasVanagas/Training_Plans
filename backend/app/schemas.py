@@ -1,7 +1,7 @@
 from typing import Optional, Any, List, Union, Literal
 from datetime import datetime, date as dt_date
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 from .models import RoleEnum, ComplianceStatusEnum
 
@@ -94,15 +94,27 @@ class OrganizationCreate(BaseModel):
 
 class JoinOrganization(BaseModel):
     code: str
+    athlete_data_sharing_consent: bool = False
+    athlete_data_sharing_consent_version: Optional[str] = Field(default=None, max_length=50)
 
 
 class JoinOrganizationRequest(BaseModel):
     organization_id: int = Field(gt=0)
     message: Optional[str] = Field(default=None, max_length=500)
+    athlete_data_sharing_consent: bool = False
+    athlete_data_sharing_consent_version: Optional[str] = Field(default=None, max_length=50)
 
 
 class InvitationRespondRequest(BaseModel):
     action: Literal["accept", "decline"]
+    athlete_data_sharing_consent: bool = False
+    athlete_data_sharing_consent_version: Optional[str] = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def validate_accept_requires_consent(self):
+        if self.action == "accept" and not self.athlete_data_sharing_consent:
+            raise ValueError("athlete_data_sharing_consent is required when accepting an invitation")
+        return self
 
 
 class ProfileUpdate(BaseModel):
@@ -200,6 +212,11 @@ class UserCreate(BaseModel):
     last_name: str = Field(min_length=1)
     gender: str
     birth_date: dt_date
+    privacy_policy_accepted: bool = False
+    privacy_policy_version: Optional[str] = Field(default=None, max_length=50)
+    privacy_policy_url: Optional[str] = Field(default=None, max_length=500)
+    athlete_data_sharing_consent: bool = False
+    athlete_data_sharing_consent_version: Optional[str] = Field(default=None, max_length=50)
 
     @field_validator("first_name", "last_name")
     @classmethod
@@ -231,6 +248,19 @@ class UserCreate(BaseModel):
         if value > dt_date.today():
             raise ValueError("must not be in the future")
         return value
+
+    @field_validator("privacy_policy_accepted")
+    @classmethod
+    def validate_privacy_policy_accepted(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("privacy policy must be accepted")
+        return value
+
+    @model_validator(mode="after")
+    def validate_athlete_join_consent(self):
+        if self.organization_code and self.role == RoleEnum.athlete and not self.athlete_data_sharing_consent:
+            raise ValueError("athlete_data_sharing_consent is required when athlete registers with organization code")
+        return self
 
 
 class LoginRequest(BaseModel):

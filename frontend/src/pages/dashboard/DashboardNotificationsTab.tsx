@@ -1,12 +1,18 @@
-import { Badge, Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
+import { Badge, Button, Checkbox, Group, Paper, Stack, Text, Title } from "@mantine/core";
+import { useState } from "react";
 import { NotificationItem, User } from "./types";
+import { useI18n } from "../../i18n/I18nProvider";
 
 type Props = {
   me: User;
   items: NotificationItem[];
   loading: boolean;
   onRefresh: () => void;
-  onRespondInvitation: (organizationId: number, action: "accept" | "decline") => void;
+  onRespondInvitation: (
+    organizationId: number,
+    action: "accept" | "decline",
+    athleteDataSharingConsent?: boolean,
+  ) => void;
   respondingInvitation: boolean;
 };
 
@@ -20,6 +26,9 @@ const typeColor = (type: string) => {
 };
 
 const DashboardNotificationsTab = ({ me, items, loading, onRefresh, onRespondInvitation, respondingInvitation }: Props) => {
+  const { t } = useI18n();
+  const [consentByOrganization, setConsentByOrganization] = useState<Record<number, boolean>>({});
+
   return (
     <Stack w="100%" gap="md">
       <Group justify="space-between" align="center">
@@ -51,25 +60,44 @@ const DashboardNotificationsTab = ({ me, items, loading, onRefresh, onRespondInv
                   <Text fw={600}>{item.title}</Text>
                   <Text size="sm" c="dimmed">{item.message}</Text>
                   {item.type === "invitation" && item.status === "pending" && item.organization_id && me.role === "athlete" && (
-                    <Group gap="xs" mt={6}>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        loading={respondingInvitation}
-                        onClick={() => onRespondInvitation(item.organization_id as number, "accept")}
-                      >
-                        Accept
-                      </Button>
-                      <Button
-                        size="xs"
-                        color="red"
-                        variant="subtle"
-                        loading={respondingInvitation}
-                        onClick={() => onRespondInvitation(item.organization_id as number, "decline")}
-                      >
-                        Decline
-                      </Button>
-                    </Group>
+                    <Stack gap={6} mt={6}>
+                      <Checkbox
+                        checked={Boolean(consentByOrganization[item.organization_id as number])}
+                        onChange={(event) =>
+                          setConsentByOrganization((prev) => ({
+                            ...prev,
+                            [item.organization_id as number]: event.currentTarget.checked,
+                          }))
+                        }
+                        label={t("I confirm coach access to my Strava-derived training data for this organization.")}
+                      />
+                      <Group gap="xs">
+                        <Button
+                          size="xs"
+                          variant="light"
+                          loading={respondingInvitation}
+                          disabled={!consentByOrganization[item.organization_id as number]}
+                          onClick={() =>
+                            onRespondInvitation(
+                              item.organization_id as number,
+                              "accept",
+                              Boolean(consentByOrganization[item.organization_id as number]),
+                            )
+                          }
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="xs"
+                          color="red"
+                          variant="subtle"
+                          loading={respondingInvitation}
+                          onClick={() => onRespondInvitation(item.organization_id as number, "decline")}
+                        >
+                          Decline
+                        </Button>
+                      </Group>
+                    </Stack>
                   )}
                 </Stack>
                 <Text size="xs" c="dimmed">{new Date(item.created_at).toLocaleString()}</Text>

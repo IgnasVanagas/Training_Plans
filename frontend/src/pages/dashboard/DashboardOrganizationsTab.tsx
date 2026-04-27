@@ -5,6 +5,7 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   Grid,
   Group,
   Image,
@@ -107,6 +108,7 @@ const isImageAttachment = (name?: string | null) => {
 };
 
 const resolveMemberAvatarUrl = (picture?: string | null): string | undefined => resolveUserPictureUrl(picture) || undefined;
+const ATHLETE_DATA_SHARING_CONSENT_VERSION = "2026-04-27";
 
 const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrganizationId = null, initialCoachAthleteId = null }: Props) => {
   const queryClient = useQueryClient();
@@ -146,6 +148,7 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
   // ── Join request message state ──
   const [joinModalOrgId, setJoinModalOrgId] = useState<number | null>(null);
   const [joinMessage, setJoinMessage] = useState("");
+  const [joinConsentAccepted, setJoinConsentAccepted] = useState(false);
 
   // ── Create organization state ──
   const [createOrgOpen, setCreateOrgOpen] = useState(false);
@@ -385,13 +388,20 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
   const activeParticipantId = activeThread?.participantId ?? null;
 
   const joinMutation = useMutation({
-    mutationFn: ({ organizationId, message }: { organizationId: number; message?: string }) => requestOrganizationJoin(organizationId, message || undefined),
+    mutationFn: ({ organizationId, message, consent }: { organizationId: number; message?: string; consent: boolean }) =>
+      requestOrganizationJoin(
+        organizationId,
+        message || undefined,
+        consent,
+        ATHLETE_DATA_SHARING_CONSENT_VERSION,
+      ),
     onSuccess: (data) => {
       notifications.show({ color: "green", title: t("Request sent"), message: data.message });
       queryClient.invalidateQueries({ queryKey: ["organization-discover"] });
       queryClient.invalidateQueries({ queryKey: ["me"] });
       setJoinModalOrgId(null);
       setJoinMessage("");
+      setJoinConsentAccepted(false);
     },
     onError: (error) => {
       notifications.show({ color: "red", title: t("Could not send request"), message: extractApiErrorMessage(error) });
@@ -892,7 +902,11 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
                     <Button
                       size="compact-xs"
                       variant="light"
-                      onClick={() => { setJoinModalOrgId(item.id); setJoinMessage(""); }}
+                      onClick={() => {
+                        setJoinModalOrgId(item.id);
+                        setJoinMessage("");
+                        setJoinConsentAccepted(false);
+                      }}
                       loading={joinMutation.isPending && joinModalOrgId === item.id}
                       disabled={item.my_membership_status === "active" || item.my_membership_status === "pending_approval"}
                     >
@@ -922,11 +936,32 @@ const DashboardOrganizationsTab = ({ me, athletes, initialShareText, initialOrga
             minRows={2}
             maxRows={5}
           />
+          <Checkbox
+            checked={joinConsentAccepted}
+            onChange={(e) => setJoinConsentAccepted(e.currentTarget.checked)}
+            label={t("I confirm that coaches in this organization can access my Strava-derived training data.")}
+          />
           <Group justify="flex-end">
-            <Button variant="default" onClick={() => setJoinModalOrgId(null)}>{t("Cancel")}</Button>
+            <Button
+              variant="default"
+              onClick={() => {
+                setJoinModalOrgId(null);
+                setJoinConsentAccepted(false);
+              }}
+            >
+              {t("Cancel")}
+            </Button>
             <Button
               loading={joinMutation.isPending}
-              onClick={() => joinModalOrgId && joinMutation.mutate({ organizationId: joinModalOrgId, message: joinMessage || undefined })}
+              disabled={!joinConsentAccepted}
+              onClick={() =>
+                joinModalOrgId &&
+                joinMutation.mutate({
+                  organizationId: joinModalOrgId,
+                  message: joinMessage || undefined,
+                  consent: joinConsentAccepted,
+                })
+              }
             >
               {t("Send Request")}
             </Button>

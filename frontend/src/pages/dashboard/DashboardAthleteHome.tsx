@@ -1,4 +1,5 @@
-import { Alert, Button, Card, Group, Paper, SimpleGrid, Stack, Text, ThemeIcon, Title } from "@mantine/core";
+import { Alert, Button, Card, Checkbox, Group, Modal, Paper, SimpleGrid, Stack, Text, ThemeIcon, Title } from "@mantine/core";
+import { useState } from "react";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -10,6 +11,7 @@ import {
 } from "@tabler/icons-react";
 import { DashboardCalendarEvent, MetricKey, TrainingStatus, User } from "./types";
 import { formatDuration, formatMinutesHm } from "./utils";
+import { useI18n } from "../../i18n/I18nProvider";
 
 type Props = {
   isDark: boolean;
@@ -21,7 +23,11 @@ type Props = {
   trainingStatus?: TrainingStatus;
   onOpenPlan: () => void;
   onSelectMetric: (metric: MetricKey) => void;
-  onRespondInvitation: (organizationId: number, action: "accept" | "decline") => void;
+  onRespondInvitation: (
+    organizationId: number,
+    action: "accept" | "decline",
+    athleteDataSharingConsent?: boolean,
+  ) => void;
   respondingInvitation: boolean;
 };
 
@@ -38,6 +44,9 @@ const DashboardAthleteHome = ({
   onRespondInvitation,
   respondingInvitation,
 }: Props) => {
+  const { t } = useI18n();
+  const [pendingAcceptOrg, setPendingAcceptOrg] = useState<{ id: number; name: string } | null>(null);
+  const [acceptConsentChecked, setAcceptConsentChecked] = useState(false);
   const cardBg = isDark ? 'rgba(22, 34, 58, 0.62)' : 'rgba(255, 255, 255, 0.92)';
   const cardBorder = isDark ? 'rgba(148, 163, 184, 0.26)' : 'rgba(15, 23, 42, 0.14)';
   const pendingInvites = (me.organization_memberships || []).filter(
@@ -79,7 +88,15 @@ const DashboardAthleteHome = ({
                       <Text size="xs" fs="italic" c="dimmed">"{membership.message}"</Text>
                     )}
                     <Group gap={6}>
-                      <Button size="xs" variant="light" loading={respondingInvitation} onClick={() => onRespondInvitation(orgId, "accept")}>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        loading={respondingInvitation}
+                        onClick={() => {
+                          setPendingAcceptOrg({ id: orgId, name: orgName });
+                          setAcceptConsentChecked(false);
+                        }}
+                      >
                         Accept {orgName}
                       </Button>
                       <Button size="xs" color="red" variant="subtle" loading={respondingInvitation} onClick={() => onRespondInvitation(orgId, "decline")}>
@@ -231,6 +248,54 @@ const DashboardAthleteHome = ({
           )}
         </SimpleGrid>
       )}
+
+      <Modal
+        opened={pendingAcceptOrg !== null}
+        onClose={() => {
+          setPendingAcceptOrg(null);
+          setAcceptConsentChecked(false);
+        }}
+        title={t("Confirm data sharing")}
+        size="sm"
+      >
+        <Stack gap="sm">
+          <Text size="sm">
+            {t("By joining this organization, coaches in this organization can access your Strava-derived training data.")}
+          </Text>
+          <Checkbox
+            checked={acceptConsentChecked}
+            onChange={(event) => setAcceptConsentChecked(event.currentTarget.checked)}
+            label={t("I confirm coach access to my Strava-derived training data for this organization.")}
+          />
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setPendingAcceptOrg(null);
+                setAcceptConsentChecked(false);
+              }}
+            >
+              {t("Cancel")}
+            </Button>
+            <Button
+              disabled={!acceptConsentChecked}
+              loading={respondingInvitation}
+              onClick={() => {
+                if (!pendingAcceptOrg) return;
+                onRespondInvitation(
+                  pendingAcceptOrg.id,
+                  "accept",
+                  acceptConsentChecked,
+                );
+                setPendingAcceptOrg(null);
+                setAcceptConsentChecked(false);
+              }}
+            >
+              {t("Confirm and Join")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 };

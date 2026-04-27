@@ -73,6 +73,7 @@ const isRestDayCalendarEvent = (row: Pick<DashboardCalendarEvent, "title" | "spo
 const VALID_TABS = new Set(["dashboard", "activities", "athletes", "plan", "dual-calendar", "organizations", "notifications", "settings", "races", "insights", "zones", "trackers", "profile", "macrocycle", "admin-users", "admin-logs", "admin-health", "comparison"]);
 
 const Dashboard = () => {
+  const ATHLETE_DATA_SHARING_CONSENT_VERSION = "2026-04-27";
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -470,10 +471,14 @@ const Dashboard = () => {
   });
 
   const respondInvitationMutation = useMutation({
-    mutationFn: async (vars: { organizationId: number; action: "accept" | "decline" }) => {
+    mutationFn: async (vars: { organizationId: number; action: "accept" | "decline"; athleteDataSharingConsent?: boolean }) => {
       const response = await api.post<{ message: string; status: string }>(
         `/users/organization/invitations/${vars.organizationId}/respond`,
-        { action: vars.action },
+        {
+          action: vars.action,
+          athlete_data_sharing_consent: vars.athleteDataSharingConsent ?? false,
+          athlete_data_sharing_consent_version: vars.athleteDataSharingConsent ? ATHLETE_DATA_SHARING_CONSENT_VERSION : undefined,
+        },
       );
       return response.data;
     },
@@ -994,8 +999,8 @@ const Dashboard = () => {
             items={notificationsFeedQuery.data?.items || []}
             loading={notificationsFeedQuery.isFetching}
             onRefresh={() => notificationsFeedQuery.refetch()}
-            onRespondInvitation={(organizationId, action) =>
-              respondInvitationMutation.mutate({ organizationId, action })
+            onRespondInvitation={(organizationId, action, athleteDataSharingConsent) =>
+              respondInvitationMutation.mutate({ organizationId, action, athleteDataSharingConsent })
             }
             respondingInvitation={respondInvitationMutation.isPending}
           />
@@ -1089,7 +1094,9 @@ const Dashboard = () => {
             onOpenPlan={() => setActiveTab("plan")}
             onSelectMetric={(metric) => setSelectedMetric(metric)}
             respondingInvitation={respondInvitationMutation.isPending}
-            onRespondInvitation={(organizationId, action) => respondInvitationMutation.mutate({ organizationId, action })}
+            onRespondInvitation={(organizationId, action, athleteDataSharingConsent) =>
+              respondInvitationMutation.mutate({ organizationId, action, athleteDataSharingConsent })
+            }
           />
         )}
       </Container>

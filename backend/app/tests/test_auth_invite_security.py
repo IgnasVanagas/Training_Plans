@@ -5,6 +5,7 @@ from datetime import date, datetime, timedelta, UTC
 import pytest
 from fastapi import HTTPException, Response
 from jose import JWTError
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from app.auth import create_action_token, decode_action_token, get_password_hash, verify_password
@@ -15,7 +16,10 @@ from app.schemas import (
     ChangePasswordRequest,
     EmailCodeVerificationRequest,
     ForgotPasswordRequest,
+    InvitationRespondRequest,
     InviteByEmailRequest,
+    JoinOrganization,
+    JoinOrganizationRequest,
     LoginRequest,
     ResetPasswordRequest,
     UserCreate,
@@ -85,6 +89,7 @@ async def test_register_handles_integrity_error_duplicate_email():
         last_name="Smith",
         gender="Male",
         birth_date=date(1990, 1, 1),
+        privacy_policy_accepted=True,
     )
     response = Response()
     db = _FakeDB(
@@ -114,6 +119,7 @@ async def test_register_returns_message_and_does_not_authenticate(monkeypatch):
         last_name="User",
         gender="Male",
         birth_date=date(1991, 1, 1),
+        privacy_policy_accepted=True,
     )
     response = Response()
     db = _FakeDB(execute_results=[_FakeResult(None)])
@@ -282,6 +288,77 @@ def test_action_token_decode_rejects_wrong_purpose():
     token = create_action_token(subject="person@example.com", purpose="email_confirm", expires_minutes=5)
     with pytest.raises(JWTError):
         decode_action_token(token=token, purpose="password_reset")
+
+
+def test_user_create_requires_privacy_policy_acceptance():
+    with pytest.raises(ValidationError):
+        UserCreate(
+            email="privacy@example.com",
+            password="StrongPass1!",
+            role=RoleEnum.athlete,
+            first_name="No",
+            last_name="Consent",
+            gender="Male",
+            birth_date=date(1992, 1, 1),
+            privacy_policy_accepted=False,
+        )
+
+
+@pytest.mark.asyncio
+async def test_request_join_organization_requires_sharing_consent():
+    athlete = User(id=12, email="athlete@example.com", password_hash="x", role=RoleEnum.athlete, email_verified=True)
+    db = _FakeDB()
+
+    with pytest.raises(HTTPException) as exc:
+        await users_router.request_join_organization(
+            JoinOrganizationRequest(organization_id=33, message="let me in", athlete_data_sharing_consent=False),
+            athlete,
+            db,
+        )
+
+    assert exc.value.status_code == 400
+    assert "consent" in str(exc.value.detail).lower()
+
+
+@pytest.mark.asyncio
+async def test_join_organization_requires_sharing_consent_for_athlete():
+    athlete = User(id=13, email="athlete2@example.com", password_hash="x", role=RoleEnum.athlete, email_verified=True)
+    db = _FakeDB()
+
+    with pytest.raises(HTTPException) as exc:
+        await users_router.join_organization(
+            JoinOrganization(code="orgcode", athlete_data_sharing_consent=False),
+            athlete,
+            db,
+        )
+
+    assert exc.value.status_code == 400
+    assert "consent" in str(exc.value.detail).lower()
+
+
+@pytest.mark.asyncio
+async def test_request_join_organization_saves_sharing_consent_fields():
+    athlete = User(id=14, email="athlete3@example.com", password_hash="x", role=RoleEnum.athlete, email_verified=True)
+    org = Organization(id=99, name="Consent Org", code="consent99")
+    db = _FakeDB(scalar_results=[org, None])
+
+    out = await users_router.request_join_organization(
+        JoinOrganizationRequest(
+            organization_id=99,
+            message="please add me",
+            athlete_data_sharing_consent=True,
+            athlete_data_sharing_consent_version="2026-04-27",
+        ),
+        athlete,
+        db,
+    )
+
+    assert out["status"] == "pending_approval"
+    member_adds = [item for item in db.added if isinstance(item, OrganizationMember)]
+    assert len(member_adds) == 1
+    assert member_adds[0].athlete_data_sharing_consent is True
+    assert member_adds[0].athlete_data_sharing_consented_at is not None
+    assert member_adds[0].athlete_data_sharing_consent_version == "2026-04-27"
 
 
 @pytest.mark.asyncio

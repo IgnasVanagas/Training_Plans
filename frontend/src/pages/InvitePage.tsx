@@ -1,4 +1,5 @@
-import { Alert, Center, Container, Paper, Text } from "@mantine/core";
+import { Alert, Center, Checkbox, Container, Paper, Text } from "@mantine/core";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
 import SupportContactButton from "../components/common/SupportContactButton";
@@ -7,20 +8,27 @@ import InviteHeader from "../components/invite/InviteHeader";
 import InviteTokenCard from "../components/invite/InviteTokenCard";
 import api from "../api/client";
 import { hasAuthSession } from "../utils/authSession";
+import { useI18n } from "../i18n/I18nProvider";
 
 const InvitePage = () => {
   const { token } = useParams();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const inviteTitle = "Join the Team";
   const inviteDescription = "You have been invited to join a coach's team.";
   const hasSession = hasAuthSession();
+  const [athleteSharingConsentAccepted, setAthleteSharingConsentAccepted] = useState(false);
 
   const acceptInviteMutation = useMutation({
     mutationFn: async () => {
       if (!token) {
         throw new Error("Missing invitation token");
       }
-      await api.put("/users/organization/join", { code: token });
+      await api.put("/users/organization/join", {
+        code: token,
+        athlete_data_sharing_consent: athleteSharingConsentAccepted,
+        athlete_data_sharing_consent_version: "2026-04-27",
+      });
     },
     onSuccess: () => {
       navigate("/dashboard");
@@ -53,6 +61,9 @@ const InvitePage = () => {
       navigate(`/login?invite=${encodeURIComponent(token)}`);
       return;
     }
+    if (!athleteSharingConsentAccepted) {
+      return;
+    }
     acceptInviteMutation.mutate();
   };
 
@@ -72,6 +83,12 @@ const InvitePage = () => {
               />
             </Alert>
           )}
+          <Checkbox
+            mb="md"
+            checked={athleteSharingConsentAccepted}
+            onChange={(event) => setAthleteSharingConsentAccepted(event.currentTarget.checked)}
+            label={t("I confirm coach access to my Strava-derived training data for this organization.")}
+          />
           <InviteActions
             onAccept={handleAccept}
             accepting={acceptInviteMutation.isPending}

@@ -16,6 +16,7 @@ const ActivityDetailPage = lazy(() =>
   import("./pages/ActivityDetailPage").then((module) => ({ default: module.ActivityDetailPage }))
 );
 const PublicCalendarPage = lazy(() => import("./pages/PublicCalendarPage"));
+const PrivacyPolicyPage = lazy(() => import("./pages/PrivacyPolicyPage"));
 const NotFoundPage = lazy(() => import("./pages/NotFoundPage"));
 
 const JoinRedirect = () => {
@@ -43,6 +44,7 @@ const App = () => {
           <Route path="/join" element={<JoinRedirect />} />
           <Route path="/invite/:token" element={<InvitePage />} />
           <Route path="/calendar/public/:token" element={<PublicCalendarPage />} />
+          <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route
             path="/dashboard"
             element={

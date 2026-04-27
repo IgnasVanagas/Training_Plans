@@ -77,6 +77,9 @@ class OrganizationMember(Base):
     role = Column(String(20), nullable=False)  # coach, athlete, admin
     status = Column(String(20), default="active", nullable=False) # active, pending, pending_approval, rejected
     message = Column(Text, nullable=True)  # optional note from join request or invitation
+    athlete_data_sharing_consent = Column(Boolean, default=False, nullable=False)
+    athlete_data_sharing_consented_at = Column(DateTime, nullable=True)
+    athlete_data_sharing_consent_version = Column(String(50), nullable=True)
 
     user = relationship("User", back_populates="organization_memberships")
     organization = relationship("Organization", back_populates="members")
@@ -112,6 +115,9 @@ class User(Base):
     email_verified = Column(Boolean, nullable=False, default=False)
     email_verification_code = Column(String(6), nullable=True)
     email_verification_expires_at = Column(DateTime, nullable=True)
+    privacy_policy_accepted_at = Column(DateTime, nullable=True)
+    privacy_policy_version = Column(String(50), nullable=True)
+    privacy_policy_url = Column(String(500), nullable=True)
     role = Column(Enum(RoleEnum), nullable=False, default=RoleEnum.athlete)
     
     # Relationships

@@ -21,10 +21,17 @@ export const createOrganization = async (data: { name: string; description?: str
   return response.data;
 };
 
-export const requestOrganizationJoin = async (organizationId: number, message?: string): Promise<{ message: string; status: string }> => {
+export const requestOrganizationJoin = async (
+  organizationId: number,
+  message?: string,
+  athleteDataSharingConsent?: boolean,
+  athleteDataSharingConsentVersion?: string,
+): Promise<{ message: string; status: string }> => {
   const response = await client.post<{ message: string; status: string }>("/users/organization/request-join", {
     organization_id: organizationId,
     message: message || undefined,
+    athlete_data_sharing_consent: athleteDataSharingConsent ?? false,
+    athlete_data_sharing_consent_version: athleteDataSharingConsentVersion,
   });
   return response.data;
 };

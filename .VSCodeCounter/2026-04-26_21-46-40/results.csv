@@ -1,0 +1,398 @@
+"filename", "language", "Markdown", "JSON", "Ignore", "PlantUML", "YAML", "PowerShell", "Docker", "Shell Script", "JavaScript", "Properties", "TypeScript", "pip requirements", "JSON with Comments", "TypeScript JSX", "HTML", "Python", "XML", "PostCSS", "comment", "blank", "total"
+"c:\Users\ignas\Training_Plans\.claude\settings.local.json", "JSON", 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 9
+"c:\Users\ignas\Training_Plans\.dockerignore", "Ignore", 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20
+"c:\Users\ignas\Training_Plans\.github\copilot-instructions.md", "Markdown", 54, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 65
+"c:\Users\ignas\Training_Plans\CACHE_INVALIDATION_FINDINGS.md", "Markdown", 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 37, 165
+"c:\Users\ignas\Training_Plans\Dockerfile", "Docker", 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 18
+"c:\Users\ignas\Training_Plans\PUBLISHING_CHECKLIST.md", "Markdown", 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 73
+"c:\Users\ignas\Training_Plans\README.md", "Markdown", 190, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 59, 249
+"c:\Users\ignas\Training_Plans\backend\Dockerfile", "Docker", 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 19
+"c:\Users\ignas\Training_Plans\backend\app\__init__.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+"c:\Users\ignas\Training_Plans\backend\app\add_feedback_columns.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 35, 0, 0, 1, 9, 45
+"c:\Users\ignas\Training_Plans\backend\app\add_library_columns.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 1, 7, 32
+"c:\Users\ignas\Training_Plans\backend\app\add_sync_columns.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 3, 8, 45
+"c:\Users\ignas\Training_Plans\backend\app\auth.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 165, 0, 0, 3, 26, 194
+"c:\Users\ignas\Training_Plans\backend\app\backfill_best_efforts.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 13, 41
+"c:\Users\ignas\Training_Plans\backend\app\database.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 47, 0, 0, 1, 12, 60
+"c:\Users\ignas\Training_Plans\backend\app\ensure_db_schema.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 2, 9, 44
+"c:\Users\ignas\Training_Plans\backend\app\integrations\__init__.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 4
+"c:\Users\ignas\Training_Plans\backend\app\integrations\base.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 79, 0, 0, 0, 22, 101
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\_scaffold.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 63, 0, 0, 0, 13, 76
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\apple_health.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 3, 14
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\coros.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 3, 12
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\garmin.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 3, 12
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\google_fit.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 3, 14
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\polar.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 3, 12
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\strava.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 691, 0, 0, 4, 119, 814
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\suunto.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 3, 12
+"c:\Users\ignas\Training_Plans\backend\app\integrations\connectors\whoop.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 3, 12
+"c:\Users\ignas\Training_Plans\backend\app\integrations\crypto.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18, 0, 0, 0, 10, 28
+"c:\Users\ignas\Training_Plans\backend\app\integrations\ingest.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 230, 0, 0, 6, 21, 257
+"c:\Users\ignas\Training_Plans\backend\app\integrations\registry.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 8, 49
+"c:\Users\ignas\Training_Plans\backend\app\integrations\service.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 99, 0, 0, 4, 21, 124
+"c:\Users\ignas\Training_Plans\backend\app\main.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 224, 0, 0, 17, 38, 279
+"c:\Users\ignas\Training_Plans\backend\app\march_date_diag.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 53, 0, 0, 0, 14, 67
+"c:\Users\ignas\Training_Plans\backend\app\migrate_backfill_duplicates.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 56, 0, 0, 17, 15, 88
+"c:\Users\ignas\Training_Plans\backend\app\migrate_duplicate_of_id.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 7, 9, 42
+"c:\Users\ignas\Training_Plans\backend\app\migrate_profile_metric_history.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58, 0, 0, 15, 12, 85
+"c:\Users\ignas\Training_Plans\backend\app\models.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 356, 0, 0, 10, 112, 478
+"c:\Users\ignas\Training_Plans\backend\app\parsing.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 632, 0, 0, 81, 146, 859
+"c:\Users\ignas\Training_Plans\backend\app\recheck_compliance_docker.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 6, 12, 51
+"c:\Users\ignas\Training_Plans\backend\app\reprocess.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 6, 15, 65
+"c:\Users\ignas\Training_Plans\backend\app\reset_activities.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 39, 0, 0, 7, 14, 60
+"c:\Users\ignas\Training_Plans\backend\app\routers\__init__.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+"c:\Users\ignas\Training_Plans\backend\app\routers\activities.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3070, 0, 0, 125, 436, 3631
+"c:\Users\ignas\Training_Plans\backend\app\routers\admin.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 316, 0, 0, 4, 66, 386
+"c:\Users\ignas\Training_Plans\backend\app\routers\auth.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 253, 0, 0, 3, 58, 314
+"c:\Users\ignas\Training_Plans\backend\app\routers\calendar.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1752, 0, 0, 56, 249, 2057
+"c:\Users\ignas\Training_Plans\backend\app\routers\communications.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1181, 0, 0, 6, 123, 1310
+"c:\Users\ignas\Training_Plans\backend\app\routers\integrations.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1479, 0, 0, 37, 196, 1712
+"c:\Users\ignas\Training_Plans\backend\app\routers\integrations\__init__.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 623, 0, 0, 21, 79, 723
+"c:\Users\ignas\Training_Plans\backend\app\routers\integrations\helpers.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 103, 0, 0, 2, 19, 124
+"c:\Users\ignas\Training_Plans\backend\app\routers\integrations\sync_tasks.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 492, 0, 0, 26, 72, 590
+"c:\Users\ignas\Training_Plans\backend\app\routers\integrations\webhook_handlers.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 147, 0, 0, 2, 27, 176
+"c:\Users\ignas\Training_Plans\backend\app\routers\integrations\wellness.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 96, 0, 0, 0, 10, 106
+"c:\Users\ignas\Training_Plans\backend\app\routers\planning.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 208, 0, 0, 0, 37, 245
+"c:\Users\ignas\Training_Plans\backend\app\routers\users.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1313, 0, 0, 39, 248, 1600
+"c:\Users\ignas\Training_Plans\backend\app\routers\workouts.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 194, 0, 0, 1, 37, 232
+"c:\Users\ignas\Training_Plans\backend\app\schemas.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 912, 0, 0, 6, 244, 1162
+"c:\Users\ignas\Training_Plans\backend\app\seed.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 309, 0, 0, 7, 59, 375
+"c:\Users\ignas\Training_Plans\backend\app\seed_50_athletes.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 116, 0, 0, 9, 23, 148
+"c:\Users\ignas\Training_Plans\backend\app\seed_workouts.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 141, 0, 0, 8, 15, 164
+"c:\Users\ignas\Training_Plans\backend\app\seed_workouts_docker.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 142, 0, 0, 9, 16, 167
+"c:\Users\ignas\Training_Plans\backend\app\services\activity_dedupe.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 254, 0, 0, 48, 61, 363
+"c:\Users\ignas\Training_Plans\backend\app\services\compliance.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 479, 0, 0, 31, 121, 631
+"c:\Users\ignas\Training_Plans\backend\app\services\email.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 10, 51
+"c:\Users\ignas\Training_Plans\backend\app\services\permissions.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 122, 0, 0, 3, 30, 155
+"c:\Users\ignas\Training_Plans\backend\app\services\personal_records.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 501, 0, 0, 43, 95, 639
+"c:\Users\ignas\Training_Plans\backend\app\services\season_planner.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 645, 0, 0, 20, 82, 747
+"c:\Users\ignas\Training_Plans\backend\app\services\support.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 134, 0, 0, 0, 29, 163
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_activity_access_and_gpx.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 250, 0, 0, 4, 48, 302
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_activity_dedupe_service.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 109, 0, 0, 28, 54, 191
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_auth_extended.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 112, 0, 0, 23, 54, 189
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_auth_invite_security.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 250, 0, 0, 0, 70, 320
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_calendar_collaboration.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 53, 0, 0, 0, 16, 69
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_calendar_filters.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 75, 0, 0, 0, 24, 99
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_compliance.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 10, 40
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_compliance_extended.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 283, 0, 0, 54, 135, 472
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_integration_service.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 158, 0, 0, 21, 55, 234
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_integrations_backend.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 292, 0, 0, 4, 92, 388
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_organization_chat.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 15, 67
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_permissions_service.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 204, 0, 0, 16, 76, 296
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_personal_records.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 251, 0, 0, 28, 91, 370
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_season_planner.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 136, 0, 0, 0, 30, 166
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_support_requests.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80, 0, 0, 0, 20, 100
+"c:\Users\ignas\Training_Plans\backend\app\tests\test_users_helpers.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 63, 0, 0, 0, 9, 72
+"c:\Users\ignas\Training_Plans\backend\app\wait_for_db.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 9, 33
+"c:\Users\ignas\Training_Plans\backend\app\workout_templates.py", "Python", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 332, 0, 0, 6, 4, 342
+"c:\Users\ignas\Training_Plans\backend\requirements.txt", "pip requirements", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 0, 0, 0, 0, 1, 22
+"c:\Users\ignas\Training_Plans\deployment\hetzner\bootstrap-ubuntu.sh", "Shell Script", 0, 0, 0, 0, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 12, 47
+"c:\Users\ignas\Training_Plans\deployment\hetzner\cloud-init.yaml", "YAML", 0, 0, 0, 0, 41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 6, 49
+"c:\Users\ignas\Training_Plans\deployment\hetzner\deploy.sh", "Shell Script", 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 10, 47
+"c:\Users\ignas\Training_Plans\deployment\nginx\edge.conf", "Properties", 0, 0, 0, 0, 0, 0, 0, 0, 0, 56, 0, 0, 0, 0, 0, 0, 0, 0, 1, 10, 67
+"c:\Users\ignas\Training_Plans\docker-compose.prod.yml", "YAML", 0, 0, 0, 0, 113, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 119
+"c:\Users\ignas\Training_Plans\docker-compose.yml", "YAML", 0, 0, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 96
+"c:\Users\ignas\Training_Plans\docs\backend_models_class_diagram.puml", "PlantUML", 0, 0, 0, 366, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 47, 413
+"c:\Users\ignas\Training_Plans\docs\component_diagram.puml", "PlantUML", 0, 0, 0, 158, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 23, 187
+"c:\Users\ignas\Training_Plans\docs\db_schema.puml", "PlantUML", 0, 0, 0, 355, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 37, 392
+"c:\Users\ignas\Training_Plans\docs\use_cases.puml", "PlantUML", 0, 0, 0, 289, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 38, 34, 361
+"c:\Users\ignas\Training_Plans\docs\use_cases\00_overview.puml", "PlantUML", 0, 0, 0, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 60
+"c:\Users\ignas\Training_Plans\docs\use_cases\01_authentication.puml", "PlantUML", 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 48
+"c:\Users\ignas\Training_Plans\docs\use_cases\02_user_profile.puml", "PlantUML", 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 43
+"c:\Users\ignas\Training_Plans\docs\use_cases\03_organization.puml", "PlantUML", 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 47
+"c:\Users\ignas\Training_Plans\docs\use_cases\04_activity.puml", "PlantUML", 0, 0, 0, 46, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 54
+"c:\Users\ignas\Training_Plans\docs\use_cases\05_calendar.puml", "PlantUML", 0, 0, 0, 46, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 54
+"c:\Users\ignas\Training_Plans\docs\use_cases\06_workouts.puml", "PlantUML", 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 34
+"c:\Users\ignas\Training_Plans\docs\use_cases\07_season.puml", "PlantUML", 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 39
+"c:\Users\ignas\Training_Plans\docs\use_cases\08_integrations.puml", "PlantUML", 0, 0, 0, 34, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 41
+"c:\Users\ignas\Training_Plans\docs\use_cases\09_wellness.puml", "PlantUML", 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 35
+"c:\Users\ignas\Training_Plans\docs\use_cases\10_communication.puml", "PlantUML", 0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 42
+"c:\Users\ignas\Training_Plans\docs\use_cases\11_analytics.puml", "PlantUML", 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 35
+"c:\Users\ignas\Training_Plans\docs\use_cases\12_admin.puml", "PlantUML", 0, 0, 0, 19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 25
+"c:\Users\ignas\Training_Plans\frontend\Dockerfile", "Docker", 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 13
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\base.css", "PostCSS", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 203, 9, 13, 225
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\block-navigation.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 15, 88
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\components\calendar\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 102, 0, 0, 0, 0, 14, 116
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\components\calendar\parseWorkoutText.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1583, 0, 0, 0, 0, 14, 1597
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\components\coachComparison\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 102, 0, 0, 0, 0, 14, 116
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\components\coachComparison\utils.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 398, 0, 0, 0, 0, 14, 412
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\components\planner\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 102, 0, 0, 0, 0, 14, 116
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\components\planner\seasonPlanUtils.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 659, 0, 0, 0, 0, 14, 673
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 144, 0, 0, 0, 0, 17, 161
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\prettify.css", "PostCSS", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 2
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\prettify.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 3
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\sorter.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 171, 0, 0, 0, 0, 0, 0, 0, 0, 0, 21, 19, 211
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\utils\authSession.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 404, 0, 0, 0, 0, 17, 421
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\utils\hrZones.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 392, 0, 0, 0, 0, 14, 406
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\utils\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 0, 0, 0, 0, 16, 146
+"c:\Users\ignas\Training_Plans\frontend\coverage-critical\utils\localSnapshot.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 290, 0, 0, 0, 0, 14, 304
+"c:\Users\ignas\Training_Plans\frontend\coverage\base.css", "PostCSS", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 203, 9, 13, 225
+"c:\Users\ignas\Training_Plans\frontend\coverage\block-navigation.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 15, 88
+"c:\Users\ignas\Training_Plans\frontend\coverage\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 326, 0, 0, 0, 0, 30, 356
+"c:\Users\ignas\Training_Plans\frontend\coverage\prettify.css", "PostCSS", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 2
+"c:\Users\ignas\Training_Plans\frontend\coverage\prettify.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 3
+"c:\Users\ignas\Training_Plans\frontend\coverage\sorter.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 171, 0, 0, 0, 0, 0, 0, 0, 0, 0, 21, 19, 211
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\App.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 374, 0, 0, 0, 0, 14, 388
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\activities.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 197, 0, 0, 0, 0, 14, 211
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\admin.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 296, 0, 0, 0, 0, 14, 310
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\calendarCollaboration.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 278, 0, 0, 0, 0, 14, 292
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\client.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 614, 0, 0, 0, 0, 14, 628
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\coachOperations.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 140, 0, 0, 0, 0, 14, 154
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\communications.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 533, 0, 0, 0, 0, 14, 547
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\dayNotes.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 230, 0, 0, 0, 0, 14, 244
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 242, 0, 0, 0, 0, 24, 266
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\integrations.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 392, 0, 0, 0, 0, 14, 406
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\organizations.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 674, 0, 0, 0, 0, 14, 688
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\planning.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 413, 0, 0, 0, 0, 14, 427
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\api\workouts.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200, 0, 0, 0, 0, 14, 214
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\ActivitiesView.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1785, 0, 0, 0, 0, 16, 1801
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\AppSidebarLayout.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 608, 0, 0, 0, 0, 14, 622
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\CoachComparisonPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5984, 0, 0, 0, 0, 14, 5998
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\DualCalendarView.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 770, 0, 0, 0, 0, 14, 784
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\IntegrationsPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 512, 0, 0, 0, 0, 14, 526
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\ProtectedRoute.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 239, 0, 0, 0, 0, 14, 253
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\ShareToChatModal.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 566, 0, 0, 0, 0, 14, 580
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\TrainingCalendar.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6157, 0, 0, 0, 0, 18, 6175
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\BestEffortsPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 500, 0, 0, 0, 0, 14, 514
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\ChartsPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 920, 0, 0, 0, 0, 14, 934
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\CommentsPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 394, 0, 0, 0, 0, 15, 409
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\ComparisonPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 962, 0, 0, 0, 0, 14, 976
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\FullscreenMapModal.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 992, 0, 0, 0, 0, 14, 1006
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\HardEffortsChart.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1505, 0, 0, 0, 0, 14, 1519
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\HardEffortsPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2051, 0, 0, 0, 0, 14, 2065
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\SelectedSegmentSummary.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 464, 0, 0, 0, 0, 14, 478
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\SessionFeedbackPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 455, 0, 0, 0, 0, 17, 472
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\SplitsTable.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1100, 0, 0, 0, 0, 14, 1114
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\formatters.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 207, 0, 0, 0, 0, 16, 223
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 256, 0, 0, 0, 0, 25, 281
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\activityDetail\mapHelpers.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 455, 0, 0, 0, 0, 14, 469
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\builder\RepeatBlock.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 71, 0, 0, 0, 0, 14, 85
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\builder\WorkoutBuilder.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 490, 0, 0, 0, 0, 18, 508
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\builder\WorkoutEditor.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2918, 0, 0, 0, 0, 14, 2932
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\builder\WorkoutStep.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 71, 0, 0, 0, 0, 14, 85
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\builder\WorkoutVisualizer.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 488, 0, 0, 0, 0, 14, 502
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\builder\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 172, 0, 0, 0, 0, 19, 191
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\builder\workoutEditorUtils.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1043, 0, 0, 0, 0, 14, 1057
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\CalendarHeader.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 607, 0, 0, 0, 0, 15, 622
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\ContinuousCalendarGrid.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2318, 0, 0, 0, 0, 14, 2332
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\SportIcon.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 125, 0, 0, 0, 0, 14, 139
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\TrainingCalendarEventRenderers.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1151, 0, 0, 0, 0, 14, 1165
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\TrainingCalendarModals.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5126, 0, 0, 0, 0, 14, 5140
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\TrainingCalendarZoneDetailModal.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1163, 0, 0, 0, 0, 14, 1177
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\TrainingCalendarZoneSummaryPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2954, 0, 0, 0, 0, 14, 2968
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\activityStyling.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 320, 0, 0, 0, 0, 14, 334
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\dateUtils.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 107, 0, 0, 0, 0, 14, 121
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 298, 0, 0, 0, 0, 28, 326
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\loadModel.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 938, 0, 0, 0, 0, 14, 952
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\parseWorkoutText.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1583, 0, 0, 0, 0, 14, 1597
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\quickWorkout.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 701, 0, 0, 0, 0, 14, 715
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\theme.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 287, 0, 0, 0, 0, 14, 301
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\trainingCalendarStyles.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 467, 0, 0, 0, 0, 14, 481
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\calendar\types.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 440, 0, 0, 0, 0, 14, 454
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\coachComparison\ZoneBars.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 224, 0, 0, 0, 0, 14, 238
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\coachComparison\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 116, 0, 0, 0, 0, 15, 131
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\coachComparison\utils.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 398, 0, 0, 0, 0, 14, 412
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\common\AppErrorBoundary.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 254, 0, 0, 0, 0, 14, 268
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\common\OfflineNotice.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 164, 0, 0, 0, 0, 14, 178
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\common\QueryErrorAlert.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 158, 0, 0, 0, 0, 14, 172
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\common\SkeletonScreens.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1025, 0, 0, 0, 0, 14, 1039
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\common\SupportContactButton.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 692, 0, 0, 0, 0, 14, 706
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\common\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 158, 0, 0, 0, 0, 18, 176
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\dashboard\ActivityUploadPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1601, 0, 0, 0, 0, 14, 1615
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\dashboard\CoachAthleteZoneSettingsPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1058, 0, 0, 0, 0, 14, 1072
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\dashboard\MetricHistoryModal.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 509, 0, 0, 0, 0, 14, 523
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\dashboard\SettingsForm.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 722, 0, 0, 0, 0, 14, 736
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\dashboard\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 144, 0, 0, 0, 0, 17, 161
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200, 0, 0, 0, 0, 21, 221
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\invite\InviteActions.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 125, 0, 0, 0, 0, 14, 139
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\invite\InviteHeader.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 0, 0, 0, 0, 14, 142
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\invite\InviteTokenCard.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 119, 0, 0, 0, 0, 14, 133
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\invite\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 0, 0, 0, 0, 16, 146
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\library\WorkoutLibrary.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 808, 0, 0, 0, 0, 15, 823
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\library\WorkoutLibraryItem.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 371, 0, 0, 0, 0, 14, 385
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\library\WorkoutPreviewGraph.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 501, 0, 0, 0, 0, 19, 520
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\library\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 144, 0, 0, 0, 0, 17, 161
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\library\workoutTemplates.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 737, 0, 0, 0, 0, 14, 751
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\planner\SeasonPlannerDrawer.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1844, 0, 0, 0, 0, 14, 1858
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\planner\SeasonPlannerPreview.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1487, 0, 0, 0, 0, 14, 1501
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\planner\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 0, 0, 0, 0, 16, 146
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\components\planner\seasonPlanUtils.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 659, 0, 0, 0, 0, 14, 673
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\i18n\I18nProvider.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 599, 0, 0, 0, 0, 14, 613
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\i18n\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 116, 0, 0, 0, 0, 15, 131
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\i18n\translations.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3206, 0, 0, 0, 0, 14, 3220
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 102, 0, 0, 0, 0, 14, 116
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\ActivityDetailPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7591, 0, 0, 0, 0, 24, 7615
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\AthleteCalendarPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 289, 0, 0, 0, 0, 15, 304
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\CalendarPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0, 16, 271
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\ComparisonPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4130, 0, 0, 0, 0, 14, 4144
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\Dashboard.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3398, 0, 0, 0, 0, 14, 3412
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\InvitePage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 346, 0, 0, 0, 0, 15, 361
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\LoginPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1953, 0, 0, 0, 0, 16, 1969
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\NotFoundPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 125, 0, 0, 0, 0, 14, 139
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\PublicCalendarPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 431, 0, 0, 0, 0, 14, 445
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\WorkoutBuilderPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 0, 0, 0, 0, 14, 118
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\AdminPanel.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2000, 0, 0, 0, 0, 14, 2014
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardActivityTrackersTab.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 968, 0, 0, 0, 0, 14, 982
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardAthleteHome.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 785, 0, 0, 0, 0, 14, 799
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardAthleteProfileTab.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1793, 0, 0, 0, 0, 14, 1807
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardCoachAthletesPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1307, 0, 0, 0, 0, 14, 1321
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardCoachHome.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1589, 0, 0, 0, 0, 14, 1603
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardLayoutShell.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2024, 0, 0, 0, 0, 14, 2038
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardNotificationsTab.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 326, 0, 0, 0, 0, 14, 340
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardOrganizationsTab.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4448, 0, 0, 0, 0, 14, 4462
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardRacesRecordsTab.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1580, 0, 0, 0, 0, 14, 1594
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardSettingsTab.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 905, 0, 0, 0, 0, 14, 919
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\DashboardTrainingZonesTab.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2153, 0, 0, 0, 0, 14, 2167
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\InsightsPage.tsx.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1268, 0, 0, 0, 0, 14, 1282
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 312, 0, 0, 0, 0, 29, 341
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\types.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1043, 0, 0, 0, 0, 14, 1057
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\useIntegrationSync.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1298, 0, 0, 0, 0, 14, 1312
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\dashboard\utils.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 281, 0, 0, 0, 0, 14, 295
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\pages\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 228, 0, 0, 0, 0, 23, 251
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\types\activityDetail.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 527, 0, 0, 0, 0, 14, 541
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\types\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 116, 0, 0, 0, 0, 15, 131
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\types\workout.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 233, 0, 0, 0, 0, 14, 247
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\utils\authSession.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 404, 0, 0, 0, 0, 17, 421
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\utils\hrZones.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 392, 0, 0, 0, 0, 14, 406
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\utils\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 130, 0, 0, 0, 0, 16, 146
+"c:\Users\ignas\Training_Plans\frontend\coverage\src\utils\localSnapshot.ts.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 290, 0, 0, 0, 0, 14, 304
+"c:\Users\ignas\Training_Plans\frontend\index.html", "HTML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19, 0, 0, 0, 0, 1, 20
+"c:\Users\ignas\Training_Plans\frontend\nginx.conf", "Properties", 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 22
+"c:\Users\ignas\Training_Plans\frontend\package-lock.json", "JSON", 0, 5129, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 5130
+"c:\Users\ignas\Training_Plans\frontend\package.json", "JSON", 0, 56, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 57
+"c:\Users\ignas\Training_Plans\frontend\public\favicon.svg", "XML", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 1, 9
+"c:\Users\ignas\Training_Plans\frontend\public\manifest.webmanifest", "JSON", 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 10
+"c:\Users\ignas\Training_Plans\frontend\public\sw.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 9, 77
+"c:\Users\ignas\Training_Plans\frontend\src\App.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 97, 0, 0, 0, 0, 0, 5, 102
+"c:\Users\ignas\Training_Plans\frontend\src\api\activities.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0, 0, 0, 0, 0, 0, 6, 43
+"c:\Users\ignas\Training_Plans\frontend\src\api\admin.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 0, 12, 76
+"c:\Users\ignas\Training_Plans\frontend\src\api\calendarCollaboration.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 0, 0, 0, 0, 0, 0, 0, 0, 8, 70
+"c:\Users\ignas\Training_Plans\frontend\src\api\client.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 144, 0, 0, 0, 0, 0, 0, 0, 10, 28, 182
+"c:\Users\ignas\Training_Plans\frontend\src\api\coachOperations.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19, 0, 0, 0, 0, 0, 0, 0, 0, 5, 24
+"c:\Users\ignas\Training_Plans\frontend\src\api\communications.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 138, 0, 0, 0, 0, 0, 0, 0, 0, 17, 155
+"c:\Users\ignas\Training_Plans\frontend\src\api\dayNotes.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 0, 6, 54
+"c:\Users\ignas\Training_Plans\frontend\src\api\integrations.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 90, 0, 0, 0, 0, 0, 0, 0, 0, 18, 108
+"c:\Users\ignas\Training_Plans\frontend\src\api\organizations.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 180, 0, 0, 0, 0, 0, 0, 0, 0, 22, 202
+"c:\Users\ignas\Training_Plans\frontend\src\api\planning.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 101, 0, 0, 0, 0, 0, 0, 0, 0, 14, 115
+"c:\Users\ignas\Training_Plans\frontend\src\api\workouts.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 8, 44
+"c:\Users\ignas\Training_Plans\frontend\src\components\ActivitiesView.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 535, 0, 0, 0, 0, 1, 37, 573
+"c:\Users\ignas\Training_Plans\frontend\src\components\AppSidebarLayout.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 171, 0, 0, 0, 0, 0, 9, 180
+"c:\Users\ignas\Training_Plans\frontend\src\components\CoachComparisonPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1818, 0, 0, 0, 0, 8, 146, 1972
+"c:\Users\ignas\Training_Plans\frontend\src\components\DualCalendarView.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 210, 0, 0, 0, 0, 6, 18, 234
+"c:\Users\ignas\Training_Plans\frontend\src\components\IntegrationsPanel.test.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 93, 0, 0, 0, 0, 0, 10, 103
+"c:\Users\ignas\Training_Plans\frontend\src\components\IntegrationsPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 142, 0, 0, 0, 0, 0, 6, 148
+"c:\Users\ignas\Training_Plans\frontend\src\components\ProtectedRoute.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 47, 0, 0, 0, 0, 0, 10, 57
+"c:\Users\ignas\Training_Plans\frontend\src\components\ShareToChatModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 147, 0, 0, 0, 0, 3, 16, 166
+"c:\Users\ignas\Training_Plans\frontend\src\components\TrainingCalendar.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1854, 0, 0, 0, 0, 24, 153, 2031
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\BestEffortsPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 136, 0, 0, 0, 0, 0, 8, 144
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\ChartsPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 280, 0, 0, 0, 0, 0, 5, 285
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\CommentsPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 97, 0, 0, 0, 0, 2, 10, 109
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\ComparisonPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 279, 0, 0, 0, 0, 7, 12, 298
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\FullscreenMapModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 297, 0, 0, 0, 0, 5, 6, 308
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\HardEffortsChart.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 191, 0, 0, 0, 0, 7, 19, 217
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\HardEffortsPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 647, 0, 0, 0, 0, 40, 53, 740
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\SelectedSegmentSummary.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 123, 0, 0, 0, 0, 0, 9, 132
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\SessionFeedbackPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 120, 0, 0, 0, 0, 1, 9, 130
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\SplitsTable.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 321, 0, 0, 0, 0, 3, 20, 344
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\formatters.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 0, 0, 0, 0, 0, 6, 47
+"c:\Users\ignas\Training_Plans\frontend\src\components\activityDetail\mapHelpers.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 117, 0, 0, 0, 0, 2, 10, 129
+"c:\Users\ignas\Training_Plans\frontend\src\components\builder\RepeatBlock.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+"c:\Users\ignas\Training_Plans\frontend\src\components\builder\WorkoutBuilder.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 122, 0, 0, 0, 0, 6, 14, 142
+"c:\Users\ignas\Training_Plans\frontend\src\components\builder\WorkoutEditor.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 900, 0, 0, 0, 0, 4, 46, 950
+"c:\Users\ignas\Training_Plans\frontend\src\components\builder\WorkoutStep.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1
+"c:\Users\ignas\Training_Plans\frontend\src\components\builder\WorkoutVisualizer.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 0, 0, 11, 140
+"c:\Users\ignas\Training_Plans\frontend\src\components\builder\workoutEditorUtils.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 292, 0, 0, 0, 0, 0, 0, 0, 0, 33, 325
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\CalendarHeader.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 163, 0, 0, 0, 0, 3, 14, 180
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\ContinuousCalendarGrid.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 632, 0, 0, 0, 0, 73, 45, 750
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\SportIcon.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 4, 19
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\TrainingCalendarEventRenderers.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 345, 0, 0, 0, 0, 0, 16, 361
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\TrainingCalendarModals.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1601, 0, 0, 0, 0, 7, 78, 1686
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\TrainingCalendarZoneDetailModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 337, 0, 0, 0, 0, 0, 28, 365
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\TrainingCalendarZoneSummaryPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 860, 0, 0, 0, 0, 11, 91, 962
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\activityStyling.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 73, 0, 0, 0, 0, 0, 0, 0, 1, 10, 84
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\dateUtils.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 0, 2, 13
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\loadModel.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 258, 0, 0, 0, 0, 0, 0, 0, 0, 32, 290
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\parseWorkoutText.test.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 260, 0, 0, 0, 0, 0, 0, 0, 14, 41, 315
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\parseWorkoutText.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 372, 0, 0, 0, 0, 0, 0, 0, 53, 80, 505
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\quickWorkout.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 191, 0, 0, 0, 0, 0, 0, 0, 0, 20, 211
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\theme.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 69, 0, 0, 0, 0, 0, 0, 0, 0, 4, 73
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\trainingCalendarStyles.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 131, 0, 0, 0, 0, 0, 0, 0, 0, 2, 133
+"c:\Users\ignas\Training_Plans\frontend\src\components\calendar\types.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 115, 0, 0, 0, 0, 0, 0, 0, 0, 9, 124
+"c:\Users\ignas\Training_Plans\frontend\src\components\coachComparison\ZoneBars.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 45, 0, 0, 0, 0, 0, 7, 52
+"c:\Users\ignas\Training_Plans\frontend\src\components\coachComparison\utils.test.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 0, 0, 0, 0, 0, 10, 75
+"c:\Users\ignas\Training_Plans\frontend\src\components\coachComparison\utils.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 0, 0, 0, 0, 0, 0, 0, 0, 15, 110
+"c:\Users\ignas\Training_Plans\frontend\src\components\common\AppErrorBoundary.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 0, 0, 0, 0, 0, 12, 62
+"c:\Users\ignas\Training_Plans\frontend\src\components\common\OfflineNotice.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 0, 0, 7, 32
+"c:\Users\ignas\Training_Plans\frontend\src\components\common\QueryErrorAlert.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 27, 0, 0, 0, 0, 0, 3, 30
+"c:\Users\ignas\Training_Plans\frontend\src\components\common\SkeletonScreens.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 280, 0, 0, 0, 0, 18, 21, 319
+"c:\Users\ignas\Training_Plans\frontend\src\components\common\SupportContactButton.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 196, 0, 0, 0, 0, 0, 12, 208
+"c:\Users\ignas\Training_Plans\frontend\src\components\dashboard\ActivityUploadPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 475, 0, 0, 0, 0, 8, 28, 511
+"c:\Users\ignas\Training_Plans\frontend\src\components\dashboard\CoachAthleteZoneSettingsPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 301, 0, 0, 0, 0, 0, 29, 330
+"c:\Users\ignas\Training_Plans\frontend\src\components\dashboard\MetricHistoryModal.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 138, 0, 0, 0, 0, 0, 9, 147
+"c:\Users\ignas\Training_Plans\frontend\src\components\dashboard\SettingsForm.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 186, 0, 0, 0, 0, 5, 18, 209
+"c:\Users\ignas\Training_Plans\frontend\src\components\invite\InviteActions.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 0, 0, 0, 0, 0, 4, 19
+"c:\Users\ignas\Training_Plans\frontend\src\components\invite\InviteHeader.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 0, 0, 4, 20
+"c:\Users\ignas\Training_Plans\frontend\src\components\invite\InviteTokenCard.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 0, 0, 4, 17
+"c:\Users\ignas\Training_Plans\frontend\src\components\library\WorkoutLibrary.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 221, 0, 0, 0, 0, 3, 23, 247
+"c:\Users\ignas\Training_Plans\frontend\src\components\library\WorkoutLibraryItem.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 93, 0, 0, 0, 0, 0, 8, 101
+"c:\Users\ignas\Training_Plans\frontend\src\components\library\WorkoutPreviewGraph.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 115, 0, 0, 0, 0, 13, 18, 146
+"c:\Users\ignas\Training_Plans\frontend\src\components\library\workoutTemplates.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 182, 0, 0, 0, 0, 0, 0, 0, 11, 30, 223
+"c:\Users\ignas\Training_Plans\frontend\src\components\planner\SeasonPlannerDrawer.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 548, 0, 0, 0, 0, 7, 37, 592
+"c:\Users\ignas\Training_Plans\frontend\src\components\planner\SeasonPlannerPreview.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 444, 0, 0, 0, 0, 9, 20, 473
+"c:\Users\ignas\Training_Plans\frontend\src\components\planner\seasonPlanUtils.test.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 0, 10, 67
+"c:\Users\ignas\Training_Plans\frontend\src\components\planner\seasonPlanUtils.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 174, 0, 0, 0, 0, 0, 0, 0, 2, 21, 197
+"c:\Users\ignas\Training_Plans\frontend\src\i18n\I18nProvider.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 148, 0, 0, 0, 0, 0, 29, 177
+"c:\Users\ignas\Training_Plans\frontend\src\i18n\translations.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1051, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1054
+"c:\Users\ignas\Training_Plans\frontend\src\main.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 124, 0, 0, 0, 0, 1, 7, 132
+"c:\Users\ignas\Training_Plans\frontend\src\pages\ActivityDetailPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2416, 0, 0, 0, 0, 46, 182, 2644
+"c:\Users\ignas\Training_Plans\frontend\src\pages\AthleteCalendarPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 67, 0, 0, 0, 0, 0, 7, 74
+"c:\Users\ignas\Training_Plans\frontend\src\pages\CalendarPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0, 0, 0, 7, 7, 63
+"c:\Users\ignas\Training_Plans\frontend\src\pages\ComparisonPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1220, 0, 0, 0, 0, 38, 96, 1354
+"c:\Users\ignas\Training_Plans\frontend\src\pages\Dashboard.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1025, 0, 0, 0, 0, 8, 77, 1110
+"c:\Users\ignas\Training_Plans\frontend\src\pages\InvitePage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 0, 0, 9, 93
+"c:\Users\ignas\Training_Plans\frontend\src\pages\LoginPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 672, 0, 0, 0, 0, 10, 52, 734
+"c:\Users\ignas\Training_Plans\frontend\src\pages\NotFoundPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 2, 19
+"c:\Users\ignas\Training_Plans\frontend\src\pages\PublicCalendarPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 111, 0, 0, 0, 0, 0, 10, 121
+"c:\Users\ignas\Training_Plans\frontend\src\pages\WorkoutBuilderPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 2, 12
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\AdminPanel.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 612, 0, 0, 0, 0, 3, 29, 644
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardActivityTrackersTab.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 277, 0, 0, 0, 0, 7, 16, 300
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardAthleteHome.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 224, 0, 0, 0, 0, 0, 15, 239
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardAthleteProfileTab.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 518, 0, 0, 0, 0, 16, 41, 575
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardCoachAthletesPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 382, 0, 0, 0, 0, 0, 31, 413
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardCoachHome.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 469, 0, 0, 0, 0, 5, 33, 507
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardLayoutShell.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 624, 0, 0, 0, 0, 4, 24, 652
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardNotificationsTab.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 80, 0, 0, 0, 0, 0, 6, 86
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardOrganizationsTab.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1346, 0, 0, 0, 0, 22, 92, 1460
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardRacesRecordsTab.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 472, 0, 0, 0, 0, 3, 29, 504
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardSettingsTab.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 264, 0, 0, 0, 0, 1, 14, 279
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\DashboardTrainingZonesTab.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 618, 0, 0, 0, 0, 29, 48, 695
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\InsightsPage.tsx", "TypeScript JSX", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 375, 0, 0, 0, 0, 3, 22, 400
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\types.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 297, 0, 0, 0, 0, 0, 0, 0, 0, 28, 325
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\useIntegrationSync.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 366, 0, 0, 0, 0, 0, 0, 0, 10, 34, 410
+"c:\Users\ignas\Training_Plans\frontend\src\pages\dashboard\utils.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 58, 0, 0, 0, 0, 0, 0, 0, 0, 13, 71
+"c:\Users\ignas\Training_Plans\frontend\src\styles\animations.css", "PostCSS", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 112, 25, 23, 160
+"c:\Users\ignas\Training_Plans\frontend\src\test\setup.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 0, 0, 0, 0, 0, 0, 0, 0, 2, 16
+"c:\Users\ignas\Training_Plans\frontend\src\types\activityDetail.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 149, 0, 0, 0, 0, 0, 0, 0, 0, 4, 153
+"c:\Users\ignas\Training_Plans\frontend\src\types\workout.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 46, 0, 0, 0, 0, 0, 0, 0, 0, 9, 55
+"c:\Users\ignas\Training_Plans\frontend\src\utils\authSession.test.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 1, 11, 56
+"c:\Users\ignas\Training_Plans\frontend\src\utils\authSession.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 95, 0, 0, 0, 0, 0, 0, 0, 4, 14, 113
+"c:\Users\ignas\Training_Plans\frontend\src\utils\hrZones.test.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 85, 0, 0, 0, 0, 0, 0, 0, 0, 13, 98
+"c:\Users\ignas\Training_Plans\frontend\src\utils\hrZones.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 97, 0, 0, 0, 0, 0, 0, 0, 0, 11, 108
+"c:\Users\ignas\Training_Plans\frontend\src\utils\localSnapshot.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 61, 0, 0, 0, 0, 0, 0, 0, 8, 5, 74
+"c:\Users\ignas\Training_Plans\frontend\src\vite-env.d.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2
+"c:\Users\ignas\Training_Plans\frontend\tsconfig.json", "JSON with Comments", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19, 0, 0, 0, 0, 0, 0, 1, 20
+"c:\Users\ignas\Training_Plans\frontend\tsconfig.node.json", "JSON", 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 13
+"c:\Users\ignas\Training_Plans\frontend\vite.config.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 0, 0, 0, 0, 0, 2, 31
+"c:\Users\ignas\Training_Plans\frontend\vitest.config.ts", "TypeScript", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 2, 22
+"c:\Users\ignas\Training_Plans\mobile-expo\App.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 28
+"c:\Users\ignas\Training_Plans\mobile-expo\app.json", "JSON", 0, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 22
+"c:\Users\ignas\Training_Plans\mobile-expo\babel.config.js", "JavaScript", 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 7
+"c:\Users\ignas\Training_Plans\mobile-expo\package-lock.json", "JSON", 0, 8122, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 8123
+"c:\Users\ignas\Training_Plans\mobile-expo\package.json", "JSON", 0, 23, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 24
+"c:\Users\ignas\Training_Plans\package-lock.json", "JSON", 0, 410, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 411
+"c:\Users\ignas\Training_Plans\package.json", "JSON", 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 11
+"c:\Users\ignas\Training_Plans\render.yaml", "YAML", 0, 0, 0, 0, 71, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 73
+"c:\Users\ignas\Training_Plans\scripts\backup-db.ps1", "PowerShell", 0, 0, 0, 0, 0, 21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 29
+"c:\Users\ignas\Training_Plans\scripts\mobile-qr.ps1", "PowerShell", 0, 0, 0, 0, 0, 62, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 14, 76
+"c:\Users\ignas\Training_Plans\scripts\restore-db.ps1", "PowerShell", 0, 0, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 24
+"Total", "-", 420, 13800, 20, 1633, 317, 100, 31, 70, 571, 73, 5717, 21, 19, 28218, 123605, 20954, 8, 520, 1628, 9326, 207051

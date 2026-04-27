@@ -4,6 +4,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Center,
   Group,
   SegmentedControl,
@@ -20,7 +21,7 @@ import {
 } from "@mantine/core";
 import { DateInput } from '@mantine/dates';
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link as RouterLink, useNavigate, useSearchParams } from "react-router-dom";
 import { IconAt, IconLock, IconUser, IconRun, IconBike, IconSwimming, IconHeartRateMonitor } from "@tabler/icons-react";
 import api from "../api/client";
 import SupportContactButton from "../components/common/SupportContactButton";
@@ -47,6 +48,8 @@ type LoginResult = AuthResponse & {
 };
 
 const STRAVA_LOGIN_RECENT_SYNC_FLAG = "tp:strava-login-recent-sync";
+const PRIVACY_POLICY_VERSION = "2026-04-27";
+const ATHLETE_DATA_SHARING_CONSENT_VERSION = "2026-04-27";
 
 const LoginPage = () => {
   const { language, setLanguage, t } = useI18n();
@@ -66,6 +69,8 @@ const LoginPage = () => {
   const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState<string | null>(null);
   const [birthDate, setBirthDate] = useState<Date | null>(null);
+  const [privacyPolicyAccepted, setPrivacyPolicyAccepted] = useState(false);
+  const [athleteSharingConsentAccepted, setAthleteSharingConsentAccepted] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -154,7 +159,11 @@ const LoginPage = () => {
             sessionStorage.setItem(STRAVA_LOGIN_RECENT_SYNC_FLAG, "1");
             if (inviteCode) {
               try {
-                await api.put("/users/organization/join", { code: inviteCode });
+                await api.put("/users/organization/join", {
+                  code: inviteCode,
+                  athlete_data_sharing_consent: athleteSharingConsentAccepted,
+                  athlete_data_sharing_consent_version: ATHLETE_DATA_SHARING_CONSENT_VERSION,
+                });
               } catch (err) {
                 setError(getErrorMessage(err));
                 return;
@@ -200,7 +209,12 @@ const LoginPage = () => {
         first_name: firstName,
         last_name: lastName,
         gender: gender,
-        birth_date: birthDate ? birthDate.toISOString().split('T')[0] : undefined
+        birth_date: birthDate ? birthDate.toISOString().split('T')[0] : undefined,
+        privacy_policy_accepted: privacyPolicyAccepted,
+        privacy_policy_version: PRIVACY_POLICY_VERSION,
+        privacy_policy_url: `${window.location.origin}/privacy`,
+        athlete_data_sharing_consent: inviteCode ? athleteSharingConsentAccepted : undefined,
+        athlete_data_sharing_consent_version: inviteCode ? ATHLETE_DATA_SHARING_CONSENT_VERSION : undefined,
       });
       return response.data;
     },
@@ -303,6 +317,14 @@ const LoginPage = () => {
     }
 
     if (isRegister) {
+      if (!privacyPolicyAccepted) {
+        setError(t("You must accept the Privacy Policy to register."));
+        return;
+      }
+      if (inviteCode && !athleteSharingConsentAccepted) {
+        setError(t("You must confirm coach data sharing to join this organization."));
+        return;
+      }
       if (!firstName.trim() || !lastName.trim() || !birthDate) {
         setError("First Name, Last Name, and Date of Birth are required.");
         return;
@@ -317,6 +339,10 @@ const LoginPage = () => {
       }
       registerMutation.mutate();
     } else {
+      if (inviteCode && !athleteSharingConsentAccepted) {
+        setError(t("You must confirm coach data sharing to join this organization."));
+        return;
+      }
       loginMutation.mutate();
     }
   };
@@ -673,7 +699,42 @@ const LoginPage = () => {
                     radius="md"
                     disabled={!!inviteCode}
                   />
+                  <Checkbox
+                    checked={privacyPolicyAccepted}
+                    onChange={(event) => setPrivacyPolicyAccepted(event.currentTarget.checked)}
+                    label={
+                      <Text size="sm">
+                        {t("I have read and accept the")} {" "}
+                        <Anchor component={RouterLink} to="/privacy" target="_blank" rel="noreferrer" size="sm">
+                          {t("Privacy Policy")}
+                        </Anchor>
+                      </Text>
+                    }
+                  />
+                  {inviteCode && (
+                    <Checkbox
+                      checked={athleteSharingConsentAccepted}
+                      onChange={(event) => setAthleteSharingConsentAccepted(event.currentTarget.checked)}
+                      label={
+                        <Text size="sm">
+                          {t("I confirm that coaches in this organization can access my Strava-derived training data.")}
+                        </Text>
+                      }
+                    />
+                  )}
                 </>
+              )}
+
+              {inviteCode && !isRegister && !resetToken && !isForgotPassword && !pendingVerificationEmail && (
+                <Checkbox
+                  checked={athleteSharingConsentAccepted}
+                  onChange={(event) => setAthleteSharingConsentAccepted(event.currentTarget.checked)}
+                  label={
+                    <Text size="sm">
+                      {t("I confirm that coaches in this organization can access my Strava-derived training data.")}
+                    </Text>
+                  }
+                />
               )}
             </Stack>
 

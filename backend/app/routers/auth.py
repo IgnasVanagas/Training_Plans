@@ -13,7 +13,7 @@ from jose import JWTError
 
 from ..auth import create_access_token, create_refresh_token, decode_refresh_token, create_action_token, decode_action_token, get_current_user, get_password_hash, verify_password, REFRESH_TOKEN_EXPIRE_DAYS
 from ..database import get_db
-from ..models import Organization, Profile, User, OrganizationMember
+from ..models import Organization, Profile, User, OrganizationMember, RoleEnum
 from ..schemas import EmailCodeVerificationRequest, ForgotPasswordRequest, LoginRequest, MessageResponse, ResetPasswordRequest, TokenResponse, UserCreate
 from ..services.email import send_verification_email
 
@@ -34,7 +34,20 @@ def _generate_email_verification_code() -> str:
 
 def _email_verification_expiry() -> datetime:
     minutes = int(os.getenv("EMAIL_CONFIRM_CODE_EXPIRE_MINUTES", "15"))
-    return datetime.now(UTC) + timedelta(minutes=max(1, minutes))
+    return (datetime.now(UTC) + timedelta(minutes=max(1, minutes))).replace(tzinfo=None)
+
+
+def _default_privacy_policy_version() -> str:
+    return os.getenv("PRIVACY_POLICY_VERSION", "2026-04-27")
+
+
+def _default_privacy_policy_url() -> str:
+    base_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
+    return f"{base_url}/privacy"
+
+
+def _default_athlete_data_sharing_consent_version() -> str:
+    return os.getenv("ATHLETE_DATA_SHARING_CONSENT_VERSION", "2026-04-27")
 
 
 def _set_auth_cookie(response: Response, token: str) -> None:
@@ -98,6 +111,9 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
         email_verified=False,
         email_verification_code=_generate_email_verification_code(),
         email_verification_expires_at=_email_verification_expiry(),
+        privacy_policy_accepted_at=datetime.now(UTC),
+        privacy_policy_version=payload.privacy_policy_version or _default_privacy_policy_version(),
+        privacy_policy_url=payload.privacy_policy_url or _default_privacy_policy_url(),
         role=payload.role,
     )
     db.add(user)
@@ -109,7 +125,12 @@ async def register(payload: UserCreate, response: Response, db: AsyncSession = D
             user_id=user.id,
             organization_id=org_id,
             role=payload.role.value,
-            status=org_status
+            status=org_status,
+            athlete_data_sharing_consent=(payload.role == RoleEnum.athlete and payload.athlete_data_sharing_consent),
+            athlete_data_sharing_consented_at=(datetime.now(UTC) if payload.role == RoleEnum.athlete and payload.athlete_data_sharing_consent else None),
+            athlete_data_sharing_consent_version=(
+                payload.athlete_data_sharing_consent_version or _default_athlete_data_sharing_consent_version()
+            ) if payload.role == RoleEnum.athlete and payload.athlete_data_sharing_consent else None,
         )
         db.add(member)
 

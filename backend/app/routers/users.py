@@ -21,6 +21,19 @@ from ..services.permissions import get_shared_org_ids, get_athlete_permissions, 
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+def _default_athlete_data_sharing_consent_version() -> str:
+    return os.getenv("ATHLETE_DATA_SHARING_CONSENT_VERSION", "2026-04-27")
+
+
+def _apply_athlete_data_sharing_consent(
+    membership: OrganizationMember,
+    consent_version: str | None,
+) -> None:
+    membership.athlete_data_sharing_consent = True
+    membership.athlete_data_sharing_consented_at = datetime.utcnow()
+    membership.athlete_data_sharing_consent_version = consent_version or _default_athlete_data_sharing_consent_version()
+
+
 def _extract_profile_sports_and_zones(raw_sports):
     if isinstance(raw_sports, dict):
         sports = raw_sports.get("items")
@@ -1029,9 +1042,14 @@ async def respond_to_organization_invitation(
         raise HTTPException(status_code=404, detail="Invitation not found")
 
     if payload.action == "accept":
+        if current_user.role == RoleEnum.athlete and not payload.athlete_data_sharing_consent:
+            raise HTTPException(status_code=400, detail="Athlete data sharing consent is required to accept this invitation")
+
         if membership.status == "active":
             return {"message": "You are already active in this organization", "status": "active"}
         membership.status = "active"
+        if current_user.role == RoleEnum.athlete:
+            _apply_athlete_data_sharing_consent(membership, payload.athlete_data_sharing_consent_version)
         await db.commit()
         return {"message": "Invitation accepted. You are now active in this organization.", "status": "active"}
 
@@ -1143,6 +1161,9 @@ async def request_join_organization(
     if current_user.role != RoleEnum.athlete:
         raise HTTPException(status_code=403, detail="Only athletes can request organization membership")
 
+    if not payload.athlete_data_sharing_consent:
+        raise HTTPException(status_code=400, detail="Athlete data sharing consent is required to request organization membership")
+
     org = await db.scalar(select(Organization).where(Organization.id == payload.organization_id))
     if not org:
         raise HTTPException(status_code=404, detail="Organization not found")
@@ -1161,6 +1182,7 @@ async def request_join_organization(
             return {"message": "You are already an active member", "status": "active"}
         membership.status = "pending_approval"
         membership.message = payload.message
+        _apply_athlete_data_sharing_consent(membership, payload.athlete_data_sharing_consent_version)
     else:
         db.add(
             OrganizationMember(
@@ -1169,6 +1191,9 @@ async def request_join_organization(
                 role=RoleEnum.athlete.value,
                 status="pending_approval",
                 message=payload.message,
+                athlete_data_sharing_consent=True,
+                athlete_data_sharing_consented_at=datetime.utcnow(),
+                athlete_data_sharing_consent_version=payload.athlete_data_sharing_consent_version or _default_athlete_data_sharing_consent_version(),
             )
         )
 
@@ -1458,6 +1483,9 @@ async def join_organization(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
+    if current_user.role == RoleEnum.athlete and not payload.athlete_data_sharing_consent:
+        raise HTTPException(status_code=400, detail="Athlete data sharing consent is required to join this organization")
+
     # Find organization by code
     result = await db.execute(select(Organization).where(Organization.code == payload.code))
     org = result.scalar_one_or_none()
@@ -1480,13 +1508,20 @@ async def join_organization(
             raise HTTPException(status_code=400, detail="You are already an active member of this organization")
         elif existing_membership.status in {"pending", "pending_approval"}:
             existing_membership.status = "active"
+        if current_user.role == RoleEnum.athlete:
+            _apply_athlete_data_sharing_consent(existing_membership, payload.athlete_data_sharing_consent_version)
     else:
         # Create new membership
         new_membership = OrganizationMember(
             user_id=current_user.id,
             organization_id=org.id,
             role=current_user.role.value,
-            status="active"
+            status="active",
+            athlete_data_sharing_consent=current_user.role == RoleEnum.athlete,
+            athlete_data_sharing_consented_at=datetime.utcnow() if current_user.role == RoleEnum.athlete else None,
+            athlete_data_sharing_consent_version=(
+                payload.athlete_data_sharing_consent_version or _default_athlete_data_sharing_consent_version()
+            ) if current_user.role == RoleEnum.athlete else None,
         )
         db.add(new_membership)
     
