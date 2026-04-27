@@ -5,16 +5,19 @@ import sys
 import asyncpg
 
 
-async def wait_for_db() -> None:
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        print("DATABASE_URL is not set")
-        sys.exit(1)
+def _normalize_database_url(database_url: str) -> str:
+    normalized = database_url.strip()
+    if normalized.startswith("postgres://"):
+        return normalized.replace("postgres://", "postgresql://", 1)
+    if normalized.startswith("postgresql+asyncpg://"):
+        return normalized.replace("postgresql+asyncpg://", "postgresql://", 1)
+    return normalized
 
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-    if database_url.startswith("postgresql+asyncpg://"):
-        database_url = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+async def wait_for_db() -> None:
+    database_url = _normalize_database_url(
+        os.getenv("DATABASE_URL", "postgresql+asyncpg://app:app@db:5432/endurance")
+    )
 
     for _ in range(30):
         try:

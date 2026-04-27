@@ -1,4 +1,23 @@
 services:
+  db:
+    image: postgres:15
+    container_name: endurance_db
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: endurance
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d endurance"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - private
+
   caddy:
     image: caddy:2.8-alpine
     container_name: endurance_caddy
@@ -65,12 +84,15 @@ services:
       dockerfile: Dockerfile
     container_name: endurance_backend
     mem_limit: 768m
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      SECRET_KEY: ${SECRET_KEY}
-      INTEGRATIONS_TOKEN_ENCRYPTION_KEY: ${INTEGRATIONS_TOKEN_ENCRYPTION_KEY}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://app:app@db:5432/endurance}
+      SECRET_KEY: ${SECRET_KEY:-}
+      INTEGRATIONS_TOKEN_ENCRYPTION_KEY: ${INTEGRATIONS_TOKEN_ENCRYPTION_KEY:-}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
       AUTH_COOKIE_SAMESITE: ${AUTH_COOKIE_SAMESITE:-lax}
       REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-true}
@@ -109,6 +131,7 @@ services:
       - private
 
 volumes:
+  db_data:
   uploads_data:
   caddy_data:
   caddy_config:

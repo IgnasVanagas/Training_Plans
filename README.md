@@ -60,11 +60,13 @@ Recommended topology:
 - Nginx edge container as reverse proxy
 - Frontend static container (Nginx)
 - Backend FastAPI container (Uvicorn workers)
-- Managed PostgreSQL (external service)
+- PostgreSQL with a persistent Docker volume by default, or a managed external service if you override `DATABASE_URL`
 
 Quick start on VPS:
 
 1. Copy `env.production.template` to `.env.production` and fill real values.
+   - The default template uses the bundled Postgres service in `docker-compose.prod.yml`.
+   - If you use a managed external database instead, replace `DATABASE_URL` with the external DSN.
 2. Point your `APP_HOST` DNS `A` record to your VPS public IP.
 3. Make sure inbound ports `80` and `443` are open in Hetzner Firewall/UFW.
 4. Build and start:
@@ -72,6 +74,8 @@ Quick start on VPS:
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
+
+Do not run plain `docker compose up` on the VPS. That starts the development stack from [docker-compose.yml](docker-compose.yml), which uses a different topology and can conflict with the production deployment.
 
 5. Validate health:
 
@@ -82,6 +86,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d --bui
 Notes:
 
 - The backend is not published directly to the internet in production compose.
+- The bundled Postgres service persists data in the `db_data` Docker volume.
 - Frontend calls API through `/api` to keep a single public origin.
 - The production stack obtains and renews Let's Encrypt certificates automatically through Caddy.
 - `APP_HOST` must be a public DNS hostname that resolves to your VPS. Let's Encrypt will not issue certificates for raw IP addresses.
