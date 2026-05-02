@@ -1,0 +1,141 @@
+@startuml Training_And_Activities
+
+hide empty members
+hide circle
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontSize 10
+skinparam packageStyle rectangle
+
+title Training & Activities – Detailed Class Diagram
+
+enum ComplianceStatusEnum {
+  planned
+  completed_green
+  completed_yellow
+  completed_red
+  missed
+}
+
+class Activity {
+  +id: Integer <<PK>>
+  +athlete_id: Integer <<FK→User>>
+  +filename: String(255)
+  +file_path: String(512)
+  +file_type: String(10)
+  +sport: String(50)?
+  +created_at: DateTime
+  +distance: Float?
+  +duration: Float?
+  +avg_speed: Float?
+  +average_hr: Float?
+  +average_watts: Float?
+  +rpe: Float?
+  +notes: Text?
+  +streams: JSONB?
+  +duplicate_of_id: Integer? <<FK→Activity>>
+  +is_deleted: Boolean
+  +aerobic_load: Float?
+  +anaerobic_load: Float?
+  +moving_time: Float?
+  +local_date: Date?
+}
+
+class PlannedWorkout {
+  +id: Integer <<PK>>
+  +user_id: Integer <<FK→User>>
+  +created_by_user_id: Integer? <<FK→User>>
+  +matched_activity_id: Integer? <<FK→Activity>>
+  +season_plan_id: Integer? <<FK→SeasonPlan>>
+  +date: Date
+  +title: String(200)
+  +description: Text?
+  +sport_type: String(50)
+  +planned_duration: Integer
+  +planned_distance: Float?
+  +planned_intensity: String(50)?
+  +structure: JSONB?
+  +planning_context: JSONB?
+  +rpe: Float?
+  +notes: Text?
+  +compliance_status: ComplianceStatusEnum
+}
+
+class PlannedWorkoutVersion {
+  +id: Integer <<PK>>
+  +workout_id: Integer
+  +workout_user_id: Integer <<FK→User>>
+  +version_number: Integer
+  +action: String(50)
+  +changed_by_user_id: Integer? <<FK→User>>
+  +changed_at: DateTime
+  +before_snapshot: JSONB?
+  +after_snapshot: JSONB?
+  +diff_json: JSONB?
+  +note: Text?
+  --
+  note: full audit trail of workout edits
+}
+
+class StructuredWorkout {
+  +id: Integer <<PK>>
+  +coach_id: Integer <<FK→User>>
+  +title: String(200)
+  +description: String?
+  +sport_type: String(50)
+  +structure: JSONB
+  +tags: JSONB?
+  +is_favorite: Boolean
+  +created_at: DateTime
+  +updated_at: DateTime
+  --
+  note: reusable workout template in coach library
+}
+
+class SeasonPlan {
+  +id: Integer <<PK>>
+  +athlete_id: Integer <<FK→User>>
+  +coach_id: Integer? <<FK→User>>
+  +name: String(200)
+  +sport_type: String(50)
+  +season_start: Date
+  +season_end: Date
+  +notes: Text?
+  +target_metrics: JSONB?
+  +goal_races: JSONB?
+  +constraints: JSONB?
+  +periodization: JSONB?
+  +generated_summary: JSONB?
+  +created_at: DateTime
+  +updated_at: DateTime
+}
+
+ComplianceStatusEnum <.. PlannedWorkout
+
+Activity "0..1" -- "0..*" Activity : duplicate_of
+Activity "1" -- "0..1" PlannedWorkout : matched_activity
+SeasonPlan "1" -- "0..*" PlannedWorkout : contains
+PlannedWorkout "1" -- "0..*" PlannedWorkoutVersion : versioned by
+
+note right of Activity
+  streams: JSONB holds raw GPS/HR/power
+  timeseries data from the uploaded file.
+  aerobic_load / anaerobic_load are
+  denormalized for fast calendar queries.
+end note
+
+note right of PlannedWorkout
+  Core compliance flow:
+  coach assigns workout → athlete completes activity
+  → matched_activity_id set → compliance_status scored.
+  structure: JSONB holds interval/step definitions.
+end note
+
+note right of SeasonPlan
+  periodization: JSONB holds phase blocks.
+  generated_summary: AI-generated training summary.
+  Can be coach-created or auto-generated.
+end note
+
+@enduml

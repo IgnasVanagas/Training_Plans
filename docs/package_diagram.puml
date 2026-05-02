@@ -1,0 +1,151 @@
+@startuml Training_Plans_Package_Diagram
+
+title Training Plans System - Package Diagram
+
+skinparam shadowing false
+skinparam packageStyle rectangle
+skinparam defaultFontSize 11
+skinparam wrapWidth 180
+
+package "Training Plans System" {
+
+  package "Client Applications" {
+    package "Web Frontend\nfrontend/src" as frontend {
+      package "App Shell" as fe_shell
+      package "Pages" as fe_pages
+      package "Components" as fe_components
+      package "API + Utils" as fe_utils
+      package "Types + i18n" as fe_shared
+    }
+
+    package "Mobile App\nmobile-expo" as mobile {
+      package "Expo Client" as mobile_app
+    }
+  }
+
+  package "Backend API\nbackend/app" as backend {
+    package "Application Entry" as be_entry {
+      package "main.py" as be_main
+      package "auth.py" as be_auth_core
+      package "database.py" as be_database
+      package "schemas.py" as be_schemas
+      package "models.py" as be_models
+    }
+
+    package "Routers" as be_routers {
+      package "auth" as r_auth
+      package "users" as r_users
+      package "activities" as r_activities
+      package "calendar" as r_calendar
+      package "workouts" as r_workouts
+      package "planning" as r_planning
+      package "communications" as r_communications
+      package "admin" as r_admin
+      package "integrations" as r_integrations
+    }
+
+    package "Services" as be_services {
+      package "permissions" as s_permissions
+      package "compliance" as s_compliance
+      package "season_planner" as s_season
+      package "personal_records" as s_records
+      package "activity_dedupe" as s_dedupe
+      package "email + support" as s_support
+    }
+
+    package "Domain Modules" as be_domain {
+      package "parsing" as m_parsing
+      package "workout_templates" as m_templates
+      package "seed + migrations" as m_setup
+    }
+
+    package "Integrations Subsystem" as be_integrations {
+      package "router bridge" as i_router
+      package "service" as i_service
+      package "registry" as i_registry
+      package "ingest" as i_ingest
+      package "crypto" as i_crypto
+      package "connectors" as i_connectors
+    }
+
+    package "Tests" as be_tests
+  }
+
+  package "Persistence" as persistence {
+    package "PostgreSQL" as db
+    package "Uploads Storage\nuploads/" as uploads
+  }
+
+  package "External Provider APIs" as external {
+    package "Strava" as ext_strava
+    package "Google Fit" as ext_google
+    package "Apple Health" as ext_apple
+    package "Garmin / WHOOP / Polar / Suunto / COROS" as ext_other
+    package "SMTP / Email" as ext_email
+  }
+}
+
+fe_shell ..> fe_pages
+fe_pages ..> fe_components
+fe_pages ..> fe_utils
+fe_pages ..> fe_shared
+fe_components ..> fe_utils
+fe_components ..> fe_shared
+mobile_app ..> fe_utils
+mobile_app ..> fe_shared
+
+frontend ..> be_routers : HTTP/JSON
+mobile ..> be_routers : HTTP/JSON
+
+be_main ..> be_routers
+be_main ..> be_database
+be_main ..> be_models
+be_main ..> be_schemas
+be_routers ..> be_services
+be_routers ..> be_domain
+be_routers ..> be_integrations
+be_routers ..> be_auth_core
+be_services ..> be_models
+be_services ..> be_schemas
+be_services ..> be_database
+be_services ..> m_parsing
+be_services ..> m_templates
+be_domain ..> be_models
+be_domain ..> be_database
+
+r_integrations ..> i_router
+i_router ..> i_service
+i_service ..> i_registry
+i_service ..> i_ingest
+i_service ..> i_crypto
+i_registry ..> i_connectors
+i_ingest ..> m_parsing
+i_ingest ..> be_models
+i_crypto ..> be_database
+
+be_models ..> db
+be_database ..> db
+be_domain ..> uploads
+r_activities ..> uploads
+r_communications ..> uploads
+
+i_connectors ..> ext_strava
+i_connectors ..> ext_google
+i_connectors ..> ext_apple
+i_connectors ..> ext_other
+s_support ..> ext_email
+
+be_tests ..> be_routers
+be_tests ..> be_services
+be_tests ..> be_integrations
+
+note right of backend
+  Package focus:
+  routers coordinate requests,
+  services hold business logic,
+  domain modules handle parsing
+  and workout template concerns,
+  integrations isolate provider-specific flows.
+end note
+
+@enduml

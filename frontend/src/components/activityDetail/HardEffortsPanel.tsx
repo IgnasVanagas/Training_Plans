@@ -586,21 +586,6 @@ export const HardEffortsPanel = ({
         onMetaChange?.(hardEffortMetaByKey);
     }, [hardEffortMetaByKey, onMetaChange]);
 
-    const cyclingBoundsMemo = useMemo((): number[] => {
-        const ftp = Number((zoneProfile as any)?.zone_settings?.cycling?.power?.lt2 ?? (zoneProfile as any)?.ftp ?? 0);
-        const raw = (zoneProfile as any)?.zone_settings?.cycling?.power?.upper_bounds;
-        if (Array.isArray(raw) && raw.length > 0) {
-            const parsed = raw.map((v: any) => Number(v)).filter((v: number) => Number.isFinite(v) && v > 0);
-            if (parsed.length === raw.length) {
-                let valid = true;
-                for (let i = 1; i < parsed.length; i++) if (parsed[i] <= parsed[i - 1]) { valid = false; break; }
-                if (valid) return parsed;
-            }
-        }
-        if (ftp > 0) return [0.55, 0.75, 0.90, 1.05, 1.20, 1.50, 2.00].map(p => ftp * p);
-        return [];
-    }, [zoneProfile]);
-
     if (hardEfforts.length === 0) {
         return (
             <Paper withBorder p="md" radius="lg" bg={ui.surface} style={{ borderColor: ui.border }}>
@@ -626,12 +611,12 @@ export const HardEffortsPanel = ({
                 <HardEffortsChart
                     streamPoints={streamPoints}
                     hardEfforts={hardEfforts}
+                    selectedEffortKey={selectedEffortKey}
+                    onSelectEffort={onSelectEffort}
                     isCyclingActivity={isCyclingActivity}
-                    isRunningActivity={isRunningActivity}
-                    cyclingBounds={cyclingBoundsMemo}
-                    activityId={activity.id}
                     isDark={isDark}
                     ui={ui}
+                    t={t}
                 />
             )}
             <Box style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>

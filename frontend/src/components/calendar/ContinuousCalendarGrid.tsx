@@ -95,6 +95,25 @@ function groupEventsByDate(events: any[]) {
     return map;
 }
 
+const dateKeyToLocalDate = (dateKey: string): Date => {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Date(year, month - 1, day);
+};
+
+const buildInclusiveDateRange = (leftDateKey: string, rightDateKey: string): Date[] => {
+    const left = dateKeyToLocalDate(leftDateKey);
+    const right = dateKeyToLocalDate(rightDateKey);
+    const start = left <= right ? left : right;
+    const end = left <= right ? right : left;
+    const result: Date[] = [];
+    let cursor = new Date(start);
+    while (cursor <= end) {
+        result.push(new Date(cursor));
+        cursor = addDays(cursor, 1);
+    }
+    return result;
+};
+
 /* ── Component ── */
 const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     viewDate,
@@ -377,6 +396,24 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
     /* ── DnD state ── */
     const [dragOverDate, setDragOverDate] = useState<string | null>(null);
     const [draggingEventId, setDraggingEventId] = useState<number | null>(null);
+    const [dragSelectStartDateKey, setDragSelectStartDateKey] = useState<string | null>(null);
+    const [dragSelectEndDateKey, setDragSelectEndDateKey] = useState<string | null>(null);
+    const [isDragSelecting, setIsDragSelecting] = useState(false);
+    const isDragSelectingRef = useRef(false);
+    const dragSelectStartRef = useRef<string | null>(null);
+    const dragSelectEndRef = useRef<string | null>(null);
+    const suppressNextDayClickRef = useRef(false);
+
+    const dragPreviewRange = useMemo(() => {
+        if (!isDragSelecting || !dragSelectStartDateKey || !dragSelectEndDateKey) {
+            return null;
+        }
+        return dragSelectStartDateKey <= dragSelectEndDateKey
+            ? { startDate: dragSelectStartDateKey, endDate: dragSelectEndDateKey }
+            : { startDate: dragSelectEndDateKey, endDate: dragSelectStartDateKey };
+    }, [dragSelectEndDateKey, dragSelectStartDateKey, isDragSelecting]);
+
+    const effectiveSelectedDateRange = dragPreviewRange || selectedDateRange;
 
     const handleDayDragOver = useCallback((e: React.DragEvent, dateKey: string) => {
         e.preventDefault();
@@ -440,8 +477,78 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
         }
     }, [events]);
 
+    const finalizeDragSelection = useCallback((suppressNextClick: boolean) => {
+        if (!isDragSelectingRef.current) {
+            return;
+        }
+        const startDateKey = dragSelectStartRef.current;
+        const endDateKey = dragSelectEndRef.current;
+        isDragSelectingRef.current = false;
+        setIsDragSelecting(false);
+
+        if (!startDateKey || !endDateKey) {
+            setDragSelectStartDateKey(null);
+            setDragSelectEndDateKey(null);
+            return;
+        }
+
+        const slots = buildInclusiveDateRange(startDateKey, endDateKey);
+        if (slots.length > 0) {
+            suppressNextDayClickRef.current = suppressNextClick;
+            onSelectSlot({ start: slots[0], slots });
+        }
+
+        setDragSelectStartDateKey(null);
+        setDragSelectEndDateKey(null);
+    }, [onSelectSlot]);
+
+    const startDragSelection = useCallback((dateKey: string, e: React.MouseEvent) => {
+        if (e.button !== 0) {
+            return;
+        }
+        if ((e.target as HTMLElement).closest('[data-calendar-event]')) {
+            return;
+        }
+        e.preventDefault();
+        isDragSelectingRef.current = true;
+        dragSelectStartRef.current = dateKey;
+        dragSelectEndRef.current = dateKey;
+        setIsDragSelecting(true);
+        setDragSelectStartDateKey(dateKey);
+        setDragSelectEndDateKey(dateKey);
+    }, []);
+
+    const updateDragSelection = useCallback((dateKey: string, e: React.MouseEvent) => {
+        if (!isDragSelectingRef.current) {
+            return;
+        }
+        if ((e.buttons & 1) !== 1) {
+            finalizeDragSelection(true);
+            return;
+        }
+        if (dragSelectEndRef.current === dateKey) {
+            return;
+        }
+        dragSelectEndRef.current = dateKey;
+        setDragSelectEndDateKey(dateKey);
+    }, [finalizeDragSelection]);
+
+    useEffect(() => {
+        const handleMouseUp = () => {
+            finalizeDragSelection(true);
+        };
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [finalizeDragSelection]);
+
     /* ── Day click (slot selection) ── */
     const handleDayClick = useCallback((date: Date, e: React.MouseEvent) => {
+        if (suppressNextDayClickRef.current) {
+            suppressNextDayClickRef.current = false;
+            return;
+        }
         // Only trigger if clicking the cell background, not an event card
         if ((e.target as HTMLElement).closest('[data-calendar-event]')) return;
         onSelectSlot({ start: date, slots: [date] });
@@ -547,8 +654,8 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                     const dateKey = format(day, 'yyyy-MM-dd');
                                     const dayEvents = eventsByDate.get(dateKey) || [];
                                     const isToday = dateKey === todayKey;
-                                    const isSelected = selectedDateRange
-                                        ? dateKey >= selectedDateRange.startDate && dateKey <= selectedDateRange.endDate
+                                    const isSelected = effectiveSelectedDateRange
+                                        ? dateKey >= effectiveSelectedDateRange.startDate && dateKey <= effectiveSelectedDateRange.endDate
                                         : false;
                                     const isDragOver = dragOverDate === dateKey;
                                     const markers = planningMarkersByDate.get(dateKey) || [];
@@ -563,6 +670,9 @@ const ContinuousCalendarGrid: React.FC<ContinuousCalendarGridProps> = ({
                                     return (
                                         <Box
                                             key={dateKey}
+                                            onMouseDown={(e) => startDragSelection(dateKey, e)}
+                                            onMouseEnter={(e) => updateDragSelection(dateKey, e)}
+                                            onMouseUp={() => finalizeDragSelection(true)}
                                             onClick={(e) => handleDayClick(day, e)}
                                             onDragOver={(e) => handleDayDragOver(e, dateKey)}
                                             onDrop={(e) => handleDayDrop(e, day)}

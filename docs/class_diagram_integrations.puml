@@ -1,0 +1,155 @@
+@startuml Integrations_And_Sync
+
+hide empty members
+hide circle
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontSize 10
+skinparam packageStyle rectangle
+
+title Integrations & Sync – Detailed Class Diagram
+
+class ProviderConnection {
+  +id: Integer <<PK>>
+  +user_id: Integer <<FK→User>>
+  +provider: String(50)
+  +external_athlete_id: String(128)?
+  +encrypted_access_token: Text?
+  +encrypted_refresh_token: Text?
+  +token_expires_at: DateTime?
+  +scopes: JSONB?
+  +status: String(30)
+  +last_sync_at: DateTime?
+  +last_error: Text?
+  +created_at: DateTime
+  +updated_at: DateTime
+  --
+  status: disconnected | connected | error
+  <<unique: user_id + provider>>
+}
+
+class ProviderSyncState {
+  +id: Integer <<PK>>
+  +provider: String(50)
+  +user_id: Integer <<FK→User>>
+  +cursor: JSONB?
+  +last_success: DateTime?
+  +last_error: Text?
+  +updated_at: DateTime
+  +sync_status: String(20)
+  +sync_progress: Integer
+  +sync_total: Integer
+  +sync_message: Text?
+  --
+  sync_status: idle | syncing | completed | failed
+  <<unique: provider + user_id>>
+}
+
+class ProviderWebhookEvent {
+  +id: Integer <<PK>>
+  +provider: String(50)
+  +event_key: String(255)
+  +payload: JSONB
+  +received_at: DateTime
+  +processed_at: DateTime?
+  +status: String(30)
+  +last_error: Text?
+  --
+  status: received | processed | failed
+  <<unique: provider + event_key>>
+}
+
+class IntegrationAuditLog {
+  +id: Integer <<PK>>
+  +user_id: Integer <<FK→User>>
+  +provider: String(50)
+  +action: String(50)
+  +status: String(30)
+  +message: Text?
+  +created_at: DateTime
+  --
+  note: append-only audit trail for all
+  connect/disconnect/sync actions
+}
+
+class HRVDaily {
+  +id: Integer <<PK>>
+  +user_id: Integer <<FK→User>>
+  +source_provider: String(50)
+  +external_record_id: String(128)?
+  +record_date: Date
+  +hrv_ms: Float
+  +created_at: DateTime
+  --
+  <<unique: user_id + source_provider + record_date>>
+}
+
+class RHRDaily {
+  +id: Integer <<PK>>
+  +user_id: Integer <<FK→User>>
+  +source_provider: String(50)
+  +external_record_id: String(128)?
+  +record_date: Date
+  +resting_hr: Float
+  +created_at: DateTime
+  --
+  <<unique: user_id + source_provider + record_date>>
+}
+
+class SleepSession {
+  +id: Integer <<PK>>
+  +user_id: Integer <<FK→User>>
+  +source_provider: String(50)
+  +external_record_id: String(128)
+  +start_time: DateTime
+  +end_time: DateTime
+  +duration_seconds: Integer
+  +quality_score: Float?
+  +created_at: DateTime
+  --
+  <<unique: user_id + source_provider + external_record_id>>
+}
+
+class StressDaily {
+  +id: Integer <<PK>>
+  +user_id: Integer <<FK→User>>
+  +source_provider: String(50)
+  +external_record_id: String(128)?
+  +record_date: Date
+  +stress_score: Float
+  +created_at: DateTime
+  --
+  <<unique: user_id + source_provider + record_date>>
+}
+
+ProviderConnection "1" -- "1" ProviderSyncState : tracks progress of
+
+note right of ProviderConnection
+  Stores encrypted OAuth tokens per provider.
+  One row per user per provider.
+  Separate from ProviderSyncState so that
+  connection status is decoupled from sync progress.
+end note
+
+note right of ProviderSyncState
+  cursor: JSONB stores provider-specific
+  pagination token / watermark for
+  resumable incremental sync.
+  progress/total enable UI progress bars.
+end note
+
+note right of ProviderWebhookEvent
+  Idempotency key = provider + event_key.
+  Webhook is stored first, then processed
+  async to avoid data loss on failures.
+end note
+
+note bottom of HRVDaily
+  HRVDaily, RHRDaily, SleepSession, StressDaily
+  all follow the same pattern:
+  one row per day per user per provider,
+  deduplicated by unique constraint.
+end note
+
+@enduml

@@ -1,0 +1,195 @@
+@startuml Training_Plans_System_Class_Diagram
+
+hide empty members
+hide circle
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontSize 10
+skinparam packageStyle rectangle
+
+title Training Plans - Core System Class Diagram
+
+enum RoleEnum {
+  coach
+  athlete
+  admin
+}
+
+enum ComplianceStatusEnum {
+  planned
+  completed_green
+  completed_yellow
+  completed_red
+  missed
+}
+
+package "Identity & Membership" {
+  class User {
+    +id: Integer
+    +email: String
+    +role: RoleEnum
+    +email_verified: Boolean
+  }
+
+  class CoachAthleteLink {
+    +id: Integer
+    +coach_id: Integer
+    +athlete_id: Integer?
+    +is_active: Boolean
+    +invite_token: String
+  }
+
+  class Organization {
+    +id: Integer
+    +name: String
+    +code: String?
+    +settings_json: JSONB?
+  }
+
+  class OrganizationMember {
+    +user_id: Integer
+    +organization_id: Integer
+    +role: String
+    +status: String
+    +message: Text?
+    +athlete_data_sharing_consent: Boolean
+  }
+}
+
+package "Training & Activities" {
+  class Activity {
+    +id: Integer
+    +athlete_id: Integer
+    +sport: String?
+    +created_at: DateTime
+    +distance: Float?
+    +duration: Float?
+    +rpe: Float?
+    +is_deleted: Boolean
+    +duplicate_of_id: Integer?
+    +local_date: Date?
+  }
+
+  class PlannedWorkout {
+    +id: Integer
+    +user_id: Integer
+    +created_by_user_id: Integer?
+    +matched_activity_id: Integer?
+    +season_plan_id: Integer?
+    +date: Date
+    +title: String
+    +sport_type: String
+    +planned_duration: Integer
+    +structure: JSONB?
+    +compliance_status: ComplianceStatusEnum
+  }
+
+  class StructuredWorkout {
+    +id: Integer
+    +coach_id: Integer
+    +title: String
+    +sport_type: String
+    +structure: JSONB
+    +is_favorite: Boolean
+  }
+
+  class SeasonPlan {
+    +id: Integer
+    +athlete_id: Integer
+    +coach_id: Integer?
+    +name: String
+    +sport_type: String
+    +season_start: Date
+    +season_end: Date
+    +periodization: JSONB?
+    +generated_summary: JSONB?
+  }
+}
+
+package "Communications" {
+  class CommunicationThread {
+    +id: Integer
+    +entity_type: String
+    +entity_id: Integer
+    +athlete_id: Integer
+    +coach_id: Integer?
+  }
+
+  class CommunicationComment {
+    +id: Integer
+    +thread_id: Integer
+    +author_id: Integer
+    +body: Text
+  }
+}
+
+package "Integrations & Sync" {
+  class ProviderConnection {
+    +id: Integer
+    +user_id: Integer
+    +provider: String
+    +status: String
+    +token_expires_at: DateTime?
+    +last_sync_at: DateTime?
+  }
+
+  class ProviderSyncState {
+    +id: Integer
+    +provider: String
+    +user_id: Integer
+    +sync_status: String
+    +sync_progress: Integer
+    +sync_total: Integer
+  }
+}
+
+RoleEnum <.. User
+ComplianceStatusEnum <.. PlannedWorkout
+
+User "1" -- "0..*" CoachAthleteLink : coach_id
+User "1" -- "0..*" CoachAthleteLink : athlete_id
+User "1" -- "0..*" OrganizationMember
+Organization "1" -- "0..*" OrganizationMember
+
+User "1" -- "0..*" Activity : athlete_id
+Activity "0..1" -- "0..*" Activity : duplicate_of
+User "1" -- "0..*" PlannedWorkout : user_id
+User "1" -- "0..*" PlannedWorkout : created_by_user_id
+Activity "1" -- "0..1" PlannedWorkout : matched_activity
+SeasonPlan "1" -- "0..*" PlannedWorkout
+User "1" -- "0..*" StructuredWorkout : coach_id
+User "1" -- "0..*" SeasonPlan : athlete_id
+User "1" -- "0..*" SeasonPlan : coach_id
+
+User "1" -- "0..*" CommunicationThread : athlete_id
+User "1" -- "0..*" CommunicationThread : coach_id
+CommunicationThread "1" -- "0..*" CommunicationComment
+User "1" -- "0..*" CommunicationComment : author_id
+
+User "1" -- "0..*" ProviderConnection
+User "1" -- "0..*" ProviderSyncState
+
+note right of CommunicationThread
+  entity_type + entity_id binds a thread to either an Activity
+  or a PlannedWorkout.
+end note
+
+note right of PlannedWorkout
+  Core training flow:
+  coach-created or athlete-owned workouts can be matched
+  to completed activities and scored for compliance.
+end note
+
+note right of ProviderSyncState
+  External provider sync is tracked separately from the
+  connection so long-running imports can report progress.
+end note
+
+legend left
+  This is a concise system-level domain view.
+  It keeps only the classes that drive the main platform workflows:
+  membership, planning, execution matching, collaboration, and sync.
+endlegend
+
+@enduml

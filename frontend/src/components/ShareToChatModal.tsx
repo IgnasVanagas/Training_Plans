@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import {
   listOrgMembers,
   postOrgDirectMessage,
+  postOrganizationCoachMessage,
   postOrganizationGroupMessage,
 } from "../api/organizations";
 import { useI18n } from "../i18n/I18nProvider";
@@ -35,6 +36,7 @@ const ShareToChatModal = ({ opened, onClose, shareText }: Props) => {
   const [message, setMessage] = useState(shareText);
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [selectedThread, setSelectedThread] = useState<string>("group");
+  const [shareConsentModalOpen, setShareConsentModalOpen] = useState(false);
 
   // Sync message when modal opens or shareText changes
   useEffect(() => {
@@ -68,38 +70,75 @@ const ShareToChatModal = ({ opened, onClose, shareText }: Props) => {
     enabled: Boolean(resolvedOrgId),
   });
 
+  const activityIdFromShare = useMemo(() => {
+    const match = shareText.match(/\/dashboard\/activities\/(\d+)/);
+    return match ? Number(match[1]) : null;
+  }, [shareText]);
+
+  const hasNonCoachMembersInOrg = useMemo(
+    () => (membersQuery.data || []).some((member) => member.role !== "coach"),
+    [membersQuery.data],
+  );
+
   const threadOptions = useMemo(() => {
     const group = [{ value: "group", label: t("Organization Group") }];
     const members = (membersQuery.data || []).map((m) => {
       const name = (m.first_name || m.last_name)
         ? `${m.first_name || ""} ${m.last_name || ""}`.trim()
         : m.email;
-      return { value: `member:${m.id}`, label: name };
+      const threadType = m.role === "coach" ? "coach" : "member";
+      return { value: `${threadType}:${m.id}`, label: name };
     });
     return [...group, ...members];
   }, [membersQuery.data, t]);
 
+  const requiresSpecificActivityConsent = useMemo(() => {
+    if (me?.role !== "athlete" || !activityIdFromShare) return false;
+    if (selectedThread === "group") return hasNonCoachMembersInOrg;
+    return selectedThread.startsWith("member:");
+  }, [activityIdFromShare, hasNonCoachMembersInOrg, me?.role, selectedThread]);
+
   const sendMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (variables?: { activityConsentGranted?: boolean }) => {
       if (!resolvedOrgId) throw new Error("No organization selected");
       if (!message.trim()) throw new Error("Message cannot be empty");
+      if (requiresSpecificActivityConsent && !variables?.activityConsentGranted) {
+        throw new Error("specific-activity-consent-required");
+      }
+
       const orgId = Number(resolvedOrgId);
       if (selectedThread === "group") {
         await postOrganizationGroupMessage(orgId, message.trim());
+        return;
+      }
+
+      const recipientId = Number(selectedThread.split(":")[1]);
+      if (selectedThread.startsWith("coach:") && (me?.role === "athlete" || me?.role === "coach")) {
+        await postOrganizationCoachMessage(
+          orgId,
+          me.role === "coach" ? { athleteId: recipientId } : { coachId: recipientId },
+          message.trim(),
+        );
       } else {
-        const userId = Number(selectedThread.split(":")[1]);
-        await postOrgDirectMessage(orgId, userId, message.trim());
+        await postOrgDirectMessage(orgId, recipientId, message.trim());
       }
     },
     onSuccess: () => {
+      setShareConsentModalOpen(false);
       queryClient.invalidateQueries({ queryKey: ["org-group-chat"] });
+      queryClient.invalidateQueries({ queryKey: ["org-coach-chat"] });
       queryClient.invalidateQueries({ queryKey: ["org-direct-chat"] });
+      queryClient.invalidateQueries({ queryKey: ["org-chat-inbox"] });
       onClose();
       notifications.show({ color: "green", title: t("Shared"), message: t("Message sent to chat.") });
       // Navigate to the organizations tab so the user can see the message
       navigate("/dashboard", { state: { activeTab: "organizations" } });
     },
-    onError: () => {
+    onError: (error: Error) => {
+      if (error.message === "specific-activity-consent-required") {
+        setShareConsentModalOpen(true);
+        return;
+      }
       notifications.show({ color: "red", title: t("Failed"), message: t("Could not send message.") });
     },
   });
@@ -152,12 +191,47 @@ const ShareToChatModal = ({ opened, onClose, shareText }: Props) => {
             color="indigo"
             loading={sendMutation.isPending}
             disabled={!message.trim() || !resolvedOrgId || orgOptions.length === 0}
-            onClick={() => sendMutation.mutate()}
+            onClick={() => {
+              if (requiresSpecificActivityConsent) {
+                setShareConsentModalOpen(true);
+                return;
+              }
+              sendMutation.mutate({});
+            }}
           >
             {t("Send")}
           </Button>
         </Group>
       </Stack>
+
+      <Modal
+        opened={shareConsentModalOpen}
+        onClose={() => setShareConsentModalOpen(false)}
+        title={t("Share activity permission")}
+        centered
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            {t("You are sharing this activity with non-coach members. Do you want to grant permission for this specific activity?")}
+          </Text>
+          <Group justify="flex-end" gap="sm">
+            <Button
+              variant="default"
+              onClick={() => setShareConsentModalOpen(false)}
+            >
+              {t("Cancel")}
+            </Button>
+            <Button
+              color="indigo"
+              loading={sendMutation.isPending}
+              onClick={() => sendMutation.mutate({ activityConsentGranted: true })}
+            >
+              {t("Yes, grant permission and share")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Modal>
   );
 };

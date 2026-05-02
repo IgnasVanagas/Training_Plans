@@ -6,9 +6,9 @@ skinparam shadowing false
 skinparam defaultFontSize 11
 skinparam wrapWidth 180
 skinparam maxMessageSize 180
+skinparam linetype ortho
 
-scale max 4096 width
-scale max 4096 height
+title Training Plans - System Component Diagram
 
 actor Athlete
 actor Coach
@@ -19,75 +19,32 @@ package "Client Applications" {
   [Mobile App\nExpo / React Native] as MOBILE
 }
 
-package "Backend API\nFastAPI" {
+package "Backend Platform\nFastAPI + SQLAlchemy" {
+  [API Entry / Router Layer] as API
 
-  package "Routers" {
-    [Auth Router] as R_AUTH
-    [Users Router] as R_USERS
-    [Activities Router] as R_ACT
-    [Calendar Router] as R_CAL
-    [Workouts Router] as R_WO
-    [Planning Router] as R_PLAN
-    [Communications Router] as R_COMMS
-    [Organizations / Admin Router] as R_ORG
-    [Integrations Router] as R_INT
-  }
+  [Identity & Membership Component\nauth, users, profiles, coach-athlete links, organizations] as C_ID
 
-  package "Services" {
-    [Auth Service] as S_AUTH
-    [Permissions Service] as S_PERM
-    [Compliance Service] as S_COMP
-    [Season Planner Service] as S_SEASON
-    [Personal Records Service] as S_PR
-    [Activity Dedupe Service] as S_DEDUPE
-    [Support Service\n(email via SMTP)] as S_SUPPORT
-    [Integration Service] as S_INT
-  }
+  [Training Planning Component\ncalendar, workouts, season plans, day notes] as C_PLAN
 
-  package "Modules" {
-    [Parsing Module\n(.fit / .gpx / .tcx)] as M_PARSE
-    [Workout Templates Module] as M_WORKOUT
-  }
+  [Activity Processing Component\nuploads, parsing, dedupe, compliance, personal records] as C_ACTIVITY
 
-  package "Integrations Sub-package" {
-    [Connector Registry] as INT_REGISTRY
-    [Ingest Module] as INT_INGEST
-    [Crypto Module\n(token encryption)] as INT_CRYPTO
+  [Communications Component\nactivity threads, comments, organization messaging] as C_COMMS
 
-    package "Provider Connectors" {
-      [Strava Connector] as C_STRAVA
-      [Garmin Connector] as C_GARMIN
-      [WHOOP Connector] as C_WHOOP
-      [Polar Connector] as C_POLAR
-      [Suunto Connector] as C_SUUNTO
-      [Coros Connector] as C_COROS
-      [Apple Health Connector] as C_APPLE
-      [Google Fit Connector] as C_GOOGLEFIT
-    }
+  [Integrations & Wellness Component\nprovider connections, sync state, webhooks, wellness imports] as C_INT
 
-    package "Integrations Sub-routers" {
-      [Sync Tasks Handler] as IR_SYNC
-      [Webhook Handler] as IR_WEBHOOK
-      [Wellness Handler] as IR_WELLNESS
-      [Helpers] as IR_HELPERS
-    }
-  }
+  [Authorization & Permissions Component] as C_PERM
+
+  [Support & Notification Component\nfeedback and outbound email] as C_NOTIFY
 }
 
 package "Persistence" {
-  database "PostgreSQL\n(SQLAlchemy models)" as DB
+  database "PostgreSQL\ncore domain data" as DB
   folder "File Storage\nuploads/activities, uploads/chat" as FILES
 }
 
 package "External Systems" {
-  [Strava API] as EXT_STRAVA
-  [Garmin Connect API] as EXT_GARMIN
-  [WHOOP API] as EXT_WHOOP
-  [Polar API] as EXT_POLAR
-  [Suunto API] as EXT_SUUNTO
-  [Coros API] as EXT_COROS
-  [Apple Health / Healthkit] as EXT_APPLE
-  [Google Fit API] as EXT_GOOGLEFIT
+  [OAuth / Provider APIs\nStrava, Garmin, WHOOP, Polar, Suunto, COROS] as EXT_PROVIDERS
+  [Health Bridge Sources\nApple Health, Google Fit] as EXT_BRIDGES
   [Webhook Sources] as EXT_WEBHOOKS
   [SMTP / Email Service] as EXT_SMTP
 }
@@ -98,89 +55,111 @@ Admin --> FE
 Athlete --> MOBILE
 Coach --> MOBILE
 
-' Frontend to Routers
-FE --> R_AUTH
-FE --> R_USERS
-FE --> R_ACT
-FE --> R_CAL
-FE --> R_WO
-FE --> R_PLAN
-FE --> R_COMMS
-FE --> R_ORG
-FE --> R_INT
+FE --> API : HTTP / JSON
+MOBILE --> API : HTTP / JSON
 
-MOBILE --> R_AUTH
-MOBILE --> R_USERS
-MOBILE --> R_ACT
-MOBILE --> R_CAL
-MOBILE --> R_WO
-MOBILE --> R_PLAN
-MOBILE --> R_COMMS
-MOBILE --> R_INT
+API --> C_ID
+API --> C_PLAN
+API --> C_ACTIVITY
+API --> C_COMMS
+API --> C_INT
 
-' Routers to Services / Modules
-R_AUTH --> S_AUTH
-R_USERS --> S_PERM
-R_ACT --> S_PR
-R_ACT --> S_DEDUPE
-R_ACT --> M_PARSE
-R_CAL --> S_COMP
-R_PLAN --> S_SEASON
-R_WO --> M_WORKOUT
-R_COMMS --> S_PERM
-R_COMMS --> S_SUPPORT
-R_ORG --> S_PERM
-R_INT --> S_INT
-R_INT --> IR_SYNC
-R_INT --> IR_WEBHOOK
-R_INT --> IR_WELLNESS
-R_INT --> IR_HELPERS
+C_ID --> C_PERM
+C_PLAN --> C_PERM
+C_ACTIVITY --> C_PERM
+C_COMMS --> C_PERM
+C_INT --> C_PERM
 
-' Integration sub-package internals
-S_INT --> INT_REGISTRY
-S_INT --> INT_INGEST
-S_INT --> INT_CRYPTO
-INT_REGISTRY --> C_STRAVA
-INT_REGISTRY --> C_GARMIN
-INT_REGISTRY --> C_WHOOP
-INT_REGISTRY --> C_POLAR
-INT_REGISTRY --> C_SUUNTO
-INT_REGISTRY --> C_COROS
-INT_REGISTRY --> C_APPLE
-INT_REGISTRY --> C_GOOGLEFIT
-INT_INGEST --> M_PARSE
+C_ACTIVITY --> C_PLAN : matches completed activities\nto planned workouts
+C_COMMS --> C_ID : resolves athlete / coach / org membership
+C_INT --> C_ACTIVITY : imports activities and wellness data
+C_NOTIFY --> C_ID
+C_COMMS --> C_NOTIFY : send support / notification email
 
-' Services to DB
-S_AUTH --> DB
-S_PERM --> DB
-S_COMP --> DB
-S_SEASON --> DB
-S_PR --> DB
-S_DEDUPE --> DB
-S_INT --> DB
-INT_INGEST --> DB
-INT_CRYPTO --> DB
-M_PARSE --> DB
-M_WORKOUT --> DB
-IR_SYNC --> DB
-IR_WEBHOOK --> DB
-IR_WELLNESS --> DB
+C_ID --> DB
+C_PLAN --> DB
+C_ACTIVITY --> DB
+C_COMMS --> DB
+C_INT --> DB
+C_PERM --> DB
+C_NOTIFY --> DB
 
-' File storage
-R_ACT --> FILES
-R_COMMS --> FILES
-M_PARSE --> FILES
+C_ACTIVITY --> FILES : activity file uploads
+C_COMMS --> FILES : chat attachments
 
-' Connectors to external APIs
-C_STRAVA --> EXT_STRAVA : OAuth + REST API
-C_GARMIN --> EXT_GARMIN : OAuth + REST API
-C_WHOOP --> EXT_WHOOP : OAuth + REST API
-C_POLAR --> EXT_POLAR : OAuth + REST API
-C_SUUNTO --> EXT_SUUNTO : OAuth + REST API
-C_COROS --> EXT_COROS : OAuth + REST API
-C_APPLE --> EXT_APPLE : File import
-C_GOOGLEFIT --> EXT_GOOGLEFIT : OAuth + REST API
-EXT_WEBHOOKS --> IR_WEBHOOK : webhook events
-S_SUPPORT --> EXT_SMTP : send email
+C_INT --> EXT_PROVIDERS : OAuth, sync, provider REST APIs
+EXT_WEBHOOKS --> C_INT : webhook callbacks
+EXT_BRIDGES --> C_INT : bridge ingestion payloads
+C_NOTIFY --> EXT_SMTP : outbound email
+
+note right of C_ID
+  Primary implementation anchors:
+  routers/auth.py, routers/users.py,
+  auth.py, services/permissions.py
+
+  Owns the identity and membership domain:
+  User, Profile, ProfileMetricHistory,
+  CoachAthleteLink, Organization,
+  OrganizationMember.
+end note
+
+note right of C_PLAN
+  Primary implementation anchors:
+  routers/calendar.py, routers/planning.py,
+  routers/workouts.py, services/season_planner.py,
+  workout_templates.py
+
+  Owns PlannedWorkout, PlannedWorkoutVersion,
+  StructuredWorkout, SeasonPlan, DayNote.
+end note
+
+note right of C_ACTIVITY
+  Primary implementation anchors:
+  routers/activities.py, parsing.py,
+  services/compliance.py,
+  services/activity_dedupe.py,
+  services/personal_records.py
+
+  Owns Activity ingestion and analysis,
+  including matching against planned workouts.
+end note
+
+note right of C_COMMS
+  Primary implementation anchors:
+  routers/communications.py, routers/admin.py,
+  services/support.py
+
+  Owns CommunicationThread,
+  CommunicationComment,
+  CommunicationAcknowledgement,
+  OrganizationGroupMessage,
+  OrganizationCoachMessage,
+  OrganizationDirectMessage.
+end note
+
+note right of C_INT
+  Primary implementation anchors:
+  routers/integrations.py,
+  routers/integrations/*,
+  integrations/service.py,
+  integrations/registry.py,
+  integrations/ingest.py,
+  integrations/crypto.py,
+  integrations/connectors/*
+
+  Owns ProviderConnection,
+  ProviderSyncState,
+  ProviderWebhookEvent,
+  IntegrationAuditLog,
+  HRVDaily, RHRDaily,
+  SleepSession, StressDaily.
+end note
+
+legend left
+  This diagram is a system-level component view.
+  It groups runtime responsibilities into major platform components
+  and shows the main dependencies between clients, backend domains,
+  persistence, and external systems.
+endlegend
 
 @enduml

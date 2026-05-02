@@ -564,6 +564,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Split": "Atkarpa",
     "Annotate Splits": "Anotavimo atkarpos",
     "Annotate": "Anotuoti",
+    "Mark intensity": "Pažymėti intensyvumą",
     "Hide Annotations": "Slėpti anotacijas",
     "Lactate": "Laktatas",
     "Note": "Pastaba",
@@ -735,6 +736,15 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Confirm": "Patvirtinti"
     ,"Member removed": "Narys pašalintas"
     ,"Could not remove member": "Nepavyko pašalinti nario"
+    ,"Share to Chat": "Dalintis pokalbyje"
+    ,"You are not a member of any organization.": "Nesate jokios organizacijos narys."
+    ,"Send to": "Siųsti kam"
+    ,"Message": "Žinutė"
+    ,"Message sent to chat.": "Žinutė išsiųsta į pokalbį."
+    ,"Could not send message.": "Nepavyko išsiųsti žinutės."
+    ,"Share activity permission": "Veiklos dalijimosi leidimas"
+    ,"You are sharing this activity with non-coach members. Do you want to grant permission for this specific activity?": "Jūs dalinatės šia veikla su ne trenerio rolės nariais. Ar norite suteikti leidimą būtent šiai veiklai?"
+    ,"Yes, grant permission and share": "Taip, suteikti leidimą ir dalintis"
     ,"Coach Split-Screen Analysis": "Trenerio padalinto ekrano analizė"
     ,"Training Comparison": "Treniruočių palyginimas"
     ,"Compare two workouts, weeks, or months side by side with the same analysis model.": "Palyginkite dvi treniruotes, savaites ar mėnesius greta naudodami tą patį analizės modelį."

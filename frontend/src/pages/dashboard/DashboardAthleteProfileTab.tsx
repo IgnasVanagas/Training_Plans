@@ -27,6 +27,7 @@ import Cropper from "react-easy-crop";
 import type { Area } from "react-easy-crop";
 import { uploadProfilePicture, resolveUserPictureUrl } from "../../api/organizations";
 import { useI18n } from "../../i18n/I18nProvider";
+import { parseDateOnly, toDateOnlyString } from "../../utils/dateOnly";
 import type { Profile, User } from "./types";
 
 const SPORTS_OPTIONS = [
@@ -98,7 +99,7 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
   const initialProfile: Profile = user.profile
     ? {
         ...user.profile,
-        birth_date: user.profile.birth_date ? new Date(user.profile.birth_date as string) : null,
+        birth_date: parseDateOnly(user.profile.birth_date),
         sports: user.profile.sports
           ? user.profile.sports
               .map((s) => s?.toLowerCase())
@@ -203,6 +204,7 @@ const DashboardAthleteProfileTab = ({ user, onSubmit, isSaving }: Props) => {
     if (payload.gender && typeof payload.gender === "string") {
       payload.gender = payload.gender.toLowerCase();
     }
+    payload.birth_date = toDateOnlyString(payload.birth_date) ?? null;
     if (payload.first_name !== undefined || payload.last_name !== undefined) {
       // keep combined full name logic
     }

@@ -27,6 +27,7 @@ import api from "../api/client";
 import SupportContactButton from "../components/common/SupportContactButton";
 import { useI18n } from "../i18n/I18nProvider";
 import { clearAuthSession, hasAuthSession, markAuthSessionActive } from "../utils/authSession";
+import { toDateOnlyString } from "../utils/dateOnly";
 
 const appLogo = "/origami-logo.png";
 
@@ -210,7 +211,7 @@ const LoginPage = () => {
         first_name: firstName,
         last_name: lastName,
         gender: gender,
-        birth_date: birthDate ? birthDate.toISOString().split('T')[0] : undefined,
+        birth_date: toDateOnlyString(birthDate) ?? undefined,
         privacy_policy_accepted: privacyPolicyAccepted,
         privacy_policy_version: PRIVACY_POLICY_VERSION,
         privacy_policy_url: `${window.location.origin}/privacy`,

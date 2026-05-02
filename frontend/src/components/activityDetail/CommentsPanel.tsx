@@ -1,4 +1,4 @@
-import { ActionIcon, Avatar, Box, Button, Group, LoadingOverlay, Paper, ScrollArea, Stack, Text, Textarea, Title, useMantineTheme } from "@mantine/core";
+import { ActionIcon, Avatar, Box, Group, LoadingOverlay, Paper, ScrollArea, Stack, Text, Textarea, Title, useComputedColorScheme, useMantineTheme } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { IconSend } from "@tabler/icons-react";
 import { useState } from "react";
@@ -15,10 +15,19 @@ interface CommentsPanelProps {
 
 export const CommentsPanel = ({ entityType, entityId, athleteId }: CommentsPanelProps) => {
     const theme = useMantineTheme();
+    const isDark = useComputedColorScheme("light") === "dark";
     const queryClient = useQueryClient();
     const [newComment, setNewComment] = useState("");
     const { language, t } = useI18n();
     const relativeTimeLocale = language === "lt" ? ltLocale : enUS;
+    const ui = {
+        commentSurface: isDark ? theme.colors.dark[6] : theme.colors.gray[0],
+        commentBorder: isDark ? theme.colors.dark[4] : theme.colors.gray[3],
+        textMain: isDark ? theme.colors.gray[0] : theme.black,
+        textDim: isDark ? theme.colors.gray[4] : theme.colors.gray[6],
+        inputSurface: isDark ? theme.colors.dark[5] : theme.white,
+        inputBorder: isDark ? theme.colors.dark[3] : theme.colors.gray[4],
+    };
 
     const { data: thread, isLoading } = useQuery({
         queryKey: ["thread", entityType, entityId],
@@ -63,16 +72,16 @@ export const CommentsPanel = ({ entityType, entityId, athleteId }: CommentsPanel
                                 <Avatar radius="xl" color={comment.author_role === "coach" ? "teal" : "blue"}>
                                     {comment.author_role === "coach" ? "C" : "A"}
                                 </Avatar>
-                                <Paper withBorder p="xs" radius="md" bg={theme.colors.gray[0]} style={{ flex: 1 }}>
+                                <Paper withBorder p="xs" radius="md" bg={ui.commentSurface} style={{ flex: 1, borderColor: ui.commentBorder }}>
                                     <Group justify="space-between" mb={4}>
                                         <Text size="xs" fw={700} c={comment.author_role === "coach" ? "teal" : "blue"}>
                                             {comment.author_role === "coach" ? t("Coach") : t("Athlete")}
                                         </Text>
-                                        <Text size="xs" c="dimmed">
+                                        <Text size="xs" c={ui.textDim}>
                                             {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true, locale: relativeTimeLocale })}
                                         </Text>
                                     </Group>
-                                    <Text size="sm" style={{ whiteSpace: "pre-wrap" }}>{comment.body}</Text>
+                                    <Text size="sm" c={ui.textMain} style={{ whiteSpace: "pre-wrap" }}>{comment.body}</Text>
                                 </Paper>
                             </Group>
                         ))}
@@ -87,6 +96,13 @@ export const CommentsPanel = ({ entityType, entityId, athleteId }: CommentsPanel
                     minRows={1}
                     maxRows={4}
                     style={{ flex: 1 }}
+                    styles={{
+                        input: {
+                            backgroundColor: ui.inputSurface,
+                            borderColor: ui.inputBorder,
+                            color: ui.textMain,
+                        },
+                    }}
                     value={newComment}
                     onChange={(e) => setNewComment(e.target.value)}
                     onKeyDown={handleKeyDown}

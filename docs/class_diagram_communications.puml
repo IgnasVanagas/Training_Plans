@@ -1,0 +1,120 @@
+@startuml Communications
+
+hide empty members
+hide circle
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontSize 10
+skinparam packageStyle rectangle
+
+title Communications – Detailed Class Diagram
+
+class CommunicationThread {
+  +id: Integer <<PK>>
+  +entity_type: String(20)
+  +entity_id: Integer
+  +athlete_id: Integer <<FK→User>>
+  +coach_id: Integer? <<FK→User>>
+  +created_at: DateTime
+  +updated_at: DateTime
+  --
+  entity_type: "activity" | "workout"
+  <<unique: entity_type + entity_id + athlete_id>>
+}
+
+class CommunicationComment {
+  +id: Integer <<PK>>
+  +thread_id: Integer <<FK→CommunicationThread>>
+  +author_id: Integer <<FK→User>>
+  +body: Text
+  +created_at: DateTime
+}
+
+class CommunicationAcknowledgement {
+  +id: Integer <<PK>>
+  +entity_type: String(20)
+  +entity_id: Integer
+  +athlete_id: Integer <<FK→User>>
+  +actor_id: Integer <<FK→User>>
+  +action: String(40)
+  +note: Text?
+  +created_at: DateTime
+  --
+  action: "acknowledged" | "seen" | "coach_note"
+}
+
+class DayNote {
+  +id: Integer <<PK>>
+  +athlete_id: Integer <<FK→User>>
+  +author_id: Integer <<FK→User>>
+  +date: Date
+  +content: Text
+  +created_at: DateTime
+  +updated_at: DateTime
+  --
+  <<unique: athlete_id + date + author_id>>
+}
+
+class OrganizationGroupMessage {
+  +id: Integer <<PK>>
+  +organization_id: Integer <<FK→Organization>>
+  +sender_id: Integer <<FK→User>>
+  +body: Text
+  +attachment_url: String(500)?
+  +attachment_name: String(255)?
+  +created_at: DateTime
+  --
+  note: broadcast message to all org members
+}
+
+class OrganizationCoachMessage {
+  +id: Integer <<PK>>
+  +organization_id: Integer <<FK→Organization>>
+  +athlete_id: Integer <<FK→User>>
+  +coach_id: Integer <<FK→User>>
+  +sender_id: Integer <<FK→User>>
+  +body: Text
+  +attachment_url: String(500)?
+  +attachment_name: String(255)?
+  +created_at: DateTime
+  --
+  note: coach↔athlete thread within an org
+}
+
+class OrganizationDirectMessage {
+  +id: Integer <<PK>>
+  +organization_id: Integer <<FK→Organization>>
+  +sender_id: Integer <<FK→User>>
+  +recipient_id: Integer <<FK→User>>
+  +body: Text
+  +attachment_url: String(500)?
+  +attachment_name: String(255)?
+  +created_at: DateTime
+  --
+  note: DM between any two org members
+}
+
+CommunicationThread "1" *-- "0..*" CommunicationComment : contains
+
+note right of CommunicationThread
+  Polymorphic: entity_type + entity_id
+  binds a thread to either an Activity or
+  a PlannedWorkout without a hard FK.
+  One thread per entity per athlete.
+end note
+
+note right of CommunicationAcknowledgement
+  Separate from CommunicationThread —
+  tracks lightweight read/acknowledge
+  signals without opening a comment thread.
+end note
+
+note bottom of OrganizationGroupMessage
+  Three org message types cover:
+  1. Group broadcast (GroupMessage)
+  2. Coach↔athlete conversation (CoachMessage)
+  3. Any DM within the org (DirectMessage)
+end note
+
+@enduml

@@ -42,25 +42,25 @@ type ZoneSummaryPanelProps = {
     children?: (api: ZoneSummaryRenderApi) => React.ReactNode;
 };
 
-const formatTotalMinutes = (minutes: number) => {
+export const formatTotalMinutes = (minutes: number) => {
     const total = Math.max(0, Math.round(minutes));
     const h = Math.floor(total / 60);
     const m = total % 60;
     return `${h}h ${m}m`;
 };
 
-const formatAvgHr = (avgHr: number | null) => {
+export const formatAvgHr = (avgHr: number | null) => {
     if (!avgHr || !Number.isFinite(avgHr)) return '-';
     return `${Math.round(avgHr)} bpm`;
 };
 
-const speedToPaceMinPerKm = (speed: number | null | undefined) => {
+export const speedToPaceMinPerKm = (speed: number | null | undefined) => {
     const numeric = Number(speed || 0);
     if (!Number.isFinite(numeric) || numeric <= 0) return null;
     return 1000 / (numeric * 60);
 };
 
-const calculateNormalizedPower = (powerSamples: number[]) => {
+export const calculateNormalizedPower = (powerSamples: number[]) => {
     if (!powerSamples.length) return null;
     if (powerSamples.length < 30) {
         const avg = powerSamples.reduce((sum, value) => sum + value, 0) / powerSamples.length;
@@ -79,14 +79,14 @@ const calculateNormalizedPower = (powerSamples: number[]) => {
     return Number.isFinite(np) ? np : null;
 };
 
-const getZonePalette = (zoneCount: number) => {
+export const getZonePalette = (zoneCount: number) => {
     if (zoneCount === 5) {
         return ['#22C55E', '#84CC16', '#EAB308', '#F97316', '#EF4444'];
     }
     return ['#22C55E', '#84CC16', '#EAB308', '#EAB308', '#F59E0B', '#F97316', '#EF4444'];
 };
 
-const renderStackedZoneBar = (zoneValues: number[], zoneCount: number, height: number = 8, dayCellBorder: string) => {
+export const renderStackedZoneBar = (zoneValues: number[], zoneCount: number, height: number = 8, dayCellBorder: string) => {
     const safeZones = Array.from({ length: zoneCount }, (_, idx) => Math.max(0, zoneValues[idx] || 0));
     const nonZeroZones = safeZones
         .map((seconds, idx) => ({ seconds, idx }))
@@ -131,7 +131,7 @@ const renderStackedZoneBar = (zoneValues: number[], zoneCount: number, height: n
     );
 };
 
-const createPeriodZones = () => ({
+export const createPeriodZones = () => ({
     running: {
         activityCount: 0,
         zoneSecondsByMetric: {
@@ -148,12 +148,12 @@ const createPeriodZones = () => ({
     }
 });
 
-const hasAnyZoneValues = (zoneMap?: Record<string, number>) => {
+export const hasAnyZoneValues = (zoneMap?: Record<string, number>) => {
     if (!zoneMap) return false;
     return Object.values(zoneMap).some((value) => Number(value || 0) > 0);
 };
 
-const hasAnyPeriodZoneValues = (zones: ReturnType<typeof createPeriodZones>) => {
+export const hasAnyPeriodZoneValues = (zones: ReturnType<typeof createPeriodZones>) => {
     return [
         zones.running.zoneSecondsByMetric.hr,
         zones.running.zoneSecondsByMetric.pace,

@@ -52,12 +52,21 @@ import {
 } from "./dashboard/types";
 import { extractApiErrorMessage } from "./dashboard/utils";
 import { useIntegrationSync } from "./dashboard/useIntegrationSync";
+import { toDateOnlyString } from "../utils/dateOnly";
 
 const toLocalDateKey = (value: Date): string => {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
   const day = String(value.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const normalizeProfileDates = (profile: Profile): Profile => {
+  const normalized: Profile = { ...profile };
+  if (normalized.birth_date !== undefined) {
+    normalized.birth_date = toDateOnlyString(normalized.birth_date) ?? null;
+  }
+  return normalized;
 };
 
 const isRestDayCalendarEvent = (row: Pick<DashboardCalendarEvent, "title" | "sport_type" | "planned_duration">): boolean => {
@@ -358,7 +367,7 @@ const Dashboard = () => {
 
   const profileUpdateMutation = useMutation({
     mutationFn: async (updatedProfile: Profile) => {
-      const response = await api.put<User>("/users/profile", updatedProfile);
+      const response = await api.put<User>("/users/profile", normalizeProfileDates(updatedProfile));
       return response.data;
     },
     onSuccess: (data) => {
@@ -384,7 +393,7 @@ const Dashboard = () => {
 
   const athleteProfileUpdateMutation = useMutation({
     mutationFn: async (vars: { athleteId: number; updatedProfile: Profile }) => {
-      const response = await api.put<User>(`/users/athletes/${vars.athleteId}/profile`, vars.updatedProfile);
+      const response = await api.put<User>(`/users/athletes/${vars.athleteId}/profile`, normalizeProfileDates(vars.updatedProfile));
       return response.data;
     },
     onSuccess: (_data, vars) => {

@@ -1,5 +1,7 @@
-import { Badge, Box, Stack, Text, Tooltip } from "@mantine/core";
+import { Badge, Box, Group, Stack, Text, Tooltip } from "@mantine/core";
+
 import { useMemo, useState } from "react";
+import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import { HardEffort } from "../../types/activityDetail";
 import { formatDuration } from "./formatters";
 
@@ -14,12 +16,12 @@ type UiTokens = {
 interface HardEffortsChartProps {
     streamPoints: any[];
     hardEfforts: HardEffort[];
+    selectedEffortKey: string | null;
+    onSelectEffort: (key: string) => void;
     isCyclingActivity: boolean;
-    isRunningActivity: boolean;
-    cyclingBounds: number[];
-    activityId: number | string;
     isDark: boolean;
     ui: UiTokens;
+    t: (key: string) => string;
 }
 
 const ZONE_COLORS = ['gray', 'blue', 'teal', 'yellow', 'orange', 'red', 'violet'] as const;
@@ -28,12 +30,12 @@ const ZONE_HEX = ['#9ca3af', '#3b82f6', '#14b8a6', '#eab308', '#f97316', '#ef444
 export const HardEffortsChart = ({
     streamPoints,
     hardEfforts,
+    selectedEffortKey,
+    onSelectEffort,
     isCyclingActivity,
-    isRunningActivity,
-    cyclingBounds,
-    activityId,
     isDark,
     ui,
+    t,
 }: HardEffortsChartProps) => {
     const [hoveredSegmentKey, setHoveredSegmentKey] = useState<string | null>(null);
 
@@ -55,7 +57,20 @@ export const HardEffortsChart = ({
         return Math.max(0, toMin(streamPoints.length - 1));
     }, [streamPoints, toMin]);
 
-    // Build timeline of efforts with position/width calculations
+    const chartSeries = useMemo(() => {
+        if (streamPoints.length === 0) return [] as Array<{ time_min: number; power_raw: number | null; heart_rate: number | null }>;
+        return streamPoints.map((point: any, index: number) => {
+            const powerRaw = Number(point?.power ?? point?.watts);
+            const hr = Number(point?.heart_rate);
+            return {
+                time_min: toMin(index),
+                power_raw: Number.isFinite(powerRaw) && powerRaw >= 0 ? powerRaw : null,
+                heart_rate: Number.isFinite(hr) && hr > 0 ? hr : null,
+            };
+        });
+    }, [streamPoints, toMin]);
+
+    // Build timeline of effort overlays with position/width calculations
     const effortSegments = useMemo(() => {
         if (streamPoints.length === 0 || hardEfforts.length === 0 || totalTimelineMinutes <= 0) return [];
         
@@ -74,6 +89,8 @@ export const HardEffortsChart = ({
 
         return hardEfforts.map(e => ({
             key: e.key,
+            startIndex: e.startIndex,
+            endIndex: e.endIndex,
             leftPct: toLeftPct(e.startIndex),
             widthPct: toWidthPct(e.startIndex, e.endIndex + 1),
             durationSeconds: e.durationSeconds,
@@ -82,134 +99,155 @@ export const HardEffortsChart = ({
             avgHr: e.avgHr,
             pctRef: e.pctRef,
             avgSpeedKmh: e.avgSpeedKmh,
+            wap: e.wap,
+            maxPower: e.maxPower,
+            maxHr: e.maxHr,
         }));
     }, [hardEfforts, streamPoints, toMin, totalTimelineMinutes]);
 
-    if (effortSegments.length === 0) return null;
+    const formatElapsed = (minutes: number) => formatDuration(Math.max(0, Math.round(minutes * 60)));
+
+    if (effortSegments.length === 0 || chartSeries.length === 0) return null;
 
     return (
         <Box>
-            {/* Header: timeline label */}
-            <Text size="9px" c={ui.textDim} fw={500} mb={6}>
-                Hard Efforts Timeline
-            </Text>
-
-            {/* Efforts timeline bar */}
+            <Group justify="space-between" mb={6}>
+                <Text size="xs" fw={600} c={ui.textMain}>{t("Hard Efforts")}</Text>
+                <Text size="xs" c={ui.textDim}>{t("Time")}</Text>
+            </Group>
             <Box
                 style={{
                     position: 'relative',
-                    height: 48,
-                    background: isDark ? 'rgba(15,23,42,0.4)' : 'rgba(226,232,240,0.4)',
-                    borderRadius: 6,
+                    height: 300,
+                    borderRadius: 10,
                     border: `1px solid ${ui.border}`,
                     overflow: 'hidden',
+                    background: isDark ? 'rgba(2,6,23,0.5)' : 'rgba(248,250,252,0.95)',
                 }}
             >
-                {/* Timeline scale reference (faint background grid) */}
-                <div style={{ position: 'absolute', inset: 0, opacity: 0.3, backgroundImage: isDark ? 'linear-gradient(90deg, rgba(148,163,184,0.1) 1px, transparent 1px)' : 'linear-gradient(90deg, rgba(15,23,42,0.05) 1px, transparent 1px)', backgroundSize: '10%' }} />
+                <ResponsiveContainer>
+                    <LineChart data={chartSeries} margin={{ top: 12, right: 12, bottom: 8, left: 8 }}>
+                        <CartesianGrid strokeDasharray="3 4" vertical={false} stroke={isDark ? 'rgba(148,163,184,0.14)' : 'rgba(15,23,42,0.09)'} />
+                        <XAxis
+                            dataKey="time_min"
+                            tick={{ fill: ui.textDim, fontSize: 11 }}
+                            tickFormatter={(value) => formatElapsed(Number(value))}
+                            minTickGap={40}
+                        />
+                        <YAxis
+                            yAxisId="power"
+                            tick={{ fill: '#f97316', fontSize: 11 }}
+                            width={45}
+                            domain={[0, 'auto']}
+                        />
+                        <YAxis
+                            yAxisId="hr"
+                            orientation="right"
+                            tick={{ fill: '#ef4444', fontSize: 11 }}
+                            width={42}
+                            domain={['auto', 'auto']}
+                        />
+                        <RechartsTooltip
+                            content={({ active, payload }: any) => {
+                                if (!active || !payload?.[0]?.payload) return null;
+                                const point = payload[0].payload;
+                                return (
+                                    <Box style={{
+                                        background: isDark ? 'rgba(12,22,42,0.92)' : 'rgba(255,255,255,0.95)',
+                                        border: `1px solid ${ui.border}`,
+                                        borderRadius: 8,
+                                        padding: '8px 10px',
+                                        minWidth: 110,
+                                    }}>
+                                        <Text size="xs" fw={700} c={ui.textMain}>{formatElapsed(Number(point.time_min))}</Text>
+                                        <Text size="xs" c="#f97316">{t('Power')}: {point.power_raw != null ? `${Math.round(point.power_raw)} W` : '-'}</Text>
+                                        <Text size="xs" c="#ef4444">{t('Heart Rate')}: {point.heart_rate != null ? `${Math.round(point.heart_rate)} bpm` : '-'}</Text>
+                                    </Box>
+                                );
+                            }}
+                        />
+                        {effortSegments.map((seg) => {
+                            const zoneColor = ZONE_HEX[Math.max(0, Math.min(6, seg.zone - 1))];
+                            const isActive = selectedEffortKey === seg.key || hoveredSegmentKey === seg.key;
+                            return (
+                                <ReferenceArea
+                                    key={`area-${seg.key}`}
+                                    x1={toMin(seg.startIndex)}
+                                    x2={toMin(seg.endIndex)}
+                                    fill={zoneColor}
+                                    fillOpacity={isActive ? 0.24 : 0.12}
+                                    stroke={zoneColor}
+                                    strokeOpacity={isActive ? 0.7 : 0.35}
+                                    strokeWidth={isActive ? 2 : 1}
+                                    ifOverflow="extendDomain"
+                                />
+                            );
+                        })}
+                        <Line yAxisId="power" type="monotone" dataKey="power_raw" stroke="#f97316" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+                        <Line yAxisId="hr" type="monotone" dataKey="heart_rate" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls isAnimationActive={false} />
+                    </LineChart>
+                </ResponsiveContainer>
 
-                {/* Individual effort bars */}
-                <div style={{ position: 'absolute', inset: 6 }}>
-                    {effortSegments.map(seg => {
+                <Box style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                    {effortSegments.map((seg) => {
                         const zoneColor = ZONE_HEX[Math.max(0, Math.min(6, seg.zone - 1))];
                         const isHovered = hoveredSegmentKey === seg.key;
-
+                        const isSelected = selectedEffortKey === seg.key;
                         return (
                             <Tooltip
-                                key={seg.key}
+                                key={`hover-${seg.key}`}
                                 withinPortal
+                                openDelay={40}
+                                position="top"
+                                multiline
                                 label={
-                                    <Stack gap={4} style={{ minWidth: 100 }}>
-                                        <div>
+                                    <Stack gap={4}>
+                                        <Group justify="space-between" wrap="nowrap" gap={10}>
+                                            <Badge size="xs" color={ZONE_COLORS[Math.max(0, Math.min(6, seg.zone - 1))]} variant="filled">Z{seg.zone}</Badge>
                                             <Text size="xs" fw={700}>{formatDuration(seg.durationSeconds)}</Text>
-                                        </div>
-                                        {seg.avgWatts != null && (
-                                            <Text size="xs" c={ui.textDim}>{Math.round(seg.avgWatts)}w</Text>
-                                        )}
-                                        {seg.avgHr != null && (
-                                            <Text size="xs" c="#fa5252">{Math.round(seg.avgHr)}bpm</Text>
-                                        )}
-                                        <Badge
-                                            size="xs"
-                                            color={ZONE_COLORS[Math.max(0, Math.min(6, seg.zone - 1))]}
-                                            variant="filled"
-                                            style={{ fontSize: 10, width: 'fit-content' }}
-                                        >
-                                            Zone {seg.zone}
-                                        </Badge>
+                                        </Group>
+                                        {seg.avgWatts != null && <Text size="xs">{t('Avg W')}: {Math.round(seg.avgWatts)} W</Text>}
+                                        {seg.wap != null && <Text size="xs">WAP: {Math.round(seg.wap)} W</Text>}
+                                        {seg.maxPower != null && <Text size="xs">{t('Max W')}: {Math.round(seg.maxPower)} W</Text>}
+                                        {seg.avgHr != null && <Text size="xs">{t('Avg HR')}: {Math.round(seg.avgHr)} bpm</Text>}
+                                        {seg.maxHr != null && <Text size="xs">{t('Max HR')}: {Math.round(seg.maxHr)} bpm</Text>}
+                                        {seg.avgSpeedKmh != null && <Text size="xs">{t('Avg Speed')}: {seg.avgSpeedKmh.toFixed(1)} km/h</Text>}
                                         {seg.pctRef != null && (
-                                            <Text size="xs" c={seg.pctRef >= 90 ? '#f97316' : ui.textDim}>
-                                                {Math.round(seg.pctRef)}% FTP
-                                            </Text>
-                                        )}
-                                        {seg.avgSpeedKmh != null && (
-                                            <Text size="xs" c="#60a5fa">{seg.avgSpeedKmh.toFixed(1)}km/h</Text>
+                                            <Text size="xs">{isCyclingActivity ? '% FTP' : '% Threshold'}: {Math.round(seg.pctRef)}%</Text>
                                         )}
                                     </Stack>
                                 }
                                 styles={{
                                     tooltip: {
-                                        background: isDark ? '#1e293b' : '#fff',
+                                        background: isDark ? '#0f172a' : '#ffffff',
                                         border: `1px solid ${ui.border}`,
                                         color: ui.textMain,
                                     },
                                 }}
-                                disabled={!isHovered}
                             >
-                                <div
+                                <Box
                                     onMouseEnter={() => setHoveredSegmentKey(seg.key)}
                                     onMouseLeave={() => setHoveredSegmentKey(null)}
+                                    onClick={() => onSelectEffort(seg.key)}
                                     style={{
+                                        pointerEvents: 'auto',
                                         position: 'absolute',
                                         left: `${seg.leftPct}%`,
-                                        width: `${seg.widthPct}%`,
-                                        inset: 0,
-                                        top: 0,
-                                        bottom: 0,
-                                        minWidth: 2,
-                                        background: zoneColor,
-                                        opacity: isHovered ? 0.95 : 0.75,
-                                        borderRadius: 3,
-                                        border: isHovered ? `2px solid ${zoneColor}` : `1px solid ${isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)'}`,
+                                        width: `${Math.max(seg.widthPct, 0.7)}%`,
+                                        top: 10,
+                                        bottom: 24,
+                                        borderRadius: 6,
                                         cursor: 'pointer',
-                                        transition: 'opacity 150ms, border 150ms',
-                                        boxShadow: isHovered ? `0 0 8px ${zoneColor}40` : 'none',
+                                        background: isHovered || isSelected ? `${zoneColor}30` : 'transparent',
+                                        border: `1px solid ${isHovered || isSelected ? zoneColor : 'transparent'}`,
+                                        boxShadow: isHovered || isSelected ? `0 0 0 1px ${zoneColor}40 inset` : 'none',
                                     }}
                                 />
                             </Tooltip>
                         );
                     })}
-                </div>
+                </Box>
             </Box>
-
-            {/* Timeline labels */}
-            <Stack gap={4} mt={8}>
-                {effortSegments.map(seg => (
-                    <div
-                        key={`label-${seg.key}`}
-                        style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            paddingLeft: 4,
-                        }}
-                    >
-                        <div
-                            style={{
-                                width: 12,
-                                height: 12,
-                                background: ZONE_HEX[Math.max(0, Math.min(6, seg.zone - 1))],
-                                borderRadius: 2,
-                            }}
-                        />
-                        <Text size="xs" c={ui.textDim}>
-                            {formatDuration(seg.durationSeconds)} • Zone {seg.zone}
-                            {seg.avgWatts != null && ` • ${Math.round(seg.avgWatts)}w`}
-                            {seg.avgHr != null && ` • ${Math.round(seg.avgHr)}bpm`}
-                        </Text>
-                    </div>
-                ))}
-            </Stack>
         </Box>
     );
 };

@@ -1,0 +1,122 @@
+@startuml Identity_And_Membership
+
+hide empty members
+hide circle
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam linetype ortho
+skinparam defaultFontSize 10
+skinparam packageStyle rectangle
+
+title Identity & Membership – Detailed Class Diagram
+
+enum RoleEnum {
+  coach
+  athlete
+  admin
+}
+
+class User {
+  +id: Integer <<PK>>
+  +email: String(255)
+  +password_hash: String(255)
+  +role: RoleEnum
+  +email_verified: Boolean
+  +email_verification_code: String(6)?
+  +email_verification_expires_at: DateTime?
+  +privacy_policy_accepted_at: DateTime?
+  +privacy_policy_version: String(50)?
+  +privacy_policy_url: String(500)?
+}
+
+class Profile {
+  +user_id: Integer <<PK, FK→User>>
+  +first_name: String(100)?
+  +last_name: String(100)?
+  +gender: String(10)?
+  +birth_date: Date?
+  +weight: Float?
+  +hrv_ms: Float?
+  +ftp: Float?
+  +lt2: Float?
+  +max_hr: Float?
+  +resting_hr: Float?
+  +sports: JSONB?
+  +country: String(100)?
+  +contact_email: String(255)?
+  +contact_number: String(50)?
+  +main_sport: String(50)?
+  +timezone: String(50)?
+  +preferred_language: String(10)
+  +preferred_units: String(20)
+  +week_start_day: String(20)
+  +training_days: JSONB?
+  +menstruation_available_to_coach: Boolean?
+  +picture: String(255)?
+}
+
+class ProfileMetricHistory {
+  +id: Integer <<PK>>
+  +user_id: Integer <<FK→User>>
+  +metric: String(20)
+  +value: Float
+  +recorded_at: DateTime
+  --
+  note: tracks historical ftp/weight changes
+}
+
+class CoachAthleteLink {
+  +id: Integer <<PK>>
+  +coach_id: Integer <<FK→User>>
+  +athlete_id: Integer? <<FK→User>>
+  +is_active: Boolean
+  +invite_token: String(64) <<unique>>
+  --
+  note: athlete_id null until invite accepted
+}
+
+class Organization {
+  +id: Integer <<PK>>
+  +name: String(200)
+  +code: String(50)? <<unique>>
+  +description: Text?
+  +picture: String(255)?
+  +settings_json: JSONB?
+  --
+  note: settings_json holds admin_ids list
+}
+
+class OrganizationMember {
+  +user_id: Integer <<PK, FK→User>>
+  +organization_id: Integer <<PK, FK→Organization>>
+  +role: String(20)
+  +status: String(20)
+  +message: Text?
+  +athlete_data_sharing_consent: Boolean
+  +athlete_data_sharing_consented_at: DateTime?
+  +athlete_data_sharing_consent_version: String(50)?
+  --
+  status: active | pending | pending_approval | rejected
+}
+
+RoleEnum <.. User
+
+User "1" *-- "0..1" Profile : has
+User "1" -- "0..*" ProfileMetricHistory : tracks
+User "1" -- "0..*" CoachAthleteLink : as coach
+User "1" -- "0..*" CoachAthleteLink : as athlete
+User "1" -- "0..*" OrganizationMember
+Organization "1" -- "0..*" OrganizationMember
+
+note bottom of CoachAthleteLink
+  Direct 1-on-1 coaching link.
+  Created by coach with invite token;
+  athlete claims it on registration/login.
+end note
+
+note bottom of OrganizationMember
+  Org-level membership tracks role, approval status,
+  and GDPR data-sharing consent separately.
+end note
+
+@enduml

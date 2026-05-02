@@ -203,7 +203,7 @@ export const SplitsTable = ({
                         ]}
                     />
                     <Button size="xs" variant={splitAnnotationsVisible ? "filled" : "light"} onClick={() => setSplitAnnotationsVisible((v) => !v)}>
-                        {splitAnnotationsVisible ? t("Hide Annotations") : t("Annotate")}
+                        {splitAnnotationsVisible ? t("Hide Annotations") : splitMode === 'laps' ? t("Mark intensity") : t("Annotate")}
                     </Button>
                 </Group>
             </Group>
