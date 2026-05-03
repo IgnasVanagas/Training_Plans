@@ -260,7 +260,7 @@ describe("Dashboard with mocked API", () => {
         athletes={[
           { id: 2, email: "a@b.c", role: "athlete", profile: { first_name: "A" } } as any,
         ]}
-        selectedAthleteId={2}
+        selectedAthleteId="2"
         onSelectAthlete={() => {}}
         organizationName="Org"
         onAthleteSettings={() => {}}
