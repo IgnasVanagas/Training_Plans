@@ -1,0 +1,57 @@
+@startsalt training_zones_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Training Zones Sketch
+
+{+
+{^"Sidebar"
+Calendar
+Dual Calendar
+Organizations
+Races and records
+Training insights
+Comparison
+Training zones
+Activity trackers
+Athlete profile
+Macrocycle
+} | {
+{^"Header"
+Training Zones
+Advisory text about threshold values and coach personalization
+}
+==
+{^"Sport switch"
+[Running] | [Cycling] | [Swimming]
+}
+--
+{+
+{^"Heart rate column"
+Threshold | "LT HR / Max HR            "
+Zone 1 | less than
+Zone 2 | low to high
+Zone 3 | low to high
+Zone 4 | low to high
+Zone 5 | more than
+[Adjust zones] | [Save]
+} | {^"Pace or power column"
+Threshold | "LT2 pace or FTP           "
+Zone 1 | less than
+Zone 2 | low to high
+Zone 3 | low to high
+Zone 4 | low to high
+Zone 5 or 7 | more than
+[Adjust zones] | [Save]
+} | {^"RPE column"
+Zone 1 | 1 to 2
+Zone 2 | 3 to 4
+Zone 3 | 5 to 6
+Zone 4 | 7 to 8
+Zone 5 | 9 to 10
+Read-only exertion scale
+}
+}
+}
+}
+@endsalt

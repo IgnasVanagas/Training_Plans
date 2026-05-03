@@ -1,0 +1,83 @@
+@startuml 04 - Season Plan Preview Save Apply
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 180
+
+title Training Plans - Season Plan Preview, Save, And Apply
+
+actor "Coach / Athlete" as USER
+boundary "SeasonPlannerDrawer" as FE
+control "Planning API Client" as CLIENT
+control "Planning Router\nbackend/app/routers/planning.py" as PLAN
+control "Target Athlete Resolver\n_resolve_target_athlete_id" as AUTHZ
+control "Season Planner Service\nbuild_generated_workouts" as GEN
+control "Compliance Service\nmatch_and_score" as COMP
+database "PostgreSQL" as DB
+
+USER -> FE: Open Macrocycle / Season Planner
+FE -> CLIENT: GET /planning/season?athlete_id=...
+CLIENT -> PLAN: get_latest_season_plan()
+PLAN -> AUTHZ: resolve_target_athlete_id()
+AUTHZ -> DB: Validate coach access when athlete_id != current_user
+AUTHZ --> PLAN: target athlete id
+PLAN -> DB: Load latest SeasonPlan
+PLAN --> CLIENT: existing plan or null
+CLIENT --> FE: Prefill framework and previous preview
+
+USER -> FE: Edit races, constraints, metrics,\nand periodization settings
+FE -> CLIENT: POST /planning/season/preview
+CLIENT -> PLAN: preview_season_plan(payload)
+PLAN -> AUTHZ: resolve target athlete
+AUTHZ -> DB: Validate access
+PLAN -> DB: Load athlete Profile
+PLAN -> GEN: build_generated_workouts(payload, profile)
+GEN --> PLAN: generated_summary + generated_workouts
+PLAN --> CLIENT: SeasonPlanPreviewOut
+CLIENT --> FE: Render preview cards and calendar markers
+
+USER -> FE: Save season framework
+FE -> CLIENT: POST /planning/season
+CLIENT -> PLAN: save_season_plan(payload)
+PLAN -> AUTHZ: resolve target athlete
+AUTHZ -> DB: Validate access
+PLAN -> DB: Load athlete Profile
+PLAN -> GEN: build_generated_workouts(payload, profile)
+GEN --> PLAN: preview used for generated_summary
+PLAN -> DB: Insert or update SeasonPlan\n(target metrics, goal races, constraints,\nperiodization, generated_summary)
+PLAN --> CLIENT: SeasonPlanOut
+CLIENT --> FE: Cache saved framework
+
+USER -> FE: Apply season plan to calendar
+FE -> CLIENT: POST /planning/season/{plan_id}/apply?replace_generated=true
+CLIENT -> PLAN: apply_season_plan(plan_id, replace_generated)
+PLAN -> DB: Load SeasonPlan + Profile
+opt generated_summary missing on saved plan
+  PLAN -> GEN: build_generated_workouts(saved plan, profile)
+  GEN --> PLAN: regenerated preview
+end
+PLAN -> DB: Load existing PlannedWorkout rows\nwithin season date window
+
+loop Each generated workout row
+  alt Same day contains manual workout
+    PLAN -> PLAN: Preserve manual workout and skip generated row
+  else Same season-plan row exists and replace_generated=true
+    PLAN -> DB: Delete prior generated rows for that date
+    PLAN -> DB: Insert replacement PlannedWorkout\nwith season_plan_id + planning_context
+  else Empty date or keep-existing disabled
+    PLAN -> DB: Insert new PlannedWorkout
+  end
+end
+
+PLAN -> DB: Commit generated workouts and updated preview
+loop Each touched date up to today
+  PLAN -> COMP: match_and_score(athlete_id, target_date)
+  COMP -> DB: Refresh compliance / matched activities
+end
+
+PLAN --> CLIENT: created_count, replaced_count,\nskipped_count, preserved_manual_count, preview
+CLIENT --> FE: Invalidate season-plan and calendar queries
+
+@enduml

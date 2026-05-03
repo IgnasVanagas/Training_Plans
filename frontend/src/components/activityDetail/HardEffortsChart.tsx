@@ -1,7 +1,7 @@
-import { Badge, Box, Group, Stack, Text, Tooltip } from "@mantine/core";
+import { Badge, Box, Group, Stack, Text } from "@mantine/core";
 
-import { useMemo, useState } from "react";
-import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { HardEffort } from "../../types/activityDetail";
 import { formatDuration } from "./formatters";
 
@@ -26,6 +26,22 @@ interface HardEffortsChartProps {
 
 const ZONE_COLORS = ['gray', 'blue', 'teal', 'yellow', 'orange', 'red', 'violet'] as const;
 const ZONE_HEX = ['#9ca3af', '#3b82f6', '#14b8a6', '#eab308', '#f97316', '#ef4444', '#8b5cf6'];
+const HOVER_CARD_GUTTER = 8;
+const HOVER_CARD_MAX_WIDTH = 220;
+
+const getPointOffsetMinutes = (point: any, index: number, startTimestamp: number | null): number => {
+    const pointTimestamp = point?.timestamp ? new Date(point.timestamp).getTime() : NaN;
+    if (startTimestamp != null && Number.isFinite(pointTimestamp)) {
+        return Math.max(0, (pointTimestamp - startTimestamp) / 60000);
+    }
+
+    const offsetSeconds = Number(point?.time_offset_seconds ?? point?.timeOffsetSeconds);
+    if (Number.isFinite(offsetSeconds) && offsetSeconds >= 0) {
+        return offsetSeconds / 60;
+    }
+
+    return index / 60;
+};
 
 export const HardEffortsChart = ({
     streamPoints,
@@ -38,24 +54,43 @@ export const HardEffortsChart = ({
     t,
 }: HardEffortsChartProps) => {
     const [hoveredSegmentKey, setHoveredSegmentKey] = useState<string | null>(null);
+    const chartFrameRef = useRef<HTMLDivElement | null>(null);
+    const [chartWidth, setChartWidth] = useState(0);
 
-    // Time conversion helpers for coordinate alignment
-    const actStartTs = useMemo(() => {
-        if (streamPoints.length === 0) return 0;
-        return new Date(streamPoints[0]?.timestamp).getTime() || 0;
+    useEffect(() => {
+        const element = chartFrameRef.current;
+        if (!element) return;
+
+        const updateWidth = (nextWidth: number) => {
+            setChartWidth((prevWidth) => (Math.abs(prevWidth - nextWidth) < 1 ? prevWidth : nextWidth));
+        };
+
+        updateWidth(element.clientWidth);
+
+        if (typeof ResizeObserver === 'undefined') return;
+
+        const observer = new ResizeObserver((entries) => {
+            const nextWidth = entries[0]?.contentRect.width ?? element.clientWidth;
+            updateWidth(nextWidth);
+        });
+
+        observer.observe(element);
+        return () => observer.disconnect();
     }, [streamPoints]);
 
-    const toMin = useMemo(() => {
-        return (idx: number): number => {
-            const s = streamPoints[Math.min(idx, streamPoints.length - 1)];
-            return s?.timestamp ? (new Date(s.timestamp).getTime() - actStartTs) / 60000 : idx / 60;
-        };
-    }, [streamPoints, actStartTs]);
+    const timelineMinutes = useMemo(() => {
+        if (streamPoints.length === 0) return [] as number[];
+
+        const firstTimestamp = streamPoints[0]?.timestamp ? new Date(streamPoints[0].timestamp).getTime() : NaN;
+        const startTimestamp = Number.isFinite(firstTimestamp) ? firstTimestamp : null;
+
+        return streamPoints.map((point: any, index: number) => getPointOffsetMinutes(point, index, startTimestamp));
+    }, [streamPoints]);
 
     const totalTimelineMinutes = useMemo(() => {
-        if (streamPoints.length < 2) return 0;
-        return Math.max(0, toMin(streamPoints.length - 1));
-    }, [streamPoints, toMin]);
+        if (timelineMinutes.length < 2) return 0;
+        return Math.max(0, timelineMinutes[timelineMinutes.length - 1] ?? 0);
+    }, [timelineMinutes]);
 
     const chartSeries = useMemo(() => {
         if (streamPoints.length === 0) return [] as Array<{ time_min: number; power_raw: number | null; heart_rate: number | null }>;
@@ -63,36 +98,33 @@ export const HardEffortsChart = ({
             const powerRaw = Number(point?.power ?? point?.watts);
             const hr = Number(point?.heart_rate);
             return {
-                time_min: toMin(index),
+                time_min: timelineMinutes[index] ?? index / 60,
                 power_raw: Number.isFinite(powerRaw) && powerRaw >= 0 ? powerRaw : null,
                 heart_rate: Number.isFinite(hr) && hr > 0 ? hr : null,
             };
         });
-    }, [streamPoints, toMin]);
+    }, [streamPoints, timelineMinutes]);
 
     // Build timeline of effort overlays with position/width calculations
     const effortSegments = useMemo(() => {
         if (streamPoints.length === 0 || hardEfforts.length === 0 || totalTimelineMinutes <= 0) return [];
-        
-        const toWidthPct = (startIndex: number, endIndexExclusive: number): number => {
-            const startMin = toMin(startIndex);
-            const endMin = endIndexExclusive >= streamPoints.length
-                ? totalTimelineMinutes
-                : toMin(Math.min(endIndexExclusive, streamPoints.length - 1));
-            const widthMin = Math.max(0, endMin - startMin);
-            return (widthMin / totalTimelineMinutes) * 100;
+
+        const getTimeMin = (index: number): number => {
+            const safeIndex = Math.max(0, Math.min(index, timelineMinutes.length - 1));
+            return timelineMinutes[safeIndex] ?? 0;
         };
 
-        const toLeftPct = (startIndex: number): number => {
-            return (toMin(startIndex) / totalTimelineMinutes) * 100;
-        };
+        const toPct = (minutes: number): number => (minutes / totalTimelineMinutes) * 100;
 
         return hardEfforts.map(e => ({
             key: e.key,
             startIndex: e.startIndex,
             endIndex: e.endIndex,
-            leftPct: toLeftPct(e.startIndex),
-            widthPct: toWidthPct(e.startIndex, e.endIndex + 1),
+            startMin: getTimeMin(e.startIndex),
+            endMin: Math.max(
+                getTimeMin(e.startIndex),
+                e.endIndex + 1 >= timelineMinutes.length ? totalTimelineMinutes : getTimeMin(e.endIndex + 1),
+            ),
             durationSeconds: e.durationSeconds,
             zone: e.zone,
             avgWatts: e.avgPower,
@@ -102,10 +134,56 @@ export const HardEffortsChart = ({
             wap: e.wap,
             maxPower: e.maxPower,
             maxHr: e.maxHr,
-        }));
-    }, [hardEfforts, streamPoints, toMin, totalTimelineMinutes]);
+        })).map((segment) => {
+            const widthMin = Math.max(0, segment.endMin - segment.startMin);
+            const leftPct = toPct(segment.startMin);
+            const widthPct = toPct(widthMin);
+
+            return {
+                ...segment,
+                leftPct,
+                widthPct,
+                centerPct: leftPct + (widthPct / 2),
+            };
+        });
+    }, [hardEfforts, streamPoints.length, timelineMinutes, totalTimelineMinutes]);
+
+    const hoveredSegment = useMemo(
+        () => effortSegments.find((segment) => segment.key === hoveredSegmentKey) ?? null,
+        [effortSegments, hoveredSegmentKey],
+    );
+
+    const hoverCardStyle = useMemo<CSSProperties | null>(() => {
+        if (!hoveredSegment) return null;
+
+        if (chartWidth > (HOVER_CARD_GUTTER * 2)) {
+            const cardWidth = Math.min(HOVER_CARD_MAX_WIDTH, Math.max(140, chartWidth - (HOVER_CARD_GUTTER * 2)));
+            const centerPx = (hoveredSegment.centerPct / 100) * chartWidth;
+            const leftPx = Math.max(
+                HOVER_CARD_GUTTER,
+                Math.min(centerPx - (cardWidth / 2), chartWidth - cardWidth - HOVER_CARD_GUTTER),
+            );
+
+            return {
+                left: leftPx,
+                width: cardWidth,
+            };
+        }
+
+        return {
+            left: `${Math.max(8, Math.min(hoveredSegment.centerPct, 92))}%`,
+            transform: 'translateX(-50%)',
+            width: 'min(220px, calc(100% - 16px))',
+        };
+    }, [chartWidth, hoveredSegment]);
 
     const formatElapsed = (minutes: number) => formatDuration(Math.max(0, Math.round(minutes * 60)));
+    const handleSegmentEnter = (key: string) => {
+        setHoveredSegmentKey((prevKey) => (prevKey === key ? prevKey : key));
+    };
+    const handleSegmentLeave = () => {
+        setHoveredSegmentKey((prevKey) => (prevKey == null ? prevKey : null));
+    };
 
     if (effortSegments.length === 0 || chartSeries.length === 0) return null;
 
@@ -116,6 +194,7 @@ export const HardEffortsChart = ({
                 <Text size="xs" c={ui.textDim}>{t("Time")}</Text>
             </Group>
             <Box
+                ref={chartFrameRef}
                 style={{
                     position: 'relative',
                     height: 300,
@@ -147,38 +226,19 @@ export const HardEffortsChart = ({
                             width={42}
                             domain={['auto', 'auto']}
                         />
-                        <RechartsTooltip
-                            content={({ active, payload }: any) => {
-                                if (!active || !payload?.[0]?.payload) return null;
-                                const point = payload[0].payload;
-                                return (
-                                    <Box style={{
-                                        background: isDark ? 'rgba(12,22,42,0.92)' : 'rgba(255,255,255,0.95)',
-                                        border: `1px solid ${ui.border}`,
-                                        borderRadius: 8,
-                                        padding: '8px 10px',
-                                        minWidth: 110,
-                                    }}>
-                                        <Text size="xs" fw={700} c={ui.textMain}>{formatElapsed(Number(point.time_min))}</Text>
-                                        <Text size="xs" c="#f97316">{t('Power')}: {point.power_raw != null ? `${Math.round(point.power_raw)} W` : '-'}</Text>
-                                        <Text size="xs" c="#ef4444">{t('Heart Rate')}: {point.heart_rate != null ? `${Math.round(point.heart_rate)} bpm` : '-'}</Text>
-                                    </Box>
-                                );
-                            }}
-                        />
                         {effortSegments.map((seg) => {
                             const zoneColor = ZONE_HEX[Math.max(0, Math.min(6, seg.zone - 1))];
                             const isActive = selectedEffortKey === seg.key || hoveredSegmentKey === seg.key;
                             return (
                                 <ReferenceArea
                                     key={`area-${seg.key}`}
-                                    x1={toMin(seg.startIndex)}
-                                    x2={toMin(seg.endIndex)}
+                                    x1={seg.startMin}
+                                    x2={seg.endMin}
                                     fill={zoneColor}
-                                    fillOpacity={isActive ? 0.24 : 0.12}
+                                    fillOpacity={isActive ? 0.28 : 0.17}
                                     stroke={zoneColor}
-                                    strokeOpacity={isActive ? 0.7 : 0.35}
-                                    strokeWidth={isActive ? 2 : 1}
+                                    strokeOpacity={isActive ? 0.84 : 0.55}
+                                    strokeWidth={isActive ? 2 : 1.4}
                                     ifOverflow="extendDomain"
                                 />
                             );
@@ -188,62 +248,75 @@ export const HardEffortsChart = ({
                     </LineChart>
                 </ResponsiveContainer>
 
+                {hoveredSegment && hoverCardStyle ? (
+                    <Box
+                        data-testid="hard-effort-hover-card"
+                        style={{
+                            ...hoverCardStyle,
+                            position: 'absolute',
+                            top: 12,
+                            zIndex: 3,
+                            pointerEvents: 'none',
+                            background: isDark ? 'rgba(12,22,42,0.96)' : 'rgba(255,255,255,0.96)',
+                            border: `1px solid ${ui.border}`,
+                            borderRadius: 8,
+                            padding: '8px 10px',
+                            boxShadow: isDark ? '0 10px 30px rgba(2,6,23,0.35)' : '0 10px 24px rgba(15,23,42,0.12)',
+                        }}
+                    >
+                        <Stack gap={4}>
+                            <Group justify="space-between" wrap="nowrap" gap={10}>
+                                <Badge size="xs" color={ZONE_COLORS[Math.max(0, Math.min(6, hoveredSegment.zone - 1))]} variant="filled">Z{hoveredSegment.zone}</Badge>
+                                <Text size="xs" fw={700} c={ui.textMain}>{formatDuration(hoveredSegment.durationSeconds)}</Text>
+                            </Group>
+                            <Text size="xs" c={ui.textDim}>
+                                {formatElapsed(hoveredSegment.startMin)} - {formatElapsed(hoveredSegment.endMin)}
+                            </Text>
+                            {hoveredSegment.avgWatts != null && <Text size="xs" c={ui.textMain}>{t('Avg W')}: {Math.round(hoveredSegment.avgWatts)} W</Text>}
+                            {hoveredSegment.wap != null && <Text size="xs" c={ui.textMain}>WAP: {Math.round(hoveredSegment.wap)} W</Text>}
+                            {hoveredSegment.maxPower != null && <Text size="xs" c={ui.textMain}>{t('Max W')}: {Math.round(hoveredSegment.maxPower)} W</Text>}
+                            {hoveredSegment.avgHr != null && <Text size="xs" c={ui.textMain}>{t('Avg HR')}: {Math.round(hoveredSegment.avgHr)} bpm</Text>}
+                            {hoveredSegment.maxHr != null && <Text size="xs" c={ui.textMain}>{t('Max HR')}: {Math.round(hoveredSegment.maxHr)} bpm</Text>}
+                            {hoveredSegment.avgSpeedKmh != null && <Text size="xs" c={ui.textMain}>{t('Avg Speed')}: {hoveredSegment.avgSpeedKmh.toFixed(1)} km/h</Text>}
+                            {hoveredSegment.pctRef != null && (
+                                <Text size="xs" c={ui.textMain}>{isCyclingActivity ? '% FTP' : '% Threshold'}: {Math.round(hoveredSegment.pctRef)}%</Text>
+                            )}
+                        </Stack>
+                    </Box>
+                ) : null}
+
                 <Box style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
                     {effortSegments.map((seg) => {
                         const zoneColor = ZONE_HEX[Math.max(0, Math.min(6, seg.zone - 1))];
                         const isHovered = hoveredSegmentKey === seg.key;
                         const isSelected = selectedEffortKey === seg.key;
                         return (
-                            <Tooltip
+                            <Box
                                 key={`hover-${seg.key}`}
-                                withinPortal
-                                openDelay={40}
-                                position="top"
-                                multiline
-                                label={
-                                    <Stack gap={4}>
-                                        <Group justify="space-between" wrap="nowrap" gap={10}>
-                                            <Badge size="xs" color={ZONE_COLORS[Math.max(0, Math.min(6, seg.zone - 1))]} variant="filled">Z{seg.zone}</Badge>
-                                            <Text size="xs" fw={700}>{formatDuration(seg.durationSeconds)}</Text>
-                                        </Group>
-                                        {seg.avgWatts != null && <Text size="xs">{t('Avg W')}: {Math.round(seg.avgWatts)} W</Text>}
-                                        {seg.wap != null && <Text size="xs">WAP: {Math.round(seg.wap)} W</Text>}
-                                        {seg.maxPower != null && <Text size="xs">{t('Max W')}: {Math.round(seg.maxPower)} W</Text>}
-                                        {seg.avgHr != null && <Text size="xs">{t('Avg HR')}: {Math.round(seg.avgHr)} bpm</Text>}
-                                        {seg.maxHr != null && <Text size="xs">{t('Max HR')}: {Math.round(seg.maxHr)} bpm</Text>}
-                                        {seg.avgSpeedKmh != null && <Text size="xs">{t('Avg Speed')}: {seg.avgSpeedKmh.toFixed(1)} km/h</Text>}
-                                        {seg.pctRef != null && (
-                                            <Text size="xs">{isCyclingActivity ? '% FTP' : '% Threshold'}: {Math.round(seg.pctRef)}%</Text>
-                                        )}
-                                    </Stack>
-                                }
-                                styles={{
-                                    tooltip: {
-                                        background: isDark ? '#0f172a' : '#ffffff',
-                                        border: `1px solid ${ui.border}`,
-                                        color: ui.textMain,
-                                    },
+                                data-testid={`hard-effort-region-${seg.key}`}
+                                aria-label={`Hard effort ${seg.key}`}
+                                onMouseEnter={() => handleSegmentEnter(seg.key)}
+                                onMouseLeave={handleSegmentLeave}
+                                onClick={() => onSelectEffort(seg.key)}
+                                style={{
+                                    pointerEvents: 'auto',
+                                    position: 'absolute',
+                                    left: `${seg.leftPct}%`,
+                                    width: `${Math.max(seg.widthPct, 0.9)}%`,
+                                    top: 12,
+                                    bottom: 28,
+                                    borderRadius: 6,
+                                    cursor: 'pointer',
+                                    background: isHovered || isSelected ? `${zoneColor}30` : `${zoneColor}14`,
+                                    border: `1px solid ${isHovered || isSelected ? `${zoneColor}cc` : `${zoneColor}70`}`,
+                                    boxShadow: isSelected
+                                        ? `0 0 0 1px ${zoneColor}55 inset, 0 0 16px ${zoneColor}22`
+                                        : isHovered
+                                        ? `0 0 0 1px ${zoneColor}44 inset`
+                                        : 'none',
+                                    transition: 'background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease',
                                 }}
-                            >
-                                <Box
-                                    onMouseEnter={() => setHoveredSegmentKey(seg.key)}
-                                    onMouseLeave={() => setHoveredSegmentKey(null)}
-                                    onClick={() => onSelectEffort(seg.key)}
-                                    style={{
-                                        pointerEvents: 'auto',
-                                        position: 'absolute',
-                                        left: `${seg.leftPct}%`,
-                                        width: `${Math.max(seg.widthPct, 0.7)}%`,
-                                        top: 10,
-                                        bottom: 24,
-                                        borderRadius: 6,
-                                        cursor: 'pointer',
-                                        background: isHovered || isSelected ? `${zoneColor}30` : 'transparent',
-                                        border: `1px solid ${isHovered || isSelected ? zoneColor : 'transparent'}`,
-                                        boxShadow: isHovered || isSelected ? `0 0 0 1px ${zoneColor}40 inset` : 'none',
-                                    }}
-                                />
-                            </Tooltip>
+                            />
                         );
                     })}
                 </Box>

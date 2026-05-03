@@ -1,0 +1,266 @@
+﻿python : c:\Users\ignas\Training_Plans\.venv\Lib\site-packages\pytest_asyncio\p
+lugin.py:207: PytestDeprecationWarning: The configuration option "asyncio_defau
+lt_fixture_loop_scope" is unset.
+At line:1 char:1
++ python -m pytest app/tests/ --cov=app --cov-report=term-missing -q 2> ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (c:\Users\ignas\...cope" is unset. 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+The event loop scope for asynchronous fixtures will default to the fixture cach
+ing scope. Future versions of pytest-asyncio will default the loop scope for as
+ynchronous fixtures to function scope. Set the default fixture loop scope expli
+citly in order to avoid unexpected behavior in the future. Valid fixture loop s
+copes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))
+........................................................................ [  9%]
+........................................................................ [ 18%]
+........................................................................ [ 28%]
+........................................................................ [ 37%]
+........................................................................ [ 47%]
+........................................................................ [ 56%]
+........................................................................ [ 66%]
+........................................................................ [ 75%]
+........................................................................ [ 84%]
+........................................................................ [ 94%]
+...........................................                              [100%]
+============================== warnings summary ===============================
+..\.venv\Lib\site-packages\pydantic\_internal\_config.py:272: 10 warnings
+  C:\Users\ignas\Training_Plans\.venv\Lib\site-packages\pydantic\_internal\_config.py:272: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.6/migration/
+    warnings.warn(DEPRECATION_MESSAGE, DeprecationWarning)
+
+app\parsing.py:5
+  C:\Users\ignas\Training_Plans\backend\app\parsing.py:5: DeprecationWarning: 
+  Pyarrow will become a required dependency of pandas in the next major release of pandas (pandas 3.0),
+  (to allow more performant data types, such as the Arrow string type, and better interoperability with other libraries)
+  but was not found to be installed on your system.
+  If this would cause problems for you,
+  please provide us feedback at https://github.com/pandas-dev/pandas/issues/54466
+          
+    import pandas as pd
+
+app\main.py:139
+  C:\Users\ignas\Training_Plans\backend\app\main.py:139: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\.venv\Lib\site-packages\fastapi\applications.py:4495
+..\.venv\Lib\site-packages\fastapi\applications.py:4495
+  C:\Users\ignas\Training_Plans\.venv\Lib\site-packages\fastapi\applications.py:4495: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)
+
+app\main.py:272
+  C:\Users\ignas\Training_Plans\backend\app\main.py:272: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+app/tests/test_activity_access_and_gpx.py::test_get_activity_blocks_unrelated_athlete_access
+app/tests/test_activity_access_and_gpx.py::test_get_activity_blocks_unlinked_coach_access
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_activity_access_and_gpx.py:56: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+app/tests/test_activity_access_and_gpx.py::test_planned_comparison_derives_actual_splits_when_provider_splits_missing
+app/tests/test_activity_access_and_gpx.py::test_planned_comparison_replaces_mismatched_provider_splits_with_template_extraction
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_activity_access_and_gpx.py:112: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+app/tests/test_activity_access_and_gpx.py::test_apply_activity_to_bucket_clamps_hr_zone_to_available_keys
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_activity_access_and_gpx.py:277: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    created_at=datetime.utcnow(),
+
+app/tests/test_auth_extended.py: 8 warnings
+app/tests/test_helper_module_coverage.py: 5 warnings
+  C:\Users\ignas\Training_Plans\backend\app\auth.py:60: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+app/tests/test_auth_extended.py: 15 warnings
+app/tests/test_auth_invite_security.py: 2 warnings
+app/tests/test_helper_module_coverage.py: 6 warnings
+  C:\Users\ignas\Training_Plans\.venv\Lib\site-packages\jose\jwt.py:281: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = timegm(datetime.utcnow().utctimetuple())
+
+app/tests/test_auth_extended.py: 15 warnings
+app/tests/test_auth_invite_security.py: 2 warnings
+app/tests/test_helper_module_coverage.py: 6 warnings
+  C:\Users\ignas\Training_Plans\.venv\Lib\site-packages\jose\jwt.py:311: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = timegm(datetime.utcnow().utctimetuple())
+
+app/tests/test_auth_extended.py::test_create_refresh_token_is_string
+app/tests/test_auth_extended.py::test_refresh_token_typ_is_refresh
+app/tests/test_auth_extended.py::test_decode_refresh_token_returns_subject
+app/tests/test_auth_extended.py::test_decode_action_token_rejects_refresh_token
+  C:\Users\ignas\Training_Plans\backend\app\auth.py:80: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+app/tests/test_auth_extended.py::test_create_action_token_is_string
+app/tests/test_auth_extended.py::test_action_token_contains_purpose_and_typ
+app/tests/test_auth_extended.py::test_decode_action_token_returns_subject
+app/tests/test_auth_extended.py::test_decode_action_token_rejects_wrong_purpose
+app/tests/test_auth_extended.py::test_action_token_custom_expiry
+app/tests/test_auth_extended.py::test_action_token_minimum_1min_expiry
+app/tests/test_auth_invite_security.py::test_verify_email_and_reset_password_flows
+app/tests/test_auth_invite_security.py::test_forgot_password_can_expose_debug_link_when_opted_in
+app/tests/test_auth_invite_security.py::test_action_token_decode_rejects_wrong_purpose
+  C:\Users\ignas\Training_Plans\backend\app\auth.py:112: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+app/tests/test_auth_invite_security.py::test_request_join_organization_saves_sharing_consent_fields
+app/tests/test_users_endpoints.py::test_request_join_creates_new_membership
+  C:\Users\ignas\Training_Plans\backend\app\routers\users.py:1195: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    athlete_data_sharing_consented_at=datetime.utcnow(),
+
+app/tests/test_calendar_collaboration.py: 7 warnings
+app/tests/test_calendar_endpoints.py: 1 warning
+app/tests/test_calendar_helpers.py: 2 warnings
+  C:\Users\ignas\Training_Plans\backend\app\routers\calendar.py:98: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "requested_at": datetime.utcnow().isoformat(),
+
+app/tests/test_calendar_collaboration.py::test_download_fit_and_ics_exports_return_expected_payloads
+  C:\Users\ignas\Training_Plans\backend\app\routers\calendar.py:1839: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    dtstamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
+app/tests/test_calendar_collaboration.py::test_download_fit_and_ics_exports_return_expected_payloads
+  C:\Users\ignas\Training_Plans\backend\app\routers\calendar.py:994: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    dtstamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+
+app/tests/test_helper_module_coverage.py::test_get_current_user_rejects_missing_subject
+  c:\Users\ignas\Training_Plans\backend\app\tests\test_helper_module_coverage.py:74: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+app/tests/test_helper_module_coverage.py::test_approval_scaffold_connector_bridge_only_wellness_and_webhook
+  C:\Users\ignas\Training_Plans\backend\app\integrations\connectors\_scaffold.py:74: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "received_at": datetime.utcnow().isoformat(),
+
+app/tests/test_integration_service.py::test_build_oauth_state_is_jwt_string
+app/tests/test_integration_service.py::test_decode_oauth_state_returns_dict
+app/tests/test_integration_service.py::test_build_oauth_state_different_per_call
+app/tests/test_integration_service.py::test_build_oauth_state_different_per_call
+  C:\Users\ignas\Training_Plans\backend\app\integrations\service.py:22: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    "iat": int(datetime.utcnow().timestamp()),
+
+app/tests/test_integrations_backend.py::test_ingest_provider_activity_dedupe
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_integrations_backend.py:243: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    start_time=datetime.utcnow(),
+
+app/tests/test_integrations_package_routes.py::test_webhook_handlers_cover_strava_branches_and_provider_event_processing
+  C:\Users\ignas\Training_Plans\backend\app\routers\integrations\webhook_handlers.py:155: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    event.processed_at = datetime.utcnow()
+
+app/tests/test_integrations_package_routes.py::test_webhook_handlers_cover_strava_branches_and_provider_event_processing
+  C:\Users\ignas\Training_Plans\backend\app\routers\integrations\webhook_handlers.py:173: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    event.processed_at = datetime.utcnow()
+
+app/tests/test_integrations_package_routes.py::test_callback_disconnect_preferences_sync_and_poll_routes
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_integrations_package_routes.py:522: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow(),
+
+app/tests/test_integrations_package_routes.py::test_callback_disconnect_preferences_sync_and_poll_routes
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_integrations_package_routes.py:540: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow(),
+
+app/tests/test_integrations_package_routes.py::test_callback_disconnect_preferences_sync_and_poll_routes
+app/tests/test_integrations_package_routes.py::test_callback_disconnect_preferences_sync_and_poll_routes
+  C:\Users\ignas\Training_Plans\backend\app\routers\integrations\__init__.py:415: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    and (datetime.utcnow() - updated_at).total_seconds() > stale_sync_seconds
+
+app/tests/test_integrations_package_routes.py::test_callback_disconnect_preferences_sync_and_poll_routes
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_integrations_package_routes.py:566: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    updated_at=datetime.utcnow() - timedelta(seconds=600),
+
+app/tests/test_sync_tasks.py::test_sync_provider_task_handles_token_refresh_failure
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_sync_tasks.py:151: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    expired = datetime.utcnow() - timedelta(minutes=5)
+
+app/tests/test_sync_tasks.py::test_sync_provider_task_handles_token_refresh_failure
+  C:\Users\ignas\Training_Plans\backend\app\routers\integrations\sync_tasks.py:194: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    now = datetime.utcnow()
+
+app/tests/test_sync_tasks.py::test_backfill_returns_when_daily_budget_exhausted
+  C:\Users\ignas\Training_Plans\backend\app\tests\test_sync_tasks.py:287: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    today_key = datetime.utcnow().strftime("%Y-%m-%d")
+
+app/tests/test_sync_tasks.py::test_backfill_returns_when_daily_budget_exhausted
+app/tests/test_sync_tasks.py::test_backfill_returns_zero_when_no_candidates
+  C:\Users\ignas\Training_Plans\backend\app\routers\integrations\sync_tasks.py:44: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    today_key = datetime.utcnow().strftime("%Y-%m-%d")
+
+app/tests/test_sync_tasks.py::test_backfill_returns_zero_when_no_candidates
+  C:\Users\ignas\Training_Plans\backend\app\routers\integrations\sync_tasks.py:61: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    cutoff = datetime.utcnow() - timedelta(days=detail_window_days)
+
+app/tests/test_users_helpers.py::test_consent_profile_and_risk_helpers_cover_normalization_paths
+  C:\Users\ignas\Training_Plans\backend\app\routers\users.py:33: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    membership.athlete_data_sharing_consented_at = datetime.utcnow()
+
+app/tests/test_users_helpers.py::test_upcoming_workout_metric_logging_and_coach_summary_helpers
+  C:\Users\ignas\Training_Plans\backend\app\routers\users.py:249: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+    recorded_at=datetime.utcnow(),
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+_______________ coverage: platform win32, python 3.12.3-final-0 _______________
+
+Name                                           Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------------
+app\__init__.py                                    0      0   100%
+app\auth.py                                       96      3    97%   107, 142, 173
+app\database.py                                   30      0   100%
+app\integrations\__init__.py                       2      0   100%
+app\integrations\base.py                          69      8    88%   62, 66, 70, 74, 78, 87, 96, 100
+app\integrations\connectors\_scaffold.py          33      0   100%
+app\integrations\connectors\apple_health.py        4      0   100%
+app\integrations\connectors\coros.py               4      0   100%
+app\integrations\connectors\garmin.py              4      0   100%
+app\integrations\connectors\google_fit.py          4      0   100%
+app\integrations\connectors\polar.py               4      0   100%
+app\integrations\connectors\strava.py            446    123    72%   151, 185-194, 198, 210, 213-219, 342, 387, 396-404, 417-448, 457-542, 561, 575-594, 643-644, 647-652, 655, 671-691, 702-703, 706, 708, 712, 716, 736, 741, 744-745, 749, 771-772, 804, 807
+app\integrations\connectors\suunto.py              4      0   100%
+app\integrations\connectors\whoop.py               4      0   100%
+app\integrations\crypto.py                        18      0   100%
+app\integrations\ingest.py                        98     25    74%   20-23, 31, 36, 59, 91, 110-150, 190-209, 214, 217-256
+app\integrations\registry.py                      21      5    76%   29, 34-48
+app\integrations\service.py                       52     14    73%   67-75, 79-114, 118
+app\main.py                                      186     67    64%   27-49, 53-60, 65-86, 108, 112, 136, 218-221, 224-229, 233-244, 250-258, 266-267, 274
+app\models.py                                    358      4    99%   90-93
+app\parsing.py                                   468     73    84%   57, 81, 90, 126, 133-136, 145, 147, 155, 218, 220, 222, 224, 226, 230, 248, 270, 289-291, 317, 319, 321, 326-327, 336-346, 353-361, 364, 404-406, 415, 444, 451, 454-455, 457, 471-472, 499, 510, 529, 654, 668, 674, 686-687, 718, 763, 796, 802, 806-809, 814-815, 839
+app\routers\__init__.py                            0      0   100%
+app\routers\activities.py                       1882    937    50%   66-70, 131-141, 184-185, 202, 205-206, 210, 225, 231, 251, 315, 363-392, 410, 523, 536, 542, 619, 640, 676, 693, 745, 747, 751, 766, 934, 978, 981, 992, 1014, 1024-1035, 1038-1039, 1155-1156, 1168-1169, 1198, 1243-1267, 1285-1288, 1321-1341, 1349-1373, 1437, 1562, 1567, 1581-1615, 1622-1630, 1635-1681, 1716, 1724-1736, 1757-1903, 1912-1974, 1985-2054, 2082-2277, 2355-2359, 2385-2517, 2592-2697, 2729, 2752-2939, 2948-2983, 2993-3034, 3049-3098, 3148-3178, 3190, 3195, 3218-3478, 3514-3561, 3598-3638
+app\routers\admin.py                             194      8    96%   208, 353-359
+app\routers\auth.py                              197     77    61%   54, 58-63, 75-80, 97, 104-110, 128-139, 165, 177-178, 182-186, 191-207, 212-231, 244-254, 265-276, 284, 287, 290, 294, 296, 298, 329-330, 334
+app\routers\calendar.py                         1001    322    68%   119-128, 151-153, 158, 166, 174, 197-199, 209, 220, 229, 239, 346, 414, 426-427, 432, 440-462, 475, 501-509, 560-566, 570-576, 579, 601-616, 621-631, 639-652, 656-661, 693-702, 754-809, 900-975, 1051, 1077, 1102, 1106, 1112, 1118-1150, 1160-1175, 1202-1247, 1257-1300, 1314-1318, 1416-1417, 1426, 1458-1499, 1516-1517, 1580, 1587-1591, 1610-1612, 1750, 1763-1766, 1788, 1792-1798, 1801, 1825, 1829-1835, 1894, 1902-1904, 1914-1941, 1952-1985, 1996-2027, 2046-2056
+app\routers\communications.py                    340    144    58%   82-84, 98-103, 239-454, 686-916, 1012-1064, 1171-1187, 1208-1229, 1255-1275, 1297-1309
+app\routers\integrations\__init__.py             288     34    88%   111-113, 161, 181-183, 188-190, 197-199, 213-214, 217, 238-251, 269, 285, 380-381, 441-443, 499, 503, 548, 591
+app\routers\integrations\helpers.py               58      0   100%
+app\routers\integrations\sync_tasks.py           361    251    30%   75, 82-93, 100-134, 136-139, 144-155, 167, 198-204, 212-557, 561-563
+app\routers\integrations\webhook_handlers.py     109     50    54%   23, 32-61, 66-96, 122, 126, 144, 151-152
+app\routers\integrations\wellness.py              42     10    76%   30, 42-49, 57, 77-80, 92-99
+app\routers\planning.py                          133     57    57%   26, 28, 41-48, 60, 62-64, 74-81, 91-96, 106-139, 169, 201-202, 205-208
+app\routers\users.py                             725    293    60%   57, 66, 86, 156-157, 161-163, 168-170, 175-177, 184-185, 203, 260, 310-321, 377-607, 761-787, 802-804, 817-843, 853-880, 939-941, 1183-1185, 1233-1250, 1285, 1353-1390, 1409-1418, 1429-1444, 1456-1477, 1490-1534, 1543-1570, 1580-1590, 1601-1634
+app\routers\workouts.py                          116      4    97%   37-38, 97, 193
+app\schemas.py                                   936     27    97%   115-117, 149, 151, 158, 166, 175-176, 179-181, 187, 193-194, 197, 226, 242, 249, 262, 299, 340, 354, 374, 403, 576, 579
+app\services\activity_dedupe.py                  158     24    85%   328-362
+app\services\compliance.py                       439    120    73%   69, 73-79, 108-126, 149, 165, 199, 233, 293-296, 307, 325-337, 345-366, 378-379, 382, 398-399, 407, 414, 418-420, 440, 445-450, 532, 554, 557-561, 569-572, 576-579, 590-603, 613-630, 650, 667, 673, 679, 683
+app\services\email.py                             26      0   100%
+app\services\permissions.py                       73      0   100%
+app\services\personal_records.py                 375    116    69%   19-20, 145, 175-197, 221, 249, 258, 356, 421, 423, 428, 432, 437, 439, 459-489, 510-522, 534-535, 541-556, 567, 589, 595-604, 619, 627-631, 635-638
+app\services\season_planner.py                   311     17    95%   172, 194, 204, 237, 246, 277, 295, 403, 445, 610-612, 618-620, 623, 657
+app\services\support.py                           87      2    98%   58, 159
+app\workout_templates.py                           3      0   100%
+----------------------------------------------------------------------------
+TOTAL                                           9759   2815    71%
+763 passed, 128 warnings in 22.80s

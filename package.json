@@ -1,5 +1,10 @@
 {
   "scripts": {
+    "coverage:backend": "cd backend && ..\\.venv\\Scripts\\python.exe -m pytest app/tests --cov=app --cov-config=.coveragerc --cov-fail-under=60 --cov-report=term-missing --cov-report=html:htmlcov --cov-report=json:coverage.json --cov-report=xml:coverage.xml && cd .. && node scripts/render-backend-coverage-report.mjs --backend backend/coverage.json --output backend/coverage",
+    "coverage:backend:visual": "node scripts/render-backend-coverage-report.mjs --backend backend/coverage.json --output backend/coverage",
+    "coverage:check": "node ./scripts/check-coverage.mjs",
+    "coverage:frontend": "npm --prefix frontend run test:coverage",
+    "coverage:frontend:scoped": "npm --prefix frontend run test:coverage:scoped",
     "mobile:qr": "powershell -ExecutionPolicy Bypass -File ./scripts/mobile-qr.ps1",
     "mobile:qr:tunnel": "powershell -ExecutionPolicy Bypass -File ./scripts/mobile-qr.ps1 -UseTunnel"
   },

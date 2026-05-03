@@ -1,0 +1,29 @@
+[run]
+source = app
+omit =
+    app/tests/*
+    app/add_*.py
+    app/backfill_*.py
+    app/ensure_db_schema.py
+    app/march_date_diag.py
+    app/migrate_*.py
+    app/recheck_compliance_docker.py
+    app/reprocess.py
+    app/reset_activities.py
+    app/seed*.py
+    app/wait_for_db.py
+
+[report]
+omit =
+    app/tests/*
+    app/routers/integrations.py
+    app/add_*.py
+    app/backfill_*.py
+    app/ensure_db_schema.py
+    app/march_date_diag.py
+    app/migrate_*.py
+    app/recheck_compliance_docker.py
+    app/reprocess.py
+    app/reset_activities.py
+    app/seed*.py
+    app/wait_for_db.py

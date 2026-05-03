@@ -1,0 +1,109 @@
+@startuml 01 - Provider Connect And Sync
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 180
+
+title Training Plans - Provider OAuth Connect And Sync Lifecycle
+
+actor Athlete as ATH
+boundary "DashboardActivityTrackersTab\n+ IntegrationsPanel" as FE
+control "Integrations API Client" as CLIENT
+control "Integrations Router\nbackend/app/routers/integrations.py" as API
+control "ProviderConnector\n(Strava / Garmin / Polar / ...)" as CONN
+control "Background Sync Task\n_sync_provider_task" as SYNC
+control "Ingest Service\ningest_provider_activity" as INGEST
+control "Compliance Service\nmatch_and_score" as COMP
+control "Wellness Upsert\n_upsert_wellness" as WELL
+database "PostgreSQL" as DB
+participant "Provider OAuth / REST API" as EXT
+
+ATH -> FE: Choose provider and click Connect
+FE -> CLIENT: requestProviderConnect(provider)
+CLIENT -> API: GET /integrations/{provider}/connect
+API -> CONN: validate provider config\nand build authorize_url(state)
+CONN --> API: authorize_url
+API --> CLIENT: ProviderConnectOut
+CLIENT --> FE: authorize_url
+FE -> EXT: Redirect user to OAuth consent
+
+EXT --> API: GET /integrations/{provider}/callback\n(code, state, scope)
+API -> CONN: exchange_token(code)
+CONN -> EXT: Exchange authorization code
+EXT --> CONN: access_token, refresh_token,\nscopes, external athlete id
+CONN --> API: OAuthExchangeResult
+API -> DB: Upsert ProviderConnection\nstatus=connected, encrypted tokens
+opt Strava webhook configured
+  API -> CONN: ensure_webhook_subscription()
+  CONN -> EXT: Create or verify webhook subscription
+  EXT --> CONN: subscription result
+  API -> DB: Log webhook audit result
+end
+API -> DB: Commit connection + connect audit
+API --> FE: Redirect / callback status=connected
+
+ATH -> FE: Click Sync now
+FE -> CLIENT: syncProviderNow(provider)
+CLIENT -> API: POST /integrations/{provider}/sync-now
+API -> DB: Load sync state + provider connection
+API -> DB: Mark sync queued / syncing
+API -> SYNC: background_tasks.add_task(provider, user_id)
+API --> CLIENT: SyncStatusOut(status=syncing)
+CLIENT --> FE: Show queued state
+
+par UI polling
+  loop While dashboard tab is visible
+    FE -> CLIENT: getProviderSyncStatus(provider)
+    CLIENT -> API: GET /integrations/{provider}/sync-status
+    API -> DB: Read ProviderSyncState
+    API --> CLIENT: progress, total, message
+    CLIENT --> FE: Update progress indicator
+  end
+else Background worker
+  SYNC -> DB: Load ProviderConnection + ProviderSyncState
+  alt Access token expiring soon
+    SYNC -> CONN: refresh_token(refresh_token)
+    CONN -> EXT: Refresh access token
+    EXT --> CONN: refreshed tokens
+    SYNC -> DB: Persist refreshed tokens
+  end
+
+  SYNC -> CONN: fetch_activities(cursor,\nprogress_callback, should_cancel)
+  CONN -> EXT: Pull activity summaries / detail batches
+  EXT --> CONN: SyncResult(activities, wellness, next_cursor)
+
+  loop For each provider activity
+    SYNC -> INGEST: ingest_provider_activity(...)
+    INGEST -> DB: Insert or update Activity\nand provider payload
+    INGEST --> SYNC: activity, created?
+    SYNC -> COMP: match_and_score(user_id, activity_date)
+    COMP -> DB: Match PlannedWorkout with Activity\nand update compliance status
+    COMP --> SYNC: rescored touched date
+  end
+
+  SYNC -> CONN: fetch_wellness(access_token, cursor)
+  CONN -> EXT: Pull wellness payload
+  EXT --> CONN: HRV / RHR / sleep / stress
+  SYNC -> WELL: _upsert_wellness(...)
+  WELL -> DB: Upsert wellness records
+
+  alt User cancels active sync
+    FE -> CLIENT: cancelProviderSync(provider)
+    CLIENT -> API: POST /integrations/{provider}/cancel-sync
+    API -> DB: cursor.cancel_requested = true
+    API --> CLIENT: cancellation accepted
+    SYNC -> DB: Detect cancel_requested\nand finalize cancelled state
+  else Sync completes
+    SYNC -> DB: Save next cursor,\nlast_sync_at, sync_status=completed
+  end
+end
+
+FE -> CLIENT: getProviderSyncStatus(provider)
+CLIENT -> API: GET /integrations/{provider}/sync-status
+API -> DB: Read final ProviderSyncState
+API --> CLIENT: completed / cancelled result
+CLIENT --> FE: Render final sync state
+
+@enduml

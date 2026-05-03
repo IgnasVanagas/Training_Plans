@@ -1,0 +1,50 @@
+@startsalt calendar_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Calendar Page Sketch
+
+{+
+{^"Sidebar"
+Calendar
+Dual Calendar
+Organizations
+Races and records
+Training insights
+Comparison
+Training zones
+Activity trackers
+Athlete profile
+Macrocycle
+} | {
+{^"Header"
+Origami Plans | [Support] | [Theme] | [User]
+}
+==
+{^"Calendar controls"
+Calendar: Athlete name
+[Back] | [Today] | [Prev] | [Next] | ^March 2026^ | ^Month / Week^
+}
+--
+{+
+{^"Continuous calendar grid"
+{SI
+{#
+Mon | Tue | Wed | Thu | Fri | Sat | Sun
+Easy run | Rest day | Bike Z2 | Swim | Tempo | Race A | Long ride
+Recovery | Strength | Intervals | Travel | Rest | Workout | Event
+Mobility | Notes | Endurance | Drill | Rest | Brick | Group ride
+}
+}
+} | {^"Weekly summary"
+Planned load
+Completed load
+Zone distribution
+Upcoming races
+Day notes
+Workout library drag and drop
+}
+}
+}
+}
+@endsalt

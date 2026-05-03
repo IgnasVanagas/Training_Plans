@@ -1,0 +1,144 @@
+@startuml 02 - Provider Connect And Sync Activity
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam activityBorderColor #555555
+skinparam activityBarColor #555555
+skinparam activityDiamondBorderColor #555555
+skinparam activityDiamondBackgroundColor #F6F6F6
+
+title Training Plans - Provider Connect And Sync Activity Diagram
+
+|Athlete|
+start
+:Open activity trackers / integrations panel;
+
+|Dashboard UI|
+:Load provider statuses;
+
+|Athlete|
+:Choose provider and click Connect;
+
+|Integrations Router|
+:Validate provider name and connector state;
+if (Connector approval required\nor bridge-only / disabled / misconfigured?) then (yes)
+  :Return provider status message;
+  |Dashboard UI|
+  :Show connect unavailable state;
+  stop
+else (no)
+  :Build OAuth state and authorize URL;
+endif
+
+|Athlete|
+:Authorize in provider OAuth screen;
+
+|Integrations Router|
+:Receive callback with code and state;
+if (OAuth error or missing\nstate/code?) then (yes)
+  :Return failed callback status;
+  |Dashboard UI|
+  :Show connection failure;
+  stop
+else (no)
+  :Decode and verify OAuth state;
+  if (Provider mismatch or invalid state?) then (yes)
+    :Return failed callback status;
+    |Dashboard UI|
+    :Show connection failure;
+    stop
+  else (no)
+    :Exchange code for access and refresh tokens;
+    if (Missing required scopes?) then (yes)
+      :Deauthorize temporary token when needed;
+      :Return failed callback status;
+      |Dashboard UI|
+      :Show missing-scope error;
+      stop
+    else (no)
+      |PostgreSQL|
+      :Upsert ProviderConnection\nwith encrypted tokens and connected status;
+      |Integrations Router|
+      if (Provider is Strava\nand webhook configured?) then (yes)
+        :Ensure webhook subscription;
+        |PostgreSQL|
+        :Write webhook audit result;
+      endif
+      :Write successful connect audit;
+      |Dashboard UI|
+      :Mark provider as connected;
+    endif
+  endif
+endif
+
+|Athlete|
+:Click Sync now;
+
+|Integrations Router|
+:Load sync state and provider connection;
+if (Sync already active and fresh?) then (yes)
+  :Return current sync status;
+  |Dashboard UI|
+  :Keep showing active sync progress;
+  stop
+else (no)
+  :Clear cancel flag and queue background sync task;
+  |PostgreSQL|
+  :Persist sync_status=syncing, progress=0, message=Queued;
+endif
+
+fork
+  |Dashboard UI|
+  repeat
+    :Poll sync status while tab is visible;
+    |Integrations Router|
+    :Read ProviderSyncState;
+    |Dashboard UI|
+    :Refresh progress indicator;
+  repeat while (Sync still active?) is (yes)
+fork again
+  |Background Sync Task|
+  :Load ProviderConnection and ProviderSyncState;
+  if (Connection missing or disconnected?) then (yes)
+    |PostgreSQL|
+    :Persist sync failure state;
+  else (no)
+    if (Access token expiring soon?) then (yes)
+      :Refresh token through provider connector;
+      |PostgreSQL|
+      :Persist refreshed tokens;
+    endif
+
+    :Fetch provider activities using cursor;
+    while (More fetched activities?) is (yes)
+      :Take next provider activity;
+      |Ingest Service|
+      :Insert or update Activity from provider payload;
+      |Compliance Service|
+      :Re-run planned-vs-actual matching\nfor touched activity date;
+      |Background Sync Task|
+      if (Cancel requested?) then (yes)
+        break
+      endif
+    endwhile (no)
+
+    if (Cancel requested?) then (yes)
+      |PostgreSQL|
+      :Finalize cancelled sync state\nand write cancel audit;
+    else (no)
+      |Background Sync Task|
+      :Fetch wellness payload;
+      |Wellness Upsert|
+      :Upsert HRV, RHR, sleep, and stress records;
+      |PostgreSQL|
+      :Persist next cursor, last_sync_at,\nand completed sync state;
+    endif
+  endif
+end fork
+
+|Dashboard UI|
+:Load final sync status;
+:Render completed, failed, or cancelled state;
+stop
+
+@enduml

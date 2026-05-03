@@ -1,0 +1,70 @@
+@startuml Training_Plans_Deployment_Diagram
+
+title Training Plans - Production Deployment (Hetzner VPS)
+
+left to right direction
+
+skinparam shadowing false
+skinparam defaultFontSize 12
+skinparam linetype ortho
+
+skinparam node {
+	BackgroundColor #E8F5E9
+	BorderColor #2E7D32
+}
+skinparam database {
+	BackgroundColor #E8F5E9
+	BorderColor #2E7D32
+}
+skinparam artifact {
+	BackgroundColor #FFE0B2
+	BorderColor #E65100
+}
+
+node "<<device>>\nClient's PC / Phone" as client {
+	artifact "Web browser" as browser
+}
+
+node "<<execution environment>>\nHetzner VPS (Ubuntu Linux)" as vps {
+	node "<<execution environment>>\nDocker Compose" as docker {
+
+		node "<<execution environment>>\nCaddy TLS edge\ncontainer: endurance_caddy\nruntime: Caddy 2.8" as caddy {
+			artifact "Caddyfile" as caddy_cfg
+		}
+
+		node "<<execution environment>>\nEdge reverse proxy\ncontainer: endurance_edge\nruntime: nginx 1.27" as edge {
+			artifact "edge.conf" as edge_cfg
+		}
+
+		node "<<execution environment>>\nFrontend static server\ncontainer: endurance_frontend\nruntime: nginx 1.27" as frontend {
+			artifact "nginx.conf" as frontend_cfg
+			artifact "OrigamiPlans React / Vite bundle" as fe_artifact
+		}
+
+		node "<<execution environment>>\nBackend API\ncontainer: endurance_backend\nruntime: Python 3.11-slim" as py {
+			artifact "FastAPI + Uvicorn" as be_artifact
+		}
+
+		node "<<execution environment>>\nDatabase\ncontainer: endurance_db\nruntime: PostgreSQL 15" as pg {
+			artifact "database" as db_artifact
+		}
+	}
+}
+
+node "<<execution environment>>\nStrava" as strava {
+	artifact "Strava OAuth 2.0 API" as strava_api
+}
+
+node "<<execution environment>>\nResend" as resend {
+	artifact "Email API" as resend_api
+}
+
+client -- caddy : HTTPS
+caddy -- edge
+edge -- frontend : / and static assets
+edge -- py : /api and /uploads
+py -- pg : TCP/IP
+py -- strava
+py -- resend
+
+@enduml

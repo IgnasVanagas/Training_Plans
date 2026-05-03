@@ -1,0 +1,52 @@
+@startsalt comparison_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Comparison Page Sketch
+
+{+
+{^"Sidebar"
+Calendar
+Dual Calendar
+Organizations
+Races and records
+Training insights
+Comparison
+Training zones
+Activity trackers
+Athlete profile
+Macrocycle
+} | {
+{^"Header"
+Coach split-screen analysis
+Side A badge | vs | Side B badge | [Workouts] | [Weeks] | [Months]
+}
+==
+{+
+{^"Side A selector"
+Calendar picker or athlete selector
+Selected activity or period card
+List of activities for selected date
+} | {^"Side B selector"
+Calendar picker or athlete selector
+Selected activity or period card
+List of activities for selected date
+}
+}
+--
+{^"Comparison metrics"
+Duration | Distance | Avg HR | Avg power | Training load | RPE
+Sessions | Total time | Distance | Load | Aerobic | Anaerobic
+}
+--
+{^"Charts and tabs"
+{/ Stream | Power curve | Zones | Splits | Insights }
+--
+Main comparison chart
+Zone bars
+Split table
+Workout insight list
+}
+}
+}
+@endsalt

@@ -1,0 +1,40 @@
+@startsalt login_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Login Page Sketch
+
+{+
+{^"Hero panel"
+<b>Origami Plans</b>
+==
+Endurance coaching platform for athletes and coaches
+--
+Track activities and compliance
+Plan training with drag and drop
+Multi-sport support
+Wearable integrations
+} | {^"Authentication card"
+{# [ EN ] | [ LT ] | [ Support ] }
+..
+<b>Welcome back</b>
+Sign in to continue to your dashboard
+--
+{#
+Email    | "you@example.com                 "
+Password | "****************                "
+}
+--
+[ Sign in ]
+--
+{#
+<u>Create an account</u> | <u>Forgot password</u>
+}
+--
+{^"Optional states"
+Invite detected alert
+Login error alert
+}
+}
+}
+@endsalt

@@ -1,0 +1,60 @@
+@startsalt athlete_profile_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Athlete Profile Sketch
+
+{+
+{^"Sidebar"
+Calendar
+Dual Calendar
+Organizations
+Races and records
+Training insights
+Comparison
+Training zones
+Activity trackers
+Athlete profile
+Macrocycle
+} | {
+{^"Header"
+My Profile
+Avatar card | [Change picture]
+}
+==
+{+
+{^"Left column"
+Personal details
+Full name | "Athlete name             "
+Gender | ^Select gender^
+Date of birth | "YYYY-MM-DD               "
+Weight | "kg                        "
+Max HR | "bpm                       "
+Country | ^Select country^
+--
+Contact details
+Contact email | "email                     "
+Contact number | "phone                     "
+--
+Account setup
+Units | [Imperial] | [Metric]
+Timezone | ^Select timezone^
+} | {^"Right column"
+Training
+Sports | [ ] Running | [ ] Cycling | [ ] Swimming | [ ] Triathlon
+--
+Training days
+[ ] Monday
+[ ] Tuesday
+[ ] Wednesday
+[ ] Thursday
+[ ] Friday
+[ ] Saturday
+[ ] Sunday
+}
+}
+--
+[ Save changes ]
+}
+}
+@endsalt

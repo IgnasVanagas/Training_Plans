@@ -1,0 +1,108 @@
+@startuml 06 - Organization Inbox And Chat Activity
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam activityBorderColor #555555
+skinparam activityBarColor #555555
+skinparam activityDiamondBorderColor #555555
+skinparam activityDiamondBackgroundColor #F6F6F6
+
+title Training Plans - Organization Inbox And Chat Activity Diagram
+
+|Athlete / Coach|
+start
+:Open organizations tab and select active organization;
+
+|DashboardOrganizationsTab|
+:Request organization inbox;
+
+|Communications Router|
+:Require active organization membership;
+if (Membership active?) then (no)
+  :Return 403;
+  |DashboardOrganizationsTab|
+  :Show access error;
+  stop
+else (yes)
+  |PostgreSQL|
+  :Load members and latest group, coach,\nand direct thread previews;
+  |DashboardOrganizationsTab|
+  :Render inbox thread list;
+endif
+
+|Athlete / Coach|
+:Choose conversation thread;
+
+|Communications Router|
+if (Group thread?) then (yes)
+  :Validate active membership;
+  |PostgreSQL|
+  :Load OrganizationGroupMessage history;
+else (no)
+  if (Coach thread?) then (yes)
+    :Validate athlete / coach pair inside organization;
+    |PostgreSQL|
+    :Load OrganizationCoachMessage history;
+  else (direct)
+    :Validate both users as active members;
+    |PostgreSQL|
+    :Load OrganizationDirectMessage history;
+  endif
+endif
+
+|DashboardOrganizationsTab|
+:Render selected message history;
+
+|Athlete / Coach|
+if (Attach file before sending?) then (yes)
+  :Choose file;
+  |Communications Router|
+  :Validate active membership and file size;
+  |uploads/chat|
+  :Store file with generated name;
+  |DashboardOrganizationsTab|
+  :Keep pending attachment in composer;
+endif
+
+:Write message body and press Enter / Send;
+
+|Communications Router|
+if (Body empty and no attachment?) then (yes)
+  :Return validation error;
+  |DashboardOrganizationsTab|
+  :Show send error;
+  stop
+else (no)
+  if (Send to group thread?) then (yes)
+    :Validate active membership;
+    |PostgreSQL|
+    :Insert OrganizationGroupMessage;
+  else (no)
+    if (Send to coach thread?) then (yes)
+      :Validate athlete / coach pair membership;
+      |PostgreSQL|
+      :Insert OrganizationCoachMessage;
+    else (direct)
+      :Validate both users as active members;
+      |PostgreSQL|
+      :Insert OrganizationDirectMessage;
+    endif
+  endif
+endif
+
+|DashboardOrganizationsTab|
+:Clear composer and pending attachment;
+:Invalidate active thread and inbox queries;
+
+while (Browser tab visible?) is (yes)
+  :Poll inbox every 15 seconds;
+  :Poll active thread every 12 seconds;
+  |Communications Router|
+  :Return newest previews and messages;
+  |DashboardOrganizationsTab|
+  :Refresh thread list and message pane;
+endwhile (no)
+
+stop
+
+@enduml

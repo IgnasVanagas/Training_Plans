@@ -1,0 +1,59 @@
+@startsalt organizations_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Organizations Page Sketch
+
+{+
+{^"Sidebar"
+Calendar
+Dual Calendar
+Organizations
+Races and records
+Training insights
+Comparison
+Training zones
+Activity trackers
+Athlete profile
+Macrocycle
+} | {
+{^"Header"
+Organizations | [Create organization]
+}
+==
+{^"My organizations"
+Org card A | Admin badge | Active badge
+Org card B | Coach names | Settings
+}
+--
+{^"Find organizations"
+Search | "Search organizations...        "
+Result card | [Join]
+Pending request card | [Pending]
+}
+--
+{+
+{^"Inbox / threads"
+Thread search | "Search threads...             "
+--
+Organization group
+Coach conversation
+Direct message
+Unread badge
+} | {^"Active conversation"
+Thread header
+--
+{SI
+Message bubble left
+Message bubble right
+Attachment preview
+Activity share link
+}
+--
+Pending attachment
+"Type a message...              " | [Attach] | [Send]
+}
+}
+}
+}
+@endsalt

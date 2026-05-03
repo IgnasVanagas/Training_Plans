@@ -1,0 +1,43 @@
+@startsalt training_insights_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Training Insights Sketch
+
+{+
+{^"Sidebar"
+Calendar
+Dual Calendar
+Organizations
+Races and records
+Training insights
+Comparison
+Training zones
+Activity trackers
+Athlete profile
+Macrocycle
+} | {
+{^"Header"
+Origami Plans | [Support] | [Theme] | [User]
+}
+==
+{^"Fitness snapshot cards"
+FTP or LT2 | Resting HR | HRV
+Fatigue | Fitness | Form
+}
+--
+{^"Performance trend"
+Range | [30d] | [90d] | [180d] | [365d]
+Series chips | Daily TL | Fitness | Fatigue | Form
+--
+Composed trend chart with brush and reference line
+}
+--
+{^"Weekly load summary"
+Weekly bars
+Training status badge
+Explanation card
+}
+}
+}
+@endsalt

@@ -222,7 +222,7 @@ export const SplitsTable = ({
                     <>
                         <Chip size="xs" checked={visibleSplitStats.avg_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, avg_watts: checked }))} variant="light">{t("Avg W")}</Chip>
                         <Chip size="xs" checked={visibleSplitStats.max_watts} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, max_watts: checked }))} variant="light">{t("Max W")}</Chip>
-                        <Chip size="xs" checked={visibleSplitStats.normalized_power} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, normalized_power: checked }))} variant="light">NP</Chip>
+                        <Chip size="xs" checked={visibleSplitStats.normalized_power} onChange={(checked) => setVisibleSplitStats((prev) => ({ ...prev, normalized_power: checked }))} variant="light">{t("WAP")}</Chip>
                     </>
                 )}
             </Group>
@@ -242,7 +242,7 @@ export const SplitsTable = ({
                         {visibleSplitStats.max_gradient && <Table.Th>{t("Max Gradient")}</Table.Th>}
                         {isCyclingActivity && visibleSplitStats.avg_watts && <Table.Th>{t("Avg W")}</Table.Th>}
                         {isCyclingActivity && visibleSplitStats.max_watts && <Table.Th>{t("Max W")}</Table.Th>}
-                        {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>NP</Table.Th>}
+                        {isCyclingActivity && visibleSplitStats.normalized_power && <Table.Th>{t("WAP")}</Table.Th>}
                         {splitAnnotationsVisible && <Table.Th>RPE</Table.Th>}
                         {splitAnnotationsVisible && <Table.Th>{t("Lactate")}</Table.Th>}
                         {splitAnnotationsVisible && <Table.Th>{t("Note")}</Table.Th>}

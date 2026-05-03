@@ -578,6 +578,7 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Avg HR": "Vid. ŠSD",
     "Avg W": "Vid. W",
     "Max W": "Maks. W",
+    "WAP": "WAP",
     "Avg Speed": "Vid. greitis",
     "Weight": "Svoris",
     "Click a zone to apply it to the selected block.": "Spustelėkite zoną, kad pritaikytumėte ją pasirinktame bloke.",

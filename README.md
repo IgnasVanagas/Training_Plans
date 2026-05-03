@@ -44,7 +44,7 @@ Notes:
 - `AUTO_SEED_DEMO` should remain `false` in production unless you intentionally want demo data.
 - A root-level [Dockerfile](Dockerfile) is included as a fallback so a default Render Docker web service can still build the backend from the repo root.
 
-## Hostinger VPS production deployment
+## Hetzner VPS production deployment
 
 This repo now includes a production-ready Docker Compose stack for a single-host VPS deployment:
 

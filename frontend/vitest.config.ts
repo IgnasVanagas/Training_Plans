@@ -1,6 +1,12 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+const coverageExclude = [
+  "src/**/*.test.{ts,tsx}",
+  "src/test/**",
+  "src/**/*.d.ts",
+];
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -9,13 +15,10 @@ export default defineConfig({
     globals: true,
     coverage: {
       provider: "v8",
-      reporter: ["text", "html"],
+      reporter: ["text", "html", "json-summary", "lcov"],
+      // Default frontend coverage reports on the full src surface.
       include: ["src/**/*.{ts,tsx}"],
-      exclude: [
-        "src/**/*.test.{ts,tsx}",
-        "src/main.tsx",
-        "src/vite-env.d.ts",
-      ],
+      exclude: coverageExclude,
     },
   },
 });

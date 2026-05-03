@@ -1,0 +1,117 @@
+@startuml 04 - Planned Workout Lifecycle Activity
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam activityBorderColor #555555
+skinparam activityBarColor #555555
+skinparam activityDiamondBorderColor #555555
+skinparam activityDiamondBackgroundColor #F6F6F6
+
+title Training Plans - Planned Workout Lifecycle Activity Diagram
+
+|Athlete / Coach|
+start
+:Open training calendar;
+
+|TrainingCalendar|
+:Request calendar events and zone summary;
+
+|Calendar Router|
+:Load planned workouts and day notes for range;
+
+|Activities Router|
+:Load zone summary for current period;
+
+|TrainingCalendar|
+:Render calendar grid and summary panels;
+
+|Athlete / Coach|
+:Create, update, move, or delete planned workout;
+
+|Calendar Router|
+if (Action is create?) then (yes)
+  :Resolve target athlete and permissions;
+  if (Actor allowed to create?) then (no)
+    :Return 403;
+    |TrainingCalendar|
+    :Show create error;
+    stop
+  else (yes)
+    :Estimate duration and expand recurrence;
+    while (More occurrence dates?) is (yes)
+      |PostgreSQL|
+      :Insert PlannedWorkout;
+      :Insert PlannedWorkoutVersion(action=create);
+      |Calendar Router|
+    endwhile (no)
+    while (More touched dates?) is (yes)
+      |Compliance Service|
+      :Recompute matching and compliance\nfor touched date;
+      |Calendar Router|
+    endwhile (no)
+    if (Athlete change requires approval?) then (yes)
+      |TrainingCalendar|
+      :Show pending approval state;
+    else (no)
+      |TrainingCalendar|
+      :Optimistically update calendar;
+    endif
+    stop
+  endif
+else (no)
+  if (Action is update or drag?) then (yes)
+    :Load workout and resolve permissions;
+    if (Actor allowed to update?) then (no)
+      :Return 403 or 409;
+      |TrainingCalendar|
+      :Show update error;
+      stop
+    else (yes)
+      if (Athlete update requires approval?) then (yes)
+        |PostgreSQL|
+        :Save approval context\nand proposed changes;
+        :Insert PlannedWorkoutVersion(action=request_update);
+        |TrainingCalendar|
+        :Show pending approval state;
+        stop
+      else (no)
+        |PostgreSQL|
+        :Update PlannedWorkout;
+        :Insert PlannedWorkoutVersion(action=update);
+        |Compliance Service|
+        :Recompute original and/or new date compliance;
+        |TrainingCalendar|
+        :Refresh calendar item;
+        stop
+      endif
+    endif
+  else (delete)
+    :Load workout and resolve permissions;
+    if (Actor allowed to delete?) then (no)
+      :Return 403;
+      |TrainingCalendar|
+      :Show delete error;
+      stop
+    else (yes)
+      if (Athlete delete requires approval?) then (yes)
+        |PostgreSQL|
+        :Save delete request in planning context;
+        :Insert PlannedWorkoutVersion(action=request_delete);
+        |TrainingCalendar|
+        :Show pending approval state;
+        stop
+      else (no)
+        |PostgreSQL|
+        :Insert PlannedWorkoutVersion(action=delete);
+        :Delete PlannedWorkout;
+        |Compliance Service|
+        :Recompute compliance for deleted date;
+        |TrainingCalendar|
+        :Remove workout from calendar;
+        stop
+      endif
+    endif
+  endif
+endif
+
+@enduml

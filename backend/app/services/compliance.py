@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta
 from math import exp
 from typing import Any
 
-from sqlalchemy import and_, select, func
+from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import PlannedWorkout, Activity, ComplianceStatusEnum, Profile, RHRDaily
@@ -60,6 +60,25 @@ def _extract_stream_payload(activity: Activity) -> dict[str, Any]:
     return activity.streams if isinstance(activity.streams, dict) else {}
 
 
+def _parse_activity_date_value(raw_value: Any) -> date | None:
+    if not isinstance(raw_value, str):
+        return None
+
+    text = raw_value.strip()
+    if not text:
+        return None
+
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        pass
+
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
 def _activity_date_candidates(activity: Activity) -> set[date]:
     candidates: set[date] = set()
 
@@ -74,26 +93,42 @@ def _activity_date_candidates(activity: Activity) -> set[date]:
 
     for source in (summary, detail):
         for key in ("start_date_local", "start_date"):
-            raw_value = source.get(key)
-            if not isinstance(raw_value, str):
-                continue
-            text = raw_value.strip()
-            if not text:
-                continue
-
-            try:
-                parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-                candidates.add(parsed.date())
-                continue
-            except ValueError:
-                pass
-
-            try:
-                candidates.add(date.fromisoformat(text[:10]))
-            except ValueError:
-                pass
+            parsed = _parse_activity_date_value(source.get(key))
+            if parsed is not None:
+                candidates.add(parsed)
 
     return candidates
+
+
+def _activity_effective_date(activity: Activity) -> date | None:
+    local_date = getattr(activity, "local_date", None)
+    if isinstance(local_date, date):
+        return local_date
+
+    payload = _extract_stream_payload(activity)
+    provider_payload = payload.get("provider_payload") if isinstance(payload.get("provider_payload"), dict) else {}
+    summary = provider_payload.get("summary") if isinstance(provider_payload.get("summary"), dict) else {}
+    detail = provider_payload.get("detail") if isinstance(provider_payload.get("detail"), dict) else {}
+
+    for source in (summary, detail):
+        parsed = _parse_activity_date_value(source.get("start_date_local"))
+        if parsed is not None:
+            return parsed
+
+    for source in (summary, detail):
+        parsed = _parse_activity_date_value(source.get("start_date"))
+        if parsed is not None:
+            return parsed
+
+    created_at = getattr(activity, "created_at", None)
+    if isinstance(created_at, datetime):
+        return created_at.date()
+    return None
+
+
+def _activity_occurs_on_target_date(activity: Activity, target_date: date) -> bool:
+    effective_date = _activity_effective_date(activity)
+    return effective_date == target_date
 
 
 def _resolve_effective_resting_hr(profile: Profile | None, lowest_recorded_rhr: float | None) -> float:
@@ -414,32 +449,53 @@ async def match_and_score(db: AsyncSession, user_id: int, target_date: date):
         await db.commit()
         return
 
-    # 2. Fetch Activities for exactly that day (00:00 to 23:59 local time if possible, but simplest is date matches).
-    # NOTE: The user explicitly requested strict same-day comparison.
-    # Previous window `target_date +/- 1 day` is too broad for this requirement.
-    # Use exact date match on created_at.
-    
-    start_of_day = datetime.combine(target_date, datetime.min.time())
-    end_of_day = datetime.combine(target_date, datetime.max.time())
+    # 2. Fetch Activities for exactly that athlete-local calendar day.
+    # We use local_date when it exists, and keep a tight +/-1 day created_at
+    # fallback only for older rows that have not been backfilled yet.
+
+    search_start = datetime.combine(target_date - timedelta(days=1), datetime.min.time())
+    search_end = datetime.combine(target_date + timedelta(days=1), datetime.max.time())
     
     stmt_activities = select(Activity).where(
         and_(
             Activity.athlete_id == user_id,
-            Activity.created_at >= start_of_day,
-            Activity.created_at <= end_of_day,
             Activity.duplicate_of_id.is_(None),  # only primary recordings
+            or_(
+                Activity.local_date == target_date,
+                and_(
+                    Activity.local_date.is_(None),
+                    Activity.created_at >= search_start,
+                    Activity.created_at <= search_end,
+                ),
+            ),
         )
     )
 
-    # User requirement: Only compare planned workout to activities created on the EXACT same day.
-    # The start/end window is now tight to target_date.
-    
     result_activities = await db.execute(stmt_activities)
     activities = [
         activity
         for activity in result_activities.scalars().all()
-        if not _is_activity_deleted(activity)
+        if not _is_activity_deleted(activity) and _activity_occurs_on_target_date(activity, target_date)
     ]
+
+    activity_ids = [activity.id for activity in activities if activity.id is not None]
+    current_workout_ids = [workout.id for workout in planned_workouts if workout.id is not None]
+    if activity_ids:
+        conflicting_filters = [PlannedWorkout.matched_activity_id.in_(activity_ids)]
+        if current_workout_ids:
+            conflicting_filters.append(PlannedWorkout.id.notin_(current_workout_ids))
+
+        conflicting_result = await db.execute(
+            select(PlannedWorkout).where(and_(*conflicting_filters))
+        )
+        conflicting_workouts = conflicting_result.scalars().all()
+        for conflicting_workout in conflicting_workouts:
+            conflicting_workout.matched_activity_id = None
+            conflicting_workout.compliance_status = _default_compliance_status_for_unmatched_workout(
+                conflicting_workout,
+                conflicting_workout.date,
+            )
+            db.add(conflicting_workout)
 
 
     profile = await db.scalar(select(Profile).where(Profile.user_id == user_id))
@@ -618,9 +674,8 @@ def _similarity_score(workout: PlannedWorkout, activity: Activity) -> float:
 
     weighted_score = numerator / denominator
 
-    # Strictly disqualify different days (though they should be filtered out already)
-    day_gap = abs((activity.created_at.date() - workout.date).days) if activity.created_at else 0
-    if day_gap > 0:
+    # Strictly disqualify different athlete-local days.
+    if not _activity_occurs_on_target_date(activity, workout.date):
         return 0.0
 
     # Small retention bonus for previously linked pair when still plausible.

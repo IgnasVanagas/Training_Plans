@@ -1,0 +1,96 @@
+@startuml 05 - Season Plan Preview Save Apply Activity
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam activityBorderColor #555555
+skinparam activityBarColor #555555
+skinparam activityDiamondBorderColor #555555
+skinparam activityDiamondBackgroundColor #F6F6F6
+
+title Training Plans - Season Plan Preview, Save, And Apply Activity Diagram
+
+|Coach / Athlete|
+start
+:Open macrocycle / season planner;
+
+|SeasonPlannerDrawer|
+:Load latest saved season plan;
+
+|Planning Router|
+:Resolve target athlete access;
+|PostgreSQL|
+:Load latest SeasonPlan and athlete profile;
+
+|SeasonPlannerDrawer|
+:Prefill races, constraints, metrics,\nand periodization settings;
+
+|Coach / Athlete|
+:Edit framework and choose action;
+
+|Planning Router|
+if (Action is preview?) then (preview)
+  :Validate athlete access;
+  |Season Planner Service|
+  :Generate preview workouts from framework + profile;
+  |SeasonPlannerDrawer|
+  :Render preview summary and generated workouts;
+  stop
+else (save/apply)
+  if (Action is save?) then (save)
+    :Validate athlete access;
+    |Season Planner Service|
+    :Rebuild generated preview for persistence;
+    |PostgreSQL|
+    :Insert or update SeasonPlan\nwith generated_summary;
+    |SeasonPlannerDrawer|
+    :Refresh saved framework state;
+    stop
+  else (apply)
+    :Load SeasonPlan by id and validate access;
+    if (Saved generated summary available?) then (yes)
+      :Use saved generated summary;
+    else (no)
+      |Season Planner Service|
+      :Regenerate preview from stored plan data;
+    endif
+
+    if (Generated workouts exist?) then (no)
+      :Return apply error;
+      |SeasonPlannerDrawer|
+      :Show apply failure;
+      stop
+    else (yes)
+      |PostgreSQL|
+      :Load existing planned workouts\ninside season date window;
+      while (More generated workout rows?) is (yes)
+        |Planning Router|
+        :Inspect same-day manual and generated rows;
+        if (Manual workout exists on same day?) then (yes)
+          :Skip generated row and preserve manual plan;
+        else (no)
+          if (Same plan rows exist and replace_generated=true?) then (yes)
+            |PostgreSQL|
+            :Delete prior generated rows for that day;
+          endif
+          |PostgreSQL|
+          :Insert generated PlannedWorkout\nwith season_plan_id and planning_context;
+        endif
+      endwhile (no)
+
+      :Persist updated generated_summary;
+
+      while (More touched dates up to today?) is (yes)
+        |Compliance Service|
+        :Recompute planned-vs-actual compliance;
+        |Planning Router|
+      endwhile (no)
+
+      |SeasonPlannerDrawer|
+      :Invalidate season-plan and calendar caches;
+      :Show created / replaced / skipped counts;
+      stop
+    endif
+  endif
+endif
+
+@enduml

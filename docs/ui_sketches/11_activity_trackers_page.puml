@@ -1,0 +1,43 @@
+@startsalt activity_trackers_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Activity Trackers Sketch
+
+{+
+{^"Sidebar"
+Calendar
+Dual Calendar
+Organizations
+Races and records
+Training insights
+Comparison
+Training zones
+Activity trackers
+Athlete profile
+Macrocycle
+} | {
+{^"Header"
+Activity trackers
+Connect your fitness devices and apps to automatically sync workouts
+}
+==
+{#
+Provider | Status | Last sync | Actions
+Strava | Connected | Today 08:32 | [Disconnect] [Sync now]
+Garmin | Error note | Yesterday | [Reconnect] [Sync now]
+Polar | Ready to connect | - | [Connect]
+Suunto | Pending approval | - | [Connect]
+Coros | Bridge ingestion | - | [Connect]
+Wahoo | Disabled | - | [Connect]
+}
+--
+{^"Active sync card"
+Progress bar
+Synced x of y
+Cancel sync action
+Powered by Strava note
+}
+}
+}
+@endsalt

@@ -1,0 +1,43 @@
+@startsalt activity_view_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Activity View Sketch
+
+{+
+{^"Activity header"
+[Back] | Activity title - date - sport | [Share to chat] | [Delete] | [Reparse]
+}
+==
+{/ Overview | Charts | HR zones | Power curve | Laps | Hard efforts | Best efforts | Comparison }
+==
+{+
+{^"Overview left column"
+Detailed stats
+--
+Total time | value
+Moving time | value
+Avg pace or speed | value
+Avg heart rate | value
+Avg power | value
+Elevation gain | value
+Calories | value
+Training load | value
+--
+Top efforts
+PR effort 1
+PR effort 2
+PR effort 3
+--
+Comments panel
+} | {^"Overview right column"
+Session feedback panel
+--
+Map metric | ^None / Speed / HR / Power / Gradient^
+--
+Route map with highlighted effort and selected segment
+--
+Selected segment summary
+}
+}
+@endsalt

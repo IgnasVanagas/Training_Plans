@@ -1,0 +1,44 @@
+@startsalt register_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Register Page Sketch
+
+{+
+{^"Branding / hero"
+Origami Plans
+--
+Endurance coaching platform for athletes and coaches
+--
+Track activities and compliance
+Plan training with drag and drop
+Multi-sport support
+Wearable integrations
+} | {^"Registration form"
+[EN] | [LT] | [Support]
+==
+Create an account
+Fill in your details to get started
+--
+Role       | [Athlete] | [Coach]
+First name | "First name               "
+Last name  | "Last name                "
+Gender     | ^Select gender^
+Birth date | "YYYY-MM-DD               "
+Email      | "you@example.com          "
+Password   | "****************         "
+--
+Password rules
+10+ characters
+Upper and lower case
+Number and symbol
+--
+[X] I accept the Privacy Policy
+[ ] Coach access to my training data
+--
+[ Create account ]
+--
+Already have an account
+}
+}
+@endsalt

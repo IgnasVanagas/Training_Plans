@@ -1,0 +1,42 @@
+@startsalt races_records_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Races and Records Sketch
+
+{+
+{^"Sidebar"
+Calendar
+Dual Calendar
+Organizations
+Races and records
+Training insights
+Comparison
+Training zones
+Activity trackers
+Athlete profile
+Macrocycle
+} | {
+{^"Header"
+Origami Plans | [Support] | [Theme] | [User]
+}
+==
+{^"Races"
+Upcoming race card | Priority A | Date | Distance | Location
+Upcoming race card | Priority B | Date | Goal time | Sport
+Past race card | Priority C | Date | Result summary
+}
+--
+{^"Personal records"
+Sport | [Cycling] | [Running]
+--
+Distance or window | Time | Pace or power | HR | Date | Trophy
+Record row 1
+Record row 2
+Record row 3
+--
+Power curve or record trend chart
+}
+}
+}
+@endsalt

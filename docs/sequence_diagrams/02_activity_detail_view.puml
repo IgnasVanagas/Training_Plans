@@ -1,0 +1,77 @@
+@startuml 02 - Activity Detail View
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 180
+
+title Training Plans - Activity Detail Load With Lazy Enrichment
+
+actor "Athlete / Coach" as USER
+boundary "ActivityDetailPage" as FE
+control "API Client" as CLIENT
+control "Activities Router\nget_activity" as API
+control "Provider Token Resolver\n_resolve_provider_access_token" as TOKEN
+control "Strava Connector\nfetch_activity_deep_data" as STRAVA
+control "Comparison Builder\n_build_planned_comparison_payload" as CMP
+control "PR Service\nget_activity_prs" as PRS
+database "PostgreSQL" as DB
+participant "Strava API" as EXT
+
+USER -> FE: Open activity detail page
+FE -> CLIENT: GET /activities/{activity_id}
+CLIENT -> API: GET /activities/{activity_id}?include_streams=true
+API -> DB: Load Activity by id
+DB --> API: Activity row
+
+alt Activity not found
+  API --> CLIENT: 404 Activity not found
+  CLIENT --> FE: Show error state
+else Activity exists
+  alt Coach opens athlete activity
+    API -> DB: Verify shared active organization membership
+    DB --> API: access granted / denied
+    alt No shared organization
+      API --> CLIENT: 403 Not authorized
+      CLIENT --> FE: Show forbidden state
+    end
+  end
+
+  API -> DB: Normalize legacy time fields\nand persist if needed
+
+  alt Provider activity lacks streams, laps, or curves\nand lazy Strava enrichment is enabled
+    API -> TOKEN: resolve access token for athlete/provider
+    TOKEN -> DB: Load ProviderConnection
+    TOKEN --> API: valid access token
+    API -> STRAVA: fetch_activity_deep_data(activity_id)
+    STRAVA -> EXT: Request streams, laps, curves, stats
+    EXT --> STRAVA: deep activity payload
+    STRAVA --> API: detail payload
+    API -> DB: Persist enriched streams, provider payload,\nmeta.enriched_at
+  else Stored payload already complete
+    API -> API: Reuse stored streams and derived fields
+  end
+
+  API -> DB: Load Profile + ProfileMetricHistory\n(FTP, weight at activity date)
+  API -> DB: Load matched PlannedWorkout
+  alt Matched workout exists
+    API -> CMP: build planned comparison payload
+    CMP -> DB: Read planned structure + compliance context
+    CMP --> API: summary, execution status, split comparison
+  else No matched workout
+    API -> API: planned_comparison = null
+  end
+
+  API -> API: Compute aerobic / anaerobic load
+  API -> API: Lazy-compute best_efforts, splits_metric,\nand expanded power curve when missing
+  API -> PRS: get_activity_prs(activity)
+  PRS -> DB: Compare against athlete historical bests
+  PRS --> API: personal record flags
+
+  API --> CLIENT: ActivityDetail DTO\n(streams, charts, map, comparison, loads, PRs)
+  CLIENT --> FE: activity detail data
+  FE -> FE: Render overview, charts, map,\ncomments, feedback, and comparison tabs
+end
+
+@enduml

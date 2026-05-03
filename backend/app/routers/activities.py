@@ -2035,7 +2035,11 @@ async def create_manual_activity(
     await db.commit()
     await db.refresh(new_activity)
 
-    await match_and_score(db, current_user.id, new_activity.created_at.date())
+    await match_and_score(
+        db,
+        current_user.id,
+        new_activity.local_date or new_activity.created_at.date(),
+    )
 
     profile = await db.scalar(select(Profile).where(Profile.user_id == current_user.id))
     ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)
@@ -2254,7 +2258,11 @@ async def upload_activity(
     await db.refresh(new_activity)
 
     # Schedule compliance re-scoring in the background so the response returns fast.
-    background_tasks.add_task(_bg_match_and_score, current_user.id, new_activity.created_at.date())
+    background_tasks.add_task(
+        _bg_match_and_score,
+        current_user.id,
+        new_activity.local_date or new_activity.created_at.date(),
+    )
 
     profile = await db.scalar(select(Profile).where(Profile.user_id == current_user.id))
     ftp = _safe_number(getattr(profile, "ftp", None), default=0.0)

@@ -1,0 +1,106 @@
+@startuml 05 - Organization Inbox And Chat
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 180
+
+title Training Plans - Organization Inbox, Threads, Attachments, And Chat Send
+
+actor "Athlete / Coach" as USER
+boundary "DashboardOrganizationsTab" as FE
+control "Organizations API Client" as CLIENT
+control "Communications Router\nbackend/app/routers/communications.py" as COMM
+control "Membership Guard\n_require_active_org_membership" as AUTHZ
+database "PostgreSQL" as DB
+collections "uploads/chat" as FILES
+
+USER -> FE: Open Organizations tab and select active organization
+FE -> CLIENT: listOrganizationInbox(org_id)
+CLIENT -> COMM: GET /communications/organizations/{org_id}/inbox
+COMM -> AUTHZ: require active membership(current_user, org_id)
+AUTHZ -> DB: Read OrganizationMember
+AUTHZ --> COMM: active membership
+COMM -> DB: Load active members and latest group message
+COMM -> DB: Load latest coach-thread previews\nfor current role
+COMM -> DB: Load latest direct-thread previews
+COMM --> CLIENT: OrganizationInboxOut(items)
+CLIENT --> FE: Render thread list
+
+USER -> FE: Select thread from inbox
+alt Group thread
+  FE -> CLIENT: listOrganizationGroupMessages(org_id)
+  CLIENT -> COMM: GET /communications/organizations/{org_id}/group
+  COMM -> AUTHZ: require active membership
+  AUTHZ -> DB: membership check
+  COMM -> DB: Load OrganizationGroupMessage history
+  COMM --> CLIENT: group messages
+else Coach thread
+  FE -> CLIENT: listOrganizationCoachMessages(org_id, participant_id)
+  CLIENT -> COMM: GET /communications/organizations/{org_id}/coach-chat
+  COMM -> AUTHZ: validate athlete / coach membership pair
+  AUTHZ -> DB: membership checks
+  COMM -> DB: Load OrganizationCoachMessage history
+  COMM --> CLIENT: coach messages
+else Direct member thread
+  FE -> CLIENT: listOrgDirectMessages(org_id, participant_id)
+  CLIENT -> COMM: GET /communications/organizations/{org_id}/direct/{user_id}
+  COMM -> AUTHZ: require both users active in organization
+  AUTHZ -> DB: membership checks
+  COMM -> DB: Load OrganizationDirectMessage history
+  COMM --> CLIENT: direct messages
+end
+CLIENT --> FE: Render active thread
+
+opt User attaches a file before sending
+  USER -> FE: Choose attachment
+  FE -> CLIENT: uploadChatAttachment(org_id, file)
+  CLIENT -> COMM: POST /communications/organizations/{org_id}/attachment
+  COMM -> AUTHZ: require active membership
+  AUTHZ -> DB: membership check
+  COMM -> FILES: Save uploads/chat/{uuid.ext}
+  FILES --> COMM: stored filename
+  COMM --> CLIENT: attachment_url, attachment_name
+  CLIENT --> FE: Keep pending attachment in composer
+end
+
+USER -> FE: Press Enter or click Send
+alt Group send
+  FE -> CLIENT: postOrganizationGroupMessage(org_id, body, attachment)
+  CLIENT -> COMM: POST /communications/organizations/{org_id}/group
+  COMM -> AUTHZ: require active membership
+  AUTHZ -> DB: membership check
+  COMM -> DB: Insert OrganizationGroupMessage
+  COMM -> DB: Load sender profile
+  COMM --> CLIENT: OrganizationChatMessageOut
+else Coach chat send
+  FE -> CLIENT: postOrganizationCoachMessage(org_id, coach_id or athlete_id,\nbody, attachment)
+  CLIENT -> COMM: POST /communications/organizations/{org_id}/coach-chat
+  COMM -> AUTHZ: validate athlete / coach membership pair
+  AUTHZ -> DB: membership checks
+  COMM -> DB: Insert OrganizationCoachMessage
+  COMM -> DB: Load sender profile
+  COMM --> CLIENT: OrganizationCoachChatMessageOut
+else Direct member send
+  FE -> CLIENT: postOrgDirectMessage(org_id, user_id,\nbody, attachment)
+  CLIENT -> COMM: POST /communications/organizations/{org_id}/direct/{user_id}
+  COMM -> AUTHZ: validate both members active
+  AUTHZ -> DB: membership checks
+  COMM -> DB: Insert OrganizationDirectMessage
+  COMM -> DB: Load sender profile
+  COMM --> CLIENT: OrganizationDirectMessageOut
+end
+
+CLIENT --> FE: Clear composer and invalidate\nactive thread + inbox queries
+
+loop While browser tab is visible
+  FE -> CLIENT: Refetch inbox every 15s
+  FE -> CLIENT: Refetch active thread every 12s
+  CLIENT -> COMM: GET inbox / active thread endpoint
+  COMM -> DB: Read newest messages
+  COMM --> CLIENT: latest rows
+  CLIENT --> FE: Refresh thread list and message pane
+end
+
+@enduml

@@ -1,0 +1,34 @@
+@startsalt activity_chart_view_page
+scale 2
+skinparam dpi 180
+skinparam BackgroundColor #F8FAFC
+title Activity Chart View Sketch
+
+{+
+{^"Activity header"
+[Back] | Activity title - date - sport | [Share to chat] | [Delete]
+}
+==
+{/ Overview | Charts | HR zones | Power curve | Laps | Hard efforts | Best efforts | Comparison }
+==
+{^"Chart controls"
+Show | [HR] | [Pace] | [Speed] | [Power] | [Cadence] | [Altitude]
+Power mode | [Raw] | [5s] | [30s]
+[X] Focus mode | Objective | ^Pacing / Cardio / Efficiency^
+}
+--
+{^"Interactive time series"
+Large synced line chart
+Hover tooltip
+Drag to select segment
+Reference selection overlay
+}
+--
+{^"Selected segment summary"
+Duration | Avg power | Avg HR | Avg pace | Avg speed | Elev gain
+}
+--
+{^"Chart range"
+Start label | [ Range slider ] | End label
+}
+@endsalt

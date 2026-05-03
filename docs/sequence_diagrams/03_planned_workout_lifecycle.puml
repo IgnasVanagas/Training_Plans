@@ -1,0 +1,103 @@
+@startuml 03 - Planned Workout Lifecycle
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 180
+
+title Training Plans - Calendar Planned Workout Lifecycle
+
+actor "Athlete / Coach" as USER
+boundary "TrainingCalendar" as FE
+control "API Client" as CLIENT
+control "Calendar Router\nbackend/app/routers/calendar.py" as CAL
+control "Activities Router\nget_zone_summary" as ACT
+control "Access Checks\ncheck_coach_access + get_athlete_permissions" as AUTHZ
+control "Versioning\n_record_workout_version" as VER
+control "Compliance Service\nmatch_and_score" as COMP
+database "PostgreSQL" as DB
+
+USER -> FE: Open calendar range
+FE -> CLIENT: GET /calendar?start_date&end_date
+CLIENT -> CAL: GET /calendar/
+CAL -> DB: Load planned workouts, matched activities,\nand day notes for visible range
+CAL --> CLIENT: CalendarEvent[]
+CLIENT --> FE: Render calendar grid
+
+FE -> CLIENT: GET /activities/zone-summary
+CLIENT -> ACT: GET /activities/zone-summary
+ACT -> DB: Aggregate zone and load data
+ACT --> CLIENT: zone summary response
+CLIENT --> FE: Render zone summary sidebar
+
+USER -> FE: Create, edit, move, or delete planned workout
+
+alt Create workout
+  FE -> CLIENT: POST /calendar/?athlete_id=...
+  CLIENT -> CAL: create_workout(payload)
+  CAL -> AUTHZ: check_coach_access() or\nget_athlete_permissions()
+  AUTHZ -> DB: Read shared-org access / athlete permissions
+  AUTHZ --> CAL: allowed + approval rules
+  CAL -> CAL: Estimate duration and expand recurrence
+  loop Each occurrence date
+    CAL -> DB: Insert PlannedWorkout\n(with pending approval context when required)
+    CAL -> VER: record create version
+    VER -> DB: Insert PlannedWorkoutVersion
+  end
+  loop Each touched date
+    CAL -> COMP: match_and_score(user_id, date)
+    COMP -> DB: Match planned and completed work\nand refresh compliance statuses
+  end
+  alt Athlete changes require coach approval
+    CAL --> CLIENT: PlannedWorkoutOut(approval_status=pending)
+    CLIENT --> FE: Show approval-requested state
+  else Direct creation
+    CAL --> CLIENT: PlannedWorkoutOut
+    CLIENT --> FE: Optimistically update calendar
+  end
+
+else Update or drag planned workout
+  FE -> CLIENT: PATCH /calendar/{workout_id}
+  CLIENT -> CAL: update_workout(...)
+  CAL -> AUTHZ: check_coach_access() or\nget_athlete_permissions()
+  AUTHZ -> DB: Read access and edit rules
+  AUTHZ --> CAL: allowed + approval rules
+  alt Athlete update requires approval
+    CAL -> DB: Save approval context + proposed changes
+    CAL -> VER: record request_update version
+    VER -> DB: Insert PlannedWorkoutVersion
+    CAL --> CLIENT: PlannedWorkoutOut(approval_status=pending)
+  else Direct update
+    CAL -> DB: Update PlannedWorkout
+    CAL -> VER: record update version
+    VER -> DB: Insert PlannedWorkoutVersion
+    CAL -> COMP: match_and_score(original_date and/or new_date)
+    COMP -> DB: Refresh compliance after date or detail change
+    CAL --> CLIENT: PlannedWorkoutOut
+  end
+
+else Delete planned workout
+  FE -> CLIENT: DELETE /calendar/{workout_id}
+  CLIENT -> CAL: delete_workout(workout_id)
+  CAL -> AUTHZ: check_coach_access() or\nget_athlete_permissions()
+  AUTHZ -> DB: Read access and delete rules
+  AUTHZ --> CAL: allowed + approval rules
+  alt Athlete delete requires approval
+    CAL -> DB: Mark delete request in planning_context
+    CAL -> VER: record request_delete version
+    VER -> DB: Insert PlannedWorkoutVersion
+    CAL --> CLIENT: {status=pending_approval, deleted=false}
+  else Direct delete
+    CAL -> VER: record delete version
+    VER -> DB: Insert PlannedWorkoutVersion
+    CAL -> DB: Delete PlannedWorkout
+    CAL -> COMP: match_and_score(target_date)
+    COMP -> DB: Clear stale matches and refresh compliance
+    CAL --> CLIENT: {status=success, deleted=true}
+  end
+end
+
+FE -> FE: Invalidate calendar, zone summary,\nand dashboard-calendar queries
+
+@enduml

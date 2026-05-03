@@ -9,6 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 3000",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:coverage:scoped": "vitest run --coverage --config vitest.scoped.config.ts",
     "test:coverage:critical": "vitest run --coverage --coverage.reporter=text --coverage.reporter=html --coverage.reportsDirectory=coverage-critical --coverage.include=src/utils/** --coverage.include=src/components/coachComparison/utils.ts --coverage.include=src/components/planner/seasonPlanUtils.ts --coverage.include=src/components/calendar/parseWorkoutText.ts"
   },
   "dependencies": {

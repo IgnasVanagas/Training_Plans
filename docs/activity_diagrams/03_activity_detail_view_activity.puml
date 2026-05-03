@@ -1,0 +1,90 @@
+@startuml 03 - Activity Detail View Activity
+
+skinparam shadowing false
+skinparam defaultFontSize 11
+skinparam activityBorderColor #555555
+skinparam activityBarColor #555555
+skinparam activityDiamondBorderColor #555555
+skinparam activityDiamondBackgroundColor #F6F6F6
+
+title Training Plans - Activity Detail View Activity Diagram
+
+|Athlete / Coach|
+start
+:Open activity detail page;
+
+|ActivityDetailPage|
+:Request /activities/{activity_id};
+
+|Activities Router|
+:Load Activity by id;
+if (Activity found?) then (no)
+  :Return 404;
+  |ActivityDetailPage|
+  :Show not found state;
+  stop
+else (yes)
+  if (Viewer is coach opening\nan athlete activity?) then (yes)
+    |PostgreSQL|
+    :Check shared active organization membership;
+    |Activities Router|
+    if (Coach access allowed?) then (no)
+      :Return 403;
+      |ActivityDetailPage|
+      :Show forbidden state;
+      stop
+    endif
+  endif
+endif
+
+|Activities Router|
+:Normalize legacy time fields when needed;
+if (Provider activity lacks streams, laps,\nor curves and lazy Strava enrichment is enabled?) then (yes)
+  :Resolve provider access token;
+  if (Access token available?) then (yes)
+    :Fetch Strava deep activity data;
+    |PostgreSQL|
+    :Persist enriched streams, laps, curves,\nstats, and provider detail payload;
+  else (no)
+    :Keep summary-only payload;
+  endif
+endif
+
+|PostgreSQL|
+:Load athlete profile and metric history\n(FTP, weight, max HR context);
+
+|Activities Router|
+:Load matched planned workout;
+if (Matched planned workout exists?) then (yes)
+  :Build planned comparison payload;
+else (no)
+  :Leave planned comparison empty;
+endif
+
+:Compute aerobic and anaerobic load;
+
+if (best_efforts missing and streams available?) then (yes)
+  :Compute best efforts;
+endif
+
+if (metric splits missing and streams available?) then (yes)
+  :Compute metric splits;
+endif
+
+if (Power curve sparse and stream power available?) then (yes)
+  :Expand power curve windows;
+endif
+
+if (Any derived data changed?) then (yes)
+  |PostgreSQL|
+  :Persist lazy-computed activity payload fields;
+endif
+
+|Activities Router|
+:Compute PR flags and response DTO;
+
+|ActivityDetailPage|
+:Render overview, charts, map, feedback,\ncomments, best efforts, and comparison tabs;
+stop
+
+@enduml
