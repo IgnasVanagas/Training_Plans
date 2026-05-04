@@ -1,14 +1,16 @@
 """Classified line counter for the Training_Plans repo.
 
 Buckets:
-  - backend_runtime : backend/app/** (excl. backend/app/tests/**)
+    - backend_runtime : backend/app/** files statically reachable from backend/app/main.py
   - backend_tests   : backend/app/tests/**
-  - frontend_runtime: frontend/src/** (excl. *.test.*, *.spec.*, __tests__/**), frontend/index.html, frontend/public/**
+    - frontend_runtime: frontend/src/** files statically reachable from frontend/src/main.tsx
+                                            (excl. *.test.*, *.spec.*, __tests__/**), frontend/index.html,
+                                            frontend/public/**
   - frontend_tests  : frontend/tests/**, frontend/src/**/__tests__/**, frontend/src/**/*.{test,spec}.*
-  - non_runtime     : integration/**, scripts/**, frontend/scripts/**, deployment/**, docs/**,
-                      Dockerfile*, docker-compose*.yml, render.yaml, *.md, *.puml,
-                      frontend config files, package.json files, requirements.txt, env templates,
-                      mobile-expo/**
+    - non_runtime     : unreachable frontend/src/** and backend/app/** files, plus integration/**,
+                                            scripts/**, frontend/scripts/**, deployment/**, docs/**, Dockerfile*,
+                                            docker-compose*.yml, render.yaml, *.md, *.puml, frontend config files,
+                                            package.json files, requirements.txt, env templates, mobile-expo/**
 
 Excluded from all totals:
   node_modules, .venv, __pycache__, .pytest_cache, .git, htmlcov*, coverage*,
@@ -25,6 +27,17 @@ import os
 import re
 import sys
 from pathlib import Path
+
+try:
+    from update_vscode_counter_used_files import (
+        discover_backend_reachable_files,
+        discover_frontend_reachable_files,
+    )
+except ImportError:
+    from scripts.update_vscode_counter_used_files import (
+        discover_backend_reachable_files,
+        discover_frontend_reachable_files,
+    )
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -235,6 +248,12 @@ def rel_posix(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
+def discover_reachable_runtime_paths() -> tuple[set[str], set[str]]:
+    frontend_reachable = {rel_posix(path) for path in discover_frontend_reachable_files()}
+    backend_reachable = {rel_posix(path) for path in discover_backend_reachable_files()}
+    return frontend_reachable, backend_reachable
+
+
 def is_test_file(rel: str) -> bool:
     name = rel.rsplit("/", 1)[-1]
     if "/__tests__/" in rel or rel.startswith("__tests__/"):
@@ -245,13 +264,13 @@ def is_test_file(rel: str) -> bool:
     return False
 
 
-def classify(rel: str) -> str | None:
+def classify(rel: str, frontend_reachable: set[str], backend_reachable: set[str]) -> str | None:
     """Return bucket name or None if file should be excluded from buckets."""
     # Backend
     if rel.startswith("backend/app/tests/"):
         return "backend_tests"
     if rel.startswith("backend/app/"):
-        return "backend_runtime"
+        return "backend_runtime" if rel in backend_reachable else "non_runtime"
     if rel.startswith("backend/"):
         # backend/Dockerfile, backend/requirements.txt → non_runtime
         return "non_runtime"
@@ -260,7 +279,9 @@ def classify(rel: str) -> str | None:
     if rel.startswith("frontend/tests/"):
         return "frontend_tests"
     if rel.startswith("frontend/src/"):
-        return "frontend_tests" if is_test_file(rel) else "frontend_runtime"
+        if is_test_file(rel):
+            return "frontend_tests"
+        return "frontend_runtime" if rel in frontend_reachable else "non_runtime"
     if rel.startswith("frontend/public/") or rel == "frontend/index.html":
         return "frontend_runtime"
     if rel.startswith("frontend/scripts/"):
@@ -346,6 +367,7 @@ def walk() -> list[Path]:
 # ---------------------------------------------------------------------------
 def main() -> int:
     files = walk()
+    frontend_reachable, backend_reachable = discover_reachable_runtime_paths()
     buckets: dict[str, dict[str, int]] = {
         b: {"files": 0, "total": 0, "blank": 0, "comment": 0, "code": 0}
         for b in ("backend_runtime", "backend_tests", "frontend_runtime", "frontend_tests", "non_runtime")
@@ -355,7 +377,7 @@ def main() -> int:
 
     for p in files:
         rel = rel_posix(p)
-        bucket = classify(rel)
+        bucket = classify(rel, frontend_reachable, backend_reachable)
         if bucket is None:
             continue
         total, blank, comment, code = count_file(p)
@@ -400,7 +422,21 @@ def main() -> int:
     # Optional: write JSON for further use
     out_json = ROOT / "temp" / "loc-report.json"
     out_json.parent.mkdir(exist_ok=True, parents=True)
-    out_json.write_text(json.dumps({"buckets": buckets, "grand": grand, "by_ext": by_ext}, indent=2))
+    out_json.write_text(
+        json.dumps(
+            {
+                "buckets": buckets,
+                "grand": grand,
+                "by_ext": by_ext,
+                "reachability": {
+                    "frontend_runtime_files": len(frontend_reachable),
+                    "backend_runtime_files": len(backend_reachable),
+                    "total_runtime_files": len(frontend_reachable) + len(backend_reachable),
+                },
+            },
+            indent=2,
+        )
+    )
     print(f"\nJSON report → {out_json.relative_to(ROOT).as_posix()}")
     return 0
 

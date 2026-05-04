@@ -121,6 +121,7 @@ const DashboardLayoutShell = ({
   type NavItem = { key: DashboardTab; icon: typeof IconLayoutDashboard; label: string; color?: string };
   const athleteNavItems: NavItem[] = [
     { key: "plan", icon: IconCalendar, label: t("Calendar"), color: "#E95A12" },
+    { key: "activities", icon: IconActivity, label: t("Activities"), color: "#F97316" },
     { key: "dual-calendar", icon: IconColumns, label: t("Dual Calendar"), color: "#0EA5E9" },
     { key: "organizations", icon: IconUsersGroup, label: t("Organizations"), color: "#6366F1" },
     { key: "races", icon: IconTrophy, label: t("Races & records"), color: "#2E8B57" },
@@ -143,11 +144,12 @@ const DashboardLayoutShell = ({
     { key: "settings", icon: IconSettings, label: t("Settings") },
   ];
   const adminNavItems: NavItem[] = [
-    { key: "admin-users", icon: IconUsersGroup, label: "Users", color: "#E95A12" },
-    { key: "admin-logs", icon: IconActivity, label: "Audit Logs", color: "#6E4BF3" },
-    { key: "admin-health", icon: IconLayoutDashboard, label: "System Health", color: "#2E8B57" },
+    { key: "admin-users", icon: IconUsersGroup, label: t("Users"), color: "#E95A12" },
+    { key: "admin-logs", icon: IconActivity, label: t("Audit Logs"), color: "#6E4BF3" },
+    { key: "admin-health", icon: IconLayoutDashboard, label: t("System Health"), color: "#2E8B57" },
   ];
   const navItems = role === "coach" ? coachNavItems : role === "admin" ? adminNavItems : athleteNavItems;
+  const accountMenuLabel = t("Account menu");
 
   const getAthleteName = (athlete: SidebarAthlete) =>
     (athlete.profile?.first_name || athlete.profile?.last_name)
@@ -221,7 +223,7 @@ const DashboardLayoutShell = ({
             size="lg"
             radius="xl"
             onClick={() => setColorScheme(isDark ? "light" : "dark")}
-            aria-label={t("Switch to dark mode")}
+            aria-label={isDark ? t("Switch to light mode") : t("Switch to dark mode")}
             style={{ position: "relative", overflow: "hidden", color: accentSecondary }}
           >
             <IconSun
@@ -251,7 +253,7 @@ const DashboardLayoutShell = ({
                 variant="subtle"
                 size="lg"
                 radius="xl"
-                aria-label="Account menu"
+                aria-label={accountMenuLabel}
                 style={{
                   border: `1px solid ${isDark ? 'rgba(148,163,184,0.26)' : 'rgba(15,23,42,0.14)'}`,
                   color: isDark ? '#E2E8F0' : '#1E293B'
@@ -266,7 +268,7 @@ const DashboardLayoutShell = ({
                 variant="subtle"
                 size="compact-sm"
                 leftSection={<Avatar size={22} radius="xl" src={meAvatarSrc} color={role === "coach" ? "orange" : role === "admin" ? "red" : "blue"}>{meAvatarInitial}</Avatar>}
-                aria-label="Account menu"
+                aria-label={accountMenuLabel}
                 styles={{
                   root: {
                     borderRadius: 999,
@@ -337,7 +339,7 @@ const DashboardLayoutShell = ({
               <Stack gap={0} style={{ flex: 1, minWidth: 0 }}>
                 <Text size="sm" fw={700} c={isDark ? "#E2E8F0" : "#1E293B"} lineClamp={1}>{meDisplayName}</Text>
                 {role === "coach" && <Text size="xs" c="dimmed">{t("Coach")}</Text>}
-                {role === "admin" && <Text size="xs" c="dimmed">Admin</Text>}
+                {role === "admin" && <Text size="xs" c="dimmed">{t("Admin")}</Text>}
               </Stack>
               {isAthleteDesktop && (
                 <ActionIcon

@@ -133,22 +133,22 @@ export const FullscreenMapModal = ({
                                         <LeafletTooltip permanent direction="top" offset={[0, -12]}>
                                             <Stack gap={2}>
                                                 <Text size="xs" fw={600}>
-                                                    {Math.floor(fullscreenMarkerPoint.timeMin)}:{Math.round((fullscreenMarkerPoint.timeMin % 1) * 60).toString().padStart(2, '0')} elapsed
+                                                    {Math.floor(fullscreenMarkerPoint.timeMin)}:{Math.round((fullscreenMarkerPoint.timeMin % 1) * 60).toString().padStart(2, '0')} {t('elapsed')}
                                                 </Text>
                                                 {fullscreenMarkerPoint.heart_rate != null && (
                                                     <Text size="xs">HR: {fullscreenMarkerPoint.heart_rate} bpm</Text>
                                                 )}
                                                 {fullscreenMarkerPoint.paceDisplay != null && (
-                                                    <Text size="xs">Pace: {fullscreenMarkerPoint.paceDisplay}</Text>
+                                                    <Text size="xs">{t('Pace')}: {fullscreenMarkerPoint.paceDisplay}</Text>
                                                 )}
                                                 {fullscreenMarkerPoint.paceDisplay == null && fullscreenMarkerPoint.speedKmh != null && (
-                                                    <Text size="xs">Speed: {fullscreenMarkerPoint.speedKmh.toFixed(1)} km/h</Text>
+                                                    <Text size="xs">{t('Speed')}: {fullscreenMarkerPoint.speedKmh.toFixed(1)} km/h</Text>
                                                 )}
                                                 {fullscreenMarkerPoint.power != null && fullscreenMarkerPoint.power > 0 && (
-                                                    <Text size="xs">Power: {Math.round(fullscreenMarkerPoint.power)} W</Text>
+                                                    <Text size="xs">{t('Power')}: {Math.round(fullscreenMarkerPoint.power)} W</Text>
                                                 )}
                                                 {fullscreenMarkerPoint.altitude != null && (
-                                                    <Text size="xs">Elev: {Math.round(fullscreenMarkerPoint.altitude)} m</Text>
+                                                    <Text size="xs">{t('Elevation')}: {Math.round(fullscreenMarkerPoint.altitude)} m</Text>
                                                 )}
                                                 {fullscreenMarkerPoint.gradient_pct != null && (
                                                     <Text size="xs">{t('Gradient')}: {Number(fullscreenMarkerPoint.gradient_pct).toFixed(1)}%</Text>
@@ -166,7 +166,7 @@ export const FullscreenMapModal = ({
                             radius="sm"
                             style={{ position: 'absolute', top: 10, right: 10, zIndex: 1001, boxShadow: '0 2px 8px rgba(0,0,0,0.4)' }}
                             onClick={onClose}
-                            aria-label="Close fullscreen"
+                            aria-label={t('Close fullscreen')}
                         >
                             <IconX size={16} />
                         </ActionIcon>
@@ -204,11 +204,11 @@ export const FullscreenMapModal = ({
                             />
                             <Group gap={4} wrap="wrap">
                                 <Text size="xs" c={ui.textDim} fw={600}>{t('Show')}:</Text>
-                                <Chip size="xs" checked={fsVisibleMetrics.altitude} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, altitude: checked }))} variant="light">Elevation</Chip>
-                                <Chip size="xs" checked={fsVisibleMetrics.heart_rate} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, heart_rate: checked }))} variant="light">Heart Rate</Chip>
-                                {supportsPaceSeries && <Chip size="xs" checked={fsVisibleMetrics.pace} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, pace: checked }))} variant="light">Pace</Chip>}
-                                {supportsSpeedSeries && <Chip size="xs" checked={fsVisibleMetrics.cadence} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, cadence: checked }))} variant="light">Cadence</Chip>}
-                                <Chip size="xs" checked={fsVisibleMetrics.power} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, power: checked }))} variant="light">Power</Chip>
+                                <Chip size="xs" checked={fsVisibleMetrics.altitude} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, altitude: checked }))} variant="light">{t('Elevation')}</Chip>
+                                <Chip size="xs" checked={fsVisibleMetrics.heart_rate} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, heart_rate: checked }))} variant="light">{t('Heart Rate')}</Chip>
+                                {supportsPaceSeries && <Chip size="xs" checked={fsVisibleMetrics.pace} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, pace: checked }))} variant="light">{t('Pace')}</Chip>}
+                                {supportsSpeedSeries && <Chip size="xs" checked={fsVisibleMetrics.cadence} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, cadence: checked }))} variant="light">{t('Cadence')}</Chip>}
+                                <Chip size="xs" checked={fsVisibleMetrics.power} onChange={(checked) => setFsVisibleMetrics((prev) => ({ ...prev, power: checked }))} variant="light">{t('Power')}</Chip>
                             </Group>
                         </Group>
                     </Box>

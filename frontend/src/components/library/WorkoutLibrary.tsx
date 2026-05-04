@@ -6,6 +6,7 @@ import { getWorkouts, deleteWorkout, updateWorkout, getRecentCoachWorkouts, Rece
 import { SavedWorkout } from '../../types/workout';
 import { WorkoutLibraryItem } from './WorkoutLibraryItem';
 import { getBuiltInTemplates, isBuiltInTemplate } from './workoutTemplates';
+import { useI18n } from '../../i18n/I18nProvider';
 import { useNavigate } from 'react-router-dom';
 
 interface WorkoutLibraryProps {
@@ -17,6 +18,7 @@ interface WorkoutLibraryProps {
 export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibraryProps) => {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const { t } = useI18n();
     const isDark = useComputedColorScheme('light') === 'dark';
     const [search, setSearch] = useState('');
     const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -118,7 +120,7 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
 
     const handleDelete = (e: React.MouseEvent, id: number) => {
         e.stopPropagation();
-        if (confirm('Are you sure you want to delete this workout template?')) {
+        if (confirm(t('Are you sure you want to delete this workout template?'))) {
             deleteMutation.mutate(id);
         }
     };
@@ -154,15 +156,15 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
                         <ThemeIcon size="sm" variant="light" color="blue" radius="sm">
                             <IconDragDrop size={13} />
                         </ThemeIcon>
-                        <Text fw={700} size="sm">Workout Library</Text>
+                        <Text fw={700} size="sm">{t('Workout library')}</Text>
                     </Group>
                     <Button size="xs" leftSection={<IconPlus size={12} />} onClick={handleCreate} variant="light" radius="sm">
-                        New
+                        {t('Add Workout')}
                     </Button>
                 </Group>
 
                 <TextInput
-                    placeholder="Search..."
+                    placeholder={t('Search...')}
                     leftSection={<IconSearch size={13} />}
                     value={search}
                     size="xs"
@@ -185,9 +187,9 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
                     value={filterType}
                     onChange={(val) => setFilterType(val as 'recent' | 'saved' | 'templates')}
                     data={[
-                        { label: 'Recent', value: 'recent' },
-                        { label: 'Saved', value: 'saved' },
-                        { label: 'Templates', value: 'templates' },
+                        { label: t('Recent'), value: 'recent' },
+                        { label: t('Saved'), value: 'saved' },
+                        { label: t('Templates'), value: 'templates' },
                     ]}
                 />
             </Box>
@@ -196,7 +198,7 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
             {allTags.length > 0 && (
                 <Box px="sm" pt="xs" style={{ flexShrink: 0 }}>
                     <MultiSelect
-                        placeholder="Filter by tags"
+                        placeholder={t('Filter by tags')}
                         data={allTags}
                         value={selectedTags}
                         onChange={setSelectedTags}
@@ -219,7 +221,7 @@ export const WorkoutLibrary = ({ onDragStart, onDragEnd, onSelect }: WorkoutLibr
                                 {filterType === 'recent' ? <IconClock size={20} /> : filterType === 'saved' ? <IconBookmark size={20} /> : <IconTemplate size={20} />}
                             </ThemeIcon>
                             <Text c="dimmed" size="xs" ta="center">
-                                {filterType === 'recent' ? 'No recent workouts' : filterType === 'saved' ? 'No saved workouts' : 'No templates found'}
+                                {filterType === 'recent' ? t('No recent workouts') : filterType === 'saved' ? t('No saved workouts') : t('No templates found')}
                             </Text>
                         </Stack>
                     </Center>

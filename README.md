@@ -244,6 +244,7 @@ App startup is safe when credentials are missing (providers remain disabled/scaf
 ### Full-Stack Integration Suite
 
 - Uses Playwright plus a dedicated Docker Compose stack defined in `docker-compose.integration.yml`.
+- Runs that stack under a dedicated Compose project (`training_plans_integration` by default) so setup/teardown does not target the repo's default Compose project.
 - Brings up isolated Postgres, backend, and frontend services on `35432`, `38000`, and `3300`.
 - Seeds deterministic demo users for browser-driven flows:
    - `coach@example.com` / `password`

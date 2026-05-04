@@ -14,6 +14,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import api from '../api/client';
 import SupportContactButton from './common/SupportContactButton';
+import { useI18n } from '../i18n/I18nProvider';
 import { optimisticSignOut } from '../utils/authSession';
 import { resolveUserPictureUrl } from '../api/organizations';
 
@@ -27,6 +28,7 @@ export const AppSidebarLayout = ({
   activeNav?: 'dashboard' | 'activities' | 'plan' | 'settings';
 }) => {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const { setColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
@@ -88,7 +90,7 @@ export const AppSidebarLayout = ({
                 optimisticSignOut({ apiBaseUrl: api.defaults.baseURL });
               }}
             >
-              Sign Out
+              {t('Sign Out')}
             </Button>
           </Group>
         </Group>
@@ -97,7 +99,7 @@ export const AppSidebarLayout = ({
       <AppShell.Navbar p="md">
         <Stack gap="xs">
           <NavLink
-            label="Dashboard"
+            label={t('Dashboard')}
             leftSection={<IconLayoutDashboard size="1rem" stroke={1.5} />}
             active={activeNav === 'dashboard'}
             onClick={() => {
@@ -107,31 +109,31 @@ export const AppSidebarLayout = ({
             variant="filled"
           />
           <NavLink
-            label="Activities"
+            label={t('Activities')}
             leftSection={<IconActivity size="1rem" stroke={1.5} />}
             active={activeNav === 'activities'}
             onClick={() => {
-              navigate('/dashboard');
+              navigate('/dashboard?tab=activities');
               if (isMobile) close();
             }}
             variant="filled"
           />
           <NavLink
-            label="Training Plan"
+            label={t('Training Plan')}
             leftSection={<IconCalendar size="1rem" stroke={1.5} />}
             active={activeNav === 'plan'}
             onClick={() => {
-              navigate('/dashboard');
+              navigate('/dashboard?tab=plan');
               if (isMobile) close();
             }}
             variant="filled"
           />
           <NavLink
-            label="Settings"
+            label={t('Settings')}
             leftSection={<IconSettings size="1rem" stroke={1.5} />}
             active={activeNav === 'settings'}
             onClick={() => {
-              navigate('/dashboard');
+              navigate('/dashboard?tab=settings');
               if (isMobile) close();
             }}
             variant="filled"
@@ -139,14 +141,14 @@ export const AppSidebarLayout = ({
 
           <Divider my="xs" />
           <Group justify="space-between" px="xs">
-            <Text size="sm" c="dimmed">Theme</Text>
-            <Tooltip label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+            <Text size="sm" c="dimmed">{t('Theme')}</Text>
+            <Tooltip label={isDark ? t('Switch to light mode') : t('Switch to dark mode')}>
               <ActionIcon
                 variant="light"
                 size="lg"
                 radius="xl"
                 onClick={() => setColorScheme(isDark ? 'light' : 'dark')}
-                aria-label="Toggle color mode"
+                aria-label={t('Toggle color mode')}
                 style={{ position: 'relative', overflow: 'hidden' }}
               >
                 <IconSun

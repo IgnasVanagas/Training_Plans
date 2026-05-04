@@ -54,6 +54,9 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
 
   const [showLibrary, setShowLibrary] = useState(false);
   const [draggedWorkout, setDraggedWorkout] = useState<SavedWorkout | null>(null);
+  const libraryWidth = 280;
+  const panelMinWidth = 420;
+  const scrollMinWidth = showLibrary ? (panelMinWidth * 2) + libraryWidth + 24 : 0;
 
   // Athlete: both panels show own calendar; right panel starts one month back
   const rightInitialDate = format(startOfMonth(subMonths(new Date(), 1)), "yyyy-MM-dd");
@@ -80,9 +83,10 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
 
   return (
     <Flex direction="column" gap={0} style={{ height: "calc(100dvh - 140px)" }}>
-      <Flex gap={0} style={{ flex: 1, minHeight: 0 }}>
+      <Box style={{ flex: 1, minHeight: 0, overflowX: showLibrary ? "auto" : "hidden", overflowY: "hidden" }}>
+      <Flex gap={0} style={{ flex: 1, minHeight: 0, minWidth: scrollMinWidth }}>
         {/* Left Panel */}
-        <Box style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <Box style={{ flex: 1, minWidth: showLibrary ? panelMinWidth : 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {isCoach && (
             <Paper
               p="xs"
@@ -131,7 +135,7 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
         <Divider orientation="vertical" color={borderColor} mx={6} />
 
         {/* Right Panel */}
-        <Box style={{ flex: 1, minWidth: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        <Box style={{ flex: 1, minWidth: showLibrary ? panelMinWidth : 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {isCoach && (
             <Paper
               p="xs"
@@ -208,9 +212,10 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
           <>
             <Divider orientation="vertical" color={borderColor} mx={6} />
             <Box
-              w={252}
+              w={libraryWidth}
               style={{
                 flexShrink: 0,
+                minWidth: libraryWidth,
                 display: "flex",
                 flexDirection: "column",
                 borderLeft: `1px solid ${borderColor}`,
@@ -226,6 +231,7 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
           </>
         )}
       </Flex>
+      </Box>
     </Flex>
   );
 };

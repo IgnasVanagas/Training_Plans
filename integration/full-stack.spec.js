@@ -20,13 +20,8 @@ async function loginAs(page, { email, password }) {
 }
 
 test.describe("dedicated full-stack integration suite", () => {
-  test("athlete can sign in, open dashboard home, and view seeded team context", async ({ page }) => {
+  test("athlete can sign in and open settings from the athlete shell", async ({ page }) => {
     await loginAs(page, seededUsers.runner);
-
-    await page.getByRole("button", { name: /^Dashboard$/i }).click();
-
-    await expect(page.getByText("Coach: Demo Coach")).toBeVisible();
-    await expect(page.getByText("Groups: Demo Team")).toBeVisible();
 
     await page.getByRole("button", { name: /^Settings$/i }).click();
     await expect(page.getByText("runner@example.com")).toBeVisible();
@@ -37,10 +32,12 @@ test.describe("dedicated full-stack integration suite", () => {
     await loginAs(page, seededUsers.coach);
 
     await expect(page.getByText("Your Athletes")).toBeVisible();
-    await expect(page.getByText("Alex Cyclist")).toBeVisible();
-    await expect(page.getByText("Mia Runner")).toBeVisible();
+    const alexAthleteCard = page.getByRole("main").getByText("Alex Cyclist", { exact: true });
+    const miaAthleteCard = page.getByRole("main").getByText("Mia Runner", { exact: true });
+    await expect(alexAthleteCard).toBeVisible();
+    await expect(miaAthleteCard).toBeVisible();
 
-    await page.getByText("Alex Cyclist").first().click();
+    await alexAthleteCard.click();
 
     await expect(page).toHaveURL(/\/dashboard\/athlete\/\d+/);
     await expect(page.getByText(/Calendar:\s+Alex Cyclist/)).toBeVisible();

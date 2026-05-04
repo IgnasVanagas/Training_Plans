@@ -7,11 +7,14 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Activities": "Veiklos",
     "Training Plan": "Treniruočių planas",
     "Settings": "Nustatymai",
+    "Theme": "Tema",
     "Add Activity": "Pridėti veiklą",
     "Switch to light mode": "Perjungti į šviesią temą",
     "Switch to dark mode": "Perjungti į tamsią temą",
+    "Toggle color mode": "Perjungti spalvų režimą",
     "Sign Out": "Atsijungti",
     "Account": "Paskyra",
+    "Account menu": "Paskyros meniu",
     "Welcome back": "Sveiki sugrįžę",
     "Create an account": "Sukurti paskyrą",
     "Email": "El. paštas",
@@ -509,6 +512,53 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     "Split Annotations": "Atkarpų anotacijos",
     "Execution status info": "Vykdymo būsenos informacija",
     "Workout Execution Status": "Treniruotės įvykdymo būsena",
+    "Planned vs Actual": "Planas ir faktas",
+    "Planned session": "Suplanuota sesija",
+    "Planned workout type": "Suplanuotos treniruotės tipas",
+    "Structured workout": "Struktūrizuota treniruotė",
+    "Steady workout": "Tolygioji treniruotė",
+    "Open workout": "Laisvo formato treniruotė",
+    "Workout goal": "Treniruotės tikslas",
+    "Execution score": "Įvykdymo balas",
+    "Execution summary": "Įvykdymo santrauka",
+    "Duration Match": "Trukmės atitikimas",
+    "Distance Match": "Atstumo atitikimas",
+    "Intensity Match": "Intensyvumo atitikimas",
+    "How this score was built": "Kaip sudarytas šis balas",
+    "Score formula: available component scores are weighted and normalized to the metrics that were present on this activity.": "Balas sudaromas taikant svorius tik tiems komponentams, kurių duomenys yra šioje veikloje.",
+    "Used in score": "Įtraukta į balą",
+    "Not used": "Neįtraukta",
+    "Score impact": "Įtaka balui",
+    "Used weight": "Panaudotas svoris",
+    "Weighted total": "Svertinė suma",
+    "Planned breakdown": "Suplanuotos treniruotės išklotinė",
+    "Target": "Tikslas",
+    "Outcome": "Rezultatas",
+    "Not specified": "Nenurodyta",
+    "Data unavailable": "Duomenų nėra",
+    "Component": "Komponentas",
+    "Weighted points": "Svertiniai taškai",
+    "In Score": "Bale",
+    "Traceability breakdown": "Balų išskaidymas",
+    "Thresholds": "Slenksčiai",
+    "Great": "Puiku",
+    "Good": "Gerai",
+    "Ok": "Gerai pakankamai",
+    "Fair": "Vidutiniškai",
+    "Subpar": "Silpnokai",
+    "Poor": "Prastai",
+    "Incomplete": "Nepakanka duomenų",
+    "Planned Intensity": "Suplanuotas intensyvumas",
+    "Actual Intensity": "Faktinis intensyvumas",
+    "Split Adherence": "Atkarpų laikymasis",
+    "Traceable weights": "Atsekami svoriai",
+    "Only available components are included in the execution score.": "Į įvykdymo balą įtraukiami tik tie komponentai, kurių duomenys yra prieinami.",
+    "Execution status is a weighted workout-quality score built from available metrics: duration match, distance match (when planned), intensity match, and split adherence (when splits are relevant).": "Įvykdymo būsena yra svertinis treniruotės kokybės balas, sudarytas iš turimų metrikų: trukmės atitikimo, atstumo atitikimo (jei jis buvo suplanuotas), intensyvumo atitikimo ir atkarpų laikymosi (kai atkarpos svarbios).",
+    "If a workout is steady-state (for example a regular Z2 ride), intensity quality is prioritized over auto-split count.": "Jei treniruotė yra tolygi (pavyzdžiui, įprastas Z2 važiavimas), intensyvumo kokybė yra svarbesnė už automatiškai sugeneruotų atkarpų kiekį.",
+    "Status levels (best to worst):": "Būsenų lygiai (nuo geriausio iki prasčiausio):",
+    "Incomplete is used when key execution data is missing or the session is not sufficiently complete for reliable scoring.": "Būsena „Nepakanka duomenų“ naudojama tada, kai trūksta svarbių vykdymo duomenų arba sesija nėra pakankamai užbaigta patikimam įvertinimui.",
+    "Excluded from this session score because required data was unavailable or not applicable.": "Šis komponentas neįtrauktas į sesijos balą, nes reikalingi duomenys buvo neprieinami arba nepritaikomi.",
+    "Excluded from this score because data is unavailable or not applicable.": "Šis komponentas neįtrauktas į balą, nes duomenys buvo neprieinami arba nepritaikomi.",
     "Session Feedback": "Sesijos grįžtamasis ryšys",
     "RPE": "RPE",
     "Notes": "Pastabos",
@@ -658,6 +708,9 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Members and admins": "Nariai ir administratoriai"
     ,"Creator": "Kūrėjas"
     ,"Admin": "Administratorius"
+    ,"Users": "Naudotojai"
+    ,"Audit Logs": "Audito žurnalai"
+    ,"System Health": "Sistemos būsena"
     ,"Version history": "Versijų istorija"
     ,"Loading version history...": "Kraunama versijų istorija..."
     ,"No version history found.": "Versijų istorijos nerasta."
@@ -794,7 +847,6 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Workout": "Treniruotė"
     ,"Split comparison": "Atkarpų palyginimas"
     ,"Delta": "Pokytis"
-    ,"Execution": "Įvykdymas"
     ,"Average Pace": "Vidutinis tempas"
     ,"Average Power": "Vidutinė galia"
     ,"Training Load (TL)": "Treniruočių krūvis (TL)"
@@ -1008,6 +1060,86 @@ export const literalTranslations: Record<Language, Record<string, string>> = {
     ,"Your Athletes": "Jūsų sportininkai"
     ,"No athletes found. Invite some athletes to get started.": "Sportininkų nerasta. Pakvieskite sportininkų, kad pradėtumėte."
     ,"Invite": "Pakviesti"
+    ,"Search...": "Ieškoti..."
+    ,"Filter by tags": "Filtruoti pagal žymas"
+    ,"No recent workouts": "Nėra naujausių treniruočių"
+    ,"No saved workouts": "Nėra išsaugotų treniruočių"
+    ,"No templates found": "Šablonų nerasta"
+    ,"My Activities": "Mano veiklos"
+    ,"Processing...": "Apdorojama..."
+    ,"recordings": "įrašai"
+    ,"Your training story starts with one activity.": "Jūsų treniruočių istorija prasideda nuo vienos veiklos."
+    ,"Connect a wearable provider in Settings": "Prijunkite išmanųjį įrenginį nustatymuose"
+    ,"Upload your first FIT or GPX file": "Įkelkite pirmąjį FIT arba GPX failą"
+    ,"Set baseline zones so workouts adapt to you": "Nustatykite pradines zonas, kad treniruotės prisitaikytų prie jūsų"
+    ,"Load older activities": "Įkelti senesnes veiklas"
+    ,"No older activities": "Senesnių veiklų nėra"
+    ,"Could not load additional recordings. The duplicate may still exist. Try refreshing.": "Nepavyko įkelti papildomų įrašų. Dublikatas vis dar gali egzistuoti. Pabandykite atnaujinti."
+    ,"Multiple recordings detected": "Aptikti keli įrašai"
+    ,"This workout was recorded on multiple devices. Choose which recording to keep as primary, or delete the ones you don't need.": "Ši treniruotė buvo įrašyta keliuose įrenginiuose. Pasirinkite, kurį įrašą palikti pagrindiniu, arba ištrinkite nereikalingus."
+    ,"Loading recordings...": "Įkeliami įrašai..."
+    ,"Primary": "Pagrindinis"
+    ,"View": "Peržiūrėti"
+    ,"Make this the primary recording": "Padaryti tai pagrindiniu įrašu"
+    ,"file": "failas"
+    ,"elapsed": "praėjo"
+    ,"Close fullscreen": "Uždaryti viso ekrano vaizdą"
+    ,"Elevation": "Aukštis"
+    ,"Connect wearable providers, check sync health, and trigger manual sync.": "Prijunkite išmaniųjų įrenginių tiekėjus, tikrinkite sinchronizacijos būseną ir paleiskite rankinę sinchronizaciją."
+    ,"Disabled (feature flag off)": "Išjungta (funkcija neaktyvi)"
+    ,"Not configured (missing credentials)": "Nesukonfigūruota (trūksta prisijungimo duomenų)"
+    ,"Status": "Būsena"
+    ,"Technical detail": "Techninė informacija"
+    ,"Garmin is taking longer than usual to respond. Your activities are safe and we'll keep retrying in the background.": "Garmin atsako ilgiau nei įprastai. Jūsų veiklos saugios, o mes toliau bandysime fone."
+    ,"Connection expired. Reconnect once, then sync again. We'll pick up where we left off.": "Ryšio galiojimas baigėsi. Prisijunkite iš naujo ir sinchronizuokite dar kartą. Tęsime nuo ten, kur baigėme."
+    ,"Sync hit a temporary issue. Your training data is still safe, and you can retry now.": "Sinchronizacija susidūrė su laikina problema. Jūsų treniruočių duomenys saugūs, galite bandyti dar kartą."
+    ,"Admin Panel": "Administravimo skydelis"
+    ,"Manage users, review integration logs, and monitor system health.": "Valdykite naudotojus, peržiūrėkite integracijų žurnalus ir stebėkite sistemos būseną."
+    ,"Search by email...": "Ieškoti pagal el. paštą..."
+    ,"All roles": "Visos rolės"
+    ,"Failed to load users": "Nepavyko įkelti naudotojų"
+    ,"Name": "Vardas"
+    ,"Role": "Rolė"
+    ,"Change Role": "Keisti rolę"
+    ,"Edit Athlete": "Redaguoti atletą"
+    ,"No users found.": "Naudotojų nerasta."
+    ,"All providers": "Visi teikėjai"
+    ,"All statuses": "Visos būsenos"
+    ,"OK": "Gerai"
+    ,"Warning": "Įspėjimas"
+    ,"Failed to load audit logs": "Nepavyko įkelti audito žurnalų"
+    ,"User": "Naudotojas"
+    ,"Provider": "Teikėjas"
+    ,"No audit logs found.": "Audito žurnalų nerasta."
+    ,"Failed to load system health": "Nepavyko įkelti sistemos būsenos"
+    ,"Admins": "Administratoriai"
+    ,"Total Activities": "Iš viso veiklų"
+    ,"Database": "Duomenų bazė"
+    ,"Healthy": "Veikia gerai"
+    ,"Memory Usage": "Atminties naudojimas"
+    ,"Process RSS": "Proceso RSS"
+    ,"Process Peak": "Proceso pikas"
+    ,"Host Available": "Laisva sistemos atmintis"
+    ,"Host Total": "Visa sistemos atmintis"
+    ,"Edit athlete": "Redaguoti atletą"
+    ,"For security, admin password confirmation is required for every sensitive action.": "Saugumo sumetimais kiekvienam jautriam veiksmui reikia patvirtinti administratoriaus slaptažodį."
+    ,"Confirm with admin password": "Patvirtinkite administratoriaus slaptažodžiu"
+    ,"Save athlete identity": "Išsaugoti atleto tapatybę"
+    ,"New athlete password": "Naujas atleto slaptažodis"
+    ,"Minimum 12 chars with uppercase, lowercase, number, and symbol": "Mažiausiai 12 simbolių, su didžiąja, mažąja raide, skaičiumi ir simboliu"
+    ,"Reset athlete password": "Atkurti atleto slaptažodį"
+    ,"Role updated": "Rolė atnaujinta"
+    ,"User role changed successfully.": "Naudotojo rolė sėkmingai pakeista."
+    ,"Athlete updated": "Atletas atnaujintas"
+    ,"Athlete identity updated successfully.": "Atleto tapatybė sėkmingai atnaujinta."
+    ,"Update failed": "Atnaujinti nepavyko"
+    ,"Password reset": "Slaptažodis atkurtas"
+    ,"Athlete password reset successfully.": "Atleto slaptažodis sėkmingai atkurtas."
+    ,"Password reset failed": "Slaptažodžio atkūrimas nepavyko"
+    ,"Dual Calendar": "Dvigubas kalendorius"
+    ,"ID": "ID"
+    ,"Are you sure you want to delete this workout template?": "Ar tikrai norite ištrinti šį treniruotės šabloną?"
+    ,"Action": "Veiksmas"
   }
 };
 

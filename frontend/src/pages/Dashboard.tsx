@@ -931,7 +931,7 @@ const Dashboard = () => {
                           color={showLibrary ? "violet" : undefined}
                           size="md"
                           onClick={() => setShowLibrary((v) => !v)}
-                          aria-label={showLibrary ? "Close library" : "Workout library"}
+                          aria-label={showLibrary ? t("Close library") : t("Workout library")}
                         >
                           {showLibrary ? <IconX size={16} /> : <IconBooks size={16} />}
                         </ActionIcon>

@@ -167,6 +167,7 @@ export const DayDetailsModal = ({
   isDark,
   athleteId,
   viewDate,
+  buildActivityDetailState,
   onPlannedSelect,
   onDownloadPlannedWorkout,
   coachNeedsAthleteSelection,
@@ -509,6 +510,7 @@ export const DayDetailsModal = ({
                   palette={palette}
                   athleteId={athleteId}
                   viewDate={viewDate}
+                  buildActivityDetailState={buildActivityDetailState}
                   onPlannedSelect={(event) => {
                     onPlannedSelect(event);
                     onClose();

@@ -11,7 +11,7 @@ import { SavedWorkout } from '../types/workout';
 import { Group, Stack, Text, Box, useComputedColorScheme, Paper, Badge, Popover, Divider } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useMediaQuery } from '@mantine/hooks';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import CalendarHeader from './calendar/CalendarHeader';
 import { parseDate } from './calendar/dateUtils';
 import { ORIGAMI_ACTIVITY_COLORS, ORIGAMI_THEME } from './calendar/theme';
@@ -262,6 +262,7 @@ export const TrainingCalendar = ({
     };
 
     const navigate = useNavigate();
+    const location = useLocation();
     const { t } = useI18n();
     const isDark = useComputedColorScheme('light') === 'dark';
     const isMobileViewport = useMediaQuery('(max-width: 62em)');
@@ -311,6 +312,24 @@ export const TrainingCalendar = ({
         const parsed = new Date(initialViewDate);
         return Number.isNaN(parsed.getTime()) ? null : parsed;
     }, [initialViewDate]);
+
+    const buildActivityDetailState = useCallback((calendarDate: string) => {
+        const returnTo = `${location.pathname}${location.search}`;
+        const dashboardTab = location.pathname === '/dashboard'
+            ? new URLSearchParams(location.search).get('tab') || 'plan'
+            : null;
+
+        return {
+            returnTo,
+            ...(dashboardTab === 'plan'
+                ? {
+                    activeTab: 'plan' as const,
+                    selectedAthleteId: athleteId ? athleteId.toString() : null,
+                }
+                : {}),
+            calendarDate,
+        };
+    }, [athleteId, location.pathname, location.search]);
 
     const [viewDate, setViewDate] = useState(parsedInitialViewDate || new Date());
     const [currentView, setCurrentView] = useState<'month' | 'week'>(isMobileViewport ? 'week' : 'month');
@@ -1079,12 +1098,7 @@ export const TrainingCalendar = ({
                     return;
                 }
                 navigate(`/dashboard/activities/${event.resource.id}`, {
-                    state: {
-                        returnTo: athleteId ? `/dashboard/athlete/${athleteId}` : '/dashboard',
-                        activeTab: athleteId ? undefined : 'plan',
-                        selectedAthleteId: athleteId ? athleteId.toString() : null,
-                        calendarDate: format(viewDate, 'yyyy-MM-dd')
-                    }
+                    state: buildActivityDetailState(format(viewDate, 'yyyy-MM-dd'))
                 });
             }
             return;
@@ -1094,7 +1108,7 @@ export const TrainingCalendar = ({
         }
         setSelectedEvent(event.resource);
         open();
-    }, [open, navigate, canEditWorkouts, events, openDayModal]);
+    }, [buildActivityDetailState, open, navigate, canEditWorkouts, events, openDayModal]);
 
     const handleSave = () => {
         if (!canEditWorkouts) {
@@ -1932,6 +1946,7 @@ export const TrainingCalendar = ({
                 palette={palette}
                 athleteId={athleteId}
                 viewDate={viewDate}
+                buildActivityDetailState={buildActivityDetailState}
                 onPlannedSelect={(event: CalendarEvent) => {
                     setSelectedEvent(event);
                     open();

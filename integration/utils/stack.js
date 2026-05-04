@@ -3,7 +3,8 @@ const { spawn } = require("child_process");
 
 const projectRoot = path.resolve(__dirname, "..", "..");
 const composeFile = process.env.TP_INTEGRATION_COMPOSE_FILE || path.join(projectRoot, "docker-compose.integration.yml");
-const composeArgsPrefix = ["compose", "-f", composeFile];
+const composeProjectName = process.env.TP_INTEGRATION_COMPOSE_PROJECT || "training_plans_integration";
+const composeArgsPrefix = ["compose", "-p", composeProjectName, "-f", composeFile];
 
 function normalizeUrl(value) {
   return String(value).replace(/\/$/, "");
@@ -92,6 +93,7 @@ module.exports = {
   backendBaseUrl,
   backendHealthUrl,
   composeFile,
+  composeProjectName,
   downIntegrationStack,
   frontendBaseUrl,
   frontendLoginUrl,

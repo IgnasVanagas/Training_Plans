@@ -40,6 +40,7 @@ import {
 } from "../../api/admin";
 import { extractApiErrorMessage } from "./utils";
 import { QueryErrorAlert } from "../../components/common/QueryErrorAlert";
+import { useI18n } from "../../i18n/I18nProvider";
 
 const ROLE_COLORS: Record<string, string> = {
   admin: "red",
@@ -74,6 +75,7 @@ type Props = {
 };
 
 export default function AdminPanel({ activeTab, onTabChange }: Props) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
@@ -86,6 +88,21 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
   const [resetPasswordValue, setResetPasswordValue] = useState("");
   const [adminPasswordForIdentity, setAdminPasswordForIdentity] = useState("");
   const [adminPasswordForReset, setAdminPasswordForReset] = useState("");
+
+  const getRoleLabel = (role: string) => {
+    if (role === "athlete") return t("Athlete");
+    if (role === "coach") return t("Coach");
+    if (role === "admin") return t("Admin");
+    return role;
+  };
+
+  const getStatusLabel = (status: string) => {
+    if (status === "ok") return t("OK");
+    if (status === "error") return t("Error");
+    if (status === "warning") return t("Warning");
+    if (status === "info") return t("Info");
+    return status;
+  };
 
   const usersQuery = useQuery({
     queryKey: ["admin-users", search, roleFilter],
@@ -118,8 +135,8 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       notifications.show({
-        title: "Role updated",
-        message: "User role changed successfully.",
+        title: t("Role updated"),
+        message: t("User role changed successfully."),
         color: "green",
         position: "bottom-right",
       });
@@ -151,8 +168,8 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       notifications.show({
-        title: "Athlete updated",
-        message: "Athlete identity updated successfully.",
+        title: t("Athlete updated"),
+        message: t("Athlete identity updated successfully."),
         color: "green",
         position: "bottom-right",
       });
@@ -160,7 +177,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
     },
     onError: (err) => {
       notifications.show({
-        title: "Update failed",
+        title: t("Update failed"),
         message: extractApiErrorMessage(err),
         color: "red",
         position: "bottom-right",
@@ -180,8 +197,8 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
       }),
     onSuccess: () => {
       notifications.show({
-        title: "Password reset",
-        message: "Athlete password reset successfully.",
+        title: t("Password reset"),
+        message: t("Athlete password reset successfully."),
         color: "green",
         position: "bottom-right",
       });
@@ -190,7 +207,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
     },
     onError: (err) => {
       notifications.show({
-        title: "Password reset failed",
+        title: t("Password reset failed"),
         message: extractApiErrorMessage(err),
         color: "red",
         position: "bottom-right",
@@ -224,9 +241,9 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
   return (
     <Box maw={1200} mx="auto" py="md">
       <Stack gap="xs" mb="lg">
-        <Title order={2}>Admin Panel</Title>
+        <Title order={2}>{t("Admin Panel")}</Title>
         <Text size="sm" c="dimmed">
-          Manage users, review integration logs, and monitor system health.
+          {t("Manage users, review integration logs, and monitor system health.")}
         </Text>
       </Stack>
 
@@ -237,13 +254,13 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
       >
         <Tabs.List mb="md">
           <Tabs.Tab value="health" leftSection={<IconDatabase size={16} />}>
-            System Health
+            {t("System Health")}
           </Tabs.Tab>
           <Tabs.Tab value="users" leftSection={<IconUsers size={16} />}>
-            Users
+            {t("Users")}
           </Tabs.Tab>
           <Tabs.Tab value="logs" leftSection={<IconFileSearch size={16} />}>
-            Audit Logs
+            {t("Audit Logs")}
           </Tabs.Tab>
         </Tabs.List>
 
@@ -252,19 +269,19 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
           <Stack gap="md">
             <Group>
               <TextInput
-                placeholder="Search by email..."
+                placeholder={t("Search by email...")}
                 leftSection={<IconSearch size={14} />}
                 value={search}
                 onChange={(e) => setSearch(e.currentTarget.value)}
                 style={{ flex: 1 }}
               />
               <Select
-                placeholder="All roles"
+                placeholder={t("All roles")}
                 clearable
                 data={[
-                  { value: "athlete", label: "Athlete" },
-                  { value: "coach", label: "Coach" },
-                  { value: "admin", label: "Admin" },
+                  { value: "athlete", label: t("Athlete") },
+                  { value: "coach", label: t("Coach") },
+                  { value: "admin", label: t("Admin") },
                 ]}
                 value={roleFilter}
                 onChange={setRoleFilter}
@@ -273,19 +290,19 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
             </Group>
 
             {usersQuery.isLoading && <Loader />}
-            {usersQuery.isError && <QueryErrorAlert error={usersQuery.error} onRetry={() => void usersQuery.refetch()} title="Failed to load users" />}
+            {usersQuery.isError && <QueryErrorAlert error={usersQuery.error} onRetry={() => void usersQuery.refetch()} title={t("Failed to load users")} />}
             {usersQuery.data && (
               <Table striped highlightOnHover withTableBorder>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>ID</Table.Th>
-                    <Table.Th>Name</Table.Th>
-                    <Table.Th>Email</Table.Th>
-                    <Table.Th>Role</Table.Th>
-                    <Table.Th>Verified</Table.Th>
-                    <Table.Th>Activities</Table.Th>
-                    <Table.Th>Change Role</Table.Th>
-                    <Table.Th>Actions</Table.Th>
+                    <Table.Th>{t("ID")}</Table.Th>
+                    <Table.Th>{t("Name")}</Table.Th>
+                    <Table.Th>{t("Email")}</Table.Th>
+                    <Table.Th>{t("Role")}</Table.Th>
+                    <Table.Th>{t("Verified")}</Table.Th>
+                    <Table.Th>{t("Activities")}</Table.Th>
+                    <Table.Th>{t("Change Role")}</Table.Th>
+                    <Table.Th>{t("Actions")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -304,7 +321,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                           variant="light"
                           size="sm"
                         >
-                          {user.role}
+                          {getRoleLabel(user.role)}
                         </Badge>
                       </Table.Td>
                       <Table.Td>
@@ -313,7 +330,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                           variant="light"
                           size="sm"
                         >
-                          {user.email_verified ? "Yes" : "No"}
+                          {user.email_verified ? t("Yes") : t("No")}
                         </Badge>
                       </Table.Td>
                       <Table.Td>{user.activity_count}</Table.Td>
@@ -322,9 +339,9 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                           size="xs"
                           value={user.role}
                           data={[
-                            { value: "athlete", label: "Athlete" },
-                            { value: "coach", label: "Coach" },
-                            { value: "admin", label: "Admin" },
+                            { value: "athlete", label: t("Athlete") },
+                            { value: "coach", label: t("Coach") },
+                            { value: "admin", label: t("Admin") },
                           ]}
                           onChange={(val) =>
                             val &&
@@ -345,7 +362,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                           disabled={user.role !== "athlete"}
                           onClick={() => openEditModal(user.id)}
                         >
-                          Edit Athlete
+                          {t("Edit Athlete")}
                         </Button>
                       </Table.Td>
                     </Table.Tr>
@@ -354,7 +371,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     <Table.Tr>
                       <Table.Td colSpan={8}>
                         <Text c="dimmed" ta="center" size="sm" py="md">
-                          No users found.
+                          {t("No users found.")}
                         </Text>
                       </Table.Td>
                     </Table.Tr>
@@ -370,7 +387,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
           <Stack gap="md">
             <Group>
               <Select
-                placeholder="All providers"
+                placeholder={t("All providers")}
                 clearable
                 data={[
                   "strava",
@@ -385,12 +402,12 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                 w={160}
               />
               <Select
-                placeholder="All statuses"
+                placeholder={t("All statuses")}
                 clearable
                 data={[
-                  { value: "ok", label: "OK" },
-                  { value: "error", label: "Error" },
-                  { value: "warning", label: "Warning" },
+                  { value: "ok", label: t("OK") },
+                  { value: "error", label: t("Error") },
+                  { value: "warning", label: t("Warning") },
                 ]}
                 value={statusFilter}
                 onChange={setStatusFilter}
@@ -399,17 +416,17 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
             </Group>
 
             {logsQuery.isLoading && <Loader />}
-            {logsQuery.isError && <QueryErrorAlert error={logsQuery.error} onRetry={() => void logsQuery.refetch()} title="Failed to load audit logs" />}
+            {logsQuery.isError && <QueryErrorAlert error={logsQuery.error} onRetry={() => void logsQuery.refetch()} title={t("Failed to load audit logs")} />}
             {logsQuery.data && (
               <Table striped withTableBorder>
                 <Table.Thead>
                   <Table.Tr>
-                    <Table.Th>Time</Table.Th>
-                    <Table.Th>User</Table.Th>
-                    <Table.Th>Provider</Table.Th>
-                    <Table.Th>Action</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Message</Table.Th>
+                    <Table.Th>{t("Time")}</Table.Th>
+                    <Table.Th>{t("User")}</Table.Th>
+                    <Table.Th>{t("Provider")}</Table.Th>
+                    <Table.Th>{t("Action")}</Table.Th>
+                    <Table.Th>{t("Status")}</Table.Th>
+                    <Table.Th>{t("Message")}</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -427,7 +444,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                           variant="light"
                           size="sm"
                         >
-                          {log.status}
+                          {getStatusLabel(log.status)}
                         </Badge>
                       </Table.Td>
                       <Table.Td>
@@ -441,7 +458,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     <Table.Tr>
                       <Table.Td colSpan={6}>
                         <Text c="dimmed" ta="center" size="sm" py="md">
-                          No audit logs found.
+                          {t("No audit logs found.")}
                         </Text>
                       </Table.Td>
                     </Table.Tr>
@@ -455,7 +472,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
         {/* ── SYSTEM HEALTH ─────────────────────────────────────────────── */}
         <Tabs.Panel value="health">
           {statsQuery.isLoading && <Loader />}
-          {statsQuery.isError && <QueryErrorAlert error={statsQuery.error} onRetry={() => void statsQuery.refetch()} title="Failed to load system health" />}
+          {statsQuery.isError && <QueryErrorAlert error={statsQuery.error} onRetry={() => void statsQuery.refetch()} title={t("Failed to load system health")} />}
           {stats && (
             <Stack gap="md">
               <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
@@ -466,7 +483,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     </ThemeIcon>
                     <Stack gap={0}>
                       <Text size="xl" fw={700}>{stats.users.athlete}</Text>
-                      <Text size="xs" c="dimmed">Athletes</Text>
+                      <Text size="xs" c="dimmed">{t("Athletes")}</Text>
                     </Stack>
                   </Group>
                 </Card>
@@ -477,7 +494,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     </ThemeIcon>
                     <Stack gap={0}>
                       <Text size="xl" fw={700}>{stats.users.coach}</Text>
-                      <Text size="xs" c="dimmed">Coaches</Text>
+                      <Text size="xs" c="dimmed">{t("Coaches")}</Text>
                     </Stack>
                   </Group>
                 </Card>
@@ -488,7 +505,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     </ThemeIcon>
                     <Stack gap={0}>
                       <Text size="xl" fw={700}>{stats.users.admin}</Text>
-                      <Text size="xs" c="dimmed">Admins</Text>
+                      <Text size="xs" c="dimmed">{t("Admins")}</Text>
                     </Stack>
                   </Group>
                 </Card>
@@ -499,7 +516,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     </ThemeIcon>
                     <Stack gap={0}>
                       <Text size="xl" fw={700}>{stats.total_activities}</Text>
-                      <Text size="xs" c="dimmed">Total Activities</Text>
+                      <Text size="xs" c="dimmed">{t("Total Activities")}</Text>
                     </Stack>
                   </Group>
                 </Card>
@@ -516,12 +533,12 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     <IconDatabase size={22} />
                   </ThemeIcon>
                   <Stack gap={4}>
-                    <Text fw={600}>Database</Text>
+                    <Text fw={600}>{t("Database")}</Text>
                     <Badge
                       color={stats.db === "ok" ? "green" : "red"}
                       variant="light"
                     >
-                      {stats.db === "ok" ? "Healthy" : "Error"}
+                      {stats.db === "ok" ? t("Healthy") : t("Error")}
                     </Badge>
                   </Stack>
                 </Group>
@@ -538,18 +555,18 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                     <IconCpu size={22} />
                   </ThemeIcon>
                   <Stack gap={2}>
-                    <Text fw={600}>Memory Usage</Text>
+                    <Text fw={600}>{t("Memory Usage")}</Text>
                     <Text size="sm" c="dimmed">
-                      Process RSS: {stats.memory?.process_rss_mb != null ? `${Math.round(stats.memory.process_rss_mb)} MB` : "n/a"}
+                      {t("Process RSS")}: {stats.memory?.process_rss_mb != null ? `${Math.round(stats.memory.process_rss_mb)} MB` : "n/a"}
                     </Text>
                     <Text size="sm" c="dimmed">
-                      Process Peak: {stats.memory?.process_peak_mb != null ? `${Math.round(stats.memory.process_peak_mb)} MB` : "n/a"}
+                      {t("Process Peak")}: {stats.memory?.process_peak_mb != null ? `${Math.round(stats.memory.process_peak_mb)} MB` : "n/a"}
                     </Text>
                     <Text size="sm" c="dimmed">
-                      Host Available: {stats.memory?.host_available_mb != null ? `${Math.round(stats.memory.host_available_mb)} MB` : "n/a"}
+                      {t("Host Available")}: {stats.memory?.host_available_mb != null ? `${Math.round(stats.memory.host_available_mb)} MB` : "n/a"}
                     </Text>
                     <Text size="sm" c="dimmed">
-                      Host Total: {stats.memory?.host_total_mb != null ? `${Math.round(stats.memory.host_total_mb)} MB` : "n/a"}
+                      {t("Host Total")}: {stats.memory?.host_total_mb != null ? `${Math.round(stats.memory.host_total_mb)} MB` : "n/a"}
                     </Text>
                   </Stack>
                 </Group>
@@ -562,32 +579,32 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
       <Modal
         opened={editingUserId !== null}
         onClose={closeEditModal}
-        title={editingUser ? `Edit athlete #${editingUser.id}` : "Edit athlete"}
+        title={editingUser ? `${t("Edit athlete")} #${editingUser.id}` : t("Edit athlete")}
         centered
       >
         {editingUser ? (
           <Stack gap="sm">
             <Text size="sm" c="dimmed">
-              For security, admin password confirmation is required for every sensitive action.
+              {t("For security, admin password confirmation is required for every sensitive action.")}
             </Text>
 
             <TextInput
-              label="Email"
+              label={t("Email")}
               value={editEmail}
               onChange={(e) => setEditEmail(e.currentTarget.value)}
             />
             <TextInput
-              label="First name"
+              label={t("First Name")}
               value={editFirstName}
               onChange={(e) => setEditFirstName(e.currentTarget.value)}
             />
             <TextInput
-              label="Last name"
+              label={t("Last Name")}
               value={editLastName}
               onChange={(e) => setEditLastName(e.currentTarget.value)}
             />
             <PasswordInput
-              label="Confirm with admin password"
+              label={t("Confirm with admin password")}
               value={adminPasswordForIdentity}
               onChange={(e) => setAdminPasswordForIdentity(e.currentTarget.value)}
             />
@@ -603,19 +620,19 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
               }
               loading={identityUpdateMutation.isPending}
             >
-              Save athlete identity
+              {t("Save athlete identity")}
             </Button>
 
             <Box mt="sm" pt="sm" style={{ borderTop: "1px solid var(--mantine-color-gray-3)" }}>
               <Stack gap="sm">
                 <PasswordInput
-                  label="New athlete password"
-                  description="Minimum 12 chars with uppercase, lowercase, number, and symbol"
+                  label={t("New athlete password")}
+                  description={t("Minimum 12 chars with uppercase, lowercase, number, and symbol")}
                   value={resetPasswordValue}
                   onChange={(e) => setResetPasswordValue(e.currentTarget.value)}
                 />
                 <PasswordInput
-                  label="Confirm with admin password"
+                  label={t("Confirm with admin password")}
                   value={adminPasswordForReset}
                   onChange={(e) => setAdminPasswordForReset(e.currentTarget.value)}
                 />
@@ -631,7 +648,7 @@ export default function AdminPanel({ activeTab, onTabChange }: Props) {
                   }
                   loading={resetPasswordMutation.isPending}
                 >
-                  Reset athlete password
+                  {t("Reset athlete password")}
                 </Button>
               </Stack>
             </Box>

@@ -1,6 +1,7 @@
 import { Alert, Anchor, Button, Group, Paper, Stack, Text, Title } from "@mantine/core";
 import { IconInfoCircle } from "@tabler/icons-react";
 import { type ProviderStatus } from "../api/integrations";
+import { useI18n } from "../i18n/I18nProvider";
 
 type Props = {
   providers: ProviderStatus[];
@@ -16,18 +17,6 @@ type Props = {
 
 const providerLabel = (provider: ProviderStatus) => provider.display_name || provider.provider;
 
-const friendlyErrorCopy = (provider: string, errorText?: string | null) => {
-  if (!errorText) return null;
-  const lowered = errorText.toLowerCase();
-  if (provider.toLowerCase() === "garmin") {
-    return "Garmin is taking longer than usual to respond. Your activities are safe and we’ll keep retrying in the background.";
-  }
-  if (lowered.includes("auth") || lowered.includes("token") || lowered.includes("permission")) {
-    return "Connection expired. Reconnect once, then sync again — we’ll pick up where we left off.";
-  }
-  return "Sync hit a temporary issue. Your training data is still safe, and you can retry now.";
-};
-
 export const IntegrationsPanel = ({
   providers,
   connectingProvider,
@@ -39,20 +28,34 @@ export const IntegrationsPanel = ({
   onSync,
   onCancelSync,
 }: Props) => {
+  const { t } = useI18n();
+
+  const friendlyErrorCopy = (provider: string, errorText?: string | null) => {
+    if (!errorText) return null;
+    const lowered = errorText.toLowerCase();
+    if (provider.toLowerCase() === "garmin") {
+      return t("Garmin is taking longer than usual to respond. Your activities are safe and we'll keep retrying in the background.");
+    }
+    if (lowered.includes("auth") || lowered.includes("token") || lowered.includes("permission")) {
+      return t("Connection expired. Reconnect once, then sync again. We'll pick up where we left off.");
+    }
+    return t("Sync hit a temporary issue. Your training data is still safe, and you can retry now.");
+  };
+
   const getStatusText = (item: ProviderStatus, isConnected: boolean) => {
-    if (isConnected) return "Connected";
-    if (item.approval_required) return "Pending partner approval";
-    if (item.bridge_only) return "Bridge ingestion";
-    if (!item.enabled) return "Disabled (feature flag off)";
-    if (!item.configured) return "Not configured (missing credentials)";
-    return "Ready to connect";
+    if (isConnected) return t("Connected");
+    if (item.approval_required) return t("Pending partner approval");
+    if (item.bridge_only) return t("Bridge ingestion");
+    if (!item.enabled) return t("Disabled (feature flag off)");
+    if (!item.configured) return t("Not configured (missing credentials)");
+    return t("Ready to connect");
   };
 
   return (
     <Paper withBorder p="md" radius="md">
       <Stack gap="sm">
-        <Title order={4}>Integrations</Title>
-        <Text size="sm" c="dimmed">Connect wearable providers, check sync health, and trigger manual sync.</Text>
+        <Title order={4}>{t("Integrations")}</Title>
+        <Text size="sm" c="dimmed">{t("Connect wearable providers, check sync health, and trigger manual sync.")}</Text>
         {providers.map((item) => {
           const isConnected = item.connection_status === "connected";
           const isConnecting = connectingProvider === item.provider;
@@ -64,10 +67,10 @@ export const IntegrationsPanel = ({
               <Group justify="space-between" align="flex-start">
                 <Stack gap={4}>
                   <Text fw={600} size="sm">{providerLabel(item)}</Text>
-                  <Text size="xs" c="dimmed">Status: {getStatusText(item, isConnected)}</Text>
+                  <Text size="xs" c="dimmed">{t("Status")}: {getStatusText(item, isConnected)}</Text>
                   {item.provider === "strava" && isConnected && (
                     <Text size="xs" c="dimmed">
-                      Imports your last 3 months of activities on first sync.
+                      {t("Imports your last 3 months of activities on first sync.")}
                     </Text>
                   )}
                   {item.provider === "strava" && isConnected && (
@@ -79,10 +82,10 @@ export const IntegrationsPanel = ({
                       c="#FC4C02"
                       underline="hover"
                     >
-                      Powered by Strava
+                      {t("Powered by Strava")}
                     </Anchor>
                   )}
-                  {item.last_sync_at && <Text size="xs" c="dimmed">Last sync: {new Date(item.last_sync_at).toLocaleString()}</Text>}
+                  {item.last_sync_at && <Text size="xs" c="dimmed">{t("Last sync")}: {new Date(item.last_sync_at).toLocaleString()}</Text>}
                   {item.last_error && (
                     <Alert
                       variant="light"
@@ -92,7 +95,7 @@ export const IntegrationsPanel = ({
                       w="100%"
                     >
                       <Text size="xs" fw={600}>{friendlyErrorCopy(item.provider, item.last_error)}</Text>
-                      <Text size="xs" c="dimmed" mt={2}>Technical detail: {item.last_error}</Text>
+                      <Text size="xs" c="dimmed" mt={2}>{t("Technical detail")}: {item.last_error}</Text>
                     </Alert>
                   )}
                 </Stack>
@@ -104,7 +107,7 @@ export const IntegrationsPanel = ({
                     disabled={item.approval_required || isConnected || isDisconnecting || isSyncing}
                     onClick={() => onConnect(item.provider)}
                   >
-                    Connect
+                    {t("Connect")}
                   </Button>
                   <Button
                     size="xs"
@@ -114,7 +117,7 @@ export const IntegrationsPanel = ({
                     disabled={!isConnected || isConnecting || isSyncing}
                     onClick={() => onDisconnect(item.provider)}
                   >
-                    Disconnect
+                    {t("Disconnect")}
                   </Button>
                   <Button
                     size="xs"
@@ -122,7 +125,7 @@ export const IntegrationsPanel = ({
                     disabled={!isConnected || isConnecting || isDisconnecting}
                     onClick={() => onSync(item.provider)}
                   >
-                    Sync now
+                    {t("Sync now")}
                   </Button>
                   {item.provider === "strava" && isSyncing && (
                     <Button
@@ -133,7 +136,7 @@ export const IntegrationsPanel = ({
                       disabled={isConnecting || isDisconnecting}
                       onClick={() => onCancelSync(item.provider)}
                     >
-                      Cancel sync
+                      {t("Cancel sync")}
                     </Button>
                   )}
                 </Group>

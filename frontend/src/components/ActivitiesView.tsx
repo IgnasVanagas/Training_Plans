@@ -11,6 +11,7 @@ import ActivityUploadPanel from './dashboard/ActivityUploadPanel';
 import { ORIGAMI_ACTIVITY_COLORS } from './calendar/theme';
 import { resolveActivityAccentColor, resolveActivityPillLabel } from './calendar/activityStyling';
 import { ActivitiesListSkeleton } from './common/SkeletonScreens';
+import { useI18n } from '../i18n/I18nProvider';
 import { readSnapshot, writeSnapshot } from '../utils/localSnapshot';
 
 export type Activity = {
@@ -56,6 +57,7 @@ export function ActivitiesView({
     showUploadSection?: boolean,
 }) {
   const navigate = useNavigate();
+        const { t } = useI18n();
     const isDark = useComputedColorScheme('light') === 'dark';
     const isMobile = useMediaQuery('(max-width: 48em)');
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
@@ -183,9 +185,9 @@ export function ActivitiesView({
             style={{ borderColor: ui.border }}
         >
         <Group justify="space-between" align={isMobile ? 'stretch' : 'center'} wrap={isMobile ? 'wrap' : 'nowrap'}>
-             <Title order={3} c={ui.textMain}>My Activities</Title>
+             <Title order={3} c={ui.textMain}>{t('My Activities')}</Title>
              <DatePickerInput
-                placeholder="Filter by Date Range"
+                placeholder={t('Filter by Date Range')}
                 type="range"
                 value={dateRange}
                 onChange={setDateRange}
@@ -282,7 +284,7 @@ export function ActivitiesView({
                                 <Text size="xs" c={ui.textDim}>
                                     {(() => {
                                         const athlete = athletes.find(a => a.id === act.athlete_id);
-                                        if (!athlete) return 'Unknown Athlete';
+                                            if (!athlete) return t('Unknown athlete');
                                         const p = athlete.profile;
                                         if (p?.first_name || p?.last_name) {
                                             return `${p.first_name || ''} ${p.last_name || ''}`.trim();
@@ -308,11 +310,11 @@ export function ActivitiesView({
                                         {pillLabel}
                                     </Badge>
                                 )}
-                                {isOptimistic && <Badge size="sm" color="gray" variant="dot">Processing…</Badge>}
-                                {act.is_deleted && <Badge size="sm" color="red" variant="light">Deleted</Badge>}
+                                {isOptimistic && <Badge size="sm" color="gray" variant="dot">{t('Processing...')}</Badge>}
+                                {act.is_deleted && <Badge size="sm" color="red" variant="light">{t('Deleted')}</Badge>}
                                 {hasDuplicates && (
                                     <Badge size="sm" color="orange" variant="light" leftSection={<IconCopy size={10} />}>
-                                        {(act.duplicate_recordings_count ?? 0) + 1} recordings
+                                        {(act.duplicate_recordings_count ?? 0) + 1} {t('recordings')}
                                     </Badge>
                                 )}
                             </Group>
@@ -364,11 +366,11 @@ export function ActivitiesView({
                             <Paper withBorder p="lg" radius="lg" style={cardStyle}>
                                 <Stack align="center" gap="xs">
                                     <IconUpload size={28} />
-                                    <Text fw={700} c={ui.textMain}>Your training story starts with one activity.</Text>
+                                    <Text fw={700} c={ui.textMain}>{t('Your training story starts with one activity.')}</Text>
                                     <List size="sm" c={ui.textDim} spacing={2}>
-                                        <List.Item>Connect a wearable provider in Settings</List.Item>
-                                        <List.Item>Upload your first FIT or GPX file</List.Item>
-                                        <List.Item>Set baseline zones so workouts adapt to you</List.Item>
+                                        <List.Item>{t('Connect a wearable provider in Settings')}</List.Item>
+                                        <List.Item>{t('Upload your first FIT or GPX file')}</List.Item>
+                                        <List.Item>{t('Set baseline zones so workouts adapt to you')}</List.Item>
                                     </List>
                                 </Stack>
                             </Paper>
@@ -382,7 +384,7 @@ export function ActivitiesView({
                                         disabled={!hasMoreActivities || isLoadingOlder}
                                         loading={isLoadingOlder}
                                     >
-                                        {hasMoreActivities ? 'Load older activities' : 'No older activities'}
+                                        {hasMoreActivities ? t('Load older activities') : t('No older activities')}
                                     </Button>
                                 </Group>
                             </Paper>
@@ -429,6 +431,7 @@ function formatProvider(provider?: string | null, fileType?: string): string {
 }
 
 export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance, formatDurationHm, onNavigate }: DuplicateSelectModalProps) {
+    const { t } = useI18n();
     const queryClient = useQueryClient();
     const [allRecordings, setAllRecordings] = useState<Activity[]>([]);
     const [primaryId, setPrimaryId] = useState<number | null>(null);
@@ -443,9 +446,9 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
         setLoading(true);
         api.get<Activity[]>(`/activities/${activity.id}/duplicates`)
             .then(res => setAllRecordings([activity, ...res.data]))
-            .catch(() => setLoadError('Could not load additional recordings. The duplicate may still exist — try refreshing.'))
+            .catch(() => setLoadError(t('Could not load additional recordings. The duplicate may still exist. Try refreshing.')))
             .finally(() => setLoading(false));
-    }, [activity?.id]);
+    }, [activity?.id, t]);
 
     const deleteMutation = useMutation({
         mutationFn: async (id: number) => {
@@ -496,19 +499,19 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
         <Modal
             opened={Boolean(activity)}
             onClose={onClose}
-            title="Multiple recordings detected"
+            title={t('Multiple recordings detected')}
             size="md"
             centered
         >
             <Stack gap="sm">
                 <Text size="sm" c="dimmed">
-                    This workout was recorded on multiple devices. Choose which recording to keep as primary, or delete the ones you don't need.
+                    {t("This workout was recorded on multiple devices. Choose which recording to keep as primary, or delete the ones you don't need.")}
                 </Text>
 
                 {loadError && <Text size="sm" c="red">{loadError}</Text>}
 
                 {loading ? (
-                    <Text size="sm" c="dimmed">Loading recordings…</Text>
+                    <Text size="sm" c="dimmed">{t('Loading recordings...')}</Text>
                 ) : (
                     recordings.map((rec) => {
                         const isPrimary = rec.id === primaryId;
@@ -526,7 +529,7 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
                                         <Group gap={6} wrap="nowrap">
                                             <Text fw={600} size="sm" truncate style={{ flex: 1 }}>{rec.filename}</Text>
                                             <Badge size="xs" color="gray" variant="outline" style={{ flexShrink: 0 }}>{sourceLabel}</Badge>
-                                            {isPrimary && <Badge size="xs" color="blue" variant="light" style={{ flexShrink: 0 }}>Primary</Badge>}
+                                            {isPrimary && <Badge size="xs" color="blue" variant="light" style={{ flexShrink: 0 }}>{t('Primary')}</Badge>}
                                         </Group>
                                         <Text size="xs" c="dimmed">
                                             {new Date(rec.created_at.endsWith('Z') ? rec.created_at : rec.created_at + 'Z').toLocaleString()} · {rec.duration ? formatDurationHm(rec.duration) : '-'} · {rec.distance ? formatDistance(rec.distance) : '-'}
@@ -535,10 +538,10 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
                                     </Stack>
                                     <Group gap={6} wrap="nowrap">
                                         <Button size="xs" variant="light" onClick={() => onNavigate(rec.id)}>
-                                            View
+                                            {t('View')}
                                         </Button>
                                         {!isPrimary && (
-                                            <Tooltip label="Make this the primary recording">
+                                            <Tooltip label={t('Make this the primary recording')}>
                                                 <Button
                                                     size="xs"
                                                     variant="light"
@@ -547,7 +550,7 @@ export function DuplicateSelectModal({ activity, onClose, isDark, formatDistance
                                                     loading={makePrimaryMutation.isPending && makePrimaryMutation.variables === rec.id}
                                                     onClick={() => makePrimaryMutation.mutate(rec.id)}
                                                 >
-                                                    Primary
+                                                    {t('Primary')}
                                                 </Button>
                                             </Tooltip>
                                         )}

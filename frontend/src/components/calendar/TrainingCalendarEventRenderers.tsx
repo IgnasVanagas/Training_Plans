@@ -235,6 +235,7 @@ export const DayEventItem = ({
   palette,
   athleteId,
   viewDate,
+  buildActivityDetailState,
   onPlannedSelect,
   onCloseDayModal,
   onDownloadPlannedWorkout,
@@ -246,6 +247,12 @@ export const DayEventItem = ({
   palette: { cardBg: string; cardBorder: string; textDim: string; textMain: string };
   athleteId?: number | null;
   viewDate: Date;
+  buildActivityDetailState?: (calendarDate: string) => {
+    returnTo: string;
+    activeTab?: 'plan';
+    selectedAthleteId?: string | null;
+    calendarDate: string;
+  };
   onPlannedSelect: (event: CalendarEvent) => void;
   onCloseDayModal: () => void;
   onDownloadPlannedWorkout: (workoutId: number) => void;
@@ -281,7 +288,7 @@ export const DayEventItem = ({
               return;
             }
             navigate(`/dashboard/activities/${r.id}`, {
-              state: {
+              state: buildActivityDetailState?.(format(viewDate, 'yyyy-MM-dd')) || {
                 returnTo: athleteId ? `/dashboard/athlete/${athleteId}` : '/dashboard',
                 activeTab: athleteId ? undefined : 'plan',
                 selectedAthleteId: athleteId ? athleteId.toString() : null,

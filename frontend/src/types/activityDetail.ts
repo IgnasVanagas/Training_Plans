@@ -41,6 +41,19 @@ export type ActivityDetail = {
     planned_comparison?: {
         workout_id: number;
         workout_title: string;
+        sport_type?: string | null;
+        planned?: {
+            duration_min?: number | null;
+            distance_km?: number | null;
+            intensity?: string | null;
+            description?: string | null;
+            structure?: any[] | null;
+        } | null;
+        actual?: {
+            activity_id?: number | null;
+            duration_min?: number | null;
+            distance_km?: number | null;
+        } | null;
         summary?: {
             has_planned_distance?: boolean | null;
             duration_delta_min?: number | null;
@@ -75,6 +88,7 @@ export type ActivityDetail = {
                 }>;
             } | null;
             split_importance?: 'high' | 'low' | string | null;
+            split_source?: string | null;
             split_note?: string | null;
         };
         intensity?: {
