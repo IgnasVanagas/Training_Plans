@@ -40,6 +40,9 @@ except ImportError:
     )
 
 ROOT = Path(__file__).resolve().parent.parent
+FRONTEND_INDEX_HTML = ROOT / "frontend" / "index.html"
+FRONTEND_MAIN_ENTRY = ROOT / "frontend" / "src" / "main.tsx"
+FRONTEND_SERVICE_WORKER_RE = re.compile(r"navigator\.serviceWorker\.register\(\s*[\"'](/[^\"']+)[\"']\s*\)")
 
 # ---------------------------------------------------------------------------
 # Exclusions
@@ -248,10 +251,41 @@ def rel_posix(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
-def discover_reachable_runtime_paths() -> tuple[set[str], set[str]]:
-    frontend_reachable = {rel_posix(path) for path in discover_frontend_reachable_files()}
-    backend_reachable = {rel_posix(path) for path in discover_backend_reachable_files()}
-    return frontend_reachable, backend_reachable
+def normalized_rel(value: str) -> str:
+    return value.replace("\\", "/").casefold()
+
+
+def discover_frontend_runtime_paths() -> tuple[set[str], set[str]]:
+    frontend_graph = {
+        normalized_rel(rel_posix(path))
+        for path in discover_frontend_reachable_files()
+    }
+    frontend_runtime = set(frontend_graph)
+
+    if FRONTEND_INDEX_HTML.exists():
+        frontend_runtime.add(normalized_rel(rel_posix(FRONTEND_INDEX_HTML)))
+
+    try:
+        main_source = FRONTEND_MAIN_ENTRY.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        main_source = ""
+
+    for match in FRONTEND_SERVICE_WORKER_RE.finditer(main_source):
+        public_relative = match.group(1).lstrip("/")
+        public_file = ROOT / "frontend" / "public" / Path(public_relative)
+        if public_file.exists() and public_file.is_file() and not should_skip_file(public_file):
+            frontend_runtime.add(normalized_rel(rel_posix(public_file)))
+
+    return frontend_graph, frontend_runtime
+
+
+def discover_reachable_runtime_paths() -> tuple[set[str], set[str], set[str]]:
+    frontend_graph, frontend_runtime = discover_frontend_runtime_paths()
+    backend_reachable = {
+        normalized_rel(rel_posix(path))
+        for path in discover_backend_reachable_files()
+    }
+    return frontend_graph, frontend_runtime, backend_reachable
 
 
 def is_test_file(rel: str) -> bool:
@@ -266,11 +300,13 @@ def is_test_file(rel: str) -> bool:
 
 def classify(rel: str, frontend_reachable: set[str], backend_reachable: set[str]) -> str | None:
     """Return bucket name or None if file should be excluded from buckets."""
+    rel_key = normalized_rel(rel)
+
     # Backend
     if rel.startswith("backend/app/tests/"):
         return "backend_tests"
     if rel.startswith("backend/app/"):
-        return "backend_runtime" if rel in backend_reachable else "non_runtime"
+        return "backend_runtime" if rel_key in backend_reachable else "non_runtime"
     if rel.startswith("backend/"):
         # backend/Dockerfile, backend/requirements.txt → non_runtime
         return "non_runtime"
@@ -281,8 +317,8 @@ def classify(rel: str, frontend_reachable: set[str], backend_reachable: set[str]
     if rel.startswith("frontend/src/"):
         if is_test_file(rel):
             return "frontend_tests"
-        return "frontend_runtime" if rel in frontend_reachable else "non_runtime"
-    if rel.startswith("frontend/public/") or rel == "frontend/index.html":
+        return "frontend_runtime" if rel_key in frontend_reachable else "non_runtime"
+    if rel_key in frontend_reachable:
         return "frontend_runtime"
     if rel.startswith("frontend/scripts/"):
         return "non_runtime"
@@ -367,7 +403,7 @@ def walk() -> list[Path]:
 # ---------------------------------------------------------------------------
 def main() -> int:
     files = walk()
-    frontend_reachable, backend_reachable = discover_reachable_runtime_paths()
+    frontend_graph, frontend_reachable, backend_reachable = discover_reachable_runtime_paths()
     buckets: dict[str, dict[str, int]] = {
         b: {"files": 0, "total": 0, "blank": 0, "comment": 0, "code": 0}
         for b in ("backend_runtime", "backend_tests", "frontend_runtime", "frontend_tests", "non_runtime")
@@ -432,6 +468,8 @@ def main() -> int:
                     "frontend_runtime_files": len(frontend_reachable),
                     "backend_runtime_files": len(backend_reachable),
                     "total_runtime_files": len(frontend_reachable) + len(backend_reachable),
+                    "frontend_static_graph_files": len(frontend_graph),
+                    "total_static_graph_files": len(frontend_graph) + len(backend_reachable),
                 },
             },
             indent=2,

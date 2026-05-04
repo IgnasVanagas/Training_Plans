@@ -1,5 +1,5 @@
-import { Badge, Group, List, Modal, Paper, SimpleGrid, Card, Stack, Text, Title, Box, Button, Tooltip, useComputedColorScheme } from '@mantine/core';
-import { IconCopy, IconStar } from '@tabler/icons-react';
+import { Badge, Group, List, Modal, Paper, SimpleGrid, Card, Stack, Text, Title, Box, Button, Tooltip, useComputedColorScheme, Select } from '@mantine/core';
+import { IconArrowsSort, IconCopy, IconStar } from '@tabler/icons-react';
 import { DatePickerInput } from '@mantine/dates';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
@@ -38,6 +38,8 @@ export type Activity = {
 
 import { useNavigate } from 'react-router-dom';
 
+type ActivitySortMode = 'date_desc' | 'date_asc' | 'duration_desc' | 'duration_asc';
+
 const toLocalDateKey = (value: Date): string => {
     const year = value.getFullYear();
     const month = String(value.getMonth() + 1).padStart(2, '0');
@@ -61,6 +63,7 @@ export function ActivitiesView({
     const isDark = useComputedColorScheme('light') === 'dark';
     const isMobile = useMediaQuery('(max-width: 48em)');
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
+        const [sortMode, setSortMode] = useState<ActivitySortMode>('date_desc');
     const [offset, setOffset] = useState(0);
     const [loadedActivities, setLoadedActivities] = useState<Activity[]>([]);
     const [hasMoreActivities, setHasMoreActivities] = useState(true);
@@ -111,6 +114,18 @@ export function ActivitiesView({
       const m = totalMinutes % 60;
       return `${h}h ${m}m`;
   };
+
+    const getActivityDateMs = (activity: Activity) => {
+        const raw = activity.created_at || '';
+        const normalized = raw.endsWith('Z') ? raw : `${raw}Z`;
+        const parsed = new Date(normalized).getTime();
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const getActivityDurationSeconds = (activity: Activity) => {
+        const durationSeconds = Number(activity.moving_time ?? activity.duration ?? 0);
+        return Number.isFinite(durationSeconds) ? durationSeconds : 0;
+    };
 
     const rangeStartKey = dateRange[0] ? toLocalDateKey(dateRange[0]) : 'na';
     const rangeEndKey = dateRange[1] ? toLocalDateKey(dateRange[1]) : 'na';
@@ -164,7 +179,27 @@ export function ActivitiesView({
         setHasMoreActivities(page.length === PAGE_SIZE);
     }, [activitiesQuery.data, offset]);
 
-    const visibleActivities = useMemo(() => loadedActivities, [loadedActivities]);
+    const visibleActivities = useMemo(() => {
+        const sorted = [...loadedActivities];
+        sorted.sort((left, right) => {
+            const leftDate = getActivityDateMs(left);
+            const rightDate = getActivityDateMs(right);
+            const leftDuration = getActivityDurationSeconds(left);
+            const rightDuration = getActivityDurationSeconds(right);
+
+            if (sortMode === 'date_asc') {
+                return leftDate - rightDate || rightDuration - leftDuration || right.id - left.id;
+            }
+            if (sortMode === 'duration_desc') {
+                return rightDuration - leftDuration || rightDate - leftDate || right.id - left.id;
+            }
+            if (sortMode === 'duration_asc') {
+                return leftDuration - rightDuration || rightDate - leftDate || right.id - left.id;
+            }
+            return rightDate - leftDate || rightDuration - leftDuration || right.id - left.id;
+        });
+        return sorted;
+    }, [loadedActivities, sortMode]);
 
     const isInitialActivitiesLoading = (activitiesQuery.isLoading || activitiesQuery.isFetching) && visibleActivities.length === 0;
     const isLoadingOlder = offset > 0 && activitiesQuery.isFetching;
@@ -186,23 +221,51 @@ export function ActivitiesView({
         >
         <Group justify="space-between" align={isMobile ? 'stretch' : 'center'} wrap={isMobile ? 'wrap' : 'nowrap'}>
              <Title order={3} c={ui.textMain}>{t('My Activities')}</Title>
-             <DatePickerInput
-                placeholder={t('Filter by Date Range')}
-                type="range"
-                value={dateRange}
-                onChange={setDateRange}
-                leftSection={<IconCalendar size={16} />}
-                clearable
-                w={isMobile ? '100%' : 270}
-                radius="md"
-                styles={{
-                    input: {
-                        borderColor: ui.border,
-                        background: ui.cardSubtleBg,
-                        color: ui.textMain,
-                    }
-                }}
-             />
+             <Group gap="sm" wrap={isMobile ? 'wrap' : 'nowrap'} style={{ width: isMobile ? '100%' : 'auto' }}>
+                 <DatePickerInput
+                    placeholder={t('Filter by Date Range')}
+                    type="range"
+                    value={dateRange}
+                    onChange={setDateRange}
+                    leftSection={<IconCalendar size={16} />}
+                    clearable
+                    w={isMobile ? '100%' : 270}
+                    radius="md"
+                    styles={{
+                        input: {
+                            borderColor: ui.border,
+                            background: ui.cardSubtleBg,
+                            color: ui.textMain,
+                        }
+                    }}
+                 />
+                 <Select
+                    placeholder={t('Sort by')}
+                    value={sortMode}
+                    onChange={(value) => setSortMode((value as ActivitySortMode) || 'date_desc')}
+                    data={[
+                        { value: 'date_desc', label: t('Newest first') },
+                        { value: 'date_asc', label: t('Oldest first') },
+                        { value: 'duration_desc', label: t('Longest duration') },
+                        { value: 'duration_asc', label: t('Shortest duration') },
+                    ]}
+                    leftSection={<IconArrowsSort size={16} />}
+                    w={isMobile ? '100%' : 220}
+                    radius="md"
+                    allowDeselect={false}
+                    styles={{
+                        input: {
+                            borderColor: ui.border,
+                            background: ui.cardSubtleBg,
+                            color: ui.textMain,
+                        },
+                        dropdown: {
+                            borderColor: ui.border,
+                            background: ui.cardBg,
+                        }
+                    }}
+                 />
+             </Group>
         </Group>
         </Paper>
 

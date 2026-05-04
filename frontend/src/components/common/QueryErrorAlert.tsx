@@ -1,6 +1,6 @@
-import { Alert, Button, Group } from "@mantine/core";
+import { Alert, Button, Group, Text } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
-import { extractApiErrorMessage } from "../../pages/dashboard/utils";
+import { useI18n } from "../../i18n/I18nProvider";
 
 interface QueryErrorAlertProps {
   error: unknown;
@@ -9,6 +9,8 @@ interface QueryErrorAlertProps {
 }
 
 export function QueryErrorAlert({ error, onRetry, title = "Failed to load data" }: QueryErrorAlertProps) {
+  const { t } = useI18n();
+
   return (
     <Alert
       icon={<IconAlertCircle size={16} />}
@@ -17,10 +19,10 @@ export function QueryErrorAlert({ error, onRetry, title = "Failed to load data" 
       title={title}
     >
       <Group justify="space-between" align="center" wrap="nowrap">
-        <span>{extractApiErrorMessage(error)}</span>
+        <Text size="sm">{t("The server may be temporarily unavailable. Please try again.")}</Text>
         {onRetry && (
           <Button size="xs" variant="light" color="red" onClick={onRetry} flex="0 0 auto">
-            Retry
+            {t("Retry")}
           </Button>
         )}
       </Group>

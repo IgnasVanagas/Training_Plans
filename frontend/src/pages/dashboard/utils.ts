@@ -1,5 +1,18 @@
 import { MetricKey } from "./types";
 
+const GENERIC_SERVER_ERROR_MESSAGE = "The server may be temporarily unavailable. Please try again.";
+
+const isGenericRequestFailureMessage = (message?: string | null): boolean => {
+  const normalized = String(message || "").trim().toLowerCase();
+  if (!normalized) return true;
+
+  return normalized === "unexpected error"
+    || normalized === "failed to fetch"
+    || normalized === "load failed"
+    || normalized === "data request failed"
+    || /^request failed with status code \d+$/.test(normalized);
+};
+
 const flattenApiDetail = (detail: unknown): string | null => {
   if (typeof detail === "string") return detail;
 
@@ -31,10 +44,12 @@ export const extractApiErrorMessage = (error: unknown): string => {
 
   const detailMessage = flattenApiDetail(maybeError?.response?.data?.detail)
     ?? flattenApiDetail(maybeError?.response?.data?.message);
-  if (detailMessage) return detailMessage;
+  if (detailMessage && !isGenericRequestFailureMessage(detailMessage)) return detailMessage;
 
   if (maybeError?.message === "Network Error") return "Network error. Check your connection and try again.";
-  return maybeError?.message || "Unexpected error";
+  if (isGenericRequestFailureMessage(maybeError?.message)) return GENERIC_SERVER_ERROR_MESSAGE;
+
+  return maybeError?.message || GENERIC_SERVER_ERROR_MESSAGE;
 };
 
 export const formatDuration = (decimalMinutes: number) => {

@@ -160,6 +160,11 @@ const Dashboard = () => {
   // Default athletes to Calendar (plan) tab when no explicit tab is in the URL
   const [didDefaultTab, setDidDefaultTab] = useState(false);
 
+  useEffect(() => {
+    if (navigationState.selectedAthleteId === undefined) return;
+    setSelectedAthleteId(navigationState.selectedAthleteId ?? null);
+  }, [navigationState.selectedAthleteId]);
+
   // When arriving via location.state (e.g. back-navigation), sync the URL
   // ?tab= param and clear the transient state so F5 preserves the tab.
   useEffect(() => {

@@ -321,10 +321,10 @@ export const TrainingCalendar = ({
 
         return {
             returnTo,
+            selectedAthleteId: athleteId ? athleteId.toString() : null,
             ...(dashboardTab === 'plan'
                 ? {
                     activeTab: 'plan' as const,
-                    selectedAthleteId: athleteId ? athleteId.toString() : null,
                 }
                 : {}),
             calendarDate,
