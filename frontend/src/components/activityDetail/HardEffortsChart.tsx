@@ -28,6 +28,11 @@ const ZONE_COLORS = ['gray', 'blue', 'teal', 'yellow', 'orange', 'red', 'violet'
 const ZONE_HEX = ['#9ca3af', '#3b82f6', '#14b8a6', '#eab308', '#f97316', '#ef4444', '#8b5cf6'];
 const HOVER_CARD_GUTTER = 8;
 const HOVER_CARD_MAX_WIDTH = 220;
+const CHART_MARGIN = { top: 12, right: 12, bottom: 8, left: 8 } as const;
+const POWER_AXIS_WIDTH = 45;
+const HR_AXIS_WIDTH = 42;
+const OVERLAY_BOTTOM_INSET = 28;
+const MIN_SEGMENT_WIDTH_PCT = 0.9;
 
 const getPointOffsetMinutes = (point: any, index: number, startTimestamp: number | null): number => {
     const pointTimestamp = point?.timestamp ? new Date(point.timestamp).getTime() : NaN;
@@ -92,6 +97,16 @@ export const HardEffortsChart = ({
         return Math.max(0, timelineMinutes[timelineMinutes.length - 1] ?? 0);
     }, [timelineMinutes]);
 
+    const chartPlotMetrics = useMemo(() => {
+        const leftInset = CHART_MARGIN.left + POWER_AXIS_WIDTH;
+        const rightInset = CHART_MARGIN.right + HR_AXIS_WIDTH;
+        return {
+            leftInset,
+            rightInset,
+            plotWidth: Math.max(chartWidth - leftInset - rightInset, 0),
+        };
+    }, [chartWidth]);
+
     const chartSeries = useMemo(() => {
         if (streamPoints.length === 0) return [] as Array<{ time_min: number; power_raw: number | null; heart_rate: number | null }>;
         return streamPoints.map((point: any, index: number) => {
@@ -136,8 +151,11 @@ export const HardEffortsChart = ({
             maxHr: e.maxHr,
         })).map((segment) => {
             const widthMin = Math.max(0, segment.endMin - segment.startMin);
-            const leftPct = toPct(segment.startMin);
-            const widthPct = toPct(widthMin);
+            const leftPct = Math.max(0, Math.min(toPct(segment.startMin), 100));
+            const widthPct = Math.min(
+                Math.max(0, 100 - leftPct),
+                Math.max(toPct(widthMin), MIN_SEGMENT_WIDTH_PCT),
+            );
 
             return {
                 ...segment,
@@ -156,9 +174,9 @@ export const HardEffortsChart = ({
     const hoverCardStyle = useMemo<CSSProperties | null>(() => {
         if (!hoveredSegment) return null;
 
-        if (chartWidth > (HOVER_CARD_GUTTER * 2)) {
+        if (chartWidth > (HOVER_CARD_GUTTER * 2) && chartPlotMetrics.plotWidth > 0) {
             const cardWidth = Math.min(HOVER_CARD_MAX_WIDTH, Math.max(140, chartWidth - (HOVER_CARD_GUTTER * 2)));
-            const centerPx = (hoveredSegment.centerPct / 100) * chartWidth;
+            const centerPx = chartPlotMetrics.leftInset + ((hoveredSegment.centerPct / 100) * chartPlotMetrics.plotWidth);
             const leftPx = Math.max(
                 HOVER_CARD_GUTTER,
                 Math.min(centerPx - (cardWidth / 2), chartWidth - cardWidth - HOVER_CARD_GUTTER),
@@ -175,7 +193,7 @@ export const HardEffortsChart = ({
             transform: 'translateX(-50%)',
             width: 'min(220px, calc(100% - 16px))',
         };
-    }, [chartWidth, hoveredSegment]);
+    }, [chartPlotMetrics.leftInset, chartPlotMetrics.plotWidth, chartWidth, hoveredSegment]);
 
     const formatElapsed = (minutes: number) => formatDuration(Math.max(0, Math.round(minutes * 60)));
     const handleSegmentEnter = (key: string) => {
@@ -205,10 +223,14 @@ export const HardEffortsChart = ({
                 }}
             >
                 <ResponsiveContainer>
-                    <LineChart data={chartSeries} margin={{ top: 12, right: 12, bottom: 8, left: 8 }}>
+                    <LineChart data={chartSeries} margin={CHART_MARGIN}>
                         <CartesianGrid strokeDasharray="3 4" vertical={false} stroke={isDark ? 'rgba(148,163,184,0.14)' : 'rgba(15,23,42,0.09)'} />
                         <XAxis
+                            type="number"
                             dataKey="time_min"
+                            domain={[0, totalTimelineMinutes]}
+                            allowDataOverflow
+                            scale="linear"
                             tick={{ fill: ui.textDim, fontSize: 11 }}
                             tickFormatter={(value) => formatElapsed(Number(value))}
                             minTickGap={40}
@@ -239,7 +261,7 @@ export const HardEffortsChart = ({
                                     stroke={zoneColor}
                                     strokeOpacity={isActive ? 0.84 : 0.55}
                                     strokeWidth={isActive ? 2 : 1.4}
-                                    ifOverflow="extendDomain"
+                                    ifOverflow="hidden"
                                 />
                             );
                         })}
@@ -285,7 +307,17 @@ export const HardEffortsChart = ({
                     </Box>
                 ) : null}
 
-                <Box style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+                <Box
+                    data-testid="hard-effort-overlay-frame"
+                    style={{
+                        position: 'absolute',
+                        top: CHART_MARGIN.top,
+                        left: chartPlotMetrics.leftInset,
+                        width: chartPlotMetrics.plotWidth,
+                        bottom: OVERLAY_BOTTOM_INSET,
+                        pointerEvents: 'none',
+                    }}
+                >
                     {effortSegments.map((seg) => {
                         const zoneColor = ZONE_HEX[Math.max(0, Math.min(6, seg.zone - 1))];
                         const isHovered = hoveredSegmentKey === seg.key;
@@ -302,9 +334,9 @@ export const HardEffortsChart = ({
                                     pointerEvents: 'auto',
                                     position: 'absolute',
                                     left: `${seg.leftPct}%`,
-                                    width: `${Math.max(seg.widthPct, 0.9)}%`,
-                                    top: 12,
-                                    bottom: 28,
+                                    width: `${seg.widthPct}%`,
+                                    top: 0,
+                                    bottom: 0,
                                     borderRadius: 6,
                                     cursor: 'pointer',
                                     background: isHovered || isSelected ? `${zoneColor}30` : `${zoneColor}14`,

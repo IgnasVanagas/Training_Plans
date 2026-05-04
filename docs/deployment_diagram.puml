@@ -1,6 +1,6 @@
 @startuml Training_Plans_Deployment_Diagram
 
-title Training Plans - Production Deployment (Hetzner VPS)
+title Training Plans - Production Deployment (Hetzner VPS, verified 2026-05-03)
 
 left to right direction
 
@@ -20,51 +20,76 @@ skinparam artifact {
 	BackgroundColor #FFE0B2
 	BorderColor #E65100
 }
+skinparam cloud {
+	BackgroundColor #E3F2FD
+	BorderColor #1565C0
+}
 
-node "<<device>>\nClient's PC / Phone" as client {
+node "<<device>>\nClient PC / Phone" as client {
 	artifact "Web browser" as browser
 }
 
-node "<<execution environment>>\nHetzner VPS (Ubuntu Linux)" as vps {
-	node "<<execution environment>>\nDocker Compose" as docker {
+cloud "DNS\norigamiplans.com\nwww.origamiplans.com\napp.origamiplans.com" as dns
 
-		node "<<execution environment>>\nCaddy TLS edge\ncontainer: endurance_caddy\nruntime: Caddy 2.8" as caddy {
-			artifact "Caddyfile" as caddy_cfg
+node "<<execution environment>>\nHetzner VPS  (ubuntu-4gb-nbg1-1)\nUbuntu 24.04.4 LTS  /  Linux 6.8\nDocker 29.4.0  /  Compose v5.1.2" as vps {
+
+	node "<<execution environment>>\nDocker Compose project: training_plans" as docker {
+
+		node "<<execution environment>>\nCaddy TLS edge\ncontainer: endurance_caddy\nimage: caddy:2.8-alpine\npublished: 80, 443 (tcp), 443/udp\nmem_limit: 128 MB" as caddy {
+			artifact "Caddyfile\n(redirects root/www -> app,\nreverse_proxy edge:80)" as caddy_cfg
 		}
 
-		node "<<execution environment>>\nEdge reverse proxy\ncontainer: endurance_edge\nruntime: nginx 1.27" as edge {
-			artifact "edge.conf" as edge_cfg
+		node "<<execution environment>>\nEdge reverse proxy (nginx)\ncontainer: endurance_edge\nimage: nginx:1.27-alpine\nlistens: 80/tcp (internal)\nmem_limit: 128 MB" as edge {
+			artifact "edge.conf\n( /api/* -> backend:8000\n  /uploads/* -> backend:8000\n  /*       -> frontend:80 )" as edge_cfg
 		}
 
-		node "<<execution environment>>\nFrontend static server\ncontainer: endurance_frontend\nruntime: nginx 1.27" as frontend {
+		node "<<execution environment>>\nFrontend static server (nginx)\ncontainer: endurance_frontend\nimage: training_plans-frontend\nlistens: 80/tcp (internal)\nmem_limit: 128 MB" as frontend {
 			artifact "nginx.conf" as frontend_cfg
 			artifact "OrigamiPlans React / Vite bundle" as fe_artifact
 		}
 
-		node "<<execution environment>>\nBackend API\ncontainer: endurance_backend\nruntime: Python 3.11-slim" as py {
-			artifact "FastAPI + Uvicorn" as be_artifact
+		node "<<execution environment>>\nBackend API\ncontainer: endurance_backend\nimage: training_plans-backend\n(Python 3.11-slim)\nlistens: 8000/tcp (internal)\nmem_limit: 768 MB" as py {
+			artifact "FastAPI + Uvicorn\n(workers=2, proxy-headers)" as be_artifact
 		}
 
-		node "<<execution environment>>\nDatabase\ncontainer: endurance_db\nruntime: PostgreSQL 15" as pg {
-			artifact "database" as db_artifact
+		node "<<execution environment>>\nDatabase\ncontainer: endurance_db\nimage: postgres:15\nlistens: 5432/tcp (internal)\nmem_limit: 512 MB" as pg {
+			artifact "database: endurance" as db_artifact
 		}
+
+		' Persistent named volumes (as observed: docker volume ls)
+		artifact "volume: training_plans_db_data" as vol_db
+		artifact "volume: training_plans_uploads_data" as vol_uploads
+		artifact "volume: training_plans_caddy_data" as vol_caddy_data
+		artifact "volume: training_plans_caddy_config" as vol_caddy_cfg
+
 	}
 }
 
-node "<<execution environment>>\nStrava" as strava {
-	artifact "Strava OAuth 2.0 API" as strava_api
-}
+cloud "Strava\nOAuth 2.0 API + Webhooks" as strava
+cloud "Resend\nTransactional Email API" as resend
 
-node "<<execution environment>>\nResend" as resend {
-	artifact "Email API" as resend_api
-}
+' --- External traffic ---
+client --> dns : DNS
+dns --> caddy
+client -down-> caddy : HTTPS  (443)
 
-client -- caddy : HTTPS
-caddy -- edge
-edge -- frontend : / and static assets
-edge -- py : /api and /uploads
-py -- pg : TCP/IP
-py -- strava
-py -- resend
+' --- Networks ---
+' training_plans_public:  caddy <-> edge
+' training_plans_private: edge, frontend, backend, db, caddy
+caddy --> edge : HTTP\n(network: public)
+
+edge --> frontend : "/"  +  static assets\n(network: private)
+edge --> py       : "/api/*", "/uploads/*"\n(network: private)
+py --> pg         : TCP/IP 5432\n(network: private)
+
+' --- Outbound integrations ---
+py <--> strava : OAuth 2.0 / Webhooks (HTTPS)
+py --> resend  : Email API (HTTPS)
+
+' --- Volume mounts ---
+pg     .. vol_db          : /var/lib/postgresql/data
+py     .. vol_uploads     : /app/uploads
+caddy  .. vol_caddy_data  : /data
+caddy  .. vol_caddy_cfg   : /config
 
 @enduml

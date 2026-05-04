@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Training Plans Code Lines Visual</title>
+  <style>
+    :root {
+      --black: #000000;
+      --yellow: #FFFF00;
+      --white: #FFFFFF;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--black);
+      color: var(--white);
+      font-family: Arial, Helvetica, sans-serif;
+      display: grid;
+      place-items: center;
+    }
+
+    .slide {
+      width: min(1600px, 100vw);
+      min-height: min(900px, 100vh);
+      padding: 56px;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 48px;
+      background:
+        linear-gradient(180deg, transparent 0 78%, rgba(255, 255, 255, 0.08) 78% 79%, transparent 79% 100%),
+        var(--black);
+    }
+
+    .eyebrow {
+      margin: 0 0 18px;
+      font-size: 13px;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+    }
+
+    .hero {
+      align-self: start;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(84px, 12vw, 164px);
+      line-height: 0.9;
+      color: var(--yellow);
+      font-weight: 700;
+    }
+
+    .hero p {
+      margin: 18px 0 0;
+      max-width: 520px;
+      font-size: clamp(20px, 2vw, 30px);
+      line-height: 1.25;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 42px;
+    }
+
+    .card {
+      border: 2px solid var(--white);
+      padding: 20px;
+      min-height: 132px;
+      display: grid;
+      align-content: start;
+      gap: 10px;
+    }
+
+    .card.highlight {
+      border-color: var(--yellow);
+      color: var(--yellow);
+    }
+
+    .card-label {
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+
+    .card-value {
+      font-size: clamp(34px, 4vw, 52px);
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    .card-note {
+      font-size: 15px;
+      line-height: 1.3;
+      opacity: 0.92;
+    }
+
+    .panel {
+      display: grid;
+      align-content: start;
+      gap: 18px;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .metric {
+      display: grid;
+      gap: 8px;
+    }
+
+    .metric-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: baseline;
+      font-size: 16px;
+    }
+
+    .metric-name {
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 700;
+    }
+
+    .track {
+      width: 100%;
+      height: 18px;
+      border: 2px solid var(--white);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      background: var(--white);
+    }
+
+    .fill.highlight {
+      background: var(--yellow);
+    }
+
+    .split {
+      margin-top: 18px;
+      border-top: 2px solid var(--yellow);
+      padding-top: 22px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .split-item {
+      border: 2px solid var(--white);
+      padding: 18px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .split-item strong {
+      font-size: clamp(34px, 4vw, 54px);
+      line-height: 1;
+      color: var(--yellow);
+    }
+
+    .footnote {
+      align-self: end;
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding-top: 18px;
+      border-top: 2px solid rgba(255, 255, 255, 0.2);
+      font-size: 14px;
+      line-height: 1.4;
+    }
+
+    @media (max-width: 1100px) {
+      .slide {
+        grid-template-columns: 1fr;
+        min-height: auto;
+      }
+
+      .summary-grid,
+      .split {
+        grid-template-columns: 1fr;
+      }
+
+      .footnote {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="slide">
+    <section class="hero">
+      <p class="eyebrow">Training Plans / Codebase Snapshot</p>
+      <h1>88,407</h1>
+      <p>code lines across frontend, backend, tests, and non-runtime project assets.</p>
+
+      <div class="summary-grid">
+        <article class="card highlight">
+          <span class="card-label">Runtime</span>
+          <span class="card-value">51,937</span>
+          <span class="card-note">58.7% of all code lines</span>
+        </article>
+        <article class="card">
+          <span class="card-label">Testing</span>
+          <span class="card-value">23,156</span>
+          <span class="card-note">26.2% of all code lines</span>
+        </article>
+        <article class="card">
+          <span class="card-label">Non-runtime</span>
+          <span class="card-value">13,314</span>
+          <span class="card-note">15.1% of all code lines</span>
+        </article>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <h2 class="panel-title">Breakdown</h2>
+
+      <div class="metric">
+        <div class="metric-top">
+          <span class="metric-name">Frontend Runtime</span>
+          <span class="metric-value">33,057</span>
+        </div>
+        <div class="track"><div class="fill highlight" style="width: 37.4%"></div></div>
+      </div>
+
+      <div class="metric">
+        <div class="metric-top">
+          <span class="metric-name">Backend Runtime</span>
+          <span class="metric-value">18,880</span>
+        </div>
+        <div class="track"><div class="fill" style="width: 21.4%"></div></div>
+      </div>
+
+      <div class="metric">
+        <div class="metric-top">
+          <span class="metric-name">Non-runtime</span>
+          <span class="metric-value">13,314</span>
+        </div>
+        <div class="track"><div class="fill" style="width: 15.1%"></div></div>
+      </div>
+
+      <div class="metric">
+        <div class="metric-top">
+          <span class="metric-name">Backend Tests</span>
+          <span class="metric-value">12,850</span>
+        </div>
+        <div class="track"><div class="fill" style="width: 14.5%"></div></div>
+      </div>
+
+      <div class="metric">
+        <div class="metric-top">
+          <span class="metric-name">Frontend Tests</span>
+          <span class="metric-value">10,306</span>
+        </div>
+        <div class="track"><div class="fill highlight" style="width: 11.7%"></div></div>
+      </div>
+
+      <div class="split">
+        <div class="split-item">
+          <span class="card-label">Frontend Total</span>
+          <strong>43,363</strong>
+          <span class="card-note">runtime + tests</span>
+        </div>
+        <div class="split-item">
+          <span class="card-label">Backend Total</span>
+          <strong>31,730</strong>
+          <span class="card-note">runtime + tests</span>
+        </div>
+      </div>
+    </aside>
+
+    <footer class="footnote">
+      <span>448 source files counted</span>
+      <span>Palette restricted to #000000, #FFFF00, #FFFFFF</span>
+      <span>Generated from the current repository line-count snapshot</span>
+    </footer>
+  </main>
+</body>
+</html>

@@ -90,6 +90,7 @@ Notes:
 - Frontend calls API through `/api` to keep a single public origin.
 - The production stack obtains and renews Let's Encrypt certificates automatically through Caddy.
 - `APP_HOST` must be a public DNS hostname that resolves to your VPS. Let's Encrypt will not issue certificates for raw IP addresses.
+- For the one-off production demo seeding workflow, see [docs/production_demo_seed.md](docs/production_demo_seed.md).
 
 ## Safe GitHub publishing
 
@@ -239,6 +240,17 @@ App startup is safe when credentials are missing (providers remain disabled/scaf
    - `/integrations/apple_health/bridge/wellness`
    - `/integrations/apple_health/bridge/sleep`
 6. Verify wellness widgets on athlete dashboard (HRV, Resting HR, Sleep, Stress).
+
+### Full-Stack Integration Suite
+
+- Uses Playwright plus a dedicated Docker Compose stack defined in `docker-compose.integration.yml`.
+- Brings up isolated Postgres, backend, and frontend services on `35432`, `38000`, and `3300`.
+- Seeds deterministic demo users for browser-driven flows:
+   - `coach@example.com` / `password`
+   - `runner@example.com` / `password`
+- Install the browser once with `npm run test:integration:install`.
+- Run the suite with `npm run test:integration`.
+- To reuse an already-running stack instead of recreating it, set `TP_INTEGRATION_SKIP_STACK=1` and point `TP_INTEGRATION_BASE_URL` / `TP_INTEGRATION_API_URL` at the existing services.
 
 ### Production Hardening Checklist
 

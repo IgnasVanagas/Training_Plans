@@ -1,0 +1,67 @@
+@startuml Training_Plans_Coverage_Results_Diagram
+
+title Training Plans - Combined Frontend and Backend Coverage Results
+
+left to right direction
+
+skinparam shadowing false
+skinparam defaultFontSize 12
+skinparam linetype ortho
+
+skinparam packageStyle rectangle
+skinparam componentStyle rectangle
+
+skinparam package {
+  BorderColor #455A64
+}
+
+skinparam component {
+  BackgroundColor #FAFAFA
+  BorderColor #546E7A
+}
+
+skinparam artifact {
+  BackgroundColor #FFF3E0
+  BorderColor #EF6C00
+}
+
+skinparam note {
+  BackgroundColor #FFFDE7
+  BorderColor #9E9D24
+}
+
+package "Frontend Report\nfrontend/coverage/index.html" #E3F2FD {
+  artifact "All files\nStatements 75.62%  (21576/28531)\nBranches 70.62%  (5376/7612)\nFunctions 59.35%  (895/1508)\nLines 75.62%  (21576/28531)" as fe_report
+}
+
+package "Backend Report\nbackend/htmlcov/class_index.html" #E8F5E9 {
+  artifact "Coverage report\nOverall coverage 80.82%\nHTML headline rounds to 81%\nCovered statements 7887/9759\nMissing statements 1872" as be_report
+}
+
+package "Combined Summary" #F3E5F5 {
+  component "Weighted statement coverage\n29463/38290 = 76.95%\nStatus: PASS" as combined_result
+  component "Gate snapshot\nFrontend thresholds passed\nlines 75, statements 75\nbranches 70, functions 59\nCombined threshold 50 passed" as gate_result
+}
+
+fe_report --> combined_result : frontend totals
+be_report --> combined_result : backend totals
+combined_result --> gate_result
+
+note bottom of combined_result
+  The combined figure uses the same statement totals consumed by
+  scripts/check-coverage.mjs: frontend/coverage/coverage-summary.json
+  plus backend/coverage.json behind the HTML reports.
+end note
+
+legend left
+  Frontend brief:
+  full-src coverage at 75.62% statements and lines, 70.62% branches, 59.35% functions.
+
+  Backend brief:
+  overall runtime coverage is 80.82%, shown as 81% in the HTML class index.
+
+  Combined brief:
+  weighted statement coverage across frontend and backend is 76.95%.
+endlegend
+
+@enduml

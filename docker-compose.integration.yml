@@ -1,0 +1,61 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: endurance
+    ports:
+      - "35432:5432"
+    volumes:
+      - integration_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d endurance"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://app:app@db:5432/endurance
+      SECRET_KEY: integration-secret-key
+      ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+      FRONTEND_BASE_URL: http://127.0.0.1:3300
+      ALLOWED_ORIGINS: http://127.0.0.1:3300,http://localhost:3300
+      AUTO_SEED_DEMO: "true"
+      AUTH_COOKIE_SECURE: "false"
+      AUTH_COOKIE_SAMESITE: lax
+      EXPOSE_AUTH_DEBUG_LINKS: "false"
+      INTEGRATIONS_TOKEN_ENCRYPTION_KEY: integration-token-key-32-bytes!!
+      ENABLE_STRAVA_INTEGRATION: "false"
+      ENABLE_POLAR_INTEGRATION: "false"
+      ENABLE_SUUNTO_INTEGRATION: "false"
+      ENABLE_WHOOP_INTEGRATION: "false"
+      ENABLE_GARMIN_INTEGRATION: "false"
+      ENABLE_COROS_INTEGRATION: "false"
+      ENABLE_GOOGLE_FIT_INTEGRATION: "false"
+      ENABLE_APPLE_HEALTH_INTEGRATION: "false"
+      SEED_ADMIN_EMAIL: integration-admin@example.com
+      SEED_ADMIN_PASSWORD: IntegrationAdm1n!
+    ports:
+      - "38000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_URL: http://127.0.0.1:38000
+      CHOKIDAR_USEPOLLING: "true"
+    command: npm run dev -- --host 0.0.0.0 --port 3300
+    ports:
+      - "3300:3300"
+    depends_on:
+      - backend
+
+volumes:
+  integration_db_data:

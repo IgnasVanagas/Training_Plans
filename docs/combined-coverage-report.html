@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Training Plans Combined Coverage Report</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f0e7;
+      --panel: rgba(255, 252, 246, 0.92);
+      --panel-strong: #efe4d0;
+      --border: #d8c7ad;
+      --text: #1d1a16;
+      --muted: #6c6257;
+      --pass: #2f7d4a;
+      --fail: #b45035;
+      --track: #eadfce;
+      --shadow: 0 18px 40px rgba(56, 41, 23, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(217, 178, 111, 0.18), transparent 26%),
+        linear-gradient(180deg, #fbf7ef 0%, var(--bg) 100%);
+    }
+
+    a {
+      color: #184d7f;
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .page {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 28px 18px 48px;
+    }
+
+    .hero,
+    .panel,
+    .source-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      border-radius: 28px;
+      padding: 28px;
+      background: linear-gradient(135deg, #faf4e8 0%, #f0e4cf 100%);
+    }
+
+    .eyebrow {
+      margin: 0 0 12px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 4vw, 52px);
+      line-height: 0.96;
+      letter-spacing: -0.04em;
+    }
+
+    .hero p:last-of-type {
+      max-width: 760px;
+      margin: 14px 0 0;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    .hero-grid,
+    .panel-grid,
+    .source-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero-grid {
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      margin-top: 24px;
+    }
+
+    .hero-card {
+      border-radius: 20px;
+      padding: 18px;
+      background: rgba(255, 252, 246, 0.72);
+      border: 1px solid rgba(112, 88, 53, 0.12);
+    }
+
+    .hero-card strong {
+      display: block;
+      font-size: 31px;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hero-card span {
+      display: block;
+      margin-top: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .hero-card small {
+      display: block;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .panel-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-top: 18px;
+    }
+
+    .panel {
+      border-radius: 24px;
+      padding: 22px;
+    }
+
+    .panel.span-2 {
+      grid-column: 1 / -1;
+    }
+
+    .panel h2 {
+      margin: 0;
+      font-size: 19px;
+    }
+
+    .panel > p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .comparison-list,
+    .metric-list {
+      display: grid;
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .comparison-row,
+    .metric-row {
+      display: grid;
+      gap: 12px;
+      align-items: center;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(112, 88, 53, 0.14);
+      background: rgba(255, 255, 255, 0.42);
+    }
+
+    .comparison-row {
+      grid-template-columns: minmax(180px, 1.3fr) 96px minmax(180px, 1fr) 110px;
+    }
+
+    .metric-row {
+      grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    .comparison-row strong,
+    .metric-row strong {
+      display: block;
+      font-size: 15px;
+    }
+
+    .comparison-row span,
+    .metric-row span {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .metric-number,
+    .metric-percent,
+    .metric-ratio {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric-number,
+    .metric-percent {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .metric-meta {
+      text-align: right;
+      display: grid;
+      gap: 4px;
+    }
+
+    .bar-track {
+      height: 14px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: var(--track);
+      min-width: 0;
+    }
+
+    .bar-fill {
+      display: block;
+      height: 100%;
+      border-radius: 999px;
+    }
+
+    .bar-fill.pass {
+      background: linear-gradient(90deg, #68b57c, var(--pass));
+    }
+
+    .bar-fill.fail {
+      background: linear-gradient(90deg, #df8b78, var(--fail));
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 70px;
+      padding: 8px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border: 1px solid transparent;
+    }
+
+    .status-badge.pass {
+      background: rgba(47, 125, 74, 0.12);
+      color: var(--pass);
+      border-color: rgba(47, 125, 74, 0.18);
+    }
+
+    .status-badge.fail {
+      background: rgba(180, 80, 53, 0.12);
+      color: var(--fail);
+      border-color: rgba(180, 80, 53, 0.18);
+    }
+
+    .status-badge.info {
+      background: rgba(108, 98, 87, 0.12);
+      color: var(--muted);
+      border-color: rgba(108, 98, 87, 0.18);
+    }
+
+    .source-grid {
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      margin-top: 18px;
+    }
+
+    .source-card {
+      border-radius: 20px;
+      padding: 18px;
+    }
+
+    .source-card h3 {
+      margin: 6px 0 8px;
+      font-size: 18px;
+    }
+
+    .source-card p,
+    .source-time {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .source-label {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .source-card a {
+      display: inline-block;
+      margin-top: 8px;
+      font-weight: 700;
+    }
+
+    .source-time {
+      display: block;
+      margin-top: 12px;
+    }
+
+    .footnote {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    @media (max-width: 860px) {
+      .panel-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .panel.span-2 {
+        grid-column: auto;
+      }
+
+      .comparison-row {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-row {
+        grid-template-columns: 1fr;
+      }
+
+      .metric-meta {
+        text-align: left;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <p class="eyebrow">Generated coverage snapshot</p>
+      <h1>Training Plans Combined Coverage</h1>
+      <p>This page merges the current frontend and backend coverage outputs into one weighted statement view, while keeping each report's own metrics visible.</p>
+      <div class="hero-grid">
+        <article class="hero-card">
+          <strong>76.95%</strong>
+          <span>Combined Statements</span>
+          <small>29,463/38,290 across frontend and backend statement totals.</small>
+        </article>
+        <article class="hero-card">
+          <strong>75.62%</strong>
+          <span>Frontend Statements</span>
+          <small>21,576/28,531 from the frontend HTML report.</small>
+        </article>
+        <article class="hero-card">
+          <strong>80.82%</strong>
+          <span>Backend Statements</span>
+          <small>7,887/9,759. The backend HTML headline rounds this to 81%.</small>
+        </article>
+        <article class="hero-card">
+          <strong>6/6</strong>
+          <span>Threshold Checks</span>
+          <small>Combined, backend, and frontend metric gates are evaluated from the current artifacts.</small>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel-grid">
+      <article class="panel span-2">
+        <h2>Weighted Coverage Comparison</h2>
+        <p>The combined result uses the same statement math as the repository coverage gate: backend covered statements plus frontend covered statements over the combined statement total.</p>
+        <div class="comparison-list">
+    <div class="comparison-row">
+      <div>
+        <strong>Combined statements</strong>
+        <span>Weighted across frontend and backend totals. Gate 50%.</span>
+      </div>
+      <div class="metric-number">76.95%</div>
+      
+    <div class="bar-track" aria-hidden="true">
+      <span class="bar-fill pass" style="width: 76.94698354661791%;"></span>
+    </div>
+  
+      <div class="metric-ratio">29,463/38,290</div>
+    </div>
+  
+    <div class="comparison-row">
+      <div>
+        <strong>Frontend statements</strong>
+        <span>From frontend/coverage/index.html. Gate 75%.</span>
+      </div>
+      <div class="metric-number">75.62%</div>
+      
+    <div class="bar-track" aria-hidden="true">
+      <span class="bar-fill pass" style="width: 75.62%;"></span>
+    </div>
+  
+      <div class="metric-ratio">21,576/28,531</div>
+    </div>
+  
+    <div class="comparison-row">
+      <div>
+        <strong>Backend statements</strong>
+        <span>From backend/htmlcov/class_index.html and backend/coverage.json. Gate 60%.</span>
+      </div>
+      <div class="metric-number">80.82%</div>
+      
+    <div class="bar-track" aria-hidden="true">
+      <span class="bar-fill pass" style="width: 80.81770673224716%;"></span>
+    </div>
+  
+      <div class="metric-ratio">7,887/9,759</div>
+    </div>
+  </div>
+      </article>
+
+      <article class="panel">
+        <h2>Frontend Coverage Detail</h2>
+        <p>Visible metrics taken from the frontend coverage output, with the same thresholds enforced in the repo.</p>
+        <div class="metric-list">
+    <div class="metric-row">
+      <div>
+        <strong>Statements</strong>
+        <span>Threshold 75%</span>
+      </div>
+      <div class="metric-meta">
+        <span class="metric-percent">75.62%</span>
+        <span>21,576/28,531</span>
+      </div>
+      <span class="status-badge pass">PASS</span>
+    </div>
+  
+    <div class="metric-row">
+      <div>
+        <strong>Lines</strong>
+        <span>Threshold 75%</span>
+      </div>
+      <div class="metric-meta">
+        <span class="metric-percent">75.62%</span>
+        <span>21,576/28,531</span>
+      </div>
+      <span class="status-badge pass">PASS</span>
+    </div>
+  
+    <div class="metric-row">
+      <div>
+        <strong>Branches</strong>
+        <span>Threshold 70%</span>
+      </div>
+      <div class="metric-meta">
+        <span class="metric-percent">70.62%</span>
+        <span>5,376/7,612</span>
+      </div>
+      <span class="status-badge pass">PASS</span>
+    </div>
+  
+    <div class="metric-row">
+      <div>
+        <strong>Functions</strong>
+        <span>Threshold 59%</span>
+      </div>
+      <div class="metric-meta">
+        <span class="metric-percent">59.35%</span>
+        <span>895/1,508</span>
+      </div>
+      <span class="status-badge pass">PASS</span>
+    </div>
+  </div>
+      </article>
+
+      <article class="panel">
+        <h2>Backend Coverage Detail</h2>
+        <p>The backend HTML class index shows the rounded headline, while the exact statement counts come from the paired backend coverage JSON.</p>
+        <div class="metric-list">
+    <div class="metric-row">
+      <div>
+        <strong>Runtime statements</strong>
+        <span>Threshold 60%</span>
+      </div>
+      <div class="metric-meta">
+        <span class="metric-percent">80.82%</span>
+        <span>7,887/9,759</span>
+      </div>
+      <span class="status-badge pass">PASS</span>
+    </div>
+  
+    <div class="metric-row">
+      <div>
+        <strong>Missing statements</strong>
+        <span>Remaining backend runtime statements outside current test execution.</span>
+      </div>
+      <div class="metric-meta">
+        <span class="metric-percent">19.18%</span>
+        <span>1,872/9,759</span>
+      </div>
+      <span class="status-badge info">GAP</span>
+    </div>
+  </div>
+      </article>
+
+      <article class="panel span-2">
+        <h2>Source Reports</h2>
+        <p>These are the underlying reports this page summarizes.</p>
+        <div class="source-grid">
+    <article class="source-card">
+      <p class="source-label">Frontend source</p>
+      <h3>frontend/coverage/index.html</h3>
+      <p>Frontend statement, branch, function, and line totals for the full src surface.</p>
+      <a href="../frontend/coverage/index.html">Open source report</a>
+      <span class="source-time">Updated 2026-05-03 14:08:18Z</span>
+    </article>
+  
+    <article class="source-card">
+      <p class="source-label">Backend source</p>
+      <h3>backend/htmlcov/class_index.html</h3>
+      <p>Backend coverage.py class index headline, paired with backend coverage.json for exact statement totals.</p>
+      <a href="../backend/htmlcov/class_index.html">Open source report</a>
+      <span class="source-time">Updated 2026-05-03 11:19:12Z</span>
+    </article>
+  </div>
+        <p class="footnote">Generated 2026-05-03 17:03:02Z. Frontend HTML and backend HTML are linked directly so you can drill into uncovered areas after using this summary.</p>
+      </article>
+    </section>
+  </main>
+</body>
+</html>

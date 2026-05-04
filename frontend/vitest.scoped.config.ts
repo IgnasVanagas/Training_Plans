@@ -21,10 +21,8 @@ const coverageInclude = [
 ];
 
 const coverageExclude = [
-  "src/**/*.test.{ts,tsx}",
   "src/main.tsx",
   "src/vite-env.d.ts",
-  "src/test/**",
   "src/i18n/translations.ts",
 ];
 
@@ -32,8 +30,9 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.ts"],
+    setupFiles: ["./tests/setup.ts"],
     globals: true,
+    include: ["tests/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json-summary", "lcov"],

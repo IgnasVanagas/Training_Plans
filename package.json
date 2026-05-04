@@ -2,11 +2,18 @@
   "scripts": {
     "coverage:backend": "cd backend && ..\\.venv\\Scripts\\python.exe -m pytest app/tests --cov=app --cov-config=.coveragerc --cov-fail-under=60 --cov-report=term-missing --cov-report=html:htmlcov --cov-report=json:coverage.json --cov-report=xml:coverage.xml && cd .. && node scripts/render-backend-coverage-report.mjs --backend backend/coverage.json --output backend/coverage",
     "coverage:backend:visual": "node scripts/render-backend-coverage-report.mjs --backend backend/coverage.json --output backend/coverage",
+    "coverage:combined:visual": "node scripts/render-combined-coverage-report.mjs --frontend frontend/coverage/coverage-summary.json --frontend-html frontend/coverage/index.html --backend backend/coverage.json --backend-html backend/htmlcov/class_index.html --output docs/combined-coverage-report.html",
     "coverage:check": "node ./scripts/check-coverage.mjs",
     "coverage:frontend": "npm --prefix frontend run test:coverage",
     "coverage:frontend:scoped": "npm --prefix frontend run test:coverage:scoped",
+    "test:integration": "playwright test",
+    "test:integration:headed": "playwright test --headed",
+    "test:integration:install": "playwright install chromium",
     "mobile:qr": "powershell -ExecutionPolicy Bypass -File ./scripts/mobile-qr.ps1",
     "mobile:qr:tunnel": "powershell -ExecutionPolicy Bypass -File ./scripts/mobile-qr.ps1 -UseTunnel"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0"
   },
   "dependencies": {
     "@mantine/dates": "^8.3.15",

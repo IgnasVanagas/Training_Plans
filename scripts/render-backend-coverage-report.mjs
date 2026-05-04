@@ -76,6 +76,96 @@ function coverageClass(percent, total) {
   return "low";
 }
 
+function clampPercent(value) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, value));
+}
+
+function buildStackedBar(parts, total) {
+  if (!Number.isFinite(total) || total <= 0) {
+    return `<div class="stacked-bar"><span class="segment empty" style="width: 100%;"></span></div>`;
+  }
+
+  const segments = parts
+    .filter((part) => Number(part.value) > 0)
+    .map((part) => {
+      const width = clampPercent((Number(part.value) / total) * 100);
+      const title = `${part.label}: ${part.value}`;
+      return `<span class="segment ${escapeHtml(part.className)}" style="width: ${width}%;" title="${escapeHtml(title)}"></span>`;
+    })
+    .join("");
+
+  if (!segments) {
+    return `<div class="stacked-bar"><span class="segment empty" style="width: 100%;"></span></div>`;
+  }
+
+  return `<div class="stacked-bar">${segments}</div>`;
+}
+
+function buildCoverageBands(files) {
+  const bands = [
+    {
+      label: "90-100%",
+      min: 90,
+      max: 100,
+      state: "high",
+      description: "Strong coverage",
+    },
+    {
+      label: "80-89%",
+      min: 80,
+      max: 90,
+      state: "high",
+      description: "Healthy, but not full",
+    },
+    {
+      label: "60-79%",
+      min: 60,
+      max: 80,
+      state: "medium",
+      description: "Worth another pass",
+    },
+    {
+      label: "1-59%",
+      min: 0.000001,
+      max: 60,
+      state: "low",
+      description: "High-priority gaps",
+    },
+    {
+      label: "0%",
+      min: 0,
+      max: 0,
+      state: "empty",
+      description: "No executed statements",
+      exact: true,
+    },
+  ];
+
+  return bands.map((band) => {
+    const bandFiles = files.filter((file) => {
+      if (!file.totalStatements) {
+        return band.exact === true;
+      }
+
+      if (band.exact) {
+        return Number(file.percent) === 0;
+      }
+
+      return Number(file.percent) >= band.min && Number(file.percent) < band.max;
+    });
+
+    return {
+      ...band,
+      count: bandFiles.length,
+      missingStatements: bandFiles.reduce((sum, file) => sum + file.missingStatements, 0),
+    };
+  });
+}
+
 function normalizePath(filePath) {
   return filePath.replaceAll("\\", "/");
 }
@@ -255,6 +345,223 @@ a {
   margin-top: 6px;
   font-size: 13px;
   color: var(--muted);
+}
+
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.section-heading p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.section-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  border: 1px solid rgba(120, 96, 62, 0.12);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.visual-grid,
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.visual-card,
+.detail-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.priority-card {
+  grid-column: 1 / -1;
+}
+
+.band-list,
+.ranking-list,
+.metric-stack {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.band-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.band-label,
+.ranking-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.band-label {
+  font-size: 13px;
+}
+
+.band-track,
+.ranking-track,
+.stacked-bar {
+  background: #eadfcf;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.band-track,
+.ranking-track {
+  height: 14px;
+}
+
+.band-fill,
+.ranking-fill,
+.segment {
+  height: 100%;
+}
+
+.band-fill.high,
+.ranking-fill.high,
+.segment.covered {
+  background: linear-gradient(90deg, #5eae75, var(--high));
+}
+
+.band-fill.medium,
+.ranking-fill.medium {
+  background: linear-gradient(90deg, #e4aa49, var(--medium));
+}
+
+.band-fill.low,
+.ranking-fill.low,
+.segment.missing {
+  background: linear-gradient(90deg, #dd7b70, var(--low));
+}
+
+.band-fill.empty,
+.ranking-fill.empty,
+.segment.excluded {
+  background: linear-gradient(90deg, #d6cec2, var(--empty));
+}
+
+.segment.empty {
+  background: linear-gradient(90deg, #d8d1c7, #b8afa3);
+}
+
+.band-meta,
+.ranking-meta span,
+.metric-row span,
+.detail-card p,
+.empty-state,
+.minimap-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stacked-bar {
+  display: flex;
+  height: 16px;
+}
+
+.metric-row {
+  display: grid;
+  gap: 8px;
+}
+
+.metric-row header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.metric-row strong {
+  font-size: 15px;
+}
+
+.mix-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mix-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+}
+
+.legend-swatch.covered {
+  background: var(--high);
+}
+
+.legend-swatch.missing {
+  background: var(--low);
+}
+
+.legend-swatch.excluded {
+  background: var(--empty);
+}
+
+.legend-swatch.neutral {
+  background: #d9d0c4;
+}
+
+.ranking-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 180px auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.ranking-meta {
+  min-width: 0;
+}
+
+.ranking-meta .file-link {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coverage-summary thead th[data-active="true"] {
+  color: var(--text);
 }
 
 .toolbar {
@@ -464,6 +771,42 @@ a {
   font-size: 14px;
 }
 
+.minimap {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12px, 1fr));
+  gap: 4px;
+  margin-top: 16px;
+}
+
+.minimap-cell {
+  display: block;
+  aspect-ratio: 1 / 1;
+  border-radius: 4px;
+  border: 1px solid rgba(120, 96, 62, 0.08);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.minimap-cell.hit {
+  background: #61a873;
+}
+
+.minimap-cell.miss {
+  background: #d05a4d;
+}
+
+.minimap-cell.neutral {
+  background: #d9d0c4;
+}
+
+.minimap-cell.excluded {
+  background: #b8afa3;
+}
+
+.minimap-cell:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(52, 39, 23, 0.12);
+}
+
 .source-table {
   width: 100%;
   border-collapse: collapse;
@@ -529,10 +872,29 @@ tr.excluded {
   font-size: 13px;
 }
 
+@media (max-width: 1100px) {
+  .visual-grid,
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .priority-card {
+    grid-column: auto;
+  }
+}
+
 @media (max-width: 900px) {
   .coverage-summary th:nth-child(2),
   .coverage-summary td:nth-child(2) {
     display: none;
+  }
+
+  .ranking-row {
+    grid-template-columns: 1fr;
+  }
+
+  .band-row {
+    grid-template-columns: 84px minmax(0, 1fr) auto;
   }
 
   .line-number,
@@ -680,22 +1042,76 @@ function renderIndex(report, outputDir, backendDir) {
   const totalPercent = Number(totals.percent_statements_covered || 0);
   const totalCodeLines = files.reduce((sum, file) => sum + file.totalCodeLines, 0);
   const coveredCodeLines = files.reduce((sum, file) => sum + file.coveredCodeLines, 0);
+  const missingCodeLines = files.reduce((sum, file) => sum + file.missingCodeLines, 0);
   const excludedCodeLines = files.reduce((sum, file) => sum + file.excludedCodeLines, 0);
   const linePercent = totalCodeLines === 0 ? 100 : (coveredCodeLines / totalCodeLines) * 100;
   const highCoverageFiles = files.filter((file) => file.percent >= 80).length;
   const fullCoverageFiles = files.filter((file) => file.percent === 100).length;
+  const filesBelowTarget = files.filter((file) => file.totalStatements > 0 && file.percent < 80).length;
+  const statementMix = buildStackedBar([
+    { label: "Covered", value: coveredStatements, className: "covered" },
+    { label: "Missing", value: missingStatements, className: "missing" },
+    { label: "Excluded", value: excludedStatements, className: "excluded" },
+  ], totalStatements);
+  const lineMix = buildStackedBar([
+    { label: "Covered", value: coveredCodeLines, className: "covered" },
+    { label: "Missing", value: missingCodeLines, className: "missing" },
+    { label: "Excluded", value: excludedCodeLines, className: "excluded" },
+  ], totalCodeLines);
+  const coverageBands = buildCoverageBands(files);
+  const largestBandCount = Math.max(...coverageBands.map((band) => band.count), 1);
+  const bandRows = coverageBands.map((band) => {
+    const width = largestBandCount === 0 ? 0 : clampPercent((band.count / largestBandCount) * 100);
+    return `
+      <div class="band-row">
+        <span class="band-label">${escapeHtml(band.label)}</span>
+        <div>
+          <div class="band-track">
+            <div class="band-fill ${band.state}" style="width: ${width}%;"></div>
+          </div>
+          <div class="band-meta">${escapeHtml(band.description)} • ${band.missingStatements} missing statements</div>
+        </div>
+        <span class="ranking-value">${band.count}</span>
+      </div>`;
+  }).join("");
+  const topMissingFiles = [...files]
+    .filter((file) => file.missingStatements > 0)
+    .sort((left, right) => {
+      if (right.missingStatements !== left.missingStatements) {
+        return right.missingStatements - left.missingStatements;
+      }
+
+      return left.percent - right.percent;
+    })
+    .slice(0, 8);
+  const maxMissing = Math.max(...topMissingFiles.map((file) => file.missingStatements), 1);
+  const rankingRows = topMissingFiles.map((file) => {
+    const width = clampPercent((file.missingStatements / maxMissing) * 100);
+    return `
+      <div class="ranking-row">
+        <div class="ranking-meta">
+          <a class="file-link" href="${escapeHtml(file.fileHref)}">${escapeHtml(file.normalizedFile)}</a>
+          <span>${formatPercent(file.percent)} statements • ${formatPercent(file.linePercent)} code lines</span>
+        </div>
+        <div class="ranking-track">
+          <div class="ranking-fill ${file.coverageState}" style="width: ${width}%;"></div>
+        </div>
+        <span class="ranking-value">${file.missingStatements}</span>
+      </div>`;
+  }).join("");
 
   const rows = files.map((file) => {
-    const width = file.totalStatements ? Math.max(0, Math.min(100, file.percent)) : 100;
+    const width = file.totalStatements ? clampPercent(file.percent) : 100;
     return `
       <tr
         data-row
         class="${file.coverageState}"
         data-file="${escapeHtml(file.normalizedFile.toLowerCase())}"
-        data-statementPercent="${file.percent}"
-        data-statementCount="${file.totalStatements}"
-        data-linePercent="${file.linePercent}"
-        data-lineCount="${file.totalCodeLines}"
+        data-percent="${file.percent}"
+        data-statement-percent="${file.percent}"
+        data-statement-count="${file.totalStatements}"
+        data-line-percent="${file.linePercent}"
+        data-line-count="${file.totalCodeLines}"
         data-missing="${file.missingStatements}"
         data-excluded="${file.excludedStatements}"
         data-filter-text="${escapeHtml(file.normalizedFile.toLowerCase())}"
@@ -743,6 +1159,63 @@ function renderIndex(report, outputDir, backendDir) {
           <span class="detail">${excludedStatements} excluded statements, ${excludedCodeLines} excluded code lines</span>
         </div>
       </div>
+    </section>
+
+    <section class="visual-grid">
+      <article class="visual-card">
+        <div class="section-heading">
+          <div>
+            <h2>Coverage Bands</h2>
+            <p>Statement coverage grouped into quick-read buckets so you can see where most backend files sit without scanning the whole table.</p>
+          </div>
+          <span class="section-chip">${filesBelowTarget} under 80%</span>
+        </div>
+        <div class="band-list">
+${bandRows}
+        </div>
+      </article>
+
+      <article class="visual-card">
+        <div class="section-heading">
+          <div>
+            <h2>Coverage Mix</h2>
+            <p>Covered, missing, and excluded work separated into stacked bars for both statement totals and actual code lines.</p>
+          </div>
+          <span class="section-chip">${fullCoverageFiles} full files</span>
+        </div>
+        <div class="metric-stack">
+          <div class="metric-row">
+            <header>
+              <strong>Statements</strong>
+              <span>${coveredStatements}/${totalStatements} covered</span>
+            </header>
+            ${statementMix}
+          </div>
+          <div class="metric-row">
+            <header>
+              <strong>Code Lines</strong>
+              <span>${coveredCodeLines}/${totalCodeLines} covered</span>
+            </header>
+            ${lineMix}
+          </div>
+        </div>
+        <div class="mix-legend">
+          <span><i class="legend-swatch covered"></i>Covered</span>
+          <span><i class="legend-swatch missing"></i>Missing</span>
+          <span><i class="legend-swatch excluded"></i>Excluded</span>
+        </div>
+      </article>
+
+      <article class="visual-card priority-card">
+        <div class="section-heading">
+          <div>
+            <h2>Priority Gaps</h2>
+            <p>The files below currently carry the largest statement gaps, so they are the fastest places to focus when you want coverage to move visibly.</p>
+          </div>
+          <span class="section-chip">Top ${topMissingFiles.length || 0}</span>
+        </div>
+        ${rankingRows ? `<div class="ranking-list">${rankingRows}</div>` : '<p class="empty-state">All backend files are at 100% statement coverage.</p>'}
+      </article>
     </section>
 
     <div class="toolbar">
@@ -807,6 +1280,44 @@ function renderSourcePages(report, outputDir, backendDir) {
     const fileText = fs.existsSync(sourcePath) ? fs.readFileSync(sourcePath, "utf8") : "";
     const lines = splitSourceLines(fileText);
     const sourceCoverage = computeSourceLineCoverage(lines, executed, missing, excluded);
+    const statementMix = buildStackedBar([
+      { label: "Covered", value: coveredStatements, className: "covered" },
+      { label: "Missing", value: missingStatements, className: "missing" },
+      { label: "Excluded", value: excludedStatements, className: "excluded" },
+    ], totalStatements);
+    const codeLineMix = buildStackedBar([
+      { label: "Covered", value: sourceCoverage.covered, className: "covered" },
+      { label: "Missing", value: sourceCoverage.missing, className: "missing" },
+      { label: "Excluded", value: sourceCoverage.excluded, className: "excluded" },
+    ], sourceCoverage.total);
+
+    const lineStateCounts = {
+      hit: 0,
+      miss: 0,
+      neutral: 0,
+      excluded: 0,
+    };
+
+    const miniMap = lines.map((line, index) => {
+      const lineNumber = index + 1;
+      let rowClass = "neutral";
+      let label = "non-statement";
+
+      if (missing.has(lineNumber)) {
+        rowClass = "miss";
+        label = "missing";
+      } else if (executed.has(lineNumber)) {
+        rowClass = "hit";
+        label = "covered";
+      } else if (excluded.has(lineNumber)) {
+        rowClass = "excluded";
+        label = "excluded";
+      }
+
+      lineStateCounts[rowClass] += 1;
+
+      return `<a class="minimap-cell ${rowClass}" href="#L${lineNumber}" title="Line ${lineNumber}: ${label}"></a>`;
+    }).join("");
 
     const lineRows = lines.map((line, index) => {
       const lineNumber = index + 1;
@@ -826,7 +1337,7 @@ function renderSourcePages(report, outputDir, backendDir) {
 
       const code = line.length > 0 ? escapeHtml(line) : " ";
       return `
-        <tr class="${rowClass}">
+        <tr id="L${lineNumber}" class="${rowClass}">
           <td class="line-number">${lineNumber}</td>
           <td class="line-state">${label}</td>
           <td class="line-code"><code>${code}</code></td>
@@ -872,6 +1383,51 @@ function renderSourcePages(report, outputDir, backendDir) {
         <span><i class="dot dot-miss"></i>Missing statement</span>
         <span><i class="dot dot-neutral"></i>Non-statement line</span>
       </div>
+
+      <section class="detail-grid">
+        <article class="detail-card">
+          <div class="section-heading">
+            <div>
+              <h2>Coverage Mix</h2>
+              <p>Statement totals and actual code lines shown separately so structural gaps stand out before you read the full source listing.</p>
+            </div>
+          </div>
+          <div class="metric-stack">
+            <div class="metric-row">
+              <header>
+                <strong>Statements</strong>
+                <span>${coveredStatements}/${totalStatements} covered</span>
+              </header>
+              ${statementMix}
+            </div>
+            <div class="metric-row">
+              <header>
+                <strong>Code Lines</strong>
+                <span>${sourceCoverage.covered}/${sourceCoverage.total} covered</span>
+              </header>
+              ${codeLineMix}
+            </div>
+          </div>
+          <div class="mix-legend">
+            <span><i class="legend-swatch covered"></i>Covered</span>
+            <span><i class="legend-swatch missing"></i>Missing</span>
+            <span><i class="legend-swatch excluded"></i>Excluded</span>
+          </div>
+        </article>
+
+        <article class="detail-card">
+          <div class="section-heading">
+            <div>
+              <h2>Line Map</h2>
+              <p>Each square represents one source line. Red clusters show where new tests can reduce the biggest visible gaps fastest.</p>
+            </div>
+          </div>
+          <div class="minimap">
+            ${miniMap}
+          </div>
+          <p class="minimap-note">${lineStateCounts.hit} covered, ${lineStateCounts.miss} missing, ${lineStateCounts.excluded} excluded, ${lineStateCounts.neutral} non-statement lines.</p>
+        </article>
+      </section>
 
       <section class="source-card">
         <div class="source-header">

@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Training Plans Kodo Eilučių Suvestinė</title>
+  <style>
+    :root {
+      --black: #000000;
+      --yellow: #FFFF00;
+      --white: #FFFFFF;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--black);
+      color: var(--white);
+      font-family: Arial, Helvetica, sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .slide {
+      width: min(1180px, 100%);
+      min-height: 640px;
+      padding: 36px;
+      border: 2px solid var(--white);
+      display: grid;
+      gap: 28px;
+      background:
+        linear-gradient(180deg, transparent 0 86%, rgba(255, 255, 255, 0.08) 86% 87%, transparent 87% 100%),
+        var(--black);
+    }
+
+    .top {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 28px;
+      align-items: start;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      font-size: 12px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--yellow);
+      font-size: clamp(72px, 10vw, 124px);
+      line-height: 0.92;
+    }
+
+    .subtext {
+      margin: 12px 0 0;
+      max-width: 480px;
+      font-size: 20px;
+      line-height: 1.22;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .stat {
+      border: 2px solid var(--white);
+      padding: 16px;
+      display: grid;
+      gap: 8px;
+      min-height: 118px;
+    }
+
+    .stat.highlight {
+      border-color: var(--yellow);
+      color: var(--yellow);
+    }
+
+    .label {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .value {
+      font-size: 38px;
+      line-height: 1;
+      font-weight: 700;
+    }
+
+    .note {
+      font-size: 14px;
+      line-height: 1.25;
+    }
+
+    .bars {
+      display: grid;
+      gap: 14px;
+    }
+
+    .bar-row {
+      display: grid;
+      gap: 6px;
+    }
+
+    .bar-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 15px;
+      align-items: baseline;
+    }
+
+    .bar-head strong {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .track {
+      height: 14px;
+      border: 2px solid var(--white);
+    }
+
+    .fill {
+      height: 100%;
+      background: var(--white);
+    }
+
+    .fill.highlight {
+      background: var(--yellow);
+    }
+
+    .footer {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      align-items: end;
+      padding-top: 18px;
+      border-top: 2px solid rgba(255, 255, 255, 0.22);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    @media (max-width: 900px) {
+      .slide,
+      .top,
+      .stats,
+      .footer {
+        grid-template-columns: 1fr;
+      }
+
+      .slide {
+        min-height: auto;
+        padding: 24px;
+      }
+
+      .value {
+        font-size: 32px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="slide">
+    <section class="top">
+      <div>
+        <p class="eyebrow">Training Plans / Kodo bazės suvestinė</p>
+        <h1>88,407</h1>
+        <p class="subtext">Kodo eilutės frontend, backend, testuose ir kitame nevykdomame projekto sluoksnyje.</p>
+      </div>
+
+      <div class="stats">
+        <article class="stat highlight">
+          <span class="label">Vykdomas kodas</span>
+          <span class="value">51,937</span>
+          <span class="note">58.7% viso kiekio</span>
+        </article>
+        <article class="stat">
+          <span class="label">Testai</span>
+          <span class="value">23,156</span>
+          <span class="note">26.2% viso kiekio</span>
+        </article>
+        <article class="stat">
+          <span class="label">Nevykdomas kodas</span>
+          <span class="value">13,314</span>
+          <span class="note">15.1% viso kiekio</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="bars" aria-label="Kategorijų palyginimas">
+      <div class="bar-row">
+        <div class="bar-head"><span>Frontend vykdomas kodas</span><strong>33,057</strong></div>
+        <div class="track"><div class="fill highlight" style="width: 37.4%"></div></div>
+      </div>
+
+      <div class="bar-row">
+        <div class="bar-head"><span>Backend vykdomas kodas</span><strong>18,880</strong></div>
+        <div class="track"><div class="fill" style="width: 21.4%"></div></div>
+      </div>
+
+      <div class="bar-row">
+        <div class="bar-head"><span>Nevykdomas kodas</span><strong>13,314</strong></div>
+        <div class="track"><div class="fill" style="width: 15.1%"></div></div>
+      </div>
+
+      <div class="bar-row">
+        <div class="bar-head"><span>Backend testai</span><strong>12,850</strong></div>
+        <div class="track"><div class="fill" style="width: 14.5%"></div></div>
+      </div>
+
+      <div class="bar-row">
+        <div class="bar-head"><span>Frontend testai</span><strong>10,306</strong></div>
+        <div class="track"><div class="fill highlight" style="width: 11.7%"></div></div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div>448 suskaičiuoti šaltinio failai</div>
+    </footer>
+  </main>
+</body>
+</html>

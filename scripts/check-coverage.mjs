@@ -8,6 +8,10 @@ function parseArgs(argv) {
     backend: path.join(rootDir, "backend", "coverage.json"),
     frontend: path.join(rootDir, "frontend", "coverage", "coverage-summary.json"),
     threshold: 50,
+    frontendLines: 75,
+    frontendStatements: 75,
+    frontendBranches: 70,
+    frontendFunctions: 59,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -27,6 +31,27 @@ function parseArgs(argv) {
 
     if (arg === "--threshold") {
       options.threshold = Number(argv[index + 1]);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--frontend-lines") {
+      options.frontendLines = Number(argv[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg === "--frontend-statements") {
+      options.frontendStatements = Number(argv[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg === "--frontend-branches") {
+      options.frontendBranches = Number(argv[index + 1]);
+      index += 1;
+      continue;
+    }
+    if (arg === "--frontend-functions") {
+      options.frontendFunctions = Number(argv[index + 1]);
       index += 1;
       continue;
     }
@@ -57,15 +82,26 @@ function readBackendTotals(report) {
 }
 
 function readFrontendTotals(report) {
-  const totals = report?.total?.statements;
-  if (!totals || typeof totals.total !== "number" || typeof totals.covered !== "number") {
-    throw new Error("Frontend coverage report is missing total.statements totals");
+  const t = report?.total;
+  const stmts = t?.statements;
+  const lines = t?.lines;
+  const branches = t?.branches;
+  const functions = t?.functions;
+  if (
+    !stmts || typeof stmts.total !== "number" || typeof stmts.covered !== "number"
+    || !lines || !branches || !functions
+  ) {
+    throw new Error("Frontend coverage report is missing total.{statements,lines,branches,functions}");
   }
 
   return {
-    total: totals.total,
-    covered: totals.covered,
-    percent: totals.pct,
+    total: stmts.total,
+    covered: stmts.covered,
+    percent: stmts.pct,
+    statements: stmts,
+    lines,
+    branches,
+    functions,
   };
 }
 
@@ -99,9 +135,30 @@ function main() {
   console.log(`Combined: ${combinedCovered}/${combinedTotal} statements (${formatPercent(combinedPercent)}%)`);
   console.log(`Threshold: ${formatPercent(options.threshold)}%`);
 
+  const frontendChecks = [
+    { label: "lines", actual: frontend.lines.pct, required: options.frontendLines },
+    { label: "statements", actual: frontend.statements.pct, required: options.frontendStatements },
+    { label: "branches", actual: frontend.branches.pct, required: options.frontendBranches },
+    { label: "functions", actual: frontend.functions.pct, required: options.frontendFunctions },
+  ];
+  let frontendFailed = false;
+  for (const check of frontendChecks) {
+    const ok = check.actual >= check.required;
+    console.log(
+      `Frontend ${check.label}: ${formatPercent(check.actual)}% (required ${formatPercent(check.required)}%) ${ok ? "OK" : "FAIL"}`,
+    );
+    if (!ok) frontendFailed = true;
+  }
+
   if (combinedPercent < options.threshold) {
     process.exitCode = 1;
     console.error("Combined coverage is below the required threshold.");
+    return;
+  }
+
+  if (frontendFailed) {
+    process.exitCode = 1;
+    console.error("Frontend coverage is below the per-metric threshold floor.");
     return;
   }
 
