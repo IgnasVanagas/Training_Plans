@@ -1,4 +1,4 @@
-import { format, addWeeks } from 'date-fns';
+import { format, addWeeks, addMonths } from 'date-fns';
 import { enUS, lt as ltLocale } from 'date-fns/locale';
 import { ReactNode } from 'react';
 import { Button, ActionIcon, Group, Popover, SegmentedControl, Box, Stack } from '@mantine/core';
@@ -37,11 +37,10 @@ const CalendarHeader = ({
     const calendarLocale = language === 'lt' ? ltLocale : enUS;
 
     const handleNext = () => {
-        // In both continuous and week views, navigate by 1 week for smooth scrolling
-        onNavigate(addWeeks(date, 1));
+        onNavigate(currentView === 'week' ? addWeeks(date, 1) : addMonths(date, 1));
     };
     const handlePrev = () => {
-        onNavigate(addWeeks(date, -1));
+        onNavigate(currentView === 'week' ? addWeeks(date, -1) : addMonths(date, -1));
     };
     const handleToday = () => {
         onNavigate(new Date());

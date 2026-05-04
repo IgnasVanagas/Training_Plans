@@ -82,9 +82,18 @@ const DualCalendarView = ({ me, athletes = [] }: Props) => {
   }
 
   return (
-    <Flex direction="column" gap={0} style={{ height: "calc(100dvh - 140px)" }}>
-      <Box style={{ flex: 1, minHeight: 0, overflowX: showLibrary ? "auto" : "hidden", overflowY: "hidden" }}>
-      <Flex gap={0} style={{ flex: 1, minHeight: 0, minWidth: scrollMinWidth }}>
+    <Flex direction="column" gap={0} style={{ height: "calc(100dvh - 140px)", minHeight: 0 }}>
+      <Box
+        style={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          display: "flex",
+          overflowX: showLibrary ? "auto" : "hidden",
+          overflowY: "hidden",
+        }}
+      >
+      <Flex gap={0} style={{ flex: 1, minHeight: 0, minWidth: showLibrary ? scrollMinWidth : 0, width: showLibrary ? scrollMinWidth : "100%" }}>
         {/* Left Panel */}
         <Box style={{ flex: 1, minWidth: showLibrary ? panelMinWidth : 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {isCoach && (
