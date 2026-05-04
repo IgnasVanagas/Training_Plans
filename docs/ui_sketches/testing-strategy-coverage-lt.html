@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Training Plans Testavimo Strategija</title>
+  <style>
+    :root {
+      --black: #000000;
+      --yellow: #FFFF00;
+      --white: #FFFFFF;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--black);
+      color: var(--white);
+      font-family: Arial, Helvetica, sans-serif;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .slide {
+      width: min(1180px, 100%);
+      min-height: 640px;
+      padding: 40px;
+      border: 2px solid var(--white);
+      display: grid;
+      gap: 34px;
+      background:
+        linear-gradient(180deg, transparent 0 88%, rgba(255, 255, 255, 0.08) 88% 89%, transparent 89% 100%),
+        var(--black);
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 10px 0 0;
+      color: var(--yellow);
+      font-size: clamp(56px, 9vw, 112px);
+      line-height: 0.95;
+    }
+
+    .intro {
+      margin: 10px 0 0;
+      max-width: 720px;
+      font-size: 22px;
+      line-height: 1.25;
+    }
+
+    .bars {
+      display: grid;
+      gap: 28px;
+      align-content: start;
+    }
+
+    .bar-card {
+      display: grid;
+      gap: 10px;
+    }
+
+    .bar-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: baseline;
+    }
+
+    .bar-label {
+      font-size: 28px;
+      line-height: 1.1;
+    }
+
+    .bar-value {
+      font-size: clamp(42px, 5vw, 64px);
+      line-height: 1;
+      font-weight: 700;
+      color: var(--yellow);
+      white-space: nowrap;
+    }
+
+    .track {
+      width: 100%;
+      height: 24px;
+      border: 2px solid var(--white);
+      overflow: hidden;
+    }
+
+    .fill {
+      height: 100%;
+      background: var(--white);
+    }
+
+    .details {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      font-size: 15px;
+      line-height: 1.35;
+      opacity: 0.92;
+    }
+
+    .footer {
+      align-self: end;
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding-top: 18px;
+      border-top: 2px solid rgba(255, 255, 255, 0.22);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    @media (max-width: 900px) {
+      .slide {
+        min-height: auto;
+        padding: 24px;
+      }
+
+      .bar-head,
+      .details,
+      .footer {
+        flex-direction: column;
+      }
+
+      .bar-label {
+        font-size: 24px;
+      }
+
+      .intro {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="slide">
+    <header>
+      <p class="eyebrow">Training Plans / Testavimo strategija</p>
+      <h1>Kodo aprėptis</h1>
+      <p class="intro">Esamų frontend ir backend aprėpties ataskaitų santrauka, pateikta dviem palyginamais aprėpties grafikais.</p>
+    </header>
+
+    <section class="bars" aria-label="Frontend ir backend aprėptis">
+      <article class="bar-card">
+        <div class="bar-head">
+          <div class="bar-label">Frontend aprėptis</div>
+          <div class="bar-value">75.62%</div>
+        </div>
+        <div class="track"><div class="fill" style="width: 75.62%"></div></div>
+      </article>
+
+      <article class="bar-card">
+        <div class="bar-head">
+          <div class="bar-label">Backend aprėptis</div>
+          <div class="bar-value">80.82%</div>
+        </div>
+        <div class="track"><div class="fill" style="width: 80.82%"></div></div>
+      </article>
+    </section>
+
+    <footer class="footer">
+      <span>Naudojami naujausi šiame repozitorijoje rasti aprėpties rezultatai</span>
+      <span>Du grafikai: frontend ir backend</span>
+    </footer>
+  </main>
+</body>
+</html>

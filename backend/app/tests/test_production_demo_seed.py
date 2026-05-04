@@ -7,6 +7,7 @@ import pytest
 
 from app import production_demo_seed as demo_seed
 from app.models import Activity, ComplianceStatusEnum, PlannedWorkout, Profile
+from app.schemas import CalendarEvent
 from app.services import compliance as compliance_service
 
 
@@ -92,6 +93,30 @@ def test_build_workout_blueprints_cover_required_status_mix_for_athlete():
     assert all(item.target_status == "planned" for item in workouts if item.day_offset > 0)
 
 
+def test_future_seed_workout_structures_validate_as_calendar_events():
+    index = 1
+    for athlete in demo_seed.get_athlete_personas():
+        future_workouts = [item for item in demo_seed.build_workout_blueprints(athlete, date(2026, 5, 4)) if item.day_offset > 0]
+        for workout in future_workouts:
+            event = CalendarEvent(
+                id=index,
+                user_id=1,
+                date=date(2026, 5, 4),
+                title=workout.title,
+                sport_type=workout.sport_type,
+                duration=float(workout.planned_duration),
+                distance=workout.planned_distance,
+                is_planned=True,
+                compliance_status=ComplianceStatusEnum.planned,
+                planned_duration=workout.planned_duration,
+                planned_distance=workout.planned_distance,
+                structure=workout.structure,
+            )
+            assert event.structure is not None
+            assert len(event.structure) == len(workout.structure or [])
+            index += 1
+
+
 def test_build_activity_blueprints_include_required_duplicates():
     athlete = demo_seed.get_athlete_personas()[1]
     activities = demo_seed.build_activity_blueprints(athlete, date(2026, 5, 4))
@@ -102,6 +127,23 @@ def test_build_activity_blueprints_include_required_duplicates():
     assert len(duplicates) == 2
     assert {item.duplicate_of_key for item in duplicates} == {"past-green-primary", "past-yellow-primary"}
     assert any(item.prefer_parsed_template for item in primary)
+
+
+def test_chat_blueprints_cover_group_coach_and_direct_threads():
+    athlete = demo_seed.get_athlete_personas()[0]
+    group_messages = demo_seed.build_group_chat_blueprints()
+    coach_messages = demo_seed.build_coach_chat_blueprints(athlete)
+    direct_messages = demo_seed.build_direct_chat_blueprints()
+
+    assert len(group_messages) == 8
+    assert {item.sender_key for item in group_messages} >= {"coach", "admin", "athlete-01", "athlete-02"}
+    assert len(coach_messages) == 4
+    assert {item.sender_key for item in coach_messages} == {"coach", athlete.key}
+    assert all(item.athlete_key == athlete.key for item in coach_messages)
+    direct_threads = {frozenset((item.sender_key, item.recipient_key)) for item in direct_messages}
+    assert frozenset(("admin", "coach")) in direct_threads
+    assert frozenset(("admin", "athlete-03")) in direct_threads
+    assert frozenset(("admin", "athlete-06")) in direct_threads
 
 
 def test_admin_persona_is_both_system_admin_and_org_admin_candidate():
@@ -141,6 +183,9 @@ def test_seed_dry_run_report_exposes_expected_counts_and_accounts():
     assert payload["counts"]["athletes"] == 8
     assert payload["counts"]["planned_workouts"] == 64
     assert payload["counts"]["activities"] == 48
+    assert payload["counts"]["group_messages"] == 8
+    assert payload["counts"]["coach_messages"] == 32
+    assert payload["counts"]["direct_messages"] == 8
     assert payload["accounts"][0]["email"] == "test98765432987+prod-demo-coach@gmail.com"
 
 

@@ -21,6 +21,7 @@ These are Linux VPS shell commands. Do not run them in local Windows PowerShell 
 - 1 season plan per athlete with 2 goal races
 - 8 planned workouts per athlete: 4 past and 4 future
 - 6 activities per athlete: 4 primary activities and 2 duplicate secondaries
+- Seeded organization chat history: group chat, coach-athlete threads, and member direct messages
 - Completed compliance examples per athlete: green, yellow/red, missed, and future planned
 
 All personas are fictional and deterministic by email alias.
@@ -107,6 +108,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.production exec backen
 - Confirm the coach can see all 8 athletes in the organization roster.
 - Confirm the admin account can access global admin tooling and still appears as an organization admin.
 - Open at least one athlete calendar and verify past green, yellow/red, and missed workouts alongside future planned workouts.
+- Open the organization chat and verify the group thread, coach-athlete threads, and admin/member direct messages are already populated.
 - Open one matched activity detail and confirm planned-vs-completed analysis is available.
 - Open a duplicated activity pair and confirm the secondary recording is marked as a duplicate.
 

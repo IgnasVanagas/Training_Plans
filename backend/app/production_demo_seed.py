@@ -23,6 +23,9 @@ from .models import (
     CoachAthleteLink,
     ComplianceStatusEnum,
     Organization,
+    OrganizationCoachMessage,
+    OrganizationDirectMessage,
+    OrganizationGroupMessage,
     OrganizationMember,
     PlannedWorkout,
     PlannedWorkoutVersion,
@@ -154,6 +157,35 @@ class ActivityBlueprint:
     duplicate_of_key: str | None = None
     device_name: str | None = None
     prefer_parsed_template: bool = False
+
+
+@dataclass(frozen=True)
+class OrganizationGroupMessageBlueprint:
+    sender_key: str
+    body: str
+    days_ago: int
+    hour: int
+    minute: int
+
+
+@dataclass(frozen=True)
+class OrganizationCoachMessageBlueprint:
+    athlete_key: str
+    sender_key: str
+    body: str
+    days_ago: int
+    hour: int
+    minute: int
+
+
+@dataclass(frozen=True)
+class OrganizationDirectMessageBlueprint:
+    sender_key: str
+    recipient_key: str
+    body: str
+    days_ago: int
+    hour: int
+    minute: int
 
 
 @dataclass(frozen=True)
@@ -512,6 +544,15 @@ def get_athlete_personas() -> list[DemoPersona]:
     return [persona for persona in DEMO_PERSONAS if persona.is_athlete]
 
 
+def _athlete_sequence(persona: DemoPersona) -> int:
+    if not persona.key.startswith("athlete-"):
+        return 0
+    try:
+        return int(persona.key.rsplit("-", 1)[1])
+    except ValueError:
+        return 0
+
+
 def _running_distance_km(duration_minutes: int, pace_min_per_km: float) -> float:
     if pace_min_per_km <= 0:
         return round(duration_minutes / 5.5, 1)
@@ -545,30 +586,31 @@ def _running_future_structures(persona: DemoPersona) -> list[list[dict[str, Any]
     threshold_pace = max((persona.lt2 or 4.2) * 1.02, 3.6)
     return [
         [
-            {"type": "block", "category": "warmup", "duration": {"type": "time", "value": 900}, "target": {"type": "rpe", "value": 3}},
-            {"type": "block", "category": "work", "duration": {"type": "time", "value": 1800}, "target": {"type": "heart_rate_zone", "zone": 2}},
-            {"type": "block", "category": "work", "duration": {"type": "time", "value": 240}, "target": {"type": "rpe", "value": 6}},
-            {"type": "block", "category": "cooldown", "duration": {"type": "time", "value": 600}, "target": {"type": "rpe", "value": 2}},
+            {"id": "easy-01", "type": "block", "category": "warmup", "duration": {"type": "time", "value": 900}, "target": {"type": "rpe", "value": 3}},
+            {"id": "easy-02", "type": "block", "category": "work", "duration": {"type": "time", "value": 1800}, "target": {"type": "heart_rate_zone", "zone": 2}},
+            {"id": "easy-03", "type": "block", "category": "work", "duration": {"type": "time", "value": 240}, "target": {"type": "rpe", "value": 6}},
+            {"id": "easy-04", "type": "block", "category": "cooldown", "duration": {"type": "time", "value": 600}, "target": {"type": "rpe", "value": 2}},
         ],
         [
-            {"type": "block", "category": "warmup", "duration": {"type": "time", "value": 900}, "target": {"type": "rpe", "value": 3}},
+            {"id": "cruise-01", "type": "block", "category": "warmup", "duration": {"type": "time", "value": 900}, "target": {"type": "rpe", "value": 3}},
             {
+                "id": "cruise-02",
                 "type": "repeat",
                 "repeats": 4,
                 "steps": [
-                    {"type": "block", "category": "work", "duration": {"type": "time", "value": 480}, "target": {"type": "pace", "metric": "goal_race_pace", "value": round(threshold_pace, 2)}},
-                    {"type": "block", "category": "recovery", "duration": {"type": "time", "value": 150}, "target": {"type": "rpe", "value": 2}},
+                    {"id": "cruise-02a", "type": "block", "category": "work", "duration": {"type": "time", "value": 480}, "target": {"type": "pace", "value": round(threshold_pace, 2), "unit": "min/km"}},
+                    {"id": "cruise-02b", "type": "block", "category": "recovery", "duration": {"type": "time", "value": 150}, "target": {"type": "rpe", "value": 2}},
                 ],
             },
-            {"type": "block", "category": "cooldown", "duration": {"type": "time", "value": 600}, "target": {"type": "rpe", "value": 2}},
+            {"id": "cruise-03", "type": "block", "category": "cooldown", "duration": {"type": "time", "value": 600}, "target": {"type": "rpe", "value": 2}},
         ],
         [
-            {"type": "block", "category": "work", "duration": {"type": "time", "value": 4200}, "target": {"type": "heart_rate_zone", "zone": 2}},
-            {"type": "block", "category": "work", "duration": {"type": "time", "value": 900}, "target": {"type": "heart_rate_zone", "zone": 3}},
-            {"type": "block", "category": "cooldown", "duration": {"type": "time", "value": 300}, "target": {"type": "rpe", "value": 2}},
+            {"id": "long-01", "type": "block", "category": "work", "duration": {"type": "time", "value": 4200}, "target": {"type": "heart_rate_zone", "zone": 2}},
+            {"id": "long-02", "type": "block", "category": "work", "duration": {"type": "time", "value": 900}, "target": {"type": "heart_rate_zone", "zone": 3}},
+            {"id": "long-03", "type": "block", "category": "cooldown", "duration": {"type": "time", "value": 300}, "target": {"type": "rpe", "value": 2}},
         ],
         [
-            {"type": "block", "category": "work", "duration": {"type": "time", "value": 2400}, "target": {"type": "rpe", "value": 2}},
+            {"id": "recovery-01", "type": "block", "category": "work", "duration": {"type": "time", "value": 2400}, "target": {"type": "rpe", "value": 2}},
         ],
     ]
 
@@ -577,35 +619,37 @@ def _cycling_future_structures(persona: DemoPersona) -> list[list[dict[str, Any]
     ftp = float(persona.ftp or 240.0)
     return [
         [
-            {"type": "block", "category": "work", "duration": {"type": "time", "value": 3600}, "target": {"type": "power_zone", "zone": 1}},
+            {"id": "spin-01", "type": "block", "category": "work", "duration": {"type": "time", "value": 3600}, "target": {"type": "power", "zone": 1}},
         ],
         [
-            {"type": "block", "category": "warmup", "duration": {"type": "time", "value": 900}, "target": {"type": "power_zone", "zone": 2}},
+            {"id": "sweet-01", "type": "block", "category": "warmup", "duration": {"type": "time", "value": 900}, "target": {"type": "power", "zone": 2}},
             {
+                "id": "sweet-02",
                 "type": "repeat",
                 "repeats": 3,
                 "steps": [
-                    {"type": "block", "category": "work", "duration": {"type": "time", "value": 720}, "target": {"type": "power", "metric": "percent_ftp", "value": 90}},
-                    {"type": "block", "category": "recovery", "duration": {"type": "time", "value": 240}, "target": {"type": "power_zone", "zone": 1}},
+                    {"id": "sweet-02a", "type": "block", "category": "work", "duration": {"type": "time", "value": 720}, "target": {"type": "power", "value": 90, "unit": "percent_ftp"}},
+                    {"id": "sweet-02b", "type": "block", "category": "recovery", "duration": {"type": "time", "value": 240}, "target": {"type": "power", "zone": 1}},
                 ],
             },
-            {"type": "block", "category": "cooldown", "duration": {"type": "time", "value": 600}, "target": {"type": "power_zone", "zone": 1}},
+            {"id": "sweet-03", "type": "block", "category": "cooldown", "duration": {"type": "time", "value": 600}, "target": {"type": "power", "zone": 1}},
         ],
         [
-            {"type": "block", "category": "work", "duration": {"type": "time", "value": 7200}, "target": {"type": "power_zone", "zone": 2}},
-            {"type": "block", "category": "work", "duration": {"type": "time", "value": 1200}, "target": {"type": "power", "metric": "percent_ftp", "value": min(110, round((ftp * 0.84) / max(ftp, 1.0) * 100))}},
+            {"id": "longride-01", "type": "block", "category": "work", "duration": {"type": "time", "value": 7200}, "target": {"type": "power", "zone": 2}},
+            {"id": "longride-02", "type": "block", "category": "work", "duration": {"type": "time", "value": 1200}, "target": {"type": "power", "value": min(110, round((ftp * 0.84) / max(ftp, 1.0) * 100)), "unit": "percent_ftp"}},
         ],
         [
-            {"type": "block", "category": "warmup", "duration": {"type": "time", "value": 900}, "target": {"type": "power_zone", "zone": 2}},
+            {"id": "vo2-01", "type": "block", "category": "warmup", "duration": {"type": "time", "value": 900}, "target": {"type": "power", "zone": 2}},
             {
+                "id": "vo2-02",
                 "type": "repeat",
                 "repeats": 5,
                 "steps": [
-                    {"type": "block", "category": "work", "duration": {"type": "time", "value": 180}, "target": {"type": "power", "metric": "percent_ftp", "value": 112}},
-                    {"type": "block", "category": "recovery", "duration": {"type": "time", "value": 180}, "target": {"type": "power_zone", "zone": 1}},
+                    {"id": "vo2-02a", "type": "block", "category": "work", "duration": {"type": "time", "value": 180}, "target": {"type": "power", "value": 112, "unit": "percent_ftp"}},
+                    {"id": "vo2-02b", "type": "block", "category": "recovery", "duration": {"type": "time", "value": 180}, "target": {"type": "power", "zone": 1}},
                 ],
             },
-            {"type": "block", "category": "cooldown", "duration": {"type": "time", "value": 600}, "target": {"type": "power_zone", "zone": 1}},
+            {"id": "vo2-03", "type": "block", "category": "cooldown", "duration": {"type": "time", "value": 600}, "target": {"type": "power", "zone": 1}},
         ],
     ]
 
@@ -718,6 +762,214 @@ def build_season_plan_payload(persona: DemoPersona, anchor_date: date) -> dict[s
             "periodization_model": periodization.periodization_model,
         },
     }
+
+
+def _chat_created_at(days_ago: int, hour: int, minute: int) -> datetime:
+    return datetime.combine(
+        date.today() - timedelta(days=max(days_ago, 0)),
+        time(hour=hour % 24, minute=minute % 60),
+    )
+
+
+def build_group_chat_blueprints() -> list[OrganizationGroupMessageBlueprint]:
+    return [
+        OrganizationGroupMessageBlueprint(
+            sender_key="coach",
+            body="Weekly focus stays on clean execution. Please leave short notes after uploads so I can compare planned versus completed work without guessing.",
+            days_ago=6,
+            hour=8,
+            minute=5,
+        ),
+        OrganizationGroupMessageBlueprint(
+            sender_key="admin",
+            body="Emergency contacts and consent records are current. If travel or equipment logistics changed, send me a direct message so I can update the demo roster notes.",
+            days_ago=6,
+            hour=8,
+            minute=37,
+        ),
+        OrganizationGroupMessageBlueprint(
+            sender_key="athlete-01",
+            body="Half-marathon pacing felt smoother after the weekend aerobic run. I will keep Thursday's cruise intervals conservative on the opening rep.",
+            days_ago=5,
+            hour=18,
+            minute=12,
+        ),
+        OrganizationGroupMessageBlueprint(
+            sender_key="coach",
+            body="Exactly. The first rep should feel almost too easy. The point is to lock rhythm before the race-specific work starts to bite.",
+            days_ago=5,
+            hour=18,
+            minute=41,
+        ),
+        OrganizationGroupMessageBlueprint(
+            sender_key="athlete-02",
+            body="Gran fondo fueling went better with smaller, earlier sips. I also uploaded the head-unit duplicate so the workflow demo shows both device records.",
+            days_ago=4,
+            hour=19,
+            minute=8,
+        ),
+        OrganizationGroupMessageBlueprint(
+            sender_key="admin",
+            body="Perfect. Duplicate uploads are useful for the demo as long as the primary file is still the one referenced during analysis.",
+            days_ago=4,
+            hour=19,
+            minute=34,
+        ),
+        OrganizationGroupMessageBlueprint(
+            sender_key="athlete-07",
+            body="Trail shoes handled wet gravel well this morning. Descents were much calmer once cadence stayed high instead of forcing the pace.",
+            days_ago=2,
+            hour=7,
+            minute=46,
+        ),
+        OrganizationGroupMessageBlueprint(
+            sender_key="coach",
+            body="Good note. Keep the same discipline this week and protect the recovery days, especially before the A-race rehearsal sessions.",
+            days_ago=2,
+            hour=8,
+            minute=3,
+        ),
+    ]
+
+
+def build_coach_chat_blueprints(persona: DemoPersona) -> list[OrganizationCoachMessageBlueprint]:
+    athlete_index = max(1, _athlete_sequence(persona))
+    review_activity = next(
+        (item for item in build_activity_blueprints(persona) if item.key == "past-yellow-primary"),
+        build_activity_blueprints(persona)[0],
+    )
+    quality_workout = next(
+        (item for item in build_workout_blueprints(persona) if item.key == "future-02"),
+        build_workout_blueprints(persona)[0],
+    )
+    goal_race_name = persona.goal_races[-1].name if persona.goal_races else f"{persona.display_name} target race"
+    base_day = 6 - ((athlete_index - 1) % 4)
+    review_hour = 7 + ((athlete_index - 1) % 3)
+    reply_hour = 18 + ((athlete_index - 1) % 2)
+    follow_up_day = max(base_day - 1, 0)
+
+    if persona.main_sport == "cycling":
+        coach_open = (
+            f"I reviewed the {review_activity.title.lower()} file. Keep {quality_workout.title.lower()} controlled through the first interval and save the last set for clean cadence."
+        )
+        athlete_reply = "Understood. Legs felt better after the recovery spin and fueling is set so the second half stays steady."
+        coach_follow_up = (
+            f"Good. This block is about arriving at {goal_race_name} with repeatable power, not forcing hero numbers in training."
+        )
+        athlete_close = "Copy. I will cap the opener, note bottle timing in the upload, and send comments right after the ride."
+    else:
+        coach_open = (
+            f"I reviewed the {review_activity.title.lower()} upload. Keep {quality_workout.title.lower()} relaxed early and do not chase pace in the first block."
+        )
+        athlete_reply = "Understood. Breathing has settled faster this week and the legs feel less stale than before the last threshold session."
+        coach_follow_up = (
+            f"Good. The goal is to stack clean work ahead of {goal_race_name}, not to turn a training day into a race."
+        )
+        athlete_close = "Copy. I will keep the opener conservative, note shoe choice and surface, and upload comments right after the run."
+
+    return [
+        OrganizationCoachMessageBlueprint(
+            athlete_key=persona.key,
+            sender_key="coach",
+            body=coach_open,
+            days_ago=base_day,
+            hour=review_hour,
+            minute=8 + athlete_index,
+        ),
+        OrganizationCoachMessageBlueprint(
+            athlete_key=persona.key,
+            sender_key=persona.key,
+            body=athlete_reply,
+            days_ago=base_day,
+            hour=reply_hour,
+            minute=20 + athlete_index,
+        ),
+        OrganizationCoachMessageBlueprint(
+            athlete_key=persona.key,
+            sender_key="coach",
+            body=coach_follow_up,
+            days_ago=follow_up_day,
+            hour=6 + ((athlete_index - 1) % 2),
+            minute=39 + athlete_index,
+        ),
+        OrganizationCoachMessageBlueprint(
+            athlete_key=persona.key,
+            sender_key=persona.key,
+            body=athlete_close,
+            days_ago=follow_up_day,
+            hour=20,
+            minute=6 + athlete_index,
+        ),
+    ]
+
+
+def build_direct_chat_blueprints() -> list[OrganizationDirectMessageBlueprint]:
+    return [
+        OrganizationDirectMessageBlueprint(
+            sender_key="admin",
+            recipient_key="coach",
+            body="I verified the demo credentials and support notes. Let me know before you start the organization walkthrough.",
+            days_ago=5,
+            hour=9,
+            minute=10,
+        ),
+        OrganizationDirectMessageBlueprint(
+            sender_key="coach",
+            recipient_key="admin",
+            body="Received. I will start with the roster, then calendar, then the private athlete threads.",
+            days_ago=5,
+            hour=9,
+            minute=28,
+        ),
+        OrganizationDirectMessageBlueprint(
+            sender_key="admin",
+            recipient_key="coach",
+            body="Perfect. If duplicate files come up, I already flagged which upload should be treated as the primary analysis record.",
+            days_ago=4,
+            hour=16,
+            minute=12,
+        ),
+        OrganizationDirectMessageBlueprint(
+            sender_key="coach",
+            recipient_key="admin",
+            body="That helps. I will also point out that all demo emails are plus-addressed and already verified.",
+            days_ago=4,
+            hour=16,
+            minute=39,
+        ),
+        OrganizationDirectMessageBlueprint(
+            sender_key="admin",
+            recipient_key="athlete-03",
+            body="Your race-week logistics are set. Bib pickup opens at 07:30 and parking is easiest from the south entrance.",
+            days_ago=3,
+            hour=11,
+            minute=5,
+        ),
+        OrganizationDirectMessageBlueprint(
+            sender_key="athlete-03",
+            recipient_key="admin",
+            body="Thanks. I added that to my notes and will travel the night before so the morning stays quiet.",
+            days_ago=3,
+            hour=11,
+            minute=34,
+        ),
+        OrganizationDirectMessageBlueprint(
+            sender_key="admin",
+            recipient_key="athlete-06",
+            body="I checked the TT start list. Your slot is still 09:12, so there is no need to rush warm-up timing.",
+            days_ago=2,
+            hour=14,
+            minute=18,
+        ),
+        OrganizationDirectMessageBlueprint(
+            sender_key="athlete-06",
+            recipient_key="admin",
+            body="Perfect. I can keep the usual opener and avoid cutting the final cadence block short.",
+            days_ago=2,
+            hour=14,
+            minute=47,
+        ),
+    ]
 
 
 def _estimate_activity_load(activity: Activity, profile: Profile | None) -> tuple[float, float]:
@@ -1053,6 +1305,41 @@ async def _clear_demo_training_slice(db: AsyncSession, athlete_ids: list[int]) -
     await db.flush()
 
 
+async def _clear_demo_chat_slice(
+    db: AsyncSession,
+    *,
+    organization_id: int,
+    demo_user_ids: list[int],
+    coach_id: int,
+    athlete_ids: list[int],
+) -> None:
+    if not demo_user_ids:
+        return
+    await db.execute(
+        delete(OrganizationGroupMessage).where(
+            OrganizationGroupMessage.organization_id == organization_id,
+            OrganizationGroupMessage.sender_id.in_(demo_user_ids),
+        )
+    )
+    if athlete_ids:
+        await db.execute(
+            delete(OrganizationCoachMessage).where(
+                OrganizationCoachMessage.organization_id == organization_id,
+                OrganizationCoachMessage.athlete_id.in_(athlete_ids),
+                OrganizationCoachMessage.coach_id == coach_id,
+                OrganizationCoachMessage.sender_id.in_(demo_user_ids),
+            )
+        )
+    await db.execute(
+        delete(OrganizationDirectMessage).where(
+            OrganizationDirectMessage.organization_id == organization_id,
+            OrganizationDirectMessage.sender_id.in_(demo_user_ids),
+            OrganizationDirectMessage.recipient_id.in_(demo_user_ids),
+        )
+    )
+    await db.flush()
+
+
 def _activity_datetime_for_offset(day_offset: int, sequence_index: int) -> datetime:
     hour = 6 + max(0, sequence_index % 5)
     minute = 10 + (sequence_index % 4) * 7
@@ -1256,9 +1543,68 @@ async def _seed_athlete_training_data(
     }
 
 
+async def _seed_organization_chat_data(
+    db: AsyncSession,
+    *,
+    organization: Organization,
+    users_by_key: dict[str, User],
+) -> dict[str, int]:
+    counts = {
+        "group_messages": 0,
+        "coach_messages": 0,
+        "direct_messages": 0,
+    }
+
+    for blueprint in build_group_chat_blueprints():
+        db.add(
+            OrganizationGroupMessage(
+                organization_id=organization.id,
+                sender_id=users_by_key[blueprint.sender_key].id,
+                body=blueprint.body,
+                created_at=_chat_created_at(blueprint.days_ago, blueprint.hour, blueprint.minute),
+            )
+        )
+        counts["group_messages"] += 1
+
+    coach = users_by_key["coach"]
+    for persona in get_athlete_personas():
+        athlete = users_by_key[persona.key]
+        for blueprint in build_coach_chat_blueprints(persona):
+            db.add(
+                OrganizationCoachMessage(
+                    organization_id=organization.id,
+                    athlete_id=athlete.id,
+                    coach_id=coach.id,
+                    sender_id=users_by_key[blueprint.sender_key].id,
+                    body=blueprint.body,
+                    created_at=_chat_created_at(blueprint.days_ago, blueprint.hour, blueprint.minute),
+                )
+            )
+            counts["coach_messages"] += 1
+
+    for blueprint in build_direct_chat_blueprints():
+        db.add(
+            OrganizationDirectMessage(
+                organization_id=organization.id,
+                sender_id=users_by_key[blueprint.sender_key].id,
+                recipient_id=users_by_key[blueprint.recipient_key].id,
+                body=blueprint.body,
+                created_at=_chat_created_at(blueprint.days_ago, blueprint.hour, blueprint.minute),
+            )
+        )
+        counts["direct_messages"] += 1
+
+    await db.flush()
+    return counts
+
+
 async def seed_production_demo(config: DemoSeedConfig) -> DemoSeedReport:
     ensure_mutation_allowed(config)
     account_specs = build_account_specs(config)
+    athlete_personas = get_athlete_personas()
+    group_message_count = len(build_group_chat_blueprints())
+    coach_message_count = sum(len(build_coach_chat_blueprints(persona)) for persona in athlete_personas)
+    direct_message_count = len(build_direct_chat_blueprints())
     if config.dry_run:
         return DemoSeedReport(
             action="seed",
@@ -1277,20 +1623,31 @@ async def seed_production_demo(config: DemoSeedConfig) -> DemoSeedReport:
             ],
             counts={
                 "users": len(account_specs),
-                "athletes": len(get_athlete_personas()),
-                "season_plans": len(get_athlete_personas()),
-                "planned_workouts": len(get_athlete_personas()) * 8,
-                "activities": len(get_athlete_personas()) * 6,
-                "duplicates": len(get_athlete_personas()) * 2,
+                "athletes": len(athlete_personas),
+                "season_plans": len(athlete_personas),
+                "planned_workouts": len(athlete_personas) * 8,
+                "activities": len(athlete_personas) * 6,
+                "duplicates": len(athlete_personas) * 2,
+                "group_messages": group_message_count,
+                "coach_messages": coach_message_count,
+                "direct_messages": direct_message_count,
             },
         )
 
     parsed_templates = load_parsed_activity_templates(config.activity_source_dir)
     async with AsyncSessionLocal() as db:
         org, users_by_key, profiles_by_user_id, credentials = await _upsert_users_profiles_org(db, config, account_specs)
-        athlete_personas = get_athlete_personas()
         athlete_ids = [users_by_key[persona.key].id for persona in athlete_personas]
+        coach = users_by_key["coach"]
+        demo_user_ids = [user.id for user in users_by_key.values()]
         await _clear_demo_training_slice(db, athlete_ids)
+        await _clear_demo_chat_slice(
+            db,
+            organization_id=org.id,
+            demo_user_ids=demo_user_ids,
+            coach_id=coach.id,
+            athlete_ids=athlete_ids,
+        )
 
         counts = {
             "users": len(account_specs),
@@ -1299,9 +1656,11 @@ async def seed_production_demo(config: DemoSeedConfig) -> DemoSeedReport:
             "planned_workouts": 0,
             "activities": 0,
             "duplicates": 0,
+            "group_messages": 0,
+            "coach_messages": 0,
+            "direct_messages": 0,
         }
 
-        coach = users_by_key["coach"]
         for persona in athlete_personas:
             athlete = users_by_key[persona.key]
             profile = profiles_by_user_id[athlete.id]
@@ -1318,6 +1677,15 @@ async def seed_production_demo(config: DemoSeedConfig) -> DemoSeedReport:
             counts["planned_workouts"] += athlete_counts["planned_workouts"]
             counts["activities"] += athlete_counts["activities"]
             counts["duplicates"] += athlete_counts["duplicates"]
+
+        chat_counts = await _seed_organization_chat_data(
+            db,
+            organization=org,
+            users_by_key=users_by_key,
+        )
+        counts["group_messages"] += chat_counts["group_messages"]
+        counts["coach_messages"] += chat_counts["coach_messages"]
+        counts["direct_messages"] += chat_counts["direct_messages"]
 
         await db.commit()
 
@@ -1367,6 +1735,7 @@ async def purge_production_demo(config: DemoSeedConfig) -> DemoSeedReport:
         )
 
     async with AsyncSessionLocal() as db:
+        org = await _load_demo_org(db, config)
         user_result = await db.execute(select(User).where(User.email.in_([spec.email for spec in account_specs])))
         users = user_result.scalars().all()
         user_ids = [user.id for user in users]
@@ -1380,8 +1749,48 @@ async def purge_production_demo(config: DemoSeedConfig) -> DemoSeedReport:
             "memberships_deleted": 0,
             "links_deleted": 0,
             "profiles_deleted": 0,
+            "group_messages_deleted": 0,
+            "coach_messages_deleted": 0,
+            "direct_messages_deleted": 0,
             "organization_deleted": 0,
         }
+
+        if org is not None and user_ids:
+            group_result = await db.execute(
+                select(OrganizationGroupMessage).where(
+                    OrganizationGroupMessage.organization_id == org.id,
+                    OrganizationGroupMessage.sender_id.in_(user_ids),
+                )
+            )
+            group_messages = group_result.scalars().all()
+            coach_message_result = await db.execute(
+                select(OrganizationCoachMessage).where(
+                    OrganizationCoachMessage.organization_id == org.id,
+                    OrganizationCoachMessage.athlete_id.in_(user_ids),
+                    OrganizationCoachMessage.coach_id.in_(user_ids),
+                    OrganizationCoachMessage.sender_id.in_(user_ids),
+                )
+            )
+            coach_messages = coach_message_result.scalars().all()
+            direct_message_result = await db.execute(
+                select(OrganizationDirectMessage).where(
+                    OrganizationDirectMessage.organization_id == org.id,
+                    OrganizationDirectMessage.sender_id.in_(user_ids),
+                    OrganizationDirectMessage.recipient_id.in_(user_ids),
+                )
+            )
+            direct_messages = direct_message_result.scalars().all()
+
+            counts["group_messages_deleted"] = len(group_messages)
+            counts["coach_messages_deleted"] = len(coach_messages)
+            counts["direct_messages_deleted"] = len(direct_messages)
+
+            for row in group_messages:
+                await db.delete(row)
+            for row in coach_messages:
+                await db.delete(row)
+            for row in direct_messages:
+                await db.delete(row)
 
         if athlete_ids:
             workout_result = await db.execute(select(PlannedWorkout).where(PlannedWorkout.user_id.in_(athlete_ids)))
@@ -1431,7 +1840,6 @@ async def purge_production_demo(config: DemoSeedConfig) -> DemoSeedReport:
             for row in users:
                 await db.delete(row)
 
-        org = await _load_demo_org(db, config)
         if org is not None:
             member_check = await db.execute(
                 select(OrganizationMember).where(OrganizationMember.organization_id == org.id)
